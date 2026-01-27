@@ -313,23 +313,28 @@ export default function OrgChartPage() {
     // Build tree from root
     positionNode(rootUser, treeCenter, 180)
 
-    // Add unassigned users in a neat grid on the right side
+    // Add unassigned users at the bottom of the chart
     const unassigned = users.filter(u => !inTree.has(u.id))
     if (unassigned.length > 0) {
-      const COLS = 4 // 4 columns
+      // Find the lowest Y position in the tree
+      const maxY = Math.max(...newNodes.map(n => n.position.y)) + 200
+      
+      const COLS = 6 // 6 columns for horizontal layout at bottom
       const CARD_WIDTH = 180
       const CARD_HEIGHT = 140
       const GAP_X = 30
       const GAP_Y = 40
-      // Position to the right of the tree
-      const startX = treeCenter + totalTreeWidth / 2 + 200
-      const startY = 100
+      
+      // Calculate grid width and center it
+      const gridWidth = Math.min(unassigned.length, COLS) * (CARD_WIDTH + GAP_X) - GAP_X
+      const startX = treeCenter - gridWidth / 2
+      const startY = maxY + 60
       
       // Add a label node for the unassigned section
       newNodes.push({
         id: 'unassigned-label',
         type: 'company',
-        position: { x: startX + (COLS * (CARD_WIDTH + GAP_X)) / 2 - 100, y: startY - 60 },
+        position: { x: treeCenter - 100, y: maxY },
         data: { name: `Unassigned (${unassigned.length})` },
         draggable: false,
       })
