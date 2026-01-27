@@ -13,7 +13,6 @@ import {
   Background,
   useNodesState,
   useEdgesState,
-  MarkerType,
   Panel,
   BackgroundVariant,
   Position,
@@ -47,136 +46,113 @@ interface Mapping {
   evaluatee: User
 }
 
-interface EmployeeNodeData {
-  user: User
+interface NodeData {
+  user?: User
+  label?: string
   color: string
   textColor: string
   borderColor: string
-  isCompanyNode?: boolean
-  isDeptLabel?: boolean
-  label?: string
+  nodeType: 'company' | 'employee' | 'deptLabel'
   [key: string]: unknown
 }
 
-// Department colors matching the reference org chart exactly
-const DEPT_COLORS: Record<string, { bg: string; border: string; text: string }> = {
-  // Partners/Executive - different colors for each
-  'Partner-Hamiz': { bg: '#86EFAC', border: '#22C55E', text: '#14532D' }, // Green
-  'Partner-Richard': { bg: '#86EFAC', border: '#22C55E', text: '#14532D' }, // Green  
-  'Partner-Maryam': { bg: '#F9A8D4', border: '#EC4899', text: '#831843' }, // Pink
-  'Partner-Brad': { bg: '#FCA5A5', border: '#EF4444', text: '#7F1D1D' }, // Red
-  'Partner-Daniyal': { bg: '#FDBA74', border: '#F97316', text: '#7C2D12' }, // Orange
-  
-  // Departments
-  '1to1Plans': { bg: '#86EFAC', border: '#22C55E', text: '#14532D' }, // Green
-  'Design': { bg: '#93C5FD', border: '#3B82F6', text: '#1E3A8A' }, // Blue
-  'Product': { bg: '#93C5FD', border: '#3B82F6', text: '#1E3A8A' }, // Blue
-  'Marketing': { bg: '#93C5FD', border: '#3B82F6', text: '#1E3A8A' }, // Blue
-  'Software Engineering': { bg: '#93C5FD', border: '#3B82F6', text: '#1E3A8A' }, // Blue
-  'Growth': { bg: '#D8B4FE', border: '#A855F7', text: '#581C87' }, // Purple
-  'Growth and strategy': { bg: '#D8B4FE', border: '#A855F7', text: '#581C87' }, // Purple
-  'IR': { bg: '#D8B4FE', border: '#A855F7', text: '#581C87' }, // Purple  
-  'Research': { bg: '#D8B4FE', border: '#A855F7', text: '#581C87' }, // Purple
-  'Quantitative Engineering': { bg: '#FDE68A', border: '#F59E0B', text: '#78350F' }, // Yellow/Orange
-  'Technology': { bg: '#FDE68A', border: '#F59E0B', text: '#78350F' }, // Yellow/Orange
-  'SOA': { bg: '#FDE68A', border: '#F59E0B', text: '#78350F' }, // Yellow/Orange
-  'Operations': { bg: '#86EFAC', border: '#22C55E', text: '#14532D' }, // Green
-  'Accounting and Operations': { bg: '#86EFAC', border: '#22C55E', text: '#14532D' }, // Green
-  'Legal': { bg: '#86EFAC', border: '#22C55E', text: '#14532D' }, // Green
-  'Finance and Accounting': { bg: '#86EFAC', border: '#22C55E', text: '#14532D' }, // Green
-  'Human Resources': { bg: '#F9A8D4', border: '#EC4899', text: '#831843' }, // Pink
-  'Operating Partner-Value Creation': { bg: '#FCA5A5', border: '#EF4444', text: '#7F1D1D' }, // Red
-  'Operating Partner-Execution': { bg: '#FDBA74', border: '#F97316', text: '#7C2D12' }, // Orange
-  'Executive': { bg: '#86EFAC', border: '#22C55E', text: '#14532D' }, // Green
-  'default': { bg: '#E5E7EB', border: '#9CA3AF', text: '#374151' }, // Gray
+// Color scheme matching reference exactly
+const COLORS = {
+  green: { bg: '#86EFAC', border: '#22C55E', text: '#14532D' },
+  pink: { bg: '#F9A8D4', border: '#EC4899', text: '#831843' },
+  blue: { bg: '#93C5FD', border: '#3B82F6', text: '#1E3A8A' },
+  purple: { bg: '#D8B4FE', border: '#A855F7', text: '#581C87' },
+  yellow: { bg: '#FDE68A', border: '#F59E0B', text: '#78350F' },
+  red: { bg: '#FCA5A5', border: '#EF4444', text: '#7F1D1D' },
+  orange: { bg: '#FDBA74', border: '#F97316', text: '#7C2D12' },
+  gray: { bg: '#E5E7EB', border: '#9CA3AF', text: '#374151' },
 }
 
-function getDeptColor(dept: string | null, userName?: string) {
-  // Special handling for partners
-  if (userName) {
-    if (userName.includes('Hamiz')) return DEPT_COLORS['Partner-Hamiz']
-    if (userName.includes('Richard')) return DEPT_COLORS['Partner-Richard']
-    if (userName.includes('Maryam')) return DEPT_COLORS['Partner-Maryam']
-    if (userName.includes('Brad')) return DEPT_COLORS['Partner-Brad']
-    if (userName.includes('Daniyal')) return DEPT_COLORS['Partner-Daniyal']
+// Department to color mapping
+const DEPT_COLOR_MAP: Record<string, typeof COLORS.green> = {
+  '1to1Plans': COLORS.green,
+  'Design': COLORS.blue,
+  'Product': COLORS.blue,
+  'Marketing': COLORS.blue,
+  'Software Engineering': COLORS.blue,
+  'Growth': COLORS.purple,
+  'Growth and strategy': COLORS.purple,
+  'IR': COLORS.purple,
+  'Research': COLORS.purple,
+  'Quantitative Engineering': COLORS.yellow,
+  'Technology': COLORS.yellow,
+  'SOA': COLORS.yellow,
+  'Operations': COLORS.green,
+  'Accounting and Operations': COLORS.green,
+  'Legal': COLORS.green,
+  'Finance and Accounting': COLORS.green,
+  'Human Resources': COLORS.pink,
+  'Operating Partner-Value Creation': COLORS.red,
+  'Operating Partner-Execution': COLORS.orange,
+  'Executive': COLORS.green,
+}
+
+function getColor(dept: string | null, personName?: string): typeof COLORS.green {
+  // Special colors for specific people
+  if (personName) {
+    const name = personName.toLowerCase()
+    if (name.includes('hamiz')) return COLORS.green
+    if (name.includes('richard')) return COLORS.green
+    if (name.includes('maryam')) return COLORS.pink
+    if (name.includes('brad')) return COLORS.red
+    if (name.includes('daniyal')) return COLORS.orange
   }
-  if (!dept) return DEPT_COLORS.default
-  return DEPT_COLORS[dept] || DEPT_COLORS.default
+  if (!dept) return COLORS.gray
+  return DEPT_COLOR_MAP[dept] || COLORS.gray
 }
 
 // Company logo node
-function CompanyNode({ data }: { data: EmployeeNodeData }) {
+function CompanyNode() {
   return (
-    <div className="px-6 py-3 bg-white rounded-xl shadow-lg border-2 border-slate-200 flex items-center gap-3">
-      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center">
-        <Building2 className="w-5 h-5 text-white" />
+    <div className="px-5 py-2.5 bg-white rounded-lg shadow-md border border-slate-200 flex items-center gap-2">
+      <div className="w-6 h-6 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center">
+        <Building2 className="w-4 h-4 text-white" />
       </div>
-      <span className="font-bold text-lg text-slate-800">{COMPANY_NAME}</span>
+      <span className="font-bold text-base text-slate-800">{COMPANY_NAME}</span>
     </div>
   )
 }
 
 // Department label node
-function DeptLabelNode({ data }: { data: EmployeeNodeData }) {
+function DeptLabelNode({ data }: { data: NodeData }) {
   return (
-    <div 
-      className="px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm"
-      style={{ 
-        backgroundColor: data.color,
-        borderColor: data.borderColor,
-        color: data.textColor,
-        borderWidth: 1,
-      }}
-    >
+    <div className="px-3 py-1 text-[11px] font-medium text-slate-600 bg-white/80 rounded border border-slate-200 shadow-sm">
       {data.label}
     </div>
   )
 }
 
-// Employee card node - matching the reference design
-function EmployeeNode({ data, selected, dragging }: { data: EmployeeNodeData; selected: boolean; dragging: boolean }) {
+// Employee card node
+function EmployeeNode({ data, selected, dragging }: { data: NodeData; selected: boolean; dragging: boolean }) {
   const { user, color, textColor, borderColor } = data
+  if (!user) return null
+  
   const initials = user.name.split(' ').map(n => n[0]).join('').slice(0, 2)
   
-  const isCLevel = C_LEVEL_EVALUATORS.some(name => 
-    user.name.toLowerCase() === name.toLowerCase()
-  )
-  
   return (
-    <div 
-      className={`transition-all duration-200 ${
-        dragging ? 'scale-105 shadow-2xl z-50' : ''
-      } ${selected ? 'ring-2 ring-offset-2 ring-indigo-500' : ''}`}
-    >
+    <div className={`transition-transform ${dragging ? 'scale-105' : ''} ${selected ? 'ring-2 ring-indigo-500 ring-offset-2' : ''}`}>
       <div 
-        className="w-[140px] rounded-lg border-2 shadow-md overflow-hidden"
-        style={{ 
-          backgroundColor: color,
-          borderColor: borderColor,
-        }}
+        className="w-[120px] rounded-lg border-2 shadow-md overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
+        style={{ backgroundColor: color, borderColor }}
       >
-        {/* Avatar area */}
-        <div className="pt-3 pb-2 flex justify-center">
+        <div className="pt-2.5 pb-1.5 flex justify-center">
           <div 
-            className="w-12 h-12 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-inner"
+            className="w-10 h-10 rounded-full flex items-center justify-center text-white text-xs font-bold shadow"
             style={{ backgroundColor: borderColor }}
           >
             {initials}
           </div>
         </div>
-        
-        {/* Name and position */}
-        <div className="px-2 pb-3 text-center">
-          <div 
-            className="font-semibold text-xs leading-tight"
-            style={{ color: textColor }}
-          >
+        <div className="px-1.5 pb-2 text-center">
+          <div className="font-semibold text-[10px] leading-tight" style={{ color: textColor }}>
             {user.name}
           </div>
-          <div 
-            className="text-[10px] mt-0.5 opacity-80 leading-tight"
-            style={{ color: textColor }}
-          >
+          <div className="text-[8px] mt-0.5 opacity-75 leading-tight" style={{ color: textColor }}>
             {user.position || 'Employee'}
           </div>
         </div>
@@ -234,7 +210,7 @@ function OrgChartContent() {
     finally { setLoading(false) }
   }
 
-  // Build the org chart layout matching the reference
+  // Build exact org chart matching reference
   useEffect(() => {
     if (users.length === 0) return
 
@@ -242,11 +218,40 @@ function OrgChartContent() {
     const edgeList: Edge[] = []
     
     // Layout constants
-    const CARD_WIDTH = 140
-    const CARD_HEIGHT = 100
-    const H_GAP = 20
-    const V_GAP = 60
-    const DEPT_GAP = 40
+    const CARD_W = 120
+    const CARD_H = 85
+    const H_GAP = 15
+    const V_GAP = 50
+    const SECTION_GAP = 60
+
+    // Helper functions
+    const createNode = (id: string, type: 'company' | 'employee' | 'deptLabel', x: number, y: number, data: Partial<NodeData>): Node => ({
+      id,
+      type,
+      position: { x, y },
+      sourcePosition: Position.Bottom,
+      targetPosition: Position.Top,
+      draggable: type === 'employee',
+      data: { ...data, nodeType: type } as NodeData,
+    })
+
+    const createEdge = (source: string, target: string, color: string): Edge => ({
+      id: `${source}-${target}`,
+      source,
+      target,
+      type: 'smoothstep',
+      style: { stroke: color, strokeWidth: 2 },
+    })
+
+    const createEmployeeNode = (user: User, x: number, y: number): Node => {
+      const c = getColor(user.department, user.name)
+      return createNode(user.id, 'employee', x, y, {
+        user,
+        color: c.bg,
+        textColor: c.text,
+        borderColor: c.border,
+      })
+    }
 
     // Find key people
     const hamiz = users.find(u => u.name.toLowerCase().includes('hamiz'))
@@ -255,7 +260,7 @@ function OrgChartContent() {
     const brad = users.find(u => u.name.toLowerCase().includes('brad'))
     const daniyal = users.find(u => u.name.toLowerCase().includes('daniyal'))
 
-    // Build manager relationships
+    // Build reporting relationships from mappings
     const reportsTo = new Map<string, string>()
     mappings
       .filter(m => m.relationshipType === 'TEAM_LEAD' || m.relationshipType === 'C_LEVEL')
@@ -265,11 +270,6 @@ function OrgChartContent() {
         }
       })
 
-    // Get direct reports for a manager
-    const getReports = (managerId: string) => {
-      return users.filter(u => reportsTo.get(u.id) === managerId)
-    }
-
     // Group users by department
     const byDept = new Map<string, User[]>()
     users.forEach(u => {
@@ -278,217 +278,242 @@ function OrgChartContent() {
       byDept.get(dept)!.push(u)
     })
 
-    // Helper to create employee node
-    const createEmployeeNode = (user: User, x: number, y: number): Node => {
-      const colors = getDeptColor(user.department, user.name)
-      return {
-        id: user.id,
-        type: 'employee',
-        position: { x, y },
-        sourcePosition: Position.Bottom,
-        targetPosition: Position.Top,
-        draggable: true,
-        data: {
-          user,
-          color: colors.bg,
-          textColor: colors.text,
-          borderColor: colors.border,
-        } as EmployeeNodeData,
-      }
-    }
-
-    // Helper to create edge
-    const createEdge = (sourceId: string, targetId: string, color: string): Edge => ({
-      id: `${sourceId}-${targetId}`,
-      source: sourceId,
-      target: targetId,
-      type: 'smoothstep',
-      style: { stroke: color, strokeWidth: 2 },
-    })
-
-    // ===== BUILD THE CHART =====
-    let centerX = 800
-    let currentY = 0
-
-    // 1. Company node at top
-    nodeList.push({
-      id: 'company',
-      type: 'company',
-      position: { x: centerX - 80, y: currentY },
-      draggable: false,
-      data: { isCompanyNode: true } as EmployeeNodeData,
-    })
-    
-    currentY += 80
-
-    // 2. Hamiz (CEO) below company
-    if (hamiz) {
-      nodeList.push(createEmployeeNode(hamiz, centerX - CARD_WIDTH/2, currentY))
-      edgeList.push(createEdge('company', hamiz.id, '#22C55E'))
-    }
-
-    currentY += CARD_HEIGHT + V_GAP
-
-    // 3. Top-level partners row
-    const partners = [richard, maryam, brad, daniyal].filter(Boolean) as User[]
-    const partnerColors = ['#22C55E', '#EC4899', '#EF4444', '#F97316']
-    const partnerStartX = centerX - ((partners.length * (CARD_WIDTH + DEPT_GAP)) / 2) + DEPT_GAP/2
-
-    partners.forEach((partner, i) => {
-      const x = partnerStartX + i * (CARD_WIDTH + DEPT_GAP)
-      nodeList.push(createEmployeeNode(partner, x, currentY))
-      if (hamiz) {
-        edgeList.push(createEdge(hamiz.id, partner.id, partnerColors[i] || '#9CA3AF'))
-      }
-    })
-
-    currentY += CARD_HEIGHT + V_GAP
-
-    // 4. Department sections
-    // Define department structure based on reference image
-    const deptStructure = [
-      { 
-        name: '1to1Plans', 
-        color: '#22C55E',
-        parent: maryam,
-        depts: ['1to1Plans']
-      },
-      {
-        name: 'Design',
-        color: '#3B82F6', 
-        parent: hamiz,
-        depts: ['Design', 'Product', 'Marketing', 'Software Engineering']
-      },
-      {
-        name: 'Growth',
-        color: '#A855F7',
-        parent: hamiz,
-        depts: ['Growth', 'Growth and strategy', 'IR', 'Research']
-      },
-      {
-        name: 'Technology',
-        color: '#F59E0B',
-        parent: hamiz,
-        depts: ['Technology', 'Quantitative Engineering', 'SOA']
-      },
-      {
-        name: 'Operations',
-        color: '#22C55E',
-        parent: hamiz,
-        depts: ['Operations', 'Accounting and Operations', 'Legal', 'Finance and Accounting']
-      },
-      {
-        name: 'Human Resources',
-        color: '#EC4899',
-        parent: hamiz,
-        depts: ['Human Resources']
-      },
-      {
-        name: 'Operating Partners',
-        color: '#EF4444',
-        parent: brad,
-        depts: ['Operating Partner-Value Creation', 'Operating Partner-Execution']
-      }
-    ]
-
     // Track positioned users
     const positioned = new Set<string>()
-    if (hamiz) positioned.add(hamiz.id)
-    partners.forEach(p => positioned.add(p.id))
+    
+    // ============ LAYOUT ============
+    // Reference structure (left to right):
+    // [Richard/1to1Plans] [Maryam] | [Design] [Growth] [Product] [Technology] [Operations] [HR] | [Brad/Daniyal/Operating Partners]
+    //                              |                    HAMIZ (center)                          |
 
-    // Position each department section
-    let deptX = 0
-    const deptY = currentY
+    let currentX = 0
+    const topY = 0
+    const level1Y = 80
+    const level2Y = 160
+    const level3Y = 240
+    const level4Y = 320
+    const level5Y = 400
 
-    deptStructure.forEach((section, sectionIdx) => {
-      // Get all users in this section's departments
+    // ===== COMPANY NODE =====
+    const companyX = 900
+    nodeList.push(createNode('company', 'company', companyX, topY, { color: '', textColor: '', borderColor: '' }))
+
+    // ===== HAMIZ (Center) =====
+    if (hamiz) {
+      nodeList.push(createEmployeeNode(hamiz, companyX - 10, level1Y))
+      edgeList.push(createEdge('company', hamiz.id, COLORS.green.border))
+      positioned.add(hamiz.id)
+    }
+
+    // ===== LEFT SIDE: Richard & 1to1Plans =====
+    currentX = 0
+    
+    if (richard) {
+      nodeList.push(createEmployeeNode(richard, currentX, level1Y))
+      edgeList.push(createEdge('company', richard.id, COLORS.green.border))
+      positioned.add(richard.id)
+      
+      // 1to1Plans label
+      nodeList.push(createNode('label-1to1plans', 'deptLabel', currentX + 20, level2Y - 25, { label: '1to1Plans', color: '', textColor: '', borderColor: '' }))
+    }
+
+    // 1to1Plans team under Richard
+    const oneto1Team = (byDept.get('1to1Plans') || []).filter(u => !positioned.has(u.id))
+    oneto1Team.forEach((u, i) => {
+      const x = currentX + (i % 4) * (CARD_W + H_GAP)
+      const y = level2Y + Math.floor(i / 4) * (CARD_H + H_GAP)
+      nodeList.push(createEmployeeNode(u, x, y))
+      if (richard) edgeList.push(createEdge(richard.id, u.id, COLORS.green.border))
+      positioned.add(u.id)
+    })
+    currentX += Math.max(4, oneto1Team.length) * (CARD_W + H_GAP) + SECTION_GAP
+
+    // ===== MARYAM =====
+    if (maryam) {
+      nodeList.push(createEmployeeNode(maryam, currentX, level1Y))
+      edgeList.push(createEdge('company', maryam.id, COLORS.pink.border))
+      positioned.add(maryam.id)
+      
+      // Get Maryam's direct reports
+      const maryamReports = users.filter(u => reportsTo.get(u.id) === maryam.id && !positioned.has(u.id))
+      maryamReports.forEach((u, i) => {
+        const x = currentX + (i % 3) * (CARD_W + H_GAP)
+        const y = level2Y + Math.floor(i / 3) * (CARD_H + H_GAP)
+        nodeList.push(createEmployeeNode(u, x, y))
+        edgeList.push(createEdge(maryam.id, u.id, COLORS.green.border))
+        positioned.add(u.id)
+      })
+      currentX += Math.max(3, maryamReports.length) * (CARD_W + H_GAP) + SECTION_GAP
+    }
+
+    // ===== MAIN DEPARTMENTS UNDER HAMIZ =====
+    const mainDepts = [
+      { name: 'Design', depts: ['Design'], color: COLORS.blue },
+      { name: 'Marketing', depts: ['Marketing'], color: COLORS.blue },
+      { name: 'Product', depts: ['Product'], color: COLORS.blue },
+      { name: 'Software Engineering', depts: ['Software Engineering'], color: COLORS.blue },
+      { name: 'Growth', depts: ['Growth', 'Growth and strategy'], color: COLORS.purple, sub: [
+        { name: 'Growth & Investor Relations', depts: ['IR'], color: COLORS.purple },
+        { name: 'Research', depts: ['Research'], color: COLORS.purple },
+      ]},
+      { name: 'Technology', depts: ['Technology'], color: COLORS.yellow, sub: [
+        { name: 'Quantitative Engineering', depts: ['Quantitative Engineering'], color: COLORS.yellow },
+        { name: 'Software Engineering', depts: [], color: COLORS.yellow },
+        { name: 'SOA', depts: ['SOA'], color: COLORS.yellow },
+      ]},
+      { name: 'Operations', depts: ['Operations', 'Accounting and Operations'], color: COLORS.green, sub: [
+        { name: 'Legal', depts: ['Legal'], color: COLORS.green },
+        { name: 'Operations', depts: [], color: COLORS.green },
+        { name: 'Finance and Accounting', depts: ['Finance and Accounting'], color: COLORS.green },
+      ]},
+      { name: 'Human Resources', depts: ['Human Resources'], color: COLORS.pink },
+    ]
+
+    mainDepts.forEach(section => {
+      // Section label
+      nodeList.push(createNode(`label-${section.name}`, 'deptLabel', currentX + 30, level2Y - 25, { label: section.name, color: '', textColor: '', borderColor: '' }))
+      
+      // Get users for this section
       const sectionUsers: User[] = []
-      section.depts.forEach(deptName => {
-        const deptUsers = byDept.get(deptName) || []
-        deptUsers.forEach(u => {
-          if (!positioned.has(u.id)) {
-            sectionUsers.push(u)
-            positioned.add(u.id)
-          }
-        })
+      section.depts.forEach(d => {
+        const deptUsers = (byDept.get(d) || []).filter(u => !positioned.has(u.id))
+        sectionUsers.push(...deptUsers)
       })
 
-      if (sectionUsers.length === 0) return
+      // Position section lead (if any) at top
+      const lead = sectionUsers.find(u => 
+        u.position?.toLowerCase().includes('lead') || 
+        u.position?.toLowerCase().includes('principal') ||
+        u.position?.toLowerCase().includes('manager') ||
+        u.position?.toLowerCase().includes('director')
+      )
+      
+      let teamStartY = level2Y
+      if (lead) {
+        nodeList.push(createEmployeeNode(lead, currentX, level2Y))
+        if (hamiz) edgeList.push(createEdge(hamiz.id, lead.id, section.color.border))
+        positioned.add(lead.id)
+        teamStartY = level3Y
+      }
 
-      // Calculate section width
-      const cols = Math.min(sectionUsers.length, 4)
-      const rows = Math.ceil(sectionUsers.length / cols)
-      const sectionWidth = cols * (CARD_WIDTH + H_GAP)
-
-      // Position users in grid
-      sectionUsers.forEach((user, idx) => {
-        const col = idx % cols
-        const row = Math.floor(idx / cols)
-        const x = deptX + col * (CARD_WIDTH + H_GAP)
-        const y = deptY + row * (CARD_HEIGHT + V_GAP/2)
-        
-        nodeList.push(createEmployeeNode(user, x, y))
-        
-        // Connect to manager
-        const managerId = reportsTo.get(user.id)
-        if (managerId && nodeList.find(n => n.id === managerId)) {
-          edgeList.push(createEdge(managerId, user.id, section.color))
-        } else if (section.parent) {
-          edgeList.push(createEdge(section.parent.id, user.id, section.color))
+      // Position team members
+      const team = sectionUsers.filter(u => u.id !== lead?.id)
+      team.forEach((u, i) => {
+        const x = currentX + (i % 3) * (CARD_W + H_GAP)
+        const y = teamStartY + Math.floor(i / 3) * (CARD_H + H_GAP)
+        nodeList.push(createEmployeeNode(u, x, y))
+        if (lead) {
+          edgeList.push(createEdge(lead.id, u.id, section.color.border))
+        } else if (hamiz) {
+          edgeList.push(createEdge(hamiz.id, u.id, section.color.border))
         }
+        positioned.add(u.id)
       })
 
-      deptX += sectionWidth + DEPT_GAP * 2
+      // Handle sub-sections
+      if (section.sub) {
+        let subX = currentX
+        section.sub.forEach(sub => {
+          // Sub-section label
+          nodeList.push(createNode(`label-${section.name}-${sub.name}`, 'deptLabel', subX + 10, level3Y - 25, { label: sub.name, color: '', textColor: '', borderColor: '' }))
+          
+          const subUsers = sub.depts.flatMap(d => (byDept.get(d) || []).filter(u => !positioned.has(u.id)))
+          subUsers.forEach((u, i) => {
+            const x = subX + (i % 2) * (CARD_W + H_GAP)
+            const y = level3Y + Math.floor(i / 2) * (CARD_H + H_GAP)
+            nodeList.push(createEmployeeNode(u, x, y))
+            if (lead) edgeList.push(createEdge(lead.id, u.id, sub.color.border))
+            positioned.add(u.id)
+          })
+          subX += Math.max(2, subUsers.length) * (CARD_W + H_GAP) + H_GAP
+        })
+      }
+
+      currentX += Math.max(3, team.length, section.sub?.length || 0) * (CARD_W + H_GAP) + SECTION_GAP
     })
 
-    // Position remaining unpositioned users at bottom
+    // ===== RIGHT SIDE: Brad, Daniyal & Operating Partners =====
+    // Brad
+    if (brad) {
+      nodeList.push(createEmployeeNode(brad, currentX, level1Y))
+      edgeList.push(createEdge('company', brad.id, COLORS.red.border))
+      positioned.add(brad.id)
+      
+      // Operating Partners label
+      nodeList.push(createNode('label-op-value', 'deptLabel', currentX, level2Y - 25, { label: 'Operating Partners (Value Creation)', color: '', textColor: '', borderColor: '' }))
+    }
+
+    currentX += CARD_W + SECTION_GAP
+
+    // Daniyal
+    if (daniyal) {
+      nodeList.push(createEmployeeNode(daniyal, currentX, level1Y))
+      edgeList.push(createEdge('company', daniyal.id, COLORS.orange.border))
+      positioned.add(daniyal.id)
+    }
+
+    // Operating Partners team
+    const opTeam = [
+      ...(byDept.get('Operating Partner-Value Creation') || []),
+      ...(byDept.get('Operating Partner-Execution') || []),
+    ].filter(u => !positioned.has(u.id))
+    
+    const opStartX = brad ? currentX - CARD_W - SECTION_GAP : currentX
+    opTeam.forEach((u, i) => {
+      const x = opStartX + (i % 4) * (CARD_W + H_GAP)
+      const y = level2Y + Math.floor(i / 4) * (CARD_H + H_GAP)
+      const c = getColor(u.department, u.name)
+      nodeList.push(createEmployeeNode(u, x, y))
+      if (brad) edgeList.push(createEdge(brad.id, u.id, c.border))
+      positioned.add(u.id)
+    })
+
+    // ===== REMAINING UNPOSITIONED USERS =====
     const remaining = users.filter(u => !positioned.has(u.id))
     if (remaining.length > 0) {
-      const bottomY = deptY + 400
-      remaining.forEach((user, idx) => {
-        const x = (idx % 8) * (CARD_WIDTH + H_GAP)
-        const y = bottomY + Math.floor(idx / 8) * (CARD_HEIGHT + V_GAP/2)
-        nodeList.push(createEmployeeNode(user, x, y))
+      const bottomY = level5Y + 100
+      nodeList.push(createNode('label-other', 'deptLabel', 0, bottomY - 25, { label: 'Other Employees', color: '', textColor: '', borderColor: '' }))
+      remaining.forEach((u, i) => {
+        const x = (i % 10) * (CARD_W + H_GAP)
+        const y = bottomY + Math.floor(i / 10) * (CARD_H + H_GAP)
+        nodeList.push(createEmployeeNode(u, x, y))
       })
     }
 
     setNodes(nodeList)
     setEdges(edgeList)
     
-    setTimeout(() => fitView({ padding: 0.1 }), 100)
+    setTimeout(() => fitView({ padding: 0.05 }), 100)
   }, [users, mappings, fitView])
 
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
-    if (node.type === 'company' || node.type === 'deptLabel') return
-    const userData = node.data as unknown as EmployeeNodeData
-    if (userData.user) {
-      setSelectedUser(userData.user)
+    if (node.type !== 'employee') return
+    const data = node.data as unknown as NodeData
+    if (data.user) {
+      setSelectedUser(data.user)
       setIsDetailModalOpen(true)
     }
   }, [])
 
-  // Handle drag and drop for reassignment
   const onNodeDragStop = useCallback((event: React.MouseEvent, node: Node, allNodes: Node[]) => {
     if (node.type !== 'employee') return
-    
-    const draggedData = node.data as unknown as EmployeeNodeData
+    const draggedData = node.data as unknown as NodeData
     if (!draggedData.user) return
     
-    // Find closest node above
     let closestManager: Node | null = null
     let minDistance = Infinity
     
     for (const n of allNodes) {
       if (n.id === node.id || n.type !== 'employee') continue
-      const nData = n.data as unknown as EmployeeNodeData
+      const nData = n.data as unknown as NodeData
       if (!nData.user) continue
       
-      if (n.position.y < node.position.y - 50) {
+      if (n.position.y < node.position.y - 40) {
         const dx = n.position.x - node.position.x
         const dy = n.position.y - node.position.y
         const distance = Math.sqrt(dx * dx + dy * dy)
         
-        if (distance < 200 && distance < minDistance) {
+        if (distance < 180 && distance < minDistance) {
           minDistance = distance
           closestManager = n
         }
@@ -496,12 +521,14 @@ function OrgChartContent() {
     }
     
     if (closestManager) {
-      const managerData = closestManager.data as unknown as EmployeeNodeData
-      const currentManagerMapping = mappings.find(m => 
-        m.evaluateeId === draggedData.user.id && 
+      const managerData = closestManager.data as unknown as NodeData
+      if (!managerData.user) return
+      
+      const currentMapping = mappings.find(m => 
+        m.evaluateeId === draggedData.user!.id && 
         (m.relationshipType === 'TEAM_LEAD' || m.relationshipType === 'C_LEVEL')
       )
-      const currentManager = currentManagerMapping?.evaluator || null
+      const currentManager = currentMapping?.evaluator || null
       
       if (!currentManager || currentManager.id !== managerData.user.id) {
         setReassignData({
@@ -518,12 +545,11 @@ function OrgChartContent() {
     if (!reassignData.employee || !reassignData.newManager) return
 
     try {
-      toast.loading('Updating reporting structure...')
+      toast.loading('Updating...')
       
       const isCLevel = C_LEVEL_EVALUATORS.some(name => 
         reassignData.newManager!.name.toLowerCase() === name.toLowerCase()
       )
-      const relationshipType = isCLevel ? 'C_LEVEL' : 'TEAM_LEAD'
       
       if (reassignData.oldManager) {
         const oldMapping = mappings.find(m => 
@@ -542,7 +568,7 @@ function OrgChartContent() {
         body: JSON.stringify({
           evaluatorId: reassignData.newManager.id,
           evaluateeId: reassignData.employee.id,
-          relationshipType,
+          relationshipType: isCLevel ? 'C_LEVEL' : 'TEAM_LEAD',
         }),
       })
       
@@ -552,7 +578,7 @@ function OrgChartContent() {
       loadData()
     } catch {
       toast.dismiss()
-      toast.error('Failed to update reporting structure')
+      toast.error('Failed to update')
     }
   }
 
@@ -569,16 +595,16 @@ function OrgChartContent() {
       const res = await fetch(`/api/admin/mappings?id=${mappingId}`, { method: 'DELETE' })
       const data = await res.json()
       if (data.error) toast.error(data.error)
-      else { toast.success('Mapping deleted'); loadData() }
-    } catch { toast.error('Failed to delete mapping') }
+      else { toast.success('Deleted'); loadData() }
+    } catch { toast.error('Failed') }
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#FDF6E3]">
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#FDF6E3' }}>
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 rounded-full bg-emerald-500 animate-pulse" />
-          <p className="text-slate-600 text-sm">Loading org chart...</p>
+          <p className="text-slate-600 text-sm">Loading...</p>
         </motion.div>
       </div>
     )
@@ -586,18 +612,10 @@ function OrgChartContent() {
 
   return (
     <>
-      <PageHeader backHref="/admin/mappings" backLabel="Back to Mappings" badge="Org Chart" />
+      <PageHeader backHref="/admin/mappings" backLabel="Mappings" badge="Org Chart" />
       
       <PageContent className="!max-w-none !px-4">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Organization Chart</h1>
-            <p className="text-muted mt-1">{users.length} employees • Click to view details • Drag to reassign</p>
-          </div>
-        </div>
-
-        {/* Canvas with cream background like reference */}
-        <div className="h-[calc(100vh-200px)] min-h-[600px] rounded-xl border border-slate-200 overflow-hidden shadow-lg" style={{ backgroundColor: '#FDF6E3' }}>
+        <div className="h-[calc(100vh-160px)] min-h-[600px] rounded-xl border border-slate-200 overflow-hidden shadow-lg" style={{ backgroundColor: '#FDF6E3' }}>
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -607,211 +625,126 @@ function OrgChartContent() {
             onNodeDragStop={onNodeDragStop}
             nodeTypes={nodeTypes}
             fitView
-            fitViewOptions={{ padding: 0.1 }}
-            minZoom={0.2}
+            fitViewOptions={{ padding: 0.05 }}
+            minZoom={0.1}
             maxZoom={2}
             connectionMode={ConnectionMode.Loose}
             defaultEdgeOptions={{ type: 'smoothstep' }}
           >
-            <Background variant={BackgroundVariant.Dots} gap={30} size={1} color="#E5DCC8" />
+            <Background variant={BackgroundVariant.Dots} gap={25} size={1} color="#E5DCC8" />
             <Controls showInteractive={false} />
             
-            {/* Legend */}
-            <Panel position="top-left" className="bg-white/95 rounded-xl shadow-lg p-4 border border-slate-200 backdrop-blur-sm">
-              <div className="text-sm font-semibold text-slate-800 mb-3">Departments</div>
-              <div className="grid gap-2 text-xs">
+            <Panel position="bottom-left" className="bg-white/90 rounded-lg shadow-md p-3 border border-slate-200 text-xs">
+              <div className="font-semibold mb-2 text-slate-700">Legend</div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                 {[
-                  { name: '1to1Plans / Operations', color: '#22C55E' },
-                  { name: 'Design / Product / Engineering', color: '#3B82F6' },
-                  { name: 'Growth / Research / IR', color: '#A855F7' },
-                  { name: 'Technology / QE', color: '#F59E0B' },
-                  { name: 'Human Resources', color: '#EC4899' },
-                  { name: 'Operating Partners', color: '#EF4444' },
-                ].map(({ name, color }) => (
-                  <div key={name} className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded" style={{ backgroundColor: color }} />
+                  { name: '1to1Plans/Ops', ...COLORS.green },
+                  { name: 'Design/Product', ...COLORS.blue },
+                  { name: 'Growth/IR', ...COLORS.purple },
+                  { name: 'Technology', ...COLORS.yellow },
+                  { name: 'HR', ...COLORS.pink },
+                  { name: 'Op Partners', ...COLORS.red },
+                ].map(({ name, border }) => (
+                  <div key={name} className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded" style={{ backgroundColor: border }} />
                     <span className="text-slate-600">{name}</span>
                   </div>
                 ))}
               </div>
-              <div className="mt-3 pt-3 border-t border-slate-200 text-[10px] text-slate-500">
-                Drag employees to reassign managers
+              <div className="mt-2 pt-2 border-t border-slate-200 text-[10px] text-slate-500">
+                Drag to reassign • Click to view
               </div>
             </Panel>
           </ReactFlow>
         </div>
-
         <PageFooter />
       </PageContent>
 
-      {/* Employee Detail Modal */}
-      <Modal 
-        isOpen={isDetailModalOpen} 
-        onClose={() => { setIsDetailModalOpen(false); setSelectedUser(null) }} 
-        title={selectedUser?.name || 'Employee Details'}
-        size="lg"
-      >
+      {/* Detail Modal */}
+      <Modal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} title={selectedUser?.name || ''} size="lg">
         {selectedUser && (
-          <div className="space-y-6">
-            <div className="flex items-center gap-4 p-4 rounded-xl" style={{ backgroundColor: getDeptColor(selectedUser.department, selectedUser.name).bg }}>
+          <div className="space-y-5">
+            <div className="flex items-center gap-4 p-4 rounded-xl" style={{ backgroundColor: getColor(selectedUser.department, selectedUser.name).bg }}>
               <div 
-                className="w-16 h-16 rounded-full flex items-center justify-center text-white text-xl font-semibold shadow-lg"
-                style={{ backgroundColor: getDeptColor(selectedUser.department, selectedUser.name).border }}
+                className="w-14 h-14 rounded-full flex items-center justify-center text-white text-lg font-bold shadow"
+                style={{ backgroundColor: getColor(selectedUser.department, selectedUser.name).border }}
               >
                 {selectedUser.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
               </div>
               <div>
-                <h3 className="text-xl font-bold" style={{ color: getDeptColor(selectedUser.department, selectedUser.name).text }}>
-                  {selectedUser.name}
-                </h3>
-                <p style={{ color: getDeptColor(selectedUser.department, selectedUser.name).text }} className="opacity-80">
-                  {selectedUser.position || 'No position'}
-                </p>
-                <p className="text-sm opacity-60" style={{ color: getDeptColor(selectedUser.department, selectedUser.name).text }}>
-                  {selectedUser.department || 'No department'}
-                </p>
+                <h3 className="text-lg font-bold" style={{ color: getColor(selectedUser.department, selectedUser.name).text }}>{selectedUser.name}</h3>
+                <p className="text-sm opacity-80" style={{ color: getColor(selectedUser.department, selectedUser.name).text }}>{selectedUser.position}</p>
+                <p className="text-xs opacity-60" style={{ color: getColor(selectedUser.department, selectedUser.name).text }}>{selectedUser.department}</p>
               </div>
             </div>
 
             <div>
-              <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                <Users className="w-4 h-4 text-indigo-500" />
-                Evaluators ({selectedUserMappings.evaluators.length})
-              </h4>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {selectedUserMappings.evaluators.length === 0 ? (
-                  <p className="text-sm text-muted py-2">No evaluators assigned</p>
-                ) : (
-                  selectedUserMappings.evaluators.map(mapping => (
-                    <div key={mapping.id} className="flex items-center justify-between p-3 bg-surface rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <div 
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium"
-                          style={{ backgroundColor: getDeptColor(mapping.evaluator.department, mapping.evaluator.name).border }}
-                        >
-                          {mapping.evaluator.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                        </div>
-                        <div>
-                          <div className="font-medium text-foreground text-sm">{mapping.evaluator.name}</div>
-                          <div className="text-xs text-muted">{mapping.evaluator.position}</div>
-                        </div>
+              <h4 className="text-sm font-semibold mb-2 flex items-center gap-2"><Users className="w-4 h-4 text-indigo-500" />Evaluators ({selectedUserMappings.evaluators.length})</h4>
+              <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                {selectedUserMappings.evaluators.map(m => (
+                  <div key={m.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-medium" style={{ backgroundColor: getColor(m.evaluator.department, m.evaluator.name).border }}>
+                        {m.evaluator.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs">
-                          {RELATIONSHIP_TYPE_LABELS[mapping.relationshipType]}
-                        </span>
-                        <button 
-                          onClick={() => handleDeleteMapping(mapping.id)}
-                          className="p-1.5 text-muted hover:text-red-500 hover:bg-red-50 rounded"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                      <div>
+                        <div className="font-medium text-xs">{m.evaluator.name}</div>
+                        <div className="text-[10px] text-slate-500">{m.evaluator.position}</div>
                       </div>
                     </div>
-                  ))
-                )}
+                    <div className="flex items-center gap-1.5">
+                      <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[10px]">{RELATIONSHIP_TYPE_LABELS[m.relationshipType]}</span>
+                      <button onClick={() => handleDeleteMapping(m.id)} className="p-1 text-slate-400 hover:text-red-500"><Trash2 className="w-3 h-3" /></button>
+                    </div>
+                  </div>
+                ))}
+                {selectedUserMappings.evaluators.length === 0 && <p className="text-xs text-slate-500 py-2">No evaluators</p>}
               </div>
             </div>
 
             <div>
-              <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                <Link2 className="w-4 h-4 text-emerald-500" />
-                Evaluates ({selectedUserMappings.evaluates.length})
-              </h4>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {selectedUserMappings.evaluates.length === 0 ? (
-                  <p className="text-sm text-muted py-2">Not assigned to evaluate anyone</p>
-                ) : (
-                  selectedUserMappings.evaluates.map(mapping => (
-                    <div key={mapping.id} className="flex items-center justify-between p-3 bg-surface rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <div 
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium"
-                          style={{ backgroundColor: getDeptColor(mapping.evaluatee.department, mapping.evaluatee.name).border }}
-                        >
-                          {mapping.evaluatee.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                        </div>
-                        <div>
-                          <div className="font-medium text-foreground text-sm">{mapping.evaluatee.name}</div>
-                          <div className="text-xs text-muted">{mapping.evaluatee.position}</div>
-                        </div>
+              <h4 className="text-sm font-semibold mb-2 flex items-center gap-2"><Link2 className="w-4 h-4 text-emerald-500" />Evaluates ({selectedUserMappings.evaluates.length})</h4>
+              <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                {selectedUserMappings.evaluates.map(m => (
+                  <div key={m.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-medium" style={{ backgroundColor: getColor(m.evaluatee.department, m.evaluatee.name).border }}>
+                        {m.evaluatee.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded text-xs">
-                          {RELATIONSHIP_TYPE_LABELS[mapping.relationshipType]}
-                        </span>
-                        <button 
-                          onClick={() => handleDeleteMapping(mapping.id)}
-                          className="p-1.5 text-muted hover:text-red-500 hover:bg-red-50 rounded"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                      <div>
+                        <div className="font-medium text-xs">{m.evaluatee.name}</div>
+                        <div className="text-[10px] text-slate-500">{m.evaluatee.position}</div>
                       </div>
                     </div>
-                  ))
-                )}
+                    <div className="flex items-center gap-1.5">
+                      <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[10px]">{RELATIONSHIP_TYPE_LABELS[m.relationshipType]}</span>
+                      <button onClick={() => handleDeleteMapping(m.id)} className="p-1 text-slate-400 hover:text-red-500"><Trash2 className="w-3 h-3" /></button>
+                    </div>
+                  </div>
+                ))}
+                {selectedUserMappings.evaluates.length === 0 && <p className="text-xs text-slate-500 py-2">Not evaluating anyone</p>}
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 pt-4 border-t border-border">
-              <Link
-                href={`/admin/mappings?filterEmployee=${selectedUser.id}`}
-                className="px-4 py-2 border border-border rounded-lg hover:bg-surface text-foreground text-sm flex items-center gap-2"
-              >
-                <ArrowUpRight className="w-4 h-4" />
-                Edit Mappings
+            <div className="flex justify-end gap-2 pt-3 border-t">
+              <Link href={`/admin/mappings?filterEmployee=${selectedUser.id}`} className="px-3 py-1.5 border rounded-lg text-xs flex items-center gap-1 hover:bg-slate-50">
+                <ArrowUpRight className="w-3 h-3" />Edit
               </Link>
-              <button
-                onClick={() => setIsDetailModalOpen(false)}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm"
-              >
-                Close
-              </button>
+              <button onClick={() => setIsDetailModalOpen(false)} className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs">Close</button>
             </div>
           </div>
         )}
       </Modal>
 
       {/* Reassign Modal */}
-      <Modal 
-        isOpen={isReassignModalOpen} 
-        onClose={() => setIsReassignModalOpen(false)} 
-        title="Confirm Reassignment"
-        size="md"
-      >
+      <Modal isOpen={isReassignModalOpen} onClose={() => setIsReassignModalOpen(false)} title="Reassign" size="sm">
         {reassignData.employee && reassignData.newManager && (
           <div className="space-y-4">
-            <p className="text-foreground">
-              Move <strong>{reassignData.employee.name}</strong> to report to{' '}
-              <strong>{reassignData.newManager.name}</strong>?
-            </p>
-            
-            {reassignData.oldManager && (
-              <p className="text-sm text-muted">
-                Currently reports to: <strong>{reassignData.oldManager.name}</strong>
-              </p>
-            )}
-            
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-              <p className="text-sm text-amber-800">
-                This will update their evaluation mappings and weights automatically.
-              </p>
-            </div>
-            
-            <div className="flex justify-end gap-3 pt-4">
-              <button
-                onClick={() => setIsReassignModalOpen(false)}
-                className="px-4 py-2 border border-border rounded-lg hover:bg-surface text-foreground"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleReassign}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2"
-              >
-                <Save className="w-4 h-4" />
-                Confirm
-              </button>
+            <p className="text-sm">Move <strong>{reassignData.employee.name}</strong> to report to <strong>{reassignData.newManager.name}</strong>?</p>
+            {reassignData.oldManager && <p className="text-xs text-slate-500">Currently: {reassignData.oldManager.name}</p>}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setIsReassignModalOpen(false)} className="px-3 py-1.5 border rounded-lg text-xs">Cancel</button>
+              <button onClick={handleReassign} className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs flex items-center gap-1"><Save className="w-3 h-3" />Confirm</button>
             </div>
           </div>
         )}
