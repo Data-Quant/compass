@@ -1,16 +1,16 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { PageHeader } from '@/components/layout/page-header'
 import { PageFooter } from '@/components/layout/page-footer'
 import { PageContainer, PageContent } from '@/components/layout/page-container'
 import { RELATIONSHIP_TYPE_LABELS, RelationshipType } from '@/types'
-import { Users, Link2, Trash2, ArrowUpRight, Save, Building2 } from 'lucide-react'
+import { Users, Link2, Trash2, ArrowUpRight, Save, Building2, ZoomIn, ZoomOut, Maximize2, ChevronDown, ChevronRight } from 'lucide-react'
 import { C_LEVEL_EVALUATORS, COMPANY_NAME } from '@/lib/config'
 
 interface User {
@@ -78,51 +78,53 @@ function getColorScheme(dept: string | null, name?: string): typeof COLORS.green
   return COLORS[colorKey]
 }
 
-// Card component
+// Animated Card component
 function EmployeeCard({ 
   user, 
   onClick, 
   onDragStart,
-  onDragOver,
-  onDragLeave,
   onDrop,
-  hasChildren = false 
+  hasChildren = false,
+  isCollapsed = false,
+  onToggleCollapse,
+  childCount = 0,
+  isHighlighted = false,
 }: { 
   user: User
   onClick: () => void
   onDragStart: () => void
-  onDragOver: (e: React.DragEvent) => void
-  onDragLeave: () => void
   onDrop: () => void
   hasChildren?: boolean
+  isCollapsed?: boolean
+  onToggleCollapse?: () => void
+  childCount?: number
+  isHighlighted?: boolean
 }) {
   const colors = getColorScheme(user.department, user.name)
   const initials = user.name.split(' ').map(n => n[0]).join('').slice(0, 2)
   const [isDragOver, setIsDragOver] = useState(false)
   
   return (
-    <div
-      className={`org-card ${hasChildren ? 'has-children' : ''} ${isDragOver ? 'drop-target' : ''}`}
+    <motion.div
+      initial={{ opacity: 0, scale: 0.8 }}
+      animate={{ opacity: 1, scale: 1 }}
+      whileHover={{ scale: 1.05, zIndex: 10 }}
+      whileTap={{ scale: 0.98 }}
+      transition={{ type: "spring", stiffness: 400, damping: 25 }}
+      className={`org-card ${hasChildren && !isCollapsed ? 'has-children' : ''} ${isDragOver ? 'drop-target' : ''} ${isHighlighted ? 'highlighted' : ''}`}
       style={{ 
         backgroundColor: colors.bg, 
         borderColor: colors.border,
-        boxShadow: isDragOver ? `0 0 0 3px ${colors.border}` : undefined
+        boxShadow: isDragOver ? `0 0 0 3px ${colors.border}, 0 10px 30px rgba(0,0,0,0.2)` : isHighlighted ? `0 0 20px ${colors.border}` : undefined
       }}
       onClick={onClick}
       draggable
-      onDragStart={(e) => {
-        e.dataTransfer.effectAllowed = 'move'
-        onDragStart()
-      }}
+      onDragStart={() => onDragStart()}
       onDragOver={(e) => {
         e.preventDefault()
         setIsDragOver(true)
-        onDragOver(e)
       }}
-      onDragLeave={() => {
-        setIsDragOver(false)
-        onDragLeave()
-      }}
+      onDragLeave={() => setIsDragOver(false)}
       onDrop={(e) => {
         e.preventDefault()
         setIsDragOver(false)
@@ -134,37 +136,58 @@ function EmployeeCard({
       </div>
       <div className="org-name" style={{ color: colors.text }}>{user.name}</div>
       <div className="org-title" style={{ color: colors.text }}>{user.position || 'Employee'}</div>
-    </div>
+      
+      {hasChildren && (
+        <motion.button
+          className="collapse-btn"
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleCollapse?.()
+          }}
+          whileHover={{ scale: 1.2 }}
+          whileTap={{ scale: 0.9 }}
+          style={{ color: colors.border }}
+        >
+          {isCollapsed ? (
+            <span className="flex items-center gap-1">
+              <ChevronRight className="w-3 h-3" />
+              <span className="text-[9px]">{childCount}</span>
+            </span>
+          ) : (
+            <ChevronDown className="w-3 h-3" />
+          )}
+        </motion.button>
+      )}
+    </motion.div>
   )
 }
 
 // Tree branch component
-function TreeBranch({ 
-  children, 
-  showConnector = true 
-}: { 
-  children: React.ReactNode
-  showConnector?: boolean 
-}) {
+function TreeBranch({ children, showConnector = true }: { children: React.ReactNode; showConnector?: boolean }) {
   return (
-    <div className={`tree-branch ${showConnector ? 'with-connector' : ''}`}>
+    <motion.div 
+      className={`tree-branch ${showConnector ? 'with-connector' : ''}`}
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+    >
       {children}
-    </div>
+    </motion.div>
   )
 }
 
 // Tree children container
-function TreeChildren({ 
-  children, 
-  count 
-}: { 
-  children: React.ReactNode
-  count: number 
-}) {
+function TreeChildren({ children, count }: { children: React.ReactNode; count: number }) {
   return (
-    <div className={`tree-children ${count > 1 ? 'multi' : ''}`}>
+    <motion.div 
+      className={`tree-children ${count > 1 ? 'multi' : ''}`}
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: 'auto' }}
+      exit={{ opacity: 0, height: 0 }}
+      transition={{ duration: 0.3 }}
+    >
       {children}
-    </div>
+    </motion.div>
   )
 }
 
@@ -178,6 +201,13 @@ export default function OrgChartPage() {
   const [isReassignModalOpen, setIsReassignModalOpen] = useState(false)
   const [draggedUser, setDraggedUser] = useState<User | null>(null)
   const [reassignData, setReassignData] = useState<{ employee: User | null; newManager: User | null; oldManager: User | null }>({ employee: null, newManager: null, oldManager: null })
+  const [collapsedNodes, setCollapsedNodes] = useState<Set<string>>(new Set())
+  const [highlightedUser, setHighlightedUser] = useState<string | null>(null)
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [isPanning, setIsPanning] = useState(false)
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 })
+  const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { checkAuth() }, [])
 
@@ -204,7 +234,7 @@ export default function OrgChartPage() {
     finally { setLoading(false) }
   }
 
-  // Build tree structure from mappings
+  // Build tree structure
   const treeData = useMemo(() => {
     const parentOf = new Map<string, string>()
     const childrenOf = new Map<string, string[]>()
@@ -219,32 +249,15 @@ export default function OrgChartPage() {
         }
       })
     
-    // Find C-Level (roots)
-    const cLevel = users.filter(u => 
-      C_LEVEL_EVALUATORS.some(name => u.name.toLowerCase() === name.toLowerCase())
-    )
+    const cLevel = users.filter(u => C_LEVEL_EVALUATORS.some(name => u.name.toLowerCase() === name.toLowerCase()))
     const hamiz = cLevel.find(u => u.name.toLowerCase().includes('hamiz'))
     const otherCLevel = cLevel.filter(u => u.id !== hamiz?.id)
     
-    // Get children of a user
     const getChildren = (userId: string): User[] => {
       const childIds = childrenOf.get(userId) || []
       return childIds.map(id => users.find(u => u.id === id)).filter(Boolean) as User[]
     }
     
-    // Debug logging
-    if (hamiz) {
-      const hamizChildren = getChildren(hamiz.id)
-      console.log('Hamiz children:', hamizChildren.map(c => c.name))
-      
-      // Check if Muhammad Amir is in children
-      const amir = hamizChildren.find(c => c.name.includes('Muhammad Amir'))
-      if (amir) {
-        console.log('Muhammad Amir children:', getChildren(amir.id).map(c => c.name))
-      }
-    }
-    
-    // Users not in the tree
     const inTree = new Set<string>()
     const markInTree = (userId: string) => {
       inTree.add(userId)
@@ -254,9 +267,8 @@ export default function OrgChartPage() {
     otherCLevel.forEach(u => markInTree(u.id))
     
     const unassigned = users.filter(u => !inTree.has(u.id))
-    console.log('Unassigned count:', unassigned.length, unassigned.map(u => u.name).slice(0, 5))
     
-    return { hamiz, otherCLevel, getChildren, parentOf, unassigned }
+    return { hamiz, otherCLevel, getChildren, parentOf, childrenOf, unassigned }
   }, [users, mappings])
 
   const handleCardClick = (user: User) => {
@@ -277,11 +289,7 @@ export default function OrgChartPage() {
       return
     }
     
-    setReassignData({
-      employee: draggedUser,
-      newManager: targetUser,
-      oldManager: currentMapping?.evaluator || null
-    })
+    setReassignData({ employee: draggedUser, newManager: targetUser, oldManager: currentMapping?.evaluator || null })
     setIsReassignModalOpen(true)
     setDraggedUser(null)
   }
@@ -300,11 +308,7 @@ export default function OrgChartPage() {
       await fetch('/api/admin/mappings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          evaluatorId: reassignData.newManager.id, 
-          evaluateeId: reassignData.employee.id, 
-          relationshipType: isCLevel ? 'C_LEVEL' : 'TEAM_LEAD' 
-        }),
+        body: JSON.stringify({ evaluatorId: reassignData.newManager.id, evaluateeId: reassignData.employee.id, relationshipType: isCLevel ? 'C_LEVEL' : 'TEAM_LEAD' }),
       })
       
       toast.dismiss()
@@ -312,6 +316,15 @@ export default function OrgChartPage() {
       setIsReassignModalOpen(false)
       loadData()
     } catch { toast.dismiss(); toast.error('Failed') }
+  }
+
+  const toggleCollapse = (userId: string) => {
+    setCollapsedNodes(prev => {
+      const next = new Set(prev)
+      if (next.has(userId)) next.delete(userId)
+      else next.add(userId)
+      return next
+    })
   }
 
   const selectedUserMappings = useMemo(() => {
@@ -330,9 +343,40 @@ export default function OrgChartPage() {
     } catch { toast.error('Failed') }
   }
 
-  // Render a user and their children recursively
+  // Zoom and pan handlers
+  const handleWheel = (e: React.WheelEvent) => {
+    if (e.ctrlKey) {
+      e.preventDefault()
+      const delta = e.deltaY > 0 ? -0.1 : 0.1
+      setZoom(z => Math.min(Math.max(z + delta, 0.3), 2))
+    }
+  }
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+      setIsPanning(true)
+      setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
+    }
+  }
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isPanning) {
+      setPan({ x: e.clientX - panStart.x, y: e.clientY - panStart.y })
+    }
+  }
+
+  const handleMouseUp = () => setIsPanning(false)
+
+  const resetView = () => {
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+  }
+
+  // Render tree recursively
   const renderTree = (user: User, depth = 0): React.ReactNode => {
     const children = treeData.getChildren(user.id)
+    const isCollapsed = collapsedNodes.has(user.id)
+    const childCount = children.length
     
     return (
       <div className="tree" key={user.id}>
@@ -341,17 +385,21 @@ export default function OrgChartPage() {
             user={user}
             onClick={() => handleCardClick(user)}
             onDragStart={() => setDraggedUser(user)}
-            onDragOver={() => {}}
-            onDragLeave={() => {}}
             onDrop={() => handleDrop(user)}
-            hasChildren={children.length > 0}
+            hasChildren={childCount > 0}
+            isCollapsed={isCollapsed}
+            onToggleCollapse={() => toggleCollapse(user.id)}
+            childCount={childCount}
+            isHighlighted={highlightedUser === user.id}
           />
         </TreeBranch>
-        {children.length > 0 && (
-          <TreeChildren count={children.length}>
-            {children.map(child => renderTree(child, depth + 1))}
-          </TreeChildren>
-        )}
+        <AnimatePresence>
+          {childCount > 0 && !isCollapsed && (
+            <TreeChildren count={childCount}>
+              {children.map(child => renderTree(child, depth + 1))}
+            </TreeChildren>
+          )}
+        </AnimatePresence>
       </div>
     )
   }
@@ -360,9 +408,17 @@ export default function OrgChartPage() {
     return (
       <PageContainer>
         <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#FDF6E3' }}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-emerald-500 animate-pulse" />
-            <p className="text-slate-600">Loading...</p>
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.8 }} 
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex flex-col items-center gap-4"
+          >
+            <motion.div 
+              className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600"
+              animate={{ rotate: 360 }}
+              transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+            />
+            <p className="text-slate-600 font-medium">Loading organization...</p>
           </motion.div>
         </div>
       </PageContainer>
@@ -373,10 +429,21 @@ export default function OrgChartPage() {
     <PageContainer>
       <style jsx global>{`
         .org-chart-container {
-          background: #FDF6E3;
+          background: linear-gradient(135deg, #FDF6E3 0%, #F5EED6 100%);
           min-height: calc(100vh - 140px);
+          overflow: hidden;
+          position: relative;
+          cursor: grab;
+        }
+        
+        .org-chart-container:active {
+          cursor: grabbing;
+        }
+        
+        .org-chart-inner {
           padding: 40px;
-          overflow: auto;
+          transform-origin: center top;
+          transition: transform 0.1s ease-out;
         }
         
         .org-chart {
@@ -394,7 +461,13 @@ export default function OrgChartPage() {
           align-items: center;
           gap: 12px;
           margin-bottom: 30px;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+          box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+          transition: all 0.3s ease;
+        }
+        
+        .company-card:hover {
+          box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+          transform: translateY(-2px);
         }
         
         .company-logo {
@@ -405,6 +478,7 @@ export default function OrgChartPage() {
           display: flex;
           align-items: center;
           justify-content: center;
+          box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
         }
         
         .company-name {
@@ -429,7 +503,8 @@ export default function OrgChartPage() {
           content: '';
           width: 2px;
           height: 25px;
-          background: #94A3B8;
+          background: linear-gradient(to bottom, #94A3B8, #CBD5E1);
+          border-radius: 1px;
         }
         
         .tree-children {
@@ -447,8 +522,9 @@ export default function OrgChartPage() {
           left: 50%;
           width: 2px;
           height: 25px;
-          background: #94A3B8;
+          background: linear-gradient(to bottom, #CBD5E1, #94A3B8);
           transform: translateX(-50%);
+          border-radius: 1px;
         }
         
         .tree-children.multi::after {
@@ -460,6 +536,7 @@ export default function OrgChartPage() {
           height: 2px;
           background: #94A3B8;
           transform: translateX(-50%);
+          border-radius: 1px;
         }
         
         .org-card {
@@ -469,13 +546,18 @@ export default function OrgChartPage() {
           padding: 12px 8px;
           text-align: center;
           cursor: pointer;
-          transition: all 0.2s;
           background: white;
+          position: relative;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.08);
         }
         
-        .org-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+        .org-card.highlighted {
+          animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.05); }
         }
         
         .org-card.has-children::after {
@@ -483,12 +565,13 @@ export default function OrgChartPage() {
           display: block;
           width: 2px;
           height: 25px;
-          background: #94A3B8;
+          background: linear-gradient(to bottom, #94A3B8, #CBD5E1);
           margin: 12px auto -37px;
+          border-radius: 1px;
         }
         
         .org-card.drop-target {
-          transform: scale(1.05);
+          transform: scale(1.08);
         }
         
         .org-avatar {
@@ -502,6 +585,12 @@ export default function OrgChartPage() {
           color: white;
           font-weight: 700;
           font-size: 14px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+          transition: transform 0.2s ease;
+        }
+        
+        .org-card:hover .org-avatar {
+          transform: scale(1.1);
         }
         
         .org-name {
@@ -515,6 +604,60 @@ export default function OrgChartPage() {
           font-size: 9px;
           opacity: 0.75;
           line-height: 1.2;
+        }
+        
+        .collapse-btn {
+          position: absolute;
+          bottom: -8px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: white;
+          border: 2px solid currentColor;
+          border-radius: 50%;
+          width: 20px;
+          height: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          z-index: 10;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        }
+        
+        .zoom-controls {
+          position: absolute;
+          bottom: 20px;
+          right: 20px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          z-index: 100;
+        }
+        
+        .zoom-btn {
+          width: 40px;
+          height: 40px;
+          background: white;
+          border: 1px solid #E2E8F0;
+          border-radius: 10px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all 0.2s;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .zoom-btn:hover {
+          background: #F8FAFC;
+          transform: scale(1.05);
+        }
+        
+        .zoom-level {
+          text-align: center;
+          font-size: 11px;
+          color: #64748B;
+          font-weight: 500;
         }
         
         .unassigned-section {
@@ -541,47 +684,99 @@ export default function OrgChartPage() {
       <PageHeader backHref="/admin/mappings" backLabel="Mappings" badge="Org Chart" />
       
       <PageContent className="!max-w-none !px-0">
-        <div className="org-chart-container">
-          <div className="org-chart">
-            {/* Company */}
-            <div className="company-card">
-              <div className="company-logo">
-                <Building2 className="w-6 h-6 text-white" />
-              </div>
-              <span className="company-name">{COMPANY_NAME}</span>
+        <div 
+          ref={containerRef}
+          className="org-chart-container"
+          onWheel={handleWheel}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+        >
+          <motion.div 
+            className="org-chart-inner"
+            style={{ 
+              transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
+            }}
+          >
+            <div className="org-chart">
+              {/* Company */}
+              <motion.div 
+                className="company-card"
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+              >
+                <div className="company-logo">
+                  <Building2 className="w-6 h-6 text-white" />
+                </div>
+                <span className="company-name">{COMPANY_NAME}</span>
+              </motion.div>
+              
+              {/* CEO and tree */}
+              {treeData.hamiz && renderTree(treeData.hamiz)}
+              
+              {/* Other C-Level without Hamiz connection */}
+              {treeData.otherCLevel.length > 0 && !treeData.hamiz && (
+                <TreeChildren count={treeData.otherCLevel.length}>
+                  {treeData.otherCLevel.map(user => renderTree(user))}
+                </TreeChildren>
+              )}
+              
+              {/* Unassigned employees */}
+              {treeData.unassigned.length > 0 && (
+                <motion.div 
+                  className="unassigned-section"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.5 }}
+                >
+                  <div className="unassigned-title">
+                    Unassigned Employees ({treeData.unassigned.length}) - Drag to a manager above
+                  </div>
+                  <div className="unassigned-grid">
+                    {treeData.unassigned.map(user => (
+                      <EmployeeCard
+                        key={user.id}
+                        user={user}
+                        onClick={() => handleCardClick(user)}
+                        onDragStart={() => setDraggedUser(user)}
+                        onDrop={() => handleDrop(user)}
+                      />
+                    ))}
+                  </div>
+                </motion.div>
+              )}
             </div>
-            
-            {/* CEO and tree */}
-            {treeData.hamiz && renderTree(treeData.hamiz)}
-            
-            {/* Other C-Level without Hamiz connection */}
-            {treeData.otherCLevel.length > 0 && !treeData.hamiz && (
-              <TreeChildren count={treeData.otherCLevel.length}>
-                {treeData.otherCLevel.map(user => renderTree(user))}
-              </TreeChildren>
-            )}
-            
-            {/* Unassigned employees */}
-            {treeData.unassigned.length > 0 && (
-              <div className="unassigned-section">
-                <div className="unassigned-title">
-                  Unassigned Employees ({treeData.unassigned.length}) - Drag to a manager above
-                </div>
-                <div className="unassigned-grid">
-                  {treeData.unassigned.map(user => (
-                    <EmployeeCard
-                      key={user.id}
-                      user={user}
-                      onClick={() => handleCardClick(user)}
-                      onDragStart={() => setDraggedUser(user)}
-                      onDragOver={() => {}}
-                      onDragLeave={() => {}}
-                      onDrop={() => handleDrop(user)}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
+          </motion.div>
+
+          {/* Zoom Controls */}
+          <div className="zoom-controls">
+            <motion.button 
+              className="zoom-btn" 
+              onClick={() => setZoom(z => Math.min(z + 0.2, 2))}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <ZoomIn className="w-5 h-5 text-slate-600" />
+            </motion.button>
+            <div className="zoom-level">{Math.round(zoom * 100)}%</div>
+            <motion.button 
+              className="zoom-btn" 
+              onClick={() => setZoom(z => Math.max(z - 0.2, 0.3))}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <ZoomOut className="w-5 h-5 text-slate-600" />
+            </motion.button>
+            <motion.button 
+              className="zoom-btn" 
+              onClick={resetView}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <Maximize2 className="w-5 h-5 text-slate-600" />
+            </motion.button>
           </div>
         </div>
         
@@ -610,7 +805,7 @@ export default function OrgChartPage() {
                     <span className="text-sm">{m.evaluator.name}</span>
                     <div className="flex items-center gap-1">
                       <span className="text-xs px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded">{RELATIONSHIP_TYPE_LABELS[m.relationshipType]}</span>
-                      <button onClick={() => handleDeleteMapping(m.id)} className="p-1 text-red-500"><Trash2 className="w-3 h-3" /></button>
+                      <button onClick={() => handleDeleteMapping(m.id)} className="p-1 text-red-500 hover:bg-red-50 rounded"><Trash2 className="w-3 h-3" /></button>
                     </div>
                   </div>
                 ))}
@@ -626,7 +821,7 @@ export default function OrgChartPage() {
                     <span className="text-sm">{m.evaluatee.name}</span>
                     <div className="flex items-center gap-1">
                       <span className="text-xs px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded">{RELATIONSHIP_TYPE_LABELS[m.relationshipType]}</span>
-                      <button onClick={() => handleDeleteMapping(m.id)} className="p-1 text-red-500"><Trash2 className="w-3 h-3" /></button>
+                      <button onClick={() => handleDeleteMapping(m.id)} className="p-1 text-red-500 hover:bg-red-50 rounded"><Trash2 className="w-3 h-3" /></button>
                     </div>
                   </div>
                 ))}
@@ -643,10 +838,7 @@ export default function OrgChartPage() {
                   if (e.target.value) {
                     const newManager = users.find(u => u.id === e.target.value)
                     if (newManager && selectedUser) {
-                      const currentMapping = mappings.find(m => 
-                        m.evaluateeId === selectedUser.id && 
-                        (m.relationshipType === 'TEAM_LEAD' || m.relationshipType === 'C_LEVEL')
-                      )
+                      const currentMapping = mappings.find(m => m.evaluateeId === selectedUser.id && (m.relationshipType === 'TEAM_LEAD' || m.relationshipType === 'C_LEVEL'))
                       setReassignData({ employee: selectedUser, newManager, oldManager: currentMapping?.evaluator || null })
                       setIsDetailModalOpen(false)
                       setIsReassignModalOpen(true)
@@ -663,8 +855,8 @@ export default function OrgChartPage() {
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
-              <Link href={`/admin/mappings?filterEmployee=${selectedUser.id}`} className="px-3 py-1.5 border rounded text-sm flex items-center gap-1"><ArrowUpRight className="w-3 h-3" />All Mappings</Link>
-              <button onClick={() => setIsDetailModalOpen(false)} className="px-3 py-1.5 bg-indigo-600 text-white rounded text-sm">Close</button>
+              <Link href={`/admin/mappings?filterEmployee=${selectedUser.id}`} className="px-3 py-1.5 border rounded text-sm flex items-center gap-1 hover:bg-slate-50"><ArrowUpRight className="w-3 h-3" />All Mappings</Link>
+              <button onClick={() => setIsDetailModalOpen(false)} className="px-3 py-1.5 bg-indigo-600 text-white rounded text-sm hover:bg-indigo-700">Close</button>
             </div>
           </div>
         )}
@@ -677,8 +869,8 @@ export default function OrgChartPage() {
             <p>Move <strong>{reassignData.employee.name}</strong> under <strong>{reassignData.newManager.name}</strong>?</p>
             {reassignData.oldManager && <p className="text-sm text-slate-500">Currently reports to: {reassignData.oldManager.name}</p>}
             <div className="flex justify-end gap-2">
-              <button onClick={() => setIsReassignModalOpen(false)} className="px-3 py-1.5 border rounded text-sm">Cancel</button>
-              <button onClick={handleReassign} className="px-3 py-1.5 bg-indigo-600 text-white rounded text-sm flex items-center gap-1"><Save className="w-3 h-3" />Confirm</button>
+              <button onClick={() => setIsReassignModalOpen(false)} className="px-3 py-1.5 border rounded text-sm hover:bg-slate-50">Cancel</button>
+              <button onClick={handleReassign} className="px-3 py-1.5 bg-indigo-600 text-white rounded text-sm flex items-center gap-1 hover:bg-indigo-700"><Save className="w-3 h-3" />Confirm</button>
             </div>
           </div>
         )}
