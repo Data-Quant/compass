@@ -396,6 +396,7 @@ function OrgChartContent() {
     const draggedData = node.data as unknown as NodeData
     if (!draggedData.user) return
     
+    // Find the closest OTHER employee node (potential new manager)
     let closest: Node | null = null
     let minDist = Infinity
     
@@ -403,20 +404,39 @@ function OrgChartContent() {
       if (n.id === node.id || n.type !== 'employee') continue
       const nData = n.data as unknown as NodeData
       if (!nData.user) continue
-      if (n.position.y < node.position.y - 30) {
-        const dist = Math.hypot(n.position.x - node.position.x, n.position.y - node.position.y)
-        if (dist < 200 && dist < minDist) { minDist = dist; closest = n }
+      
+      // Calculate distance - allow any direction, not just "above"
+      const dist = Math.hypot(n.position.x - node.position.x, n.position.y - node.position.y)
+      
+      // If dropped close enough (within 300px) to another node
+      if (dist < 300 && dist < minDist) { 
+        minDist = dist
+        closest = n 
       }
     }
     
-    if (closest) {
+    if (closest && minDist < 300) {
       const managerData = closest.data as unknown as NodeData
       if (!managerData.user) return
-      const currentMapping = mappings.find(m => m.evaluateeId === draggedData.user!.id && (m.relationshipType === 'TEAM_LEAD' || m.relationshipType === 'C_LEVEL'))
-      if (!currentMapping || currentMapping.evaluatorId !== managerData.user.id) {
-        setReassignData({ employee: draggedData.user, newManager: managerData.user, oldManager: currentMapping?.evaluator || null })
-        setIsReassignModalOpen(true)
+      
+      // Don't trigger if dropping on self or current manager
+      const currentMapping = mappings.find(m => 
+        m.evaluateeId === draggedData.user!.id && 
+        (m.relationshipType === 'TEAM_LEAD' || m.relationshipType === 'C_LEVEL')
+      )
+      
+      if (currentMapping?.evaluatorId === managerData.user.id) {
+        toast.info('Already reports to this person')
+        return
       }
+      
+      // Show reassignment modal
+      setReassignData({ 
+        employee: draggedData.user, 
+        newManager: managerData.user, 
+        oldManager: currentMapping?.evaluator || null 
+      })
+      setIsReassignModalOpen(true)
     }
   }, [mappings])
 
@@ -556,8 +576,46 @@ function OrgChartContent() {
                 {selectedUserMappings.evaluates.length === 0 && <p className="text-sm text-slate-500">None</p>}
               </div>
             </div>
-            <div className="flex justify-end gap-2 pt-2 border-t">
-              <Link href={`/admin/mappings?filterEmployee=${selectedUser.id}`} className="px-3 py-1.5 border rounded text-sm flex items-center gap-1"><ArrowUpRight className="w-3 h-3" />Edit</Link>
+            {/* Assign New Manager */}
+            <div className="pt-2 border-t">
+              <h4 className="text-sm font-semibold mb-2">Assign to Manager</h4>
+              <div className="flex gap-2">
+                <select 
+                  className="flex-1 px-3 py-1.5 border rounded text-sm bg-white"
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      const newManager = users.find(u => u.id === e.target.value)
+                      if (newManager && selectedUser) {
+                        const currentMapping = mappings.find(m => 
+                          m.evaluateeId === selectedUser.id && 
+                          (m.relationshipType === 'TEAM_LEAD' || m.relationshipType === 'C_LEVEL')
+                        )
+                        setReassignData({
+                          employee: selectedUser,
+                          newManager,
+                          oldManager: currentMapping?.evaluator || null
+                        })
+                        setIsDetailModalOpen(false)
+                        setIsReassignModalOpen(true)
+                      }
+                    }
+                  }}
+                  defaultValue=""
+                >
+                  <option value="">Select manager...</option>
+                  {users
+                    .filter(u => u.id !== selectedUser?.id)
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map(u => (
+                      <option key={u.id} value={u.id}>{u.name} ({u.position || 'Employee'})</option>
+                    ))
+                  }
+                </select>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Link href={`/admin/mappings?filterEmployee=${selectedUser.id}`} className="px-3 py-1.5 border rounded text-sm flex items-center gap-1"><ArrowUpRight className="w-3 h-3" />All Mappings</Link>
               <button onClick={() => setIsDetailModalOpen(false)} className="px-3 py-1.5 bg-indigo-600 text-white rounded text-sm">Close</button>
             </div>
           </div>
