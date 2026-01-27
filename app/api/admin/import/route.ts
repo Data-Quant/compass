@@ -169,8 +169,8 @@ async function importMappings(data: any[]) {
       const evaluator = await prisma.user.findFirst({
         where: {
           OR: [
-            evaluatorName ? { name: { contains: evaluatorName, mode: 'insensitive' } } : {},
-            evaluatorEmail ? { email: { equals: evaluatorEmail, mode: 'insensitive' } } : {},
+            evaluatorName ? { name: { contains: evaluatorName, mode: 'insensitive' as const } } : {},
+            evaluatorEmail ? { email: { equals: evaluatorEmail, mode: 'insensitive' as const } } : {},
           ].filter(condition => Object.keys(condition).length > 0),
         },
       })
@@ -184,8 +184,8 @@ async function importMappings(data: any[]) {
       const evaluatee = await prisma.user.findFirst({
         where: {
           OR: [
-            evaluateeName ? { name: { contains: evaluateeName, mode: 'insensitive' } } : {},
-            evaluateeEmail ? { email: { equals: evaluateeEmail, mode: 'insensitive' } } : {},
+            evaluateeName ? { name: { contains: evaluateeName, mode: 'insensitive' as const } } : {},
+            evaluateeEmail ? { email: { equals: evaluateeEmail, mode: 'insensitive' as const } } : {},
           ].filter(condition => Object.keys(condition).length > 0),
         },
       })

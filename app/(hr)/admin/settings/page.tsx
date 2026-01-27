@@ -59,7 +59,7 @@ export default function SettingsPage() {
       const data = await response.json()
       if (data.weightages && data.weightages.length > 0) {
         const customWeightages: Record<RelationshipType, number> = { ...DEFAULT_WEIGHTAGES }
-        data.weightages.forEach((w: any) => {
+        data.weightages.forEach((w: { relationshipType: RelationshipType; weightagePercentage: number }) => {
           customWeightages[w.relationshipType] = w.weightagePercentage
         })
         setWeightages(customWeightages)

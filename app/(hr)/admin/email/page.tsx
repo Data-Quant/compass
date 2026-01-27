@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
@@ -11,7 +11,7 @@ import { PageFooter } from '@/components/layout/page-footer'
 import { PageContainer, PageContent } from '@/components/layout/page-container'
 import { Mail, Send, Eye, RefreshCw, CheckCircle, Clock, AlertCircle, Plus } from 'lucide-react'
 
-export default function EmailPage() {
+function EmailPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const periodId = searchParams.get('periodId') || 'active'
@@ -337,8 +337,25 @@ export default function EmailPage() {
         title="Send All Emails"
         message={`Are you sure you want to send ${pendingCount} emails? This action cannot be undone.`}
         confirmText="Send All"
-        variant="primary"
+        variant="info"
       />
     </PageContainer>
+  )
+}
+
+export default function EmailPage() {
+  return (
+    <Suspense fallback={
+      <PageContainer>
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-12 h-12 rounded-full gradient-primary animate-pulse" />
+            <p className="text-muted text-sm">Loading email queue...</p>
+          </div>
+        </div>
+      </PageContainer>
+    }>
+      <EmailPageContent />
+    </Suspense>
   )
 }

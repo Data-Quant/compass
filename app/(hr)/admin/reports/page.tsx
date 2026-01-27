@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
@@ -10,7 +10,7 @@ import { PageFooter } from '@/components/layout/page-footer'
 import { PageContainer, PageContent } from '@/components/layout/page-container'
 import { Search, FileText, Download, Eye, Filter } from 'lucide-react'
 
-export default function ReportsPage() {
+function ReportsPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const periodId = searchParams.get('periodId') || 'active'
@@ -288,5 +288,22 @@ export default function ReportsPage() {
         <PageFooter />
       </PageContent>
     </PageContainer>
+  )
+}
+
+export default function ReportsPage() {
+  return (
+    <Suspense fallback={
+      <PageContainer>
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-12 h-12 rounded-full gradient-primary animate-pulse" />
+            <p className="text-muted text-sm">Loading reports...</p>
+          </div>
+        </div>
+      </PageContainer>
+    }>
+      <ReportsPageContent />
+    </Suspense>
   )
 }

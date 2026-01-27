@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { evaluateeId: string } }
+  { params }: { params: Promise<{ evaluateeId: string }> }
 ) {
   try {
     const user = await getSession()
@@ -22,7 +22,7 @@ export async function GET(
       )
     }
 
-    const evaluateeId = params.evaluateeId
+    const { evaluateeId } = await params
 
     // Get relationship type
     const mapping = await prisma.evaluatorMapping.findFirst({

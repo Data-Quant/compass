@@ -157,7 +157,7 @@ export async function generateReport(
   })
 
   if (existingReport) {
-    return existingReport.breakdownJson as EvaluationReport
+    return existingReport.breakdownJson as unknown as EvaluationReport
   }
 
   // Calculate score
@@ -215,6 +215,7 @@ export function formatReportAsHTML(
       DIRECT_REPORT: 'Evaluation as a Reporting Team Member',
       PEER: 'Evaluation as a Peer',
       HR: 'HR Evaluation',
+      SELF: 'Self-Evaluation',
     }
     return labels[type]
   }
@@ -419,6 +420,7 @@ export function formatReportAsHTML(
     PEER: 'Evaluation As Peer',
     HR: 'HR Evaluation',
     C_LEVEL: 'CEO Evaluation',
+    SELF: 'Self-Evaluation',
   }
 
   // Get breakdown for aggregate table
@@ -442,6 +444,7 @@ export function formatReportAsHTML(
       DIRECT_REPORT: 0.15,
       PEER: 0.10,
       HR: 0.05,
+      SELF: 0.00,
     }
     
     for (const [type, weight] of Object.entries(defaultWeightages)) {
