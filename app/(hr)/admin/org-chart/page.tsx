@@ -353,7 +353,9 @@ function OrgChartContent() {
           id: `edge-company-${user.id}`,
           source: 'company',
           target: user.id,
-          style: { stroke: '#64748B', strokeWidth: 3 },
+          type: 'default',
+          animated: true,
+          style: { stroke: '#EF4444', strokeWidth: 4 },
         })
       }
     })
@@ -361,13 +363,13 @@ function OrgChartContent() {
     // Edges from parent to child based on mappings
     parentOf.forEach((parentId, childId) => {
       if (nodeIds.has(parentId) && nodeIds.has(childId)) {
-        const child = users.find(u => u.id === childId)
-        const color = child ? getColor(child.department, child.name).border : '#64748B'
         edgeList.push({
           id: `edge-${parentId}-${childId}`,
           source: parentId,
           target: childId,
-          style: { stroke: color, strokeWidth: 3 },
+          type: 'default',
+          animated: true,
+          style: { stroke: '#3B82F6', strokeWidth: 4 },
         })
       }
     })
