@@ -213,11 +213,18 @@ export default function OrgChartPage() {
       return
     }
 
-    // Calculate subtree width
+    // Layout constants - increased for better spacing
+    const NODE_WIDTH = 180      // Width of each card
+    const NODE_GAP = 30         // Horizontal gap between siblings
+    const LEVEL_HEIGHT = 160    // Vertical distance between levels
+
+    // Calculate subtree width with better spacing
     function getSubtreeWidth(userId: string): number {
       const children = childrenMap.get(userId) || []
-      if (children.length === 0) return 160
-      return children.reduce((sum, childId) => sum + getSubtreeWidth(childId), 0) + (children.length - 1) * 40
+      if (children.length === 0) return NODE_WIDTH
+      const childrenWidth = children.reduce((sum, childId) => sum + getSubtreeWidth(childId), 0)
+      const gaps = (children.length - 1) * NODE_GAP
+      return childrenWidth + gaps
     }
 
     // Track which users are in tree
@@ -274,18 +281,22 @@ export default function OrgChartPage() {
             const isChildVisualOnly = otherCLevel.some(c => c.id === childId) && 
               !mappings.some(m => m.evaluateeId === childId && m.evaluatorId === user.id && 
                 (m.relationshipType === 'TEAM_LEAD' || m.relationshipType === 'C_LEVEL'))
-            positionNode(childUser, childX, y + 140, user.id, isChildVisualOnly)
-            currentX += childWidth + 40
+            positionNode(childUser, childX, y + LEVEL_HEIGHT, user.id, isChildVisualOnly)
+            currentX += childWidth + NODE_GAP
           }
         })
       }
     }
 
+    // Calculate total tree width to center it
+    const totalTreeWidth = getSubtreeWidth(rootUser.id)
+    const treeCenter = Math.max(800, totalTreeWidth / 2 + 100)
+
     // Add company node
     newNodes.push({
       id: 'company',
       type: 'company',
-      position: { x: 600, y: 20 },
+      position: { x: treeCenter, y: 20 },
       data: { name: COMPANY_NAME },
       draggable: false,
     })
@@ -300,17 +311,18 @@ export default function OrgChartPage() {
     })
 
     // Build tree from root
-    positionNode(rootUser, 600, 160)
+    positionNode(rootUser, treeCenter, 180)
 
     // Add unassigned users in a neat grid on the right side
     const unassigned = users.filter(u => !inTree.has(u.id))
     if (unassigned.length > 0) {
       const COLS = 4 // 4 columns
-      const CARD_WIDTH = 160
-      const CARD_HEIGHT = 120
-      const GAP_X = 20
-      const GAP_Y = 30
-      const startX = 1400 // Position to the right of the main tree
+      const CARD_WIDTH = 180
+      const CARD_HEIGHT = 140
+      const GAP_X = 30
+      const GAP_Y = 40
+      // Position to the right of the tree
+      const startX = treeCenter + totalTreeWidth / 2 + 200
       const startY = 100
       
       // Add a label node for the unassigned section
