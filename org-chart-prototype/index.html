@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Org Chart Prototype</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #FDF6E3;
+      min-height: 100vh;
+      padding: 40px;
+    }
+    
+    h1 {
+      text-align: center;
+      color: #1E293B;
+      margin-bottom: 40px;
+    }
+    
+    .org-chart {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    
+    .level {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin-bottom: 20px;
+      position: relative;
+    }
+    
+    /* Vertical line from parent */
+    .level::before {
+      content: '';
+      position: absolute;
+      top: -20px;
+      left: 50%;
+      width: 2px;
+      height: 20px;
+      background: #94A3B8;
+    }
+    
+    .level:first-child::before {
+      display: none;
+    }
+    
+    /* Horizontal connector line */
+    .level.has-connector::after {
+      content: '';
+      position: absolute;
+      top: -20px;
+      height: 2px;
+      background: #94A3B8;
+    }
+    
+    .group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    
+    .group-label {
+      font-size: 11px;
+      color: #64748B;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+    
+    .group-children {
+      display: flex;
+      gap: 15px;
+      position: relative;
+    }
+    
+    /* Connector lines for group children */
+    .group-children::before {
+      content: '';
+      position: absolute;
+      top: -15px;
+      left: 50%;
+      width: 2px;
+      height: 15px;
+      background: #94A3B8;
+    }
+    
+    .group-children.multiple::after {
+      content: '';
+      position: absolute;
+      top: -15px;
+      left: calc(50% - var(--connector-width) / 2);
+      width: var(--connector-width);
+      height: 2px;
+      background: #94A3B8;
+    }
+    
+    .card {
+      width: 130px;
+      border-radius: 12px;
+      border: 2px solid;
+      padding: 12px 8px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+    
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+    }
+    
+    .card.dragging {
+      opacity: 0.5;
+      transform: scale(1.05);
+    }
+    
+    .card.drop-target {
+      box-shadow: 0 0 0 3px #3B82F6;
+    }
+    
+    /* Connector line from card to children */
+    .card.has-children::after {
+      content: '';
+      position: absolute;
+      bottom: -17px;
+      left: 50%;
+      width: 2px;
+      height: 15px;
+      background: #94A3B8;
+    }
+    
+    .avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      margin: 0 auto 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 700;
+      font-size: 14px;
+    }
+    
+    .name {
+      font-weight: 600;
+      font-size: 11px;
+      margin-bottom: 2px;
+    }
+    
+    .title {
+      font-size: 9px;
+      opacity: 0.7;
+    }
+    
+    /* Company node */
+    .company-card {
+      background: white;
+      border-color: #E2E8F0;
+      padding: 16px 24px;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 30px;
+    }
+    
+    .company-logo {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, #22C55E, #16A34A);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .company-name {
+      font-weight: 700;
+      font-size: 18px;
+      color: #1E293B;
+    }
+    
+    /* Color schemes */
+    .green { background: #DCFCE7; border-color: #22C55E; }
+    .green .avatar { background: #22C55E; }
+    .green .name, .green .title { color: #14532D; }
+    
+    .pink { background: #FCE7F3; border-color: #EC4899; }
+    .pink .avatar { background: #EC4899; }
+    .pink .name, .pink .title { color: #831843; }
+    
+    .blue { background: #DBEAFE; border-color: #3B82F6; }
+    .blue .avatar { background: #3B82F6; }
+    .blue .name, .blue .title { color: #1E3A8A; }
+    
+    .purple { background: #F3E8FF; border-color: #A855F7; }
+    .purple .avatar { background: #A855F7; }
+    .purple .name, .purple .title { color: #581C87; }
+    
+    .yellow { background: #FEF9C3; border-color: #EAB308; }
+    .yellow .avatar { background: #EAB308; }
+    .yellow .name, .yellow .title { color: #713F12; }
+    
+    .orange { background: #FFEDD5; border-color: #F97316; }
+    .orange .avatar { background: #F97316; }
+    .orange .name, .orange .title { color: #7C2D12; }
+    
+    .red { background: #FEE2E2; border-color: #EF4444; }
+    .red .avatar { background: #EF4444; }
+    .red .name, .red .title { color: #7F1D1D; }
+    
+    .gray { background: #F3F4F6; border-color: #9CA3AF; }
+    .gray .avatar { background: #9CA3AF; }
+    .gray .name, .gray .title { color: #374151; }
+
+    /* Tree connector lines */
+    .tree {
+      position: relative;
+    }
+    
+    .tree-children {
+      display: flex;
+      justify-content: center;
+      gap: 30px;
+      padding-top: 30px;
+      position: relative;
+    }
+    
+    .tree-children::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 50%;
+      width: 2px;
+      height: 30px;
+      background: #94A3B8;
+      transform: translateX(-50%);
+    }
+    
+    .tree-children.multi > .tree::before {
+      content: '';
+      position: absolute;
+      top: -30px;
+      left: 50%;
+      width: 2px;
+      height: 30px;
+      background: #94A3B8;
+    }
+    
+    .tree-children.multi::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: var(--line-start);
+      width: var(--line-width);
+      height: 2px;
+      background: #94A3B8;
+    }
+    
+    .branch {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    
+    .branch > .card {
+      position: relative;
+    }
+    
+    .branch > .card::before {
+      content: '';
+      position: absolute;
+      top: -30px;
+      left: 50%;
+      width: 2px;
+      height: 30px;
+      background: #94A3B8;
+      transform: translateX(-50%);
+    }
+    
+    .branch:first-child > .card::before,
+    .branch:only-child > .card::before {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>Plutus 21 - Organization Chart</h1>
+  
+  <div class="org-chart" id="chart">
+    <!-- Company -->
+    <div class="company-card">
+      <div class="company-logo">
+        <svg width="24" height="24" fill="white" viewBox="0 0 24 24"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/></svg>
+      </div>
+      <span class="company-name">Plutus 21</span>
+    </div>
+    
+    <!-- CEO Level -->
+    <div class="tree">
+      <div class="card green has-children" data-id="hamiz">
+        <div class="avatar">HA</div>
+        <div class="name">Hamiz Awan</div>
+        <div class="title">Managing Partner</div>
+      </div>
+      
+      <div class="tree-children multi" style="--line-start: 10%; --line-width: 80%;">
+        
+        <!-- Richard's Branch -->
+        <div class="tree">
+          <div class="branch">
+            <div class="card green has-children" data-id="richard">
+              <div class="avatar">RR</div>
+              <div class="name">Richard Reizes</div>
+              <div class="title">Partner</div>
+            </div>
+          </div>
+          <div class="tree-children multi" style="--line-start: 20%; --line-width: 60%;">
+            <div class="branch">
+              <div class="card green" data-id="1">
+                <div class="avatar">HJ</div>
+                <div class="name">Hira Jokhio</div>
+                <div class="title">Associate</div>
+              </div>
+            </div>
+            <div class="branch">
+              <div class="card green" data-id="2">
+                <div class="avatar">KK</div>
+                <div class="name">Khushbakht Khan</div>
+                <div class="title">AI Automation</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Maryam's Branch -->
+        <div class="tree">
+          <div class="branch">
+            <div class="card pink has-children" data-id="maryam">
+              <div class="avatar">MK</div>
+              <div class="name">Maryam Khalil</div>
+              <div class="title">Lead</div>
+            </div>
+          </div>
+          <div class="tree-children multi" style="--line-start: 15%; --line-width: 70%;">
+            <div class="branch">
+              <div class="card green" data-id="3">
+                <div class="avatar">ZT</div>
+                <div class="name">Zainab Tariq</div>
+                <div class="title">VP</div>
+              </div>
+            </div>
+            <div class="branch">
+              <div class="card green" data-id="4">
+                <div class="avatar">RI</div>
+                <div class="name">Remsha Ishtiaq</div>
+                <div class="title">Associate</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Technology Branch -->
+        <div class="tree">
+          <div class="branch">
+            <div class="card yellow has-children" data-id="tech-lead">
+              <div class="avatar">MT</div>
+              <div class="name">Muhammad Tahir</div>
+              <div class="title">Principal</div>
+            </div>
+          </div>
+          <div class="tree-children multi" style="--line-start: 10%; --line-width: 80%;">
+            <div class="branch">
+              <div class="card yellow" data-id="5">
+                <div class="avatar">AS</div>
+                <div class="name">Aamir Shaikh</div>
+                <div class="title">Principal</div>
+              </div>
+            </div>
+            <div class="branch">
+              <div class="card yellow" data-id="6">
+                <div class="avatar">FJ</div>
+                <div class="name">Faizan Jabbar</div>
+                <div class="title">Analyst</div>
+              </div>
+            </div>
+            <div class="branch">
+              <div class="card yellow" data-id="7">
+                <div class="avatar">UA</div>
+                <div class="name">Umair Asmat</div>
+                <div class="title">Analyst</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Growth/IR Branch -->
+        <div class="tree">
+          <div class="branch">
+            <div class="card purple has-children" data-id="narmeen">
+              <div class="avatar">NM</div>
+              <div class="name">Narmeen Merchant</div>
+              <div class="title">Principal & Jr Partner</div>
+            </div>
+          </div>
+          <div class="tree-children multi" style="--line-start: 15%; --line-width: 70%;">
+            <div class="branch">
+              <div class="card purple" data-id="8">
+                <div class="avatar">ZM</div>
+                <div class="name">Zhoyia Malik</div>
+                <div class="title">Senior Associate</div>
+              </div>
+            </div>
+            <div class="branch">
+              <div class="card purple" data-id="9">
+                <div class="avatar">AQ</div>
+                <div class="name">Armin Qayyum</div>
+                <div class="title">Associate</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- HR Branch -->
+        <div class="tree">
+          <div class="branch">
+            <div class="card pink has-children" data-id="hr-lead">
+              <div class="avatar">AA</div>
+              <div class="name">Areebah Akhlaque</div>
+              <div class="title">HR Lead</div>
+            </div>
+          </div>
+          <div class="tree-children multi" style="--line-start: 20%; --line-width: 60%;">
+            <div class="branch">
+              <div class="card pink" data-id="10">
+                <div class="avatar">SF</div>
+                <div class="name">Saman Fahim</div>
+                <div class="title">HR</div>
+              </div>
+            </div>
+            <div class="branch">
+              <div class="card pink" data-id="11">
+                <div class="avatar">RH</div>
+                <div class="name">Raveeha Hassan</div>
+                <div class="title">HR</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Brad's Branch (Operating Partners) -->
+        <div class="tree">
+          <div class="branch">
+            <div class="card red has-children" data-id="brad">
+              <div class="avatar">BH</div>
+              <div class="name">Brad Herman</div>
+              <div class="title">Operating Partner</div>
+            </div>
+          </div>
+          <div class="tree-children multi" style="--line-start: 20%; --line-width: 60%;">
+            <div class="branch">
+              <div class="card red" data-id="12">
+                <div class="avatar">AM</div>
+                <div class="name">Amal Majjout</div>
+                <div class="title">Value Creation</div>
+              </div>
+            </div>
+            <div class="branch">
+              <div class="card orange" data-id="13">
+                <div class="avatar">YS</div>
+                <div class="name">Yusra Shahab</div>
+                <div class="title">Senior Associate</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Daniyal's Branch -->
+        <div class="tree">
+          <div class="branch">
+            <div class="card orange" data-id="daniyal">
+              <div class="avatar">DA</div>
+              <div class="name">Daniyal Awan</div>
+              <div class="title">Partner</div>
+            </div>
+          </div>
+        </div>
+        
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Add click handlers
+    document.querySelectorAll('.card').forEach(card => {
+      card.addEventListener('click', () => {
+        const name = card.querySelector('.name').textContent;
+        const title = card.querySelector('.title').textContent;
+        alert(`Clicked: ${name}\nTitle: ${title}\n\nIn the real app, this would open a modal to:\n- View evaluators\n- View who they evaluate\n- Assign new manager`);
+      });
+    });
+    
+    // Drag and drop
+    let draggedCard = null;
+    
+    document.querySelectorAll('.card').forEach(card => {
+      card.draggable = true;
+      
+      card.addEventListener('dragstart', (e) => {
+        draggedCard = card;
+        card.classList.add('dragging');
+      });
+      
+      card.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+        document.querySelectorAll('.drop-target').forEach(c => c.classList.remove('drop-target'));
+      });
+      
+      card.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (card !== draggedCard) {
+          card.classList.add('drop-target');
+        }
+      });
+      
+      card.addEventListener('dragleave', () => {
+        card.classList.remove('drop-target');
+      });
+      
+      card.addEventListener('drop', (e) => {
+        e.preventDefault();
+        card.classList.remove('drop-target');
+        if (draggedCard && card !== draggedCard) {
+          const draggedName = draggedCard.querySelector('.name').textContent;
+          const targetName = card.querySelector('.name').textContent;
+          if (confirm(`Move "${draggedName}" to report to "${targetName}"?`)) {
+            alert('In the real app, this would update the database mapping.');
+          }
+        }
+      });
+    });
+  </script>
+</body>
+</html>

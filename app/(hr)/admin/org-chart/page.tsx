@@ -1,25 +1,10 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
-import {
-  ReactFlow,
-  type Node,
-  type Edge,
-  Controls,
-  Background,
-  useNodesState,
-  useEdgesState,
-  Panel,
-  BackgroundVariant,
-  Position,
-  useReactFlow,
-  ReactFlowProvider,
-} from '@xyflow/react'
-import '@xyflow/react/dist/style.css'
 import { Modal } from '@/components/ui/modal'
 import { PageHeader } from '@/components/layout/page-header'
 import { PageFooter } from '@/components/layout/page-footer'
@@ -45,51 +30,42 @@ interface Mapping {
   evaluatee: User
 }
 
-interface NodeData {
-  user?: User
-  label?: string
-  color: string
-  textColor: string
-  borderColor: string
-  [key: string]: unknown
+// Color schemes
+const COLORS: Record<string, { bg: string; border: string; text: string; avatar: string }> = {
+  green: { bg: '#DCFCE7', border: '#22C55E', text: '#14532D', avatar: '#22C55E' },
+  pink: { bg: '#FCE7F3', border: '#EC4899', text: '#831843', avatar: '#EC4899' },
+  blue: { bg: '#DBEAFE', border: '#3B82F6', text: '#1E3A8A', avatar: '#3B82F6' },
+  purple: { bg: '#F3E8FF', border: '#A855F7', text: '#581C87', avatar: '#A855F7' },
+  yellow: { bg: '#FEF9C3', border: '#EAB308', text: '#713F12', avatar: '#EAB308' },
+  orange: { bg: '#FFEDD5', border: '#F97316', text: '#7C2D12', avatar: '#F97316' },
+  red: { bg: '#FEE2E2', border: '#EF4444', text: '#7F1D1D', avatar: '#EF4444' },
+  gray: { bg: '#F3F4F6', border: '#9CA3AF', text: '#374151', avatar: '#9CA3AF' },
 }
 
-// Colors
-const COLORS = {
-  green: { bg: '#86EFAC', border: '#22C55E', text: '#14532D' },
-  pink: { bg: '#F9A8D4', border: '#EC4899', text: '#831843' },
-  blue: { bg: '#93C5FD', border: '#3B82F6', text: '#1E3A8A' },
-  purple: { bg: '#D8B4FE', border: '#A855F7', text: '#581C87' },
-  yellow: { bg: '#FDE68A', border: '#F59E0B', text: '#78350F' },
-  red: { bg: '#FCA5A5', border: '#EF4444', text: '#7F1D1D' },
-  orange: { bg: '#FDBA74', border: '#F97316', text: '#7C2D12' },
-  gray: { bg: '#E5E7EB', border: '#9CA3AF', text: '#374151' },
+const DEPT_COLORS: Record<string, keyof typeof COLORS> = {
+  '1to1Plans': 'green',
+  'Design': 'blue',
+  'Product': 'blue',
+  'Marketing': 'blue',
+  'Software Engineering': 'blue',
+  'Growth': 'purple',
+  'Growth and strategy': 'purple',
+  'IR': 'purple',
+  'Research': 'purple',
+  'Quantitative Engineering': 'yellow',
+  'Technology': 'yellow',
+  'SOA': 'yellow',
+  'Operations': 'green',
+  'Accounting and Operations': 'green',
+  'Legal': 'green',
+  'Finance and Accounting': 'green',
+  'Human Resources': 'pink',
+  'Operating Partner-Value Creation': 'red',
+  'Operating Partner-Execution': 'orange',
+  'Executive': 'green',
 }
 
-const DEPT_COLORS: Record<string, typeof COLORS.green> = {
-  '1to1Plans': COLORS.green,
-  'Design': COLORS.blue,
-  'Product': COLORS.blue,
-  'Marketing': COLORS.blue,
-  'Software Engineering': COLORS.blue,
-  'Growth': COLORS.purple,
-  'Growth and strategy': COLORS.purple,
-  'IR': COLORS.purple,
-  'Research': COLORS.purple,
-  'Quantitative Engineering': COLORS.yellow,
-  'Technology': COLORS.yellow,
-  'SOA': COLORS.yellow,
-  'Operations': COLORS.green,
-  'Accounting and Operations': COLORS.green,
-  'Legal': COLORS.green,
-  'Finance and Accounting': COLORS.green,
-  'Human Resources': COLORS.pink,
-  'Operating Partner-Value Creation': COLORS.red,
-  'Operating Partner-Execution': COLORS.orange,
-  'Executive': COLORS.green,
-}
-
-function getColor(dept: string | null, name?: string): typeof COLORS.green {
+function getColorScheme(dept: string | null, name?: string): typeof COLORS.green {
   if (name) {
     const n = name.toLowerCase()
     if (n.includes('hamiz')) return COLORS.green
@@ -98,72 +74,110 @@ function getColor(dept: string | null, name?: string): typeof COLORS.green {
     if (n.includes('brad')) return COLORS.red
     if (n.includes('daniyal')) return COLORS.orange
   }
-  return DEPT_COLORS[dept || ''] || COLORS.gray
+  const colorKey = DEPT_COLORS[dept || ''] || 'gray'
+  return COLORS[colorKey]
 }
 
-// Company node
-function CompanyNode() {
-  return (
-    <div className="px-6 py-3 bg-white rounded-xl shadow-lg border-2 border-slate-300 flex items-center gap-3">
-      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow">
-        <Building2 className="w-6 h-6 text-white" />
-      </div>
-      <span className="font-bold text-xl text-slate-800">{COMPANY_NAME}</span>
-    </div>
-  )
-}
-
-// Employee node
-function EmployeeNode({ data, selected }: { data: NodeData; selected: boolean }) {
-  const { user, color, textColor, borderColor } = data
-  if (!user) return null
+// Card component
+function EmployeeCard({ 
+  user, 
+  onClick, 
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  hasChildren = false 
+}: { 
+  user: User
+  onClick: () => void
+  onDragStart: () => void
+  onDragOver: (e: React.DragEvent) => void
+  onDragLeave: () => void
+  onDrop: () => void
+  hasChildren?: boolean
+}) {
+  const colors = getColorScheme(user.department, user.name)
   const initials = user.name.split(' ').map(n => n[0]).join('').slice(0, 2)
+  const [isDragOver, setIsDragOver] = useState(false)
   
   return (
-    <div className={`${selected ? 'ring-2 ring-indigo-500 ring-offset-2' : ''}`}>
-      <div 
-        className="w-[130px] rounded-xl border-2 shadow-lg overflow-hidden cursor-pointer hover:shadow-xl transition-shadow"
-        style={{ backgroundColor: color, borderColor }}
-      >
-        <div className="pt-3 pb-2 flex justify-center">
-          <div 
-            className="w-11 h-11 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-md"
-            style={{ backgroundColor: borderColor }}
-          >
-            {initials}
-          </div>
-        </div>
-        <div className="px-2 pb-3 text-center">
-          <div className="font-semibold text-[11px] leading-tight" style={{ color: textColor }}>
-            {user.name}
-          </div>
-          <div className="text-[9px] mt-0.5 opacity-75" style={{ color: textColor }}>
-            {user.position || 'Employee'}
-          </div>
-        </div>
+    <div
+      className={`org-card ${hasChildren ? 'has-children' : ''} ${isDragOver ? 'drop-target' : ''}`}
+      style={{ 
+        backgroundColor: colors.bg, 
+        borderColor: colors.border,
+        boxShadow: isDragOver ? `0 0 0 3px ${colors.border}` : undefined
+      }}
+      onClick={onClick}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = 'move'
+        onDragStart()
+      }}
+      onDragOver={(e) => {
+        e.preventDefault()
+        setIsDragOver(true)
+        onDragOver(e)
+      }}
+      onDragLeave={() => {
+        setIsDragOver(false)
+        onDragLeave()
+      }}
+      onDrop={(e) => {
+        e.preventDefault()
+        setIsDragOver(false)
+        onDrop()
+      }}
+    >
+      <div className="org-avatar" style={{ backgroundColor: colors.avatar }}>
+        {initials}
       </div>
+      <div className="org-name" style={{ color: colors.text }}>{user.name}</div>
+      <div className="org-title" style={{ color: colors.text }}>{user.position || 'Employee'}</div>
     </div>
   )
 }
 
-const nodeTypes = {
-  company: CompanyNode,
-  employee: EmployeeNode,
+// Tree branch component
+function TreeBranch({ 
+  children, 
+  showConnector = true 
+}: { 
+  children: React.ReactNode
+  showConnector?: boolean 
+}) {
+  return (
+    <div className={`tree-branch ${showConnector ? 'with-connector' : ''}`}>
+      {children}
+    </div>
+  )
 }
 
-function OrgChartContent() {
+// Tree children container
+function TreeChildren({ 
+  children, 
+  count 
+}: { 
+  children: React.ReactNode
+  count: number 
+}) {
+  return (
+    <div className={`tree-children ${count > 1 ? 'multi' : ''}`}>
+      {children}
+    </div>
+  )
+}
+
+export default function OrgChartPage() {
   const router = useRouter()
   const [users, setUsers] = useState<User[]>([])
   const [mappings, setMappings] = useState<Mapping[]>([])
   const [loading, setLoading] = useState(true)
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
   const [isReassignModalOpen, setIsReassignModalOpen] = useState(false)
+  const [draggedUser, setDraggedUser] = useState<User | null>(null)
   const [reassignData, setReassignData] = useState<{ employee: User | null; newManager: User | null; oldManager: User | null }>({ employee: null, newManager: null, oldManager: null })
-
-  const { fitView } = useReactFlow()
 
   useEffect(() => { checkAuth() }, [])
 
@@ -190,270 +204,96 @@ function OrgChartContent() {
     finally { setLoading(false) }
   }
 
-  // Build tree layout
-  useEffect(() => {
-    if (users.length === 0) return
-
-    const CARD_W = 150
-    const CARD_H = 110
-    const H_GAP = 40
-    const V_GAP = 100
-
-    // Build parent-child relationships from TEAM_LEAD/C_LEVEL mappings
-    const parentOf = new Map<string, string>() // childId -> parentId
+  // Build tree structure from mappings
+  const treeData = useMemo(() => {
+    const parentOf = new Map<string, string>()
+    const childrenOf = new Map<string, string[]>()
     
     mappings
       .filter(m => m.relationshipType === 'TEAM_LEAD' || m.relationshipType === 'C_LEVEL')
       .forEach(m => {
-        // Only set if not already set (first mapping wins)
         if (!parentOf.has(m.evaluateeId)) {
           parentOf.set(m.evaluateeId, m.evaluatorId)
+          if (!childrenOf.has(m.evaluatorId)) childrenOf.set(m.evaluatorId, [])
+          childrenOf.get(m.evaluatorId)!.push(m.evaluateeId)
         }
       })
-
-    // Find C-Level people
-    const cLevelUsers = users.filter(u => 
+    
+    // Find C-Level (roots)
+    const cLevel = users.filter(u => 
       C_LEVEL_EVALUATORS.some(name => u.name.toLowerCase() === name.toLowerCase())
     )
-
-    // Sort: Hamiz first, then others
-    const hamiz = cLevelUsers.find(u => u.name.toLowerCase().includes('hamiz'))
-    const sortedCLevel = hamiz 
-      ? [hamiz, ...cLevelUsers.filter(u => u.id !== hamiz.id)]
-      : cLevelUsers
-
-    // Create node helper
-    const createNode = (user: User, x: number, y: number): Node => {
-      const c = getColor(user.department, user.name)
-      return {
-        id: user.id,
-        type: 'employee',
-        position: { x, y },
-        sourcePosition: Position.Bottom,
-        targetPosition: Position.Top,
-        data: { user, color: c.bg, textColor: c.text, borderColor: c.border } as NodeData,
-      }
-    }
-
-    // ===== STEP 1: Position all nodes =====
-    const nodeList: Node[] = []
-    const nodePositions = new Map<string, { x: number, y: number }>()
-    const positioned = new Set<string>()
-
-    // Company node
-    const centerX = 700
-    nodeList.push({
-      id: 'company',
-      type: 'company',
-      position: { x: centerX - 80, y: 0 },
-      sourcePosition: Position.Bottom,
-      targetPosition: Position.Top,
-      data: {} as NodeData,
-    })
-    nodePositions.set('company', { x: centerX - 80, y: 0 })
-
-    // Level 1: C-Level executives
-    const level1Y = V_GAP
-    const cLevelWidth = sortedCLevel.length * (CARD_W + H_GAP)
-    const cLevelStartX = centerX - cLevelWidth / 2
-
-    sortedCLevel.forEach((user, i) => {
-      const x = cLevelStartX + i * (CARD_W + H_GAP)
-      nodeList.push(createNode(user, x, level1Y))
-      nodePositions.set(user.id, { x, y: level1Y })
-      positioned.add(user.id)
-    })
-
+    const hamiz = cLevel.find(u => u.name.toLowerCase().includes('hamiz'))
+    const otherCLevel = cLevel.filter(u => u.id !== hamiz?.id)
+    
     // Get children of a user
-    const getChildren = (parentId: string): User[] => {
-      return users.filter(u => parentOf.get(u.id) === parentId && !positioned.has(u.id))
+    const getChildren = (userId: string): User[] => {
+      const childIds = childrenOf.get(userId) || []
+      return childIds.map(id => users.find(u => u.id === id)).filter(Boolean) as User[]
     }
-
-    // Position children recursively with proper spacing
-    const positionSubtree = (parentId: string, startX: number, startY: number): number => {
-      const children = getChildren(parentId)
-      if (children.length === 0) return CARD_W
-
-      let currentX = startX
-      let maxWidth = 0
-
-      children.forEach((child) => {
-        // First, recursively get width needed for this child's subtree
-        positioned.add(child.id) // Mark as positioned to prevent re-processing
-        
-        const subtreeWidth = positionSubtree(child.id, currentX, startY + V_GAP)
-        
-        // Position this child centered over its subtree
-        const childX = currentX + (subtreeWidth - CARD_W) / 2
-        nodeList.push(createNode(child, childX, startY))
-        nodePositions.set(child.id, { x: childX, y: startY })
-
-        currentX += subtreeWidth + H_GAP
-        maxWidth = currentX - startX - H_GAP
-      })
-
-      return Math.max(maxWidth, CARD_W)
+    
+    // Users not in the tree
+    const inTree = new Set<string>()
+    const markInTree = (userId: string) => {
+      inTree.add(userId)
+      getChildren(userId).forEach(child => markInTree(child.id))
     }
+    if (hamiz) markInTree(hamiz.id)
+    otherCLevel.forEach(u => markInTree(u.id))
+    
+    const unassigned = users.filter(u => !inTree.has(u.id))
+    
+    return { hamiz, otherCLevel, getChildren, parentOf, unassigned }
+  }, [users, mappings])
 
-    // Position children for each C-Level
-    let nextX = 0
-    sortedCLevel.forEach((cLevel) => {
-      const children = getChildren(cLevel.id)
-      if (children.length > 0) {
-        const subtreeWidth = positionSubtree(cLevel.id, nextX, level1Y + V_GAP)
-        
-        // Reposition C-Level user to be centered over their subtree
-        const cLevelPos = nodePositions.get(cLevel.id)
-        if (cLevelPos) {
-          const newX = nextX + (subtreeWidth - CARD_W) / 2
-          const node = nodeList.find(n => n.id === cLevel.id)
-          if (node) {
-            node.position = { x: newX, y: level1Y }
-            nodePositions.set(cLevel.id, { x: newX, y: level1Y })
-          }
-        }
-        nextX += subtreeWidth + H_GAP * 2
-      } else {
-        nextX += CARD_W + H_GAP * 2
-      }
+  const handleCardClick = (user: User) => {
+    setSelectedUser(user)
+    setIsDetailModalOpen(true)
+  }
+
+  const handleDrop = (targetUser: User) => {
+    if (!draggedUser || draggedUser.id === targetUser.id) return
+    
+    const currentMapping = mappings.find(m => 
+      m.evaluateeId === draggedUser.id && 
+      (m.relationshipType === 'TEAM_LEAD' || m.relationshipType === 'C_LEVEL')
+    )
+    
+    if (currentMapping?.evaluatorId === targetUser.id) {
+      toast.info('Already reports to this person')
+      return
+    }
+    
+    setReassignData({
+      employee: draggedUser,
+      newManager: targetUser,
+      oldManager: currentMapping?.evaluator || null
     })
-
-    // Position remaining unpositioned users
-    const remaining = users.filter(u => !positioned.has(u.id))
-    if (remaining.length > 0) {
-      const bottomY = Math.max(...Array.from(nodePositions.values()).map(p => p.y)) + V_GAP * 2
-      const cols = 8
-      remaining.forEach((user, i) => {
-        const x = (i % cols) * (CARD_W + H_GAP / 2)
-        const y = bottomY + Math.floor(i / cols) * (CARD_H + H_GAP / 2)
-        nodeList.push(createNode(user, x, y))
-        nodePositions.set(user.id, { x, y })
-      })
-    }
-
-    // Recenter company node
-    const allXPositions = Array.from(nodePositions.values()).map(p => p.x)
-    const minX = Math.min(...allXPositions)
-    const maxX = Math.max(...allXPositions)
-    const chartCenterX = (minX + maxX) / 2
-    const companyNode = nodeList.find(n => n.id === 'company')
-    if (companyNode) {
-      companyNode.position = { x: chartCenterX - 80, y: 0 }
-      nodePositions.set('company', { x: chartCenterX - 80, y: 0 })
-    }
-
-    // ===== STEP 2: Create edges AFTER all nodes exist =====
-    const edgeList: Edge[] = []
-    const nodeIds = new Set(nodeList.map(n => n.id))
-
-    // Edge from company to C-Level
-    sortedCLevel.forEach(user => {
-      if (nodeIds.has(user.id)) {
-        edgeList.push({
-          id: `edge-company-${user.id}`,
-          source: 'company',
-          target: user.id,
-          type: 'default',
-          animated: true,
-          style: { stroke: '#EF4444', strokeWidth: 4 },
-        })
-      }
-    })
-
-    // Edges from parent to child based on mappings
-    parentOf.forEach((parentId, childId) => {
-      if (nodeIds.has(parentId) && nodeIds.has(childId)) {
-        edgeList.push({
-          id: `edge-${parentId}-${childId}`,
-          source: parentId,
-          target: childId,
-          type: 'default',
-          animated: true,
-          style: { stroke: '#3B82F6', strokeWidth: 4 },
-        })
-      }
-    })
-
-    console.log('Created nodes:', nodeList.length, 'Created edges:', edgeList.length)
-    
-    setNodes(nodeList)
-    setEdges(edgeList)
-    
-    setTimeout(() => fitView({ padding: 0.15 }), 300)
-  }, [users, mappings, fitView])
-
-  const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
-    if (node.type !== 'employee') return
-    const data = node.data as unknown as NodeData
-    if (data.user) {
-      setSelectedUser(data.user)
-      setIsDetailModalOpen(true)
-    }
-  }, [])
-
-  const onNodeDragStop = useCallback((event: React.MouseEvent, node: Node, allNodes: Node[]) => {
-    if (node.type !== 'employee') return
-    const draggedData = node.data as unknown as NodeData
-    if (!draggedData.user) return
-    
-    // Find the closest OTHER employee node (potential new manager)
-    let closest: Node | null = null
-    let minDist = Infinity
-    
-    for (const n of allNodes) {
-      if (n.id === node.id || n.type !== 'employee') continue
-      const nData = n.data as unknown as NodeData
-      if (!nData.user) continue
-      
-      // Calculate distance - allow any direction, not just "above"
-      const dist = Math.hypot(n.position.x - node.position.x, n.position.y - node.position.y)
-      
-      // If dropped close enough (within 300px) to another node
-      if (dist < 300 && dist < minDist) { 
-        minDist = dist
-        closest = n 
-      }
-    }
-    
-    if (closest && minDist < 300) {
-      const managerData = closest.data as unknown as NodeData
-      if (!managerData.user) return
-      
-      // Don't trigger if dropping on self or current manager
-      const currentMapping = mappings.find(m => 
-        m.evaluateeId === draggedData.user!.id && 
-        (m.relationshipType === 'TEAM_LEAD' || m.relationshipType === 'C_LEVEL')
-      )
-      
-      if (currentMapping?.evaluatorId === managerData.user.id) {
-        toast.info('Already reports to this person')
-        return
-      }
-      
-      // Show reassignment modal
-      setReassignData({ 
-        employee: draggedData.user, 
-        newManager: managerData.user, 
-        oldManager: currentMapping?.evaluator || null 
-      })
-      setIsReassignModalOpen(true)
-    }
-  }, [mappings])
+    setIsReassignModalOpen(true)
+    setDraggedUser(null)
+  }
 
   const handleReassign = async () => {
     if (!reassignData.employee || !reassignData.newManager) return
     try {
       toast.loading('Updating...')
       const isCLevel = C_LEVEL_EVALUATORS.some(n => reassignData.newManager!.name.toLowerCase() === n.toLowerCase())
+      
       if (reassignData.oldManager) {
         const old = mappings.find(m => m.evaluateeId === reassignData.employee!.id && m.evaluatorId === reassignData.oldManager!.id)
         if (old) await fetch(`/api/admin/mappings?id=${old.id}`, { method: 'DELETE' })
       }
+      
       await fetch('/api/admin/mappings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ evaluatorId: reassignData.newManager.id, evaluateeId: reassignData.employee.id, relationshipType: isCLevel ? 'C_LEVEL' : 'TEAM_LEAD' }),
+        body: JSON.stringify({ 
+          evaluatorId: reassignData.newManager.id, 
+          evaluateeId: reassignData.employee.id, 
+          relationshipType: isCLevel ? 'C_LEVEL' : 'TEAM_LEAD' 
+        }),
       })
+      
       toast.dismiss()
       toast.success('Updated!')
       setIsReassignModalOpen(false)
@@ -477,59 +317,261 @@ function OrgChartContent() {
     } catch { toast.error('Failed') }
   }
 
-  if (loading) {
+  // Render a user and their children recursively
+  const renderTree = (user: User, depth = 0): React.ReactNode => {
+    const children = treeData.getChildren(user.id)
+    
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#F8F4EC' }}>
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 rounded-full bg-emerald-500 animate-pulse" />
-          <p className="text-slate-600">Loading...</p>
-        </motion.div>
+      <div className="tree" key={user.id}>
+        <TreeBranch showConnector={depth > 0}>
+          <EmployeeCard
+            user={user}
+            onClick={() => handleCardClick(user)}
+            onDragStart={() => setDraggedUser(user)}
+            onDragOver={() => {}}
+            onDragLeave={() => {}}
+            onDrop={() => handleDrop(user)}
+            hasChildren={children.length > 0}
+          />
+        </TreeBranch>
+        {children.length > 0 && (
+          <TreeChildren count={children.length}>
+            {children.map(child => renderTree(child, depth + 1))}
+          </TreeChildren>
+        )}
       </div>
     )
   }
 
-  return (
-    <>
-      <PageHeader backHref="/admin/mappings" backLabel="Mappings" badge="Org Chart" />
-      <PageContent className="!max-w-none !px-4">
-        <div className="h-[calc(100vh-140px)] min-h-[600px] rounded-xl border border-slate-300 overflow-hidden shadow-xl" style={{ backgroundColor: '#F8F4EC' }}>
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onNodeClick={onNodeClick}
-            onNodeDragStop={onNodeDragStop}
-            nodeTypes={nodeTypes}
-            defaultEdgeOptions={{ type: 'default' }}
-            fitView
-            fitViewOptions={{ padding: 0.1 }}
-            minZoom={0.2}
-            maxZoom={1.5}
-          >
-            <Background variant={BackgroundVariant.Dots} gap={30} size={1} color="#D4CFC4" />
-            <Controls showInteractive={false} />
-            <Panel position="bottom-left" className="bg-white/95 rounded-lg shadow-lg p-3 border text-xs">
-              <div className="font-semibold mb-2">Legend</div>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { name: 'Ops/1to1', c: COLORS.green },
-                  { name: 'Design/Prod', c: COLORS.blue },
-                  { name: 'Growth/IR', c: COLORS.purple },
-                  { name: 'Technology', c: COLORS.yellow },
-                  { name: 'HR', c: COLORS.pink },
-                  { name: 'Op Partners', c: COLORS.red },
-                ].map(({ name, c }) => (
-                  <div key={name} className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 rounded" style={{ backgroundColor: c.border }} />
-                    <span className="text-slate-600">{name}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-2 pt-2 border-t text-[10px] text-slate-500">Drag to reassign • Click to view</div>
-            </Panel>
-          </ReactFlow>
+  if (loading) {
+    return (
+      <PageContainer>
+        <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#FDF6E3' }}>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-emerald-500 animate-pulse" />
+            <p className="text-slate-600">Loading...</p>
+          </motion.div>
         </div>
+      </PageContainer>
+    )
+  }
+
+  return (
+    <PageContainer>
+      <style jsx global>{`
+        .org-chart-container {
+          background: #FDF6E3;
+          min-height: calc(100vh - 140px);
+          padding: 40px;
+          overflow: auto;
+        }
+        
+        .org-chart {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+        
+        .company-card {
+          background: white;
+          border: 2px solid #E2E8F0;
+          padding: 16px 28px;
+          border-radius: 16px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 30px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        
+        .company-logo {
+          width: 40px;
+          height: 40px;
+          background: linear-gradient(135deg, #22C55E, #16A34A);
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        
+        .company-name {
+          font-weight: 700;
+          font-size: 18px;
+          color: #1E293B;
+        }
+        
+        .tree {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+        
+        .tree-branch {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+        
+        .tree-branch.with-connector::before {
+          content: '';
+          width: 2px;
+          height: 25px;
+          background: #94A3B8;
+        }
+        
+        .tree-children {
+          display: flex;
+          justify-content: center;
+          gap: 20px;
+          padding-top: 25px;
+          position: relative;
+        }
+        
+        .tree-children::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 50%;
+          width: 2px;
+          height: 25px;
+          background: #94A3B8;
+          transform: translateX(-50%);
+        }
+        
+        .tree-children.multi::after {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 50%;
+          width: calc(100% - 130px);
+          height: 2px;
+          background: #94A3B8;
+          transform: translateX(-50%);
+        }
+        
+        .org-card {
+          width: 130px;
+          border-radius: 12px;
+          border: 2px solid;
+          padding: 12px 8px;
+          text-align: center;
+          cursor: pointer;
+          transition: all 0.2s;
+          background: white;
+        }
+        
+        .org-card:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+        }
+        
+        .org-card.has-children::after {
+          content: '';
+          display: block;
+          width: 2px;
+          height: 25px;
+          background: #94A3B8;
+          margin: 12px auto -37px;
+        }
+        
+        .org-card.drop-target {
+          transform: scale(1.05);
+        }
+        
+        .org-avatar {
+          width: 44px;
+          height: 44px;
+          border-radius: 50%;
+          margin: 0 auto 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          font-weight: 700;
+          font-size: 14px;
+        }
+        
+        .org-name {
+          font-weight: 600;
+          font-size: 11px;
+          margin-bottom: 2px;
+          line-height: 1.2;
+        }
+        
+        .org-title {
+          font-size: 9px;
+          opacity: 0.75;
+          line-height: 1.2;
+        }
+        
+        .unassigned-section {
+          margin-top: 60px;
+          padding-top: 30px;
+          border-top: 2px dashed #CBD5E1;
+        }
+        
+        .unassigned-title {
+          text-align: center;
+          color: #64748B;
+          font-size: 14px;
+          margin-bottom: 20px;
+        }
+        
+        .unassigned-grid {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 15px;
+          justify-content: center;
+        }
+      `}</style>
+      
+      <PageHeader backHref="/admin/mappings" backLabel="Mappings" badge="Org Chart" />
+      
+      <PageContent className="!max-w-none !px-0">
+        <div className="org-chart-container">
+          <div className="org-chart">
+            {/* Company */}
+            <div className="company-card">
+              <div className="company-logo">
+                <Building2 className="w-6 h-6 text-white" />
+              </div>
+              <span className="company-name">{COMPANY_NAME}</span>
+            </div>
+            
+            {/* CEO and tree */}
+            {treeData.hamiz && renderTree(treeData.hamiz)}
+            
+            {/* Other C-Level without Hamiz connection */}
+            {treeData.otherCLevel.length > 0 && !treeData.hamiz && (
+              <TreeChildren count={treeData.otherCLevel.length}>
+                {treeData.otherCLevel.map(user => renderTree(user))}
+              </TreeChildren>
+            )}
+            
+            {/* Unassigned employees */}
+            {treeData.unassigned.length > 0 && (
+              <div className="unassigned-section">
+                <div className="unassigned-title">
+                  Unassigned Employees ({treeData.unassigned.length}) - Drag to a manager above
+                </div>
+                <div className="unassigned-grid">
+                  {treeData.unassigned.map(user => (
+                    <EmployeeCard
+                      key={user.id}
+                      user={user}
+                      onClick={() => handleCardClick(user)}
+                      onDragStart={() => setDraggedUser(user)}
+                      onDragOver={() => {}}
+                      onDragLeave={() => {}}
+                      onDrop={() => handleDrop(user)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        
         <PageFooter />
       </PageContent>
 
@@ -537,15 +579,16 @@ function OrgChartContent() {
       <Modal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} title={selectedUser?.name || ''} size="lg">
         {selectedUser && (
           <div className="space-y-4">
-            <div className="flex items-center gap-3 p-3 rounded-lg" style={{ backgroundColor: getColor(selectedUser.department, selectedUser.name).bg }}>
-              <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold" style={{ backgroundColor: getColor(selectedUser.department, selectedUser.name).border }}>
+            <div className="flex items-center gap-3 p-3 rounded-lg" style={{ backgroundColor: getColorScheme(selectedUser.department, selectedUser.name).bg }}>
+              <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold" style={{ backgroundColor: getColorScheme(selectedUser.department, selectedUser.name).avatar }}>
                 {selectedUser.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
               </div>
               <div>
-                <h3 className="font-bold" style={{ color: getColor(selectedUser.department, selectedUser.name).text }}>{selectedUser.name}</h3>
-                <p className="text-sm opacity-80" style={{ color: getColor(selectedUser.department, selectedUser.name).text }}>{selectedUser.position} • {selectedUser.department}</p>
+                <h3 className="font-bold" style={{ color: getColorScheme(selectedUser.department, selectedUser.name).text }}>{selectedUser.name}</h3>
+                <p className="text-sm opacity-80" style={{ color: getColorScheme(selectedUser.department, selectedUser.name).text }}>{selectedUser.position} • {selectedUser.department}</p>
               </div>
             </div>
+            
             <div>
               <h4 className="text-sm font-semibold mb-2 flex items-center gap-2"><Users className="w-4 h-4" />Evaluators ({selectedUserMappings.evaluators.length})</h4>
               <div className="space-y-1 max-h-36 overflow-y-auto">
@@ -561,6 +604,7 @@ function OrgChartContent() {
                 {selectedUserMappings.evaluators.length === 0 && <p className="text-sm text-slate-500">None</p>}
               </div>
             </div>
+            
             <div>
               <h4 className="text-sm font-semibold mb-2 flex items-center gap-2"><Link2 className="w-4 h-4" />Evaluates ({selectedUserMappings.evaluates.length})</h4>
               <div className="space-y-1 max-h-36 overflow-y-auto">
@@ -576,42 +620,33 @@ function OrgChartContent() {
                 {selectedUserMappings.evaluates.length === 0 && <p className="text-sm text-slate-500">None</p>}
               </div>
             </div>
-            {/* Assign New Manager */}
+            
+            {/* Assign Manager */}
             <div className="pt-2 border-t">
               <h4 className="text-sm font-semibold mb-2">Assign to Manager</h4>
-              <div className="flex gap-2">
-                <select 
-                  className="flex-1 px-3 py-1.5 border rounded text-sm bg-white"
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      const newManager = users.find(u => u.id === e.target.value)
-                      if (newManager && selectedUser) {
-                        const currentMapping = mappings.find(m => 
-                          m.evaluateeId === selectedUser.id && 
-                          (m.relationshipType === 'TEAM_LEAD' || m.relationshipType === 'C_LEVEL')
-                        )
-                        setReassignData({
-                          employee: selectedUser,
-                          newManager,
-                          oldManager: currentMapping?.evaluator || null
-                        })
-                        setIsDetailModalOpen(false)
-                        setIsReassignModalOpen(true)
-                      }
+              <select 
+                className="w-full px-3 py-2 border rounded text-sm bg-white"
+                onChange={(e) => {
+                  if (e.target.value) {
+                    const newManager = users.find(u => u.id === e.target.value)
+                    if (newManager && selectedUser) {
+                      const currentMapping = mappings.find(m => 
+                        m.evaluateeId === selectedUser.id && 
+                        (m.relationshipType === 'TEAM_LEAD' || m.relationshipType === 'C_LEVEL')
+                      )
+                      setReassignData({ employee: selectedUser, newManager, oldManager: currentMapping?.evaluator || null })
+                      setIsDetailModalOpen(false)
+                      setIsReassignModalOpen(true)
                     }
-                  }}
-                  defaultValue=""
-                >
-                  <option value="">Select manager...</option>
-                  {users
-                    .filter(u => u.id !== selectedUser?.id)
-                    .sort((a, b) => a.name.localeCompare(b.name))
-                    .map(u => (
-                      <option key={u.id} value={u.id}>{u.name} ({u.position || 'Employee'})</option>
-                    ))
                   }
-                </select>
-              </div>
+                }}
+                defaultValue=""
+              >
+                <option value="">Select manager...</option>
+                {users.filter(u => u.id !== selectedUser?.id).sort((a, b) => a.name.localeCompare(b.name)).map(u => (
+                  <option key={u.id} value={u.id}>{u.name} ({u.position || 'Employee'})</option>
+                ))}
+              </select>
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
@@ -627,6 +662,7 @@ function OrgChartContent() {
         {reassignData.employee && reassignData.newManager && (
           <div className="space-y-4">
             <p>Move <strong>{reassignData.employee.name}</strong> under <strong>{reassignData.newManager.name}</strong>?</p>
+            {reassignData.oldManager && <p className="text-sm text-slate-500">Currently reports to: {reassignData.oldManager.name}</p>}
             <div className="flex justify-end gap-2">
               <button onClick={() => setIsReassignModalOpen(false)} className="px-3 py-1.5 border rounded text-sm">Cancel</button>
               <button onClick={handleReassign} className="px-3 py-1.5 bg-indigo-600 text-white rounded text-sm flex items-center gap-1"><Save className="w-3 h-3" />Confirm</button>
@@ -634,16 +670,6 @@ function OrgChartContent() {
           </div>
         )}
       </Modal>
-    </>
-  )
-}
-
-export default function OrgChartPage() {
-  return (
-    <PageContainer>
-      <ReactFlowProvider>
-        <OrgChartContent />
-      </ReactFlowProvider>
     </PageContainer>
   )
 }
