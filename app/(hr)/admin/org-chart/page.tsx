@@ -353,8 +353,7 @@ function OrgChartContent() {
           id: `edge-company-${user.id}`,
           source: 'company',
           target: user.id,
-          type: 'smoothstep',
-          style: { stroke: '#94A3B8', strokeWidth: 2 },
+          style: { stroke: '#64748B', strokeWidth: 3 },
         })
       }
     })
@@ -363,13 +362,12 @@ function OrgChartContent() {
     parentOf.forEach((parentId, childId) => {
       if (nodeIds.has(parentId) && nodeIds.has(childId)) {
         const child = users.find(u => u.id === childId)
-        const color = child ? getColor(child.department, child.name).border : '#94A3B8'
+        const color = child ? getColor(child.department, child.name).border : '#64748B'
         edgeList.push({
           id: `edge-${parentId}-${childId}`,
           source: parentId,
           target: childId,
-          type: 'smoothstep',
-          style: { stroke: color, strokeWidth: 2 },
+          style: { stroke: color, strokeWidth: 3 },
         })
       }
     })
@@ -481,6 +479,7 @@ function OrgChartContent() {
             onNodeClick={onNodeClick}
             onNodeDragStop={onNodeDragStop}
             nodeTypes={nodeTypes}
+            defaultEdgeOptions={{ type: 'default' }}
             fitView
             fitViewOptions={{ padding: 0.1 }}
             minZoom={0.2}
