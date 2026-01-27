@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db'
-import { RelationshipType, DEFAULT_WEIGHTAGES } from '@/types'
+import { RelationshipType } from '@/types'
+import { calculateRedistributedWeights, DEFAULT_WEIGHTS } from '@/lib/config'
 
 export interface ScoreBreakdown {
   relationshipType: RelationshipType
@@ -19,6 +20,42 @@ export interface EvaluationReport {
   overallScore: number
   breakdown: ScoreBreakdown[]
   qualitativeFeedback: Record<string, string[]>
+}
+
+/**
+ * Get the available evaluator types for an employee based on their mappings
+ */
+export async function getAvailableEvaluatorTypes(employeeId: string): Promise<RelationshipType[]> {
+  const mappings = await prisma.evaluatorMapping.findMany({
+    where: { evaluateeId: employeeId },
+    select: { relationshipType: true },
+    distinct: ['relationshipType'],
+  })
+  return mappings.map(m => m.relationshipType as RelationshipType)
+}
+
+/**
+ * Calculate dynamic weights for an employee based on their available evaluator types
+ */
+export async function getDynamicWeights(employeeId: string): Promise<Record<string, number>> {
+  const availableTypes = await getAvailableEvaluatorTypes(employeeId)
+  
+  // Check for custom weightages first
+  const customWeightages = await prisma.weightage.findMany({
+    where: { employeeId },
+  })
+
+  if (customWeightages.length > 0) {
+    // Use custom weightages
+    const weights: Record<string, number> = {}
+    customWeightages.forEach(w => {
+      weights[w.relationshipType] = w.weightagePercentage
+    })
+    return weights
+  }
+
+  // Calculate redistributed weights based on available types
+  return calculateRedistributedWeights(availableTypes)
 }
 
 export async function calculateWeightedScore(
@@ -56,16 +93,6 @@ export async function calculateWeightedScore(
     },
   })
 
-  // Get custom weightages or use defaults
-  const weightages = await prisma.weightage.findMany({
-    where: { employeeId },
-  })
-
-  const weightageMap = new Map<RelationshipType, number>()
-  weightages.forEach((w) => {
-    weightageMap.set(w.relationshipType, w.weightagePercentage)
-  })
-
   // Get all mappings for this employee to build relationship type map
   const mappings = await prisma.evaluatorMapping.findMany({
     where: { evaluateeId: employeeId },
@@ -73,7 +100,7 @@ export async function calculateWeightedScore(
 
   const evaluatorToTypeMap = new Map<string, RelationshipType>()
   mappings.forEach((m) => {
-    evaluatorToTypeMap.set(m.evaluatorId, m.relationshipType)
+    evaluatorToTypeMap.set(m.evaluatorId, m.relationshipType as RelationshipType)
   })
 
   // Group evaluations by relationship type
@@ -89,12 +116,23 @@ export async function calculateWeightedScore(
     }
   }
 
+  // Get the types that actually have evaluations submitted
+  const typesWithEvaluations = Array.from(evaluationsByType.keys())
+  
+  // Calculate redistributed weights based on types with actual evaluations
+  const dynamicWeights = calculateRedistributedWeights(typesWithEvaluations)
+
   // Calculate breakdown for each relationship type
   const breakdown: ScoreBreakdown[] = []
 
   for (const [relationshipType, typeEvaluations] of evaluationsByType.entries()) {
-    // Get weightage (custom or default)
-    const weight = weightageMap.get(relationshipType) ?? DEFAULT_WEIGHTAGES[relationshipType]
+    // Get the dynamic weight for this type
+    const weight = dynamicWeights[relationshipType] ?? 0
+
+    // Skip SELF evaluations in weighted calculation
+    if (relationshipType === 'SELF') {
+      continue
+    }
 
     // Group by question to calculate averages
     const questionGroups = new Map<string, typeof typeEvaluations>()
@@ -106,6 +144,7 @@ export async function calculateWeightedScore(
     }
 
     // Calculate average rating for this relationship type
+    // When multiple evaluators of same type, average their scores
     let totalRating = 0
     let totalMaxRating = 0
     let evaluatorIds = new Set<string>()
@@ -113,12 +152,21 @@ export async function calculateWeightedScore(
     for (const [questionId, questionEvals] of questionGroups.entries()) {
       const question = questionEvals[0].question
       if (question.questionType === 'RATING') {
+        // Average scores from multiple evaluators for each question
+        let questionTotal = 0
+        let questionCount = 0
+        
         for (const evaluation of questionEvals) {
           if (evaluation.ratingValue !== null) {
-            totalRating += evaluation.ratingValue
-            totalMaxRating += question.maxRating
+            questionTotal += evaluation.ratingValue
+            questionCount++
             evaluatorIds.add(evaluation.evaluatorId)
           }
+        }
+        
+        if (questionCount > 0) {
+          totalRating += questionTotal / questionCount
+          totalMaxRating += question.maxRating
         }
       }
     }
@@ -140,6 +188,7 @@ export async function calculateWeightedScore(
   }
 
   // Calculate overall score
+  // Sum of all weighted contributions divided by 4 (max score) times 100 for percentage
   const totalWeightedContribution = breakdown.reduce(
     (sum, b) => sum + b.weightedContribution,
     0
