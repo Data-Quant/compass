@@ -8,7 +8,7 @@
 export const PLATFORM_NAME = 'Compass'
 
 // Company name
-export const COMPANY_NAME = 'Plutus21'
+export const COMPANY_NAME = 'Plutus 21'
 
 // Full platform title
 export const PLATFORM_TITLE = `${PLATFORM_NAME} | ${COMPANY_NAME} Performance Platform`
