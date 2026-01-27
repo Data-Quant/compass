@@ -4,8 +4,8 @@ import { ThemeProvider } from '@/components/providers/theme-provider'
 import { ToastProvider } from '@/components/ui/toast-provider'
 
 export const metadata: Metadata = {
-  title: 'Compass | Plutuss21 Performance Platform',
-  description: '360-degree performance evaluations that drive meaningful conversations and foster growth at Plutuss21',
+  title: 'Compass | Plutus 21 Performance Platform',
+  description: '360-degree performance evaluations that drive meaningful conversations and foster growth at Plutus 21',
   icons: {
     icon: '/favicon.ico',
   },
