@@ -334,9 +334,6 @@ export default function DashboardPage() {
           className="mt-16 flex items-center justify-center gap-2 text-xs text-muted/50"
         >
           <span>Powered by {COMPANY_NAME}</span>
-          <span>•</span>
-          <span>Crafted by</span>
-          <span className="font-medium">AHK</span>
         </motion.div>
       </main>
     </div>
