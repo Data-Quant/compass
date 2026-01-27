@@ -239,7 +239,7 @@ function OrgChartContent() {
       id: `${source}-${target}`,
       source,
       target,
-      type: 'smoothstep',
+      type: 'step',
       style: { stroke: color, strokeWidth: 2 },
     })
 
@@ -629,7 +629,7 @@ function OrgChartContent() {
             minZoom={0.1}
             maxZoom={2}
             connectionMode={ConnectionMode.Loose}
-            defaultEdgeOptions={{ type: 'smoothstep' }}
+            defaultEdgeOptions={{ type: 'step' }}
           >
             <Background variant={BackgroundVariant.Dots} gap={25} size={1} color="#E5DCC8" />
             <Controls showInteractive={false} />
