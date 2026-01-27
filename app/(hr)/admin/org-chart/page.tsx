@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import ReactFlow, { 
@@ -22,7 +22,7 @@ import { PageHeader } from '@/components/layout/page-header'
 import { PageFooter } from '@/components/layout/page-footer'
 import { PageContainer, PageContent } from '@/components/layout/page-container'
 import { RELATIONSHIP_TYPE_LABELS, RelationshipType } from '@/types'
-import { Users, Link2, Trash2, ArrowUpRight, Building2 } from 'lucide-react'
+import { Users, Link2, Trash2, ArrowUpRight, Building2, RotateCcw, Save } from 'lucide-react'
 import { C_LEVEL_EVALUATORS, COMPANY_NAME } from '@/lib/config'
 
 interface User {
@@ -31,6 +31,8 @@ interface User {
   department: string | null
   position: string | null
   role: string
+  chartX: number | null
+  chartY: number | null
 }
 
 interface Mapping {
@@ -225,11 +227,15 @@ export default function OrgChartPage() {
     function positionNode(user: User, x: number, y: number, parentId?: string, isVisualOnly?: boolean) {
       inTree.add(user.id)
       const color = getColor(user.department, user.name)
+      
+      // Use saved position if available, otherwise use calculated position
+      const finalX = user.chartX ?? x
+      const finalY = user.chartY ?? y
 
       newNodes.push({
         id: user.id,
         type: 'employee',
-        position: { x, y },
+        position: { x: finalX, y: finalY },
         data: { 
           name: user.name, 
           title: user.position || 'Employee',
@@ -319,14 +325,18 @@ export default function OrgChartPage() {
       unassigned.forEach((user, i) => {
         const col = i % COLS
         const row = Math.floor(i / COLS)
-        const x = startX + col * (CARD_WIDTH + GAP_X)
-        const y = startY + row * (CARD_HEIGHT + GAP_Y)
+        const defaultX = startX + col * (CARD_WIDTH + GAP_X)
+        const defaultY = startY + row * (CARD_HEIGHT + GAP_Y)
         const color = getColor(user.department, user.name)
+        
+        // Use saved position if available
+        const finalX = user.chartX ?? defaultX
+        const finalY = user.chartY ?? defaultY
         
         newNodes.push({
           id: user.id,
           type: 'employee',
-          position: { x, y },
+          position: { x: finalX, y: finalY },
           data: { 
             name: user.name, 
             title: user.position || 'Unassigned',
@@ -360,10 +370,49 @@ export default function OrgChartPage() {
     }
   }, [users])
 
+  // Track pending position saves
+  const pendingPositions = useRef<Map<string, { x: number; y: number }>>(new Map())
+  const saveTimeout = useRef<NodeJS.Timeout | null>(null)
+
+  const savePositions = useCallback(async () => {
+    if (pendingPositions.current.size === 0) return
+    
+    const positions = Array.from(pendingPositions.current.entries()).map(([id, pos]) => ({
+      id,
+      x: pos.x,
+      y: pos.y,
+    }))
+    
+    pendingPositions.current.clear()
+    
+    try {
+      await fetch('/api/admin/chart-positions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ positions }),
+      })
+    } catch (error) {
+      console.error('Failed to save positions:', error)
+    }
+  }, [])
+
+  const queuePositionSave = useCallback((nodeId: string, x: number, y: number) => {
+    pendingPositions.current.set(nodeId, { x, y })
+    
+    // Debounce - save after 1 second of no activity
+    if (saveTimeout.current) clearTimeout(saveTimeout.current)
+    saveTimeout.current = setTimeout(() => {
+      savePositions()
+    }, 1000)
+  }, [savePositions])
+
   const onNodeDragStop = useCallback((event: any, node: Node) => {
     if (node.type === 'company') return
     
-    // Find closest node to drop on
+    // Save the new position
+    queuePositionSave(node.id, node.position.x, node.position.y)
+    
+    // Find closest node to drop on for reassignment
     const threshold = 150
     let closestNode: Node | null = null
     let closestDistance = Infinity
@@ -384,7 +433,20 @@ export default function OrgChartPage() {
     if (closestNode) {
       setReassignModal({ open: true, from: node, to: closestNode })
     }
-  }, [nodes])
+  }, [nodes, queuePositionSave])
+
+  const resetAllPositions = useCallback(async () => {
+    try {
+      toast.loading('Resetting layout...')
+      await fetch('/api/admin/chart-positions', { method: 'DELETE' })
+      toast.dismiss()
+      toast.success('Layout reset!')
+      loadData() // Reload to get default positions
+    } catch {
+      toast.dismiss()
+      toast.error('Failed to reset')
+    }
+  }, [])
 
   const handleReassign = async () => {
     if (!reassignModal.from || !reassignModal.to) return
@@ -608,8 +670,15 @@ export default function OrgChartPage() {
             <h3>Org Chart</h3>
             <p>
               Drag employees to reorganize.<br/>
-              Click to see details & mappings.
+              Positions auto-save.
             </p>
+            <button 
+              onClick={resetAllPositions}
+              className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+            >
+              <RotateCcw className="w-4 h-4" />
+              Reset Layout
+            </button>
           </div>
           
           <div className="info-panel">

@@ -44,6 +44,10 @@ model User {
   role        UserRole @default(EMPLOYEE)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  
+  // Org chart position (optional - used to save custom positions)
+  chartX      Float?
+  chartY      Float?
 
   // Relations
   evaluatorMappings   EvaluatorMapping[] @relation("Evaluator")
