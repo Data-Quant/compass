@@ -194,37 +194,35 @@ function OrgChartContent() {
   useEffect(() => {
     if (users.length === 0) return
 
-    const nodeList: Node[] = []
-    const edgeList: Edge[] = []
-    
-    const CARD_W = 140
-    const CARD_H = 100
-    const H_GAP = 30
-    const V_GAP = 80
+    const CARD_W = 150
+    const CARD_H = 110
+    const H_GAP = 40
+    const V_GAP = 100
 
-    // Build parent-child relationships from mappings
-    const childrenOf = new Map<string, string[]>() // parentId -> [childIds]
+    // Build parent-child relationships from TEAM_LEAD/C_LEVEL mappings
     const parentOf = new Map<string, string>() // childId -> parentId
     
     mappings
       .filter(m => m.relationshipType === 'TEAM_LEAD' || m.relationshipType === 'C_LEVEL')
       .forEach(m => {
+        // Only set if not already set (first mapping wins)
         if (!parentOf.has(m.evaluateeId)) {
           parentOf.set(m.evaluateeId, m.evaluatorId)
-          if (!childrenOf.has(m.evaluatorId)) childrenOf.set(m.evaluatorId, [])
-          childrenOf.get(m.evaluatorId)!.push(m.evaluateeId)
         }
       })
 
-    // Find C-Level people (roots)
+    // Find C-Level people
     const cLevelUsers = users.filter(u => 
       C_LEVEL_EVALUATORS.some(name => u.name.toLowerCase() === name.toLowerCase())
     )
-    
-    const hamiz = cLevelUsers.find(u => u.name.toLowerCase().includes('hamiz'))
-    const otherCLevel = cLevelUsers.filter(u => u.id !== hamiz?.id)
 
-    // Create employee node
+    // Sort: Hamiz first, then others
+    const hamiz = cLevelUsers.find(u => u.name.toLowerCase().includes('hamiz'))
+    const sortedCLevel = hamiz 
+      ? [hamiz, ...cLevelUsers.filter(u => u.id !== hamiz.id)]
+      : cLevelUsers
+
+    // Create node helper
     const createNode = (user: User, x: number, y: number): Node => {
       const c = getColor(user.department, user.name)
       return {
@@ -237,111 +235,151 @@ function OrgChartContent() {
       }
     }
 
-    // Create edge with tree-style path
-    const createEdge = (parentId: string, childId: string, color: string): Edge => ({
-      id: `e-${parentId}-${childId}`,
-      source: parentId,
-      target: childId,
-      type: 'smoothstep',
-      style: { stroke: color, strokeWidth: 2 },
-      animated: false,
-    })
-
-    // Track positions
+    // ===== STEP 1: Position all nodes =====
+    const nodeList: Node[] = []
+    const nodePositions = new Map<string, { x: number, y: number }>()
     const positioned = new Set<string>()
-    let centerX = 600
 
-    // ===== COMPANY NODE =====
+    // Company node
+    const centerX = 700
     nodeList.push({
       id: 'company',
       type: 'company',
-      position: { x: centerX - 70, y: 0 },
+      position: { x: centerX - 80, y: 0 },
       sourcePosition: Position.Bottom,
       targetPosition: Position.Top,
       data: {} as NodeData,
     })
+    nodePositions.set('company', { x: centerX - 80, y: 0 })
 
-    // ===== HAMIZ (Level 1) =====
-    let currentY = V_GAP + 20
-    if (hamiz) {
-      nodeList.push(createNode(hamiz, centerX - CARD_W/2, currentY))
-      edgeList.push(createEdge('company', hamiz.id, COLORS.green.border))
-      positioned.add(hamiz.id)
-    }
+    // Level 1: C-Level executives
+    const level1Y = V_GAP
+    const cLevelWidth = sortedCLevel.length * (CARD_W + H_GAP)
+    const cLevelStartX = centerX - cLevelWidth / 2
 
-    // ===== OTHER C-LEVEL (Level 1, spread out) =====
-    const level1Positions = [
-      { x: 50, y: currentY },           // Far left (Richard)
-      { x: 250, y: currentY },          // Left (Maryam)
-      { x: centerX + 400, y: currentY }, // Right (Brad)
-      { x: centerX + 600, y: currentY }, // Far right (Daniyal)
-    ]
-    
-    otherCLevel.forEach((user, i) => {
-      if (i < level1Positions.length) {
-        nodeList.push(createNode(user, level1Positions[i].x, level1Positions[i].y))
-        edgeList.push(createEdge('company', user.id, getColor(user.department, user.name).border))
-        positioned.add(user.id)
-      }
+    sortedCLevel.forEach((user, i) => {
+      const x = cLevelStartX + i * (CARD_W + H_GAP)
+      nodeList.push(createNode(user, x, level1Y))
+      nodePositions.set(user.id, { x, y: level1Y })
+      positioned.add(user.id)
     })
 
-    // ===== BUILD TREE RECURSIVELY =====
-    const positionChildren = (parentId: string, parentX: number, parentY: number, depth: number) => {
-      const children = (childrenOf.get(parentId) || []).filter(id => !positioned.has(id))
-      if (children.length === 0) return 0
+    // Get children of a user
+    const getChildren = (parentId: string): User[] => {
+      return users.filter(u => parentOf.get(u.id) === parentId && !positioned.has(u.id))
+    }
 
-      const childY = parentY + V_GAP
-      const totalWidth = children.length * (CARD_W + H_GAP) - H_GAP
-      let startX = parentX - totalWidth / 2 + CARD_W / 2
+    // Position children recursively with proper spacing
+    const positionSubtree = (parentId: string, startX: number, startY: number): number => {
+      const children = getChildren(parentId)
+      if (children.length === 0) return CARD_W
 
-      children.forEach((childId, i) => {
-        const child = users.find(u => u.id === childId)
-        if (!child) return
+      let currentX = startX
+      let maxWidth = 0
 
-        const childX = startX + i * (CARD_W + H_GAP)
-        const c = getColor(child.department, child.name)
+      children.forEach((child) => {
+        // First, recursively get width needed for this child's subtree
+        positioned.add(child.id) // Mark as positioned to prevent re-processing
         
-        nodeList.push(createNode(child, childX, childY))
-        edgeList.push(createEdge(parentId, childId, c.border))
-        positioned.add(childId)
+        const subtreeWidth = positionSubtree(child.id, currentX, startY + V_GAP)
+        
+        // Position this child centered over its subtree
+        const childX = currentX + (subtreeWidth - CARD_W) / 2
+        nodeList.push(createNode(child, childX, startY))
+        nodePositions.set(child.id, { x: childX, y: startY })
 
-        // Recursively position grandchildren
-        positionChildren(childId, childX, childY, depth + 1)
+        currentX += subtreeWidth + H_GAP
+        maxWidth = currentX - startX - H_GAP
       })
 
-      return totalWidth
+      return Math.max(maxWidth, CARD_W)
     }
 
-    // Position children of Hamiz
-    if (hamiz) {
-      positionChildren(hamiz.id, centerX, currentY, 1)
-    }
-
-    // Position children of other C-Level
-    otherCLevel.forEach((cLevel, i) => {
-      if (i < level1Positions.length) {
-        positionChildren(cLevel.id, level1Positions[i].x + CARD_W/2, level1Positions[i].y, 1)
+    // Position children for each C-Level
+    let nextX = 0
+    sortedCLevel.forEach((cLevel) => {
+      const children = getChildren(cLevel.id)
+      if (children.length > 0) {
+        const subtreeWidth = positionSubtree(cLevel.id, nextX, level1Y + V_GAP)
+        
+        // Reposition C-Level user to be centered over their subtree
+        const cLevelPos = nodePositions.get(cLevel.id)
+        if (cLevelPos) {
+          const newX = nextX + (subtreeWidth - CARD_W) / 2
+          const node = nodeList.find(n => n.id === cLevel.id)
+          if (node) {
+            node.position = { x: newX, y: level1Y }
+            nodePositions.set(cLevel.id, { x: newX, y: level1Y })
+          }
+        }
+        nextX += subtreeWidth + H_GAP * 2
+      } else {
+        nextX += CARD_W + H_GAP * 2
       }
     })
 
-    // ===== UNPOSITIONED EMPLOYEES (at bottom) =====
+    // Position remaining unpositioned users
     const remaining = users.filter(u => !positioned.has(u.id))
     if (remaining.length > 0) {
-      const bottomY = 600
-      const cols = 10
+      const bottomY = Math.max(...Array.from(nodePositions.values()).map(p => p.y)) + V_GAP * 2
+      const cols = 8
       remaining.forEach((user, i) => {
-        const x = (i % cols) * (CARD_W + H_GAP/2)
-        const y = bottomY + Math.floor(i / cols) * (CARD_H + H_GAP/2)
+        const x = (i % cols) * (CARD_W + H_GAP / 2)
+        const y = bottomY + Math.floor(i / cols) * (CARD_H + H_GAP / 2)
         nodeList.push(createNode(user, x, y))
-        positioned.add(user.id)
+        nodePositions.set(user.id, { x, y })
       })
     }
 
-    console.log('Nodes:', nodeList.length, 'Edges:', edgeList.length)
+    // Recenter company node
+    const allXPositions = Array.from(nodePositions.values()).map(p => p.x)
+    const minX = Math.min(...allXPositions)
+    const maxX = Math.max(...allXPositions)
+    const chartCenterX = (minX + maxX) / 2
+    const companyNode = nodeList.find(n => n.id === 'company')
+    if (companyNode) {
+      companyNode.position = { x: chartCenterX - 80, y: 0 }
+      nodePositions.set('company', { x: chartCenterX - 80, y: 0 })
+    }
+
+    // ===== STEP 2: Create edges AFTER all nodes exist =====
+    const edgeList: Edge[] = []
+    const nodeIds = new Set(nodeList.map(n => n.id))
+
+    // Edge from company to C-Level
+    sortedCLevel.forEach(user => {
+      if (nodeIds.has(user.id)) {
+        edgeList.push({
+          id: `edge-company-${user.id}`,
+          source: 'company',
+          target: user.id,
+          type: 'smoothstep',
+          style: { stroke: '#94A3B8', strokeWidth: 2 },
+        })
+      }
+    })
+
+    // Edges from parent to child based on mappings
+    parentOf.forEach((parentId, childId) => {
+      if (nodeIds.has(parentId) && nodeIds.has(childId)) {
+        const child = users.find(u => u.id === childId)
+        const color = child ? getColor(child.department, child.name).border : '#94A3B8'
+        edgeList.push({
+          id: `edge-${parentId}-${childId}`,
+          source: parentId,
+          target: childId,
+          type: 'smoothstep',
+          style: { stroke: color, strokeWidth: 2 },
+        })
+      }
+    })
+
+    console.log('Created nodes:', nodeList.length, 'Created edges:', edgeList.length)
+    
     setNodes(nodeList)
     setEdges(edgeList)
     
-    setTimeout(() => fitView({ padding: 0.1 }), 200)
+    setTimeout(() => fitView({ padding: 0.15 }), 300)
   }, [users, mappings, fitView])
 
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
