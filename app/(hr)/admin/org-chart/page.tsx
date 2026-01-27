@@ -171,6 +171,15 @@ export default function OrgChartPage() {
     const childrenMap = new Map<string, string[]>()
     const parentMap = new Map<string, string>()
 
+    // Find Hamiz (CEO/root)
+    const hamiz = users.find(u => u.name.toLowerCase().includes('hamiz'))
+    
+    // Find other C-Level executives (visual children of Hamiz, no evaluation mapping needed)
+    const otherCLevel = users.filter(u => 
+      C_LEVEL_EVALUATORS.some(name => u.name.toLowerCase() === name.toLowerCase()) &&
+      !u.name.toLowerCase().includes('hamiz')
+    )
+
     // Build parent/children maps from TEAM_LEAD and C_LEVEL mappings
     mappings
       .filter(m => m.relationshipType === 'TEAM_LEAD' || m.relationshipType === 'C_LEVEL')
@@ -182,12 +191,19 @@ export default function OrgChartPage() {
         }
       })
 
-    // Find root (Hamiz or first C-Level without parent)
-    const cLevelUsers = users.filter(u => 
-      C_LEVEL_EVALUATORS.some(name => u.name.toLowerCase() === name.toLowerCase())
-    )
-    const hamiz = cLevelUsers.find(u => u.name.toLowerCase().includes('hamiz'))
-    const rootUser = hamiz || cLevelUsers[0]
+    // VISUAL ONLY: Add C-Level executives as visual children of Hamiz (no evaluation mapping)
+    if (hamiz) {
+      if (!childrenMap.has(hamiz.id)) childrenMap.set(hamiz.id, [])
+      otherCLevel.forEach(cLevel => {
+        // Only add if not already connected via actual mapping
+        if (!parentMap.has(cLevel.id)) {
+          parentMap.set(cLevel.id, hamiz.id)
+          childrenMap.get(hamiz.id)!.push(cLevel.id)
+        }
+      })
+    }
+
+    const rootUser = hamiz
 
     if (!rootUser) {
       setNodes([])
@@ -206,7 +222,7 @@ export default function OrgChartPage() {
     const inTree = new Set<string>()
 
     // Position nodes recursively
-    function positionNode(user: User, x: number, y: number, parentId?: string) {
+    function positionNode(user: User, x: number, y: number, parentId?: string, isVisualOnly?: boolean) {
       inTree.add(user.id)
       const color = getColor(user.department, user.name)
 
@@ -229,7 +245,12 @@ export default function OrgChartPage() {
           source: parentId,
           target: user.id,
           type: 'smoothstep',
-          style: { stroke: '#94A3B8', strokeWidth: 2 },
+          // Visual-only connections are dashed
+          style: { 
+            stroke: isVisualOnly ? '#CBD5E1' : '#94A3B8', 
+            strokeWidth: 2,
+            strokeDasharray: isVisualOnly ? '5,5' : undefined,
+          },
         })
       }
 
@@ -243,7 +264,11 @@ export default function OrgChartPage() {
           if (childUser) {
             const childWidth = getSubtreeWidth(childId)
             const childX = currentX + childWidth / 2
-            positionNode(childUser, childX, y + 140, user.id)
+            // Check if this is a visual-only connection (C-Level under Hamiz without actual mapping)
+            const isChildVisualOnly = otherCLevel.some(c => c.id === childId) && 
+              !mappings.some(m => m.evaluateeId === childId && m.evaluatorId === user.id && 
+                (m.relationshipType === 'TEAM_LEAD' || m.relationshipType === 'C_LEVEL'))
+            positionNode(childUser, childX, y + 140, user.id, isChildVisualOnly)
             currentX += childWidth + 40
           }
         })
