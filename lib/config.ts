@@ -40,6 +40,7 @@ export const C_LEVEL_EVALUATORS = [
   'Hamiz Awan',
   'Brad Herman',
   'Daniyal Awan',
+  'Richard Reizes',
 ]
 
 // HR evaluators - these people evaluate ALL employees with HR relationship type

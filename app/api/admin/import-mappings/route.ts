@@ -232,9 +232,8 @@ export async function POST(request: NextRequest) {
           await createMapping(rtmName, evaluateeId, 'DIRECT_REPORT')
         }
       }
-
-      // Create self-evaluation mapping
-      await createMapping(evaluateeName, evaluateeId, 'SELF')
+      
+      // Note: Self-evaluations are not created - they are not part of the scoring
     }
 
     // Third pass: HR evaluators evaluate ALL employees

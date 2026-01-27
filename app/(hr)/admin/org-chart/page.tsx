@@ -16,6 +16,7 @@ import {
   MarkerType,
   Panel,
   BackgroundVariant,
+  Position,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { Modal } from '@/components/ui/modal'
@@ -23,7 +24,7 @@ import { PageHeader } from '@/components/layout/page-header'
 import { PageFooter } from '@/components/layout/page-footer'
 import { PageContainer, PageContent } from '@/components/layout/page-container'
 import { RELATIONSHIP_TYPE_LABELS, RelationshipType } from '@/types'
-import { Users, Link2, ChevronRight, X, Edit2, Plus, Trash2 } from 'lucide-react'
+import { Users, Link2, Trash2, ZoomIn, ZoomOut } from 'lucide-react'
 
 interface User {
   id: string
@@ -44,35 +45,70 @@ interface Mapping {
 
 interface EmployeeNodeData {
   user: User
-  mappings: Mapping[]
-  evaluators: Mapping[]
+  isPartner: boolean
+  isLead: boolean
 }
 
-// Custom node component for employees
+// Department colors matching the org chart
+const departmentColors: Record<string, { bg: string; border: string; text: string }> = {
+  'Executive': { bg: '#FEF3C7', border: '#F59E0B', text: '#92400E' },
+  'Technology': { bg: '#FEF3C7', border: '#F59E0B', text: '#92400E' },
+  'Product': { bg: '#CFFAFE', border: '#06B6D4', text: '#155E75' },
+  'Design': { bg: '#DBEAFE', border: '#3B82F6', text: '#1E40AF' },
+  'Quantitative Engineering': { bg: '#FEF3C7', border: '#F59E0B', text: '#92400E' },
+  'Software Engineering': { bg: '#FEF3C7', border: '#F59E0B', text: '#92400E' },
+  'Growth': { bg: '#E9D5FF', border: '#A855F7', text: '#6B21A8' },
+  'Growth and strategy': { bg: '#E9D5FF', border: '#A855F7', text: '#6B21A8' },
+  'Research': { bg: '#E9D5FF', border: '#A855F7', text: '#6B21A8' },
+  'IR': { bg: '#E9D5FF', border: '#A855F7', text: '#6B21A8' },
+  'Operations': { bg: '#D1FAE5', border: '#10B981', text: '#065F46' },
+  'Accounting and Operations': { bg: '#D1FAE5', border: '#10B981', text: '#065F46' },
+  'Human Resources': { bg: '#FCE7F3', border: '#EC4899', text: '#9D174D' },
+  'Operating Partner-Value Creation': { bg: '#FEE2E2', border: '#EF4444', text: '#991B1B' },
+  'Operating Partner-Execution': { bg: '#FEE2E2', border: '#EF4444', text: '#991B1B' },
+  '1to1Plans': { bg: '#D1FAE5', border: '#10B981', text: '#065F46' },
+  'default': { bg: '#F3F4F6', border: '#9CA3AF', text: '#374151' },
+}
+
+function getColors(department: string | null) {
+  if (!department) return departmentColors.default
+  return departmentColors[department] || departmentColors.default
+}
+
+// Custom node component
 function EmployeeNode({ data, selected }: { data: EmployeeNodeData; selected: boolean }) {
-  const { user, mappings, evaluators } = data
+  const { user, isPartner, isLead } = data
+  const colors = getColors(user.department)
   const initials = user.name.split(' ').map(n => n[0]).join('').slice(0, 2)
   
   return (
-    <div className={`px-4 py-3 rounded-xl bg-white dark:bg-gray-800 border-2 transition-all shadow-lg ${
-      selected ? 'border-indigo-500 shadow-indigo-500/20' : 'border-gray-200 dark:border-gray-700'
-    }`}>
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-sm font-semibold">
+    <div 
+      className={`px-4 py-3 rounded-lg border-2 transition-all shadow-md min-w-[160px] ${
+        selected ? 'ring-2 ring-offset-2 ring-indigo-500' : ''
+      }`}
+      style={{ 
+        backgroundColor: colors.bg, 
+        borderColor: colors.border,
+      }}
+    >
+      <div className="flex flex-col items-center text-center">
+        <div 
+          className="w-12 h-12 rounded-full flex items-center justify-center text-white text-sm font-bold mb-2"
+          style={{ backgroundColor: colors.border }}
+        >
           {initials}
         </div>
-        <div>
-          <div className="font-semibold text-gray-900 dark:text-white text-sm">{user.name}</div>
-          <div className="text-xs text-gray-500 dark:text-gray-400">{user.position || user.department || 'Employee'}</div>
+        <div className="font-semibold text-sm" style={{ color: colors.text }}>
+          {user.name}
         </div>
-      </div>
-      <div className="mt-2 flex gap-2 text-xs">
-        <span className="px-2 py-0.5 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded">
-          {evaluators.length} evaluators
-        </span>
-        <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded">
-          {mappings.length} evaluates
-        </span>
+        <div className="text-xs opacity-75 mt-0.5" style={{ color: colors.text }}>
+          {user.position || 'Employee'}
+        </div>
+        {user.department && (
+          <div className="text-xs opacity-60 mt-0.5" style={{ color: colors.text }}>
+            {user.department}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -81,6 +117,9 @@ function EmployeeNode({ data, selected }: { data: EmployeeNodeData; selected: bo
 const nodeTypes = {
   employee: EmployeeNode,
 }
+
+// C-Level people (Partners)
+const C_LEVEL_NAMES = ['Hamiz Awan', 'Brad Herman', 'Daniyal Awan', 'Richard Reizes']
 
 export default function OrgChartPage() {
   const router = useRouter()
@@ -91,7 +130,6 @@ export default function OrgChartPage() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
-  const [viewMode, setViewMode] = useState<'hierarchy' | 'department'>('department')
 
   useEffect(() => { checkAuth() }, [])
 
@@ -118,68 +156,163 @@ export default function OrgChartPage() {
     finally { setLoading(false) }
   }
 
-  // Build graph from data
+  // Build hierarchical graph
   useEffect(() => {
     if (users.length === 0) return
 
-    const nodeMap = new Map<string, Node>()
-    const edgeList: Edge[] = []
+    // Find who reports to whom based on TEAM_LEAD mappings
+    // If A evaluates B as TEAM_LEAD, then B reports to A
+    const reportsTo = new Map<string, string>() // userId -> managerId
+    
+    mappings
+      .filter(m => m.relationshipType === 'TEAM_LEAD' || m.relationshipType === 'C_LEVEL')
+      .forEach(m => {
+        // evaluator is the manager, evaluatee reports to them
+        if (!reportsTo.has(m.evaluateeId)) {
+          reportsTo.set(m.evaluateeId, m.evaluatorId)
+        }
+      })
 
-    // Group users by department for layout
-    const departments = new Map<string, User[]>()
-    users.forEach(user => {
-      const dept = user.department || 'Other'
-      if (!departments.has(dept)) departments.set(dept, [])
-      departments.get(dept)!.push(user)
+    // Build tree structure
+    const children = new Map<string, string[]>() // managerId -> [reportIds]
+    reportsTo.forEach((managerId, userId) => {
+      if (!children.has(managerId)) children.set(managerId, [])
+      children.get(managerId)!.push(userId)
     })
 
-    // Create nodes
-    let xOffset = 0
-    const departmentOrder = Array.from(departments.keys()).sort()
-    
-    departmentOrder.forEach((dept, deptIndex) => {
-      const deptUsers = departments.get(dept)!
-      
-      deptUsers.forEach((user, userIndex) => {
-        const userMappings = mappings.filter(m => m.evaluatorId === user.id)
-        const userEvaluators = mappings.filter(m => m.evaluateeId === user.id)
-        
-        const node: Node = {
-          id: user.id,
+    // Find root nodes (people with no manager or C-Level)
+    const roots: string[] = []
+    users.forEach(u => {
+      const isCLevel = C_LEVEL_NAMES.some(name => 
+        u.name.toLowerCase().includes(name.toLowerCase())
+      )
+      if (isCLevel || !reportsTo.has(u.id)) {
+        // Check if this person is actually a manager (has reports)
+        if (isCLevel || children.has(u.id)) {
+          roots.push(u.id)
+        }
+      }
+    })
+
+    // Position nodes in a tree layout
+    const nodeList: Node[] = []
+    const edgeList: Edge[] = []
+    const positioned = new Set<string>()
+
+    const HORIZONTAL_SPACING = 200
+    const VERTICAL_SPACING = 150
+
+    // Position a subtree
+    function positionSubtree(
+      userId: string, 
+      x: number, 
+      y: number, 
+      level: number
+    ): { width: number; nodes: Node[]; edges: Edge[] } {
+      const user = users.find(u => u.id === userId)
+      if (!user || positioned.has(userId)) {
+        return { width: 0, nodes: [], edges: [] }
+      }
+      positioned.add(userId)
+
+      const childIds = children.get(userId) || []
+      const localNodes: Node[] = []
+      const localEdges: Edge[] = []
+
+      // Position children first to calculate width
+      let childX = x
+      let totalChildWidth = 0
+      const childResults: { width: number; nodes: Node[]; edges: Edge[] }[] = []
+
+      for (const childId of childIds) {
+        const result = positionSubtree(childId, childX, y + VERTICAL_SPACING, level + 1)
+        childResults.push(result)
+        localNodes.push(...result.nodes)
+        localEdges.push(...result.edges)
+        childX += Math.max(result.width, HORIZONTAL_SPACING)
+        totalChildWidth += Math.max(result.width, HORIZONTAL_SPACING)
+      }
+
+      // Center this node above its children
+      const nodeX = childIds.length > 0 
+        ? x + totalChildWidth / 2 - HORIZONTAL_SPACING / 2
+        : x
+
+      const isPartner = C_LEVEL_NAMES.some(name => 
+        user.name.toLowerCase().includes(name.toLowerCase())
+      )
+
+      localNodes.push({
+        id: user.id,
+        type: 'employee',
+        position: { x: nodeX, y },
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+        data: {
+          user,
+          isPartner,
+          isLead: childIds.length > 0,
+        },
+      })
+
+      // Create edges to children
+      for (const childId of childIds) {
+        localEdges.push({
+          id: `${userId}-${childId}`,
+          source: userId,
+          target: childId,
+          type: 'smoothstep',
+          style: { stroke: '#94A3B8', strokeWidth: 2 },
+          markerEnd: { type: MarkerType.ArrowClosed, color: '#94A3B8', width: 15, height: 15 },
+        })
+      }
+
+      return {
+        width: Math.max(totalChildWidth, HORIZONTAL_SPACING),
+        nodes: localNodes,
+        edges: localEdges,
+      }
+    }
+
+    // Position all root trees
+    let currentX = 0
+    for (const rootId of roots) {
+      const result = positionSubtree(rootId, currentX, 0, 0)
+      nodeList.push(...result.nodes)
+      edgeList.push(...result.edges)
+      currentX += result.width + HORIZONTAL_SPACING
+    }
+
+    // Add remaining users (those without any hierarchy connection)
+    let orphanX = currentX + HORIZONTAL_SPACING
+    let orphanY = 0
+    const orphansPerRow = 5
+    let orphanCount = 0
+
+    users.forEach(u => {
+      if (!positioned.has(u.id)) {
+        nodeList.push({
+          id: u.id,
           type: 'employee',
           position: { 
-            x: deptIndex * 350, 
-            y: userIndex * 120 
+            x: orphanX + (orphanCount % orphansPerRow) * HORIZONTAL_SPACING, 
+            y: orphanY + Math.floor(orphanCount / orphansPerRow) * VERTICAL_SPACING 
           },
+          sourcePosition: Position.Bottom,
+          targetPosition: Position.Top,
           data: {
-            user,
-            mappings: userMappings,
-            evaluators: userEvaluators,
+            user: u,
+            isPartner: false,
+            isLead: false,
           },
-        }
-        nodeMap.set(user.id, node)
-      })
+        })
+        orphanCount++
+      }
     })
 
-    // Create edges for TEAM_LEAD relationships (shows reporting structure)
-    const teamLeadMappings = mappings.filter(m => m.relationshipType === 'TEAM_LEAD')
-    teamLeadMappings.forEach(mapping => {
-      edgeList.push({
-        id: `${mapping.evaluatorId}-${mapping.evaluateeId}`,
-        source: mapping.evaluatorId,
-        target: mapping.evaluateeId,
-        type: 'smoothstep',
-        animated: false,
-        style: { stroke: '#6366f1', strokeWidth: 2 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#6366f1' },
-        label: 'reports to',
-        labelStyle: { fontSize: 10, fill: '#6366f1' },
-      })
-    })
-
-    setNodes(Array.from(nodeMap.values()))
+    setNodes(nodeList)
     setEdges(edgeList)
-  }, [users, mappings, viewMode])
+  }, [users, mappings])
 
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
     const userData = node.data as unknown as EmployeeNodeData
@@ -227,20 +360,10 @@ export default function OrgChartPage() {
             <h1 className="text-2xl font-bold text-foreground">Organization Chart</h1>
             <p className="text-muted mt-1">{users.length} employees • Click on a node to view details</p>
           </div>
-          <div className="flex gap-2">
-            <select
-              value={viewMode}
-              onChange={(e) => setViewMode(e.target.value as 'hierarchy' | 'department')}
-              className="px-4 py-2 bg-surface border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-            >
-              <option value="department">Group by Department</option>
-              <option value="hierarchy">Reporting Hierarchy</option>
-            </select>
-          </div>
         </div>
 
         {/* React Flow Canvas */}
-        <div className="h-[calc(100vh-250px)] min-h-[500px] bg-surface rounded-xl border border-border overflow-hidden">
+        <div className="h-[calc(100vh-220px)] min-h-[600px] bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 rounded-xl border border-border overflow-hidden">
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -249,19 +372,24 @@ export default function OrgChartPage() {
             onNodeClick={onNodeClick}
             nodeTypes={nodeTypes}
             fitView
-            fitViewOptions={{ padding: 0.2 }}
+            fitViewOptions={{ padding: 0.3 }}
             minZoom={0.1}
             maxZoom={2}
+            defaultEdgeOptions={{
+              type: 'smoothstep',
+            }}
           >
-            <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
-            <Controls />
+            <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#CBD5E1" />
+            <Controls showInteractive={false} />
             <Panel position="top-left" className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-3 border border-gray-200 dark:border-gray-700">
-              <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">Legend</div>
-              <div className="flex flex-col gap-1 text-xs">
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-0.5 bg-indigo-500"></div>
-                  <span className="text-gray-600 dark:text-gray-300">Reports to (Team Lead)</span>
-                </div>
+              <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Departments</div>
+              <div className="grid grid-cols-2 gap-1 text-xs">
+                {Object.entries(departmentColors).slice(0, 8).map(([dept, colors]) => (
+                  <div key={dept} className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded" style={{ backgroundColor: colors.bg, border: `1px solid ${colors.border}` }} />
+                    <span className="text-gray-600 dark:text-gray-400 truncate">{dept}</span>
+                  </div>
+                ))}
               </div>
             </Panel>
           </ReactFlow>
@@ -281,7 +409,10 @@ export default function OrgChartPage() {
           <div className="space-y-6">
             {/* Employee Info */}
             <div className="flex items-center gap-4 p-4 bg-surface rounded-xl">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xl font-semibold">
+              <div 
+                className="w-16 h-16 rounded-full flex items-center justify-center text-white text-xl font-semibold"
+                style={{ backgroundColor: getColors(selectedUser.department).border }}
+              >
                 {selectedUser.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
               </div>
               <div>
@@ -304,7 +435,10 @@ export default function OrgChartPage() {
                   selectedUserMappings.evaluators.map(mapping => (
                     <div key={mapping.id} className="flex items-center justify-between p-3 bg-surface rounded-lg">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-medium">
+                        <div 
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium"
+                          style={{ backgroundColor: getColors(mapping.evaluator.department).border }}
+                        >
                           {mapping.evaluator.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                         </div>
                         <div>
@@ -342,7 +476,10 @@ export default function OrgChartPage() {
                   selectedUserMappings.evaluates.map(mapping => (
                     <div key={mapping.id} className="flex items-center justify-between p-3 bg-surface rounded-lg">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center text-white text-xs font-medium">
+                        <div 
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium"
+                          style={{ backgroundColor: getColors(mapping.evaluatee.department).border }}
+                        >
                           {mapping.evaluatee.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                         </div>
                         <div>
