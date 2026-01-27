@@ -1,0 +1,179 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  EMPLOYEE
+  HR
+}
+
+enum RelationshipType {
+  DIRECT_REPORT
+  TEAM_LEAD
+  PEER
+  C_LEVEL
+  HR
+  SELF
+}
+
+enum QuestionType {
+  RATING
+  TEXT
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model User {
+  id          String   @id @default(cuid())
+  name        String
+  email       String?  @unique
+  department  String?
+  position    String?
+  role        UserRole @default(EMPLOYEE)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  evaluatorMappings   EvaluatorMapping[] @relation("Evaluator")
+  evaluateeMappings   EvaluatorMapping[] @relation("Evaluatee")
+  evaluations         Evaluation[]
+  weightages          Weightage[]
+  reports              Report[]
+  emailQueue           EmailQueue[]
+
+  @@index([name])
+  @@index([email])
+}
+
+model EvaluatorMapping {
+  id               String           @id @default(cuid())
+  evaluatorId      String
+  evaluateeId      String
+  relationshipType RelationshipType
+  isSelfEvaluation Boolean          @default(false) // Flag for self-evaluations
+  createdAt        DateTime         @default(now())
+
+  evaluator User @relation("Evaluator", fields: [evaluatorId], references: [id], onDelete: Cascade)
+  evaluatee User @relation("Evaluatee", fields: [evaluateeId], references: [id], onDelete: Cascade)
+
+  @@unique([evaluatorId, evaluateeId, relationshipType])
+  @@index([evaluatorId])
+  @@index([evaluateeId])
+}
+
+model EvaluationQuestion {
+  id               String           @id @default(cuid())
+  relationshipType RelationshipType
+  questionText     String
+  questionType     QuestionType     @default(RATING)
+  maxRating        Int              @default(4)
+  orderIndex       Int
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  evaluations Evaluation[]
+
+  @@unique([relationshipType, orderIndex])
+  @@index([relationshipType, orderIndex])
+}
+
+model EvaluationPeriod {
+  id        String   @id @default(cuid())
+  name      String   // e.g., "Q3 2025"
+  startDate DateTime
+  endDate   DateTime
+  isActive  Boolean  @default(true)
+  isLocked  Boolean  @default(false) // Prevents new submissions when locked
+  reminderSent Boolean @default(false) // Track if deadline reminder was sent
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reports Report[]
+  evaluations Evaluation[]
+
+  @@index([isActive])
+}
+
+model Evaluation {
+  id           String    @id @default(cuid())
+  evaluatorId String
+  evaluateeId String
+  questionId   String
+  periodId     String
+  ratingValue  Int?
+  textResponse String?
+  submittedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  evaluator User              @relation(fields: [evaluatorId], references: [id], onDelete: Cascade)
+  question  EvaluationQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  period    EvaluationPeriod   @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  @@unique([evaluatorId, evaluateeId, questionId, periodId])
+  @@index([evaluatorId])
+  @@index([evaluateeId])
+  @@index([periodId])
+}
+
+model Weightage {
+  id                 String           @id @default(cuid())
+  employeeId         String
+  relationshipType   RelationshipType
+  weightagePercentage Float
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  employee User @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, relationshipType])
+  @@index([employeeId])
+}
+
+model Report {
+  id           String   @id @default(cuid())
+  employeeId   String
+  periodId     String
+  overallScore Float
+  breakdownJson Json    // Store detailed breakdown as JSON
+  isAnonymized Boolean  @default(false) // Whether evaluator names are hidden
+  generatedAt  DateTime @default(now())
+
+  employee User            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  period   EvaluationPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  emailQueue EmailQueue[]
+
+  @@unique([employeeId, periodId])
+  @@index([employeeId])
+  @@index([periodId])
+}
+
+model EmailQueue {
+  id         String      @id @default(cuid())
+  employeeId String
+  reportId   String?
+  emailStatus EmailStatus @default(PENDING)
+  scheduledAt DateTime?
+  sentAt     DateTime?
+  errorMessage String?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  employee User    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  report   Report? @relation(fields: [reportId], references: [id], onDelete: SetNull)
+
+  @@index([emailStatus])
+  @@index([employeeId])
+}
