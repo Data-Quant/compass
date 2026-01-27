@@ -296,17 +296,37 @@ export default function OrgChartPage() {
     // Build tree from root
     positionNode(rootUser, 600, 160)
 
-    // Add unassigned users at the bottom
+    // Add unassigned users in a neat grid on the right side
     const unassigned = users.filter(u => !inTree.has(u.id))
     if (unassigned.length > 0) {
-      const startX = 100
-      const y = 700
+      const COLS = 4 // 4 columns
+      const CARD_WIDTH = 160
+      const CARD_HEIGHT = 120
+      const GAP_X = 20
+      const GAP_Y = 30
+      const startX = 1400 // Position to the right of the main tree
+      const startY = 100
+      
+      // Add a label node for the unassigned section
+      newNodes.push({
+        id: 'unassigned-label',
+        type: 'company',
+        position: { x: startX + (COLS * (CARD_WIDTH + GAP_X)) / 2 - 100, y: startY - 60 },
+        data: { name: `Unassigned (${unassigned.length})` },
+        draggable: false,
+      })
+      
       unassigned.forEach((user, i) => {
+        const col = i % COLS
+        const row = Math.floor(i / COLS)
+        const x = startX + col * (CARD_WIDTH + GAP_X)
+        const y = startY + row * (CARD_HEIGHT + GAP_Y)
         const color = getColor(user.department, user.name)
+        
         newNodes.push({
           id: user.id,
           type: 'employee',
-          position: { x: startX + i * 180, y },
+          position: { x, y },
           data: { 
             name: user.name, 
             title: user.position || 'Unassigned',
