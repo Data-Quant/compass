@@ -232,6 +232,18 @@ export default function OrgChartPage() {
       return childIds.map(id => users.find(u => u.id === id)).filter(Boolean) as User[]
     }
     
+    // Debug logging
+    if (hamiz) {
+      const hamizChildren = getChildren(hamiz.id)
+      console.log('Hamiz children:', hamizChildren.map(c => c.name))
+      
+      // Check if Muhammad Amir is in children
+      const amir = hamizChildren.find(c => c.name.includes('Muhammad Amir'))
+      if (amir) {
+        console.log('Muhammad Amir children:', getChildren(amir.id).map(c => c.name))
+      }
+    }
+    
     // Users not in the tree
     const inTree = new Set<string>()
     const markInTree = (userId: string) => {
@@ -242,6 +254,7 @@ export default function OrgChartPage() {
     otherCLevel.forEach(u => markInTree(u.id))
     
     const unassigned = users.filter(u => !inTree.has(u.id))
+    console.log('Unassigned count:', unassigned.length, unassigned.map(u => u.name).slice(0, 5))
     
     return { hamiz, otherCLevel, getChildren, parentOf, unassigned }
   }, [users, mappings])
