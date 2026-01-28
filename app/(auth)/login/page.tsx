@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
-import { Search, Users, Shield, ChevronRight, Compass, Sparkles } from 'lucide-react'
+import { Search, Users, Shield, ChevronRight, Compass, Sparkles, Calendar, BarChart3 } from 'lucide-react'
 import { PLATFORM_NAME, COMPANY_NAME, LOGO } from '@/lib/config'
 
 interface User {
@@ -135,8 +135,8 @@ export default function LoginPage() {
               transition={{ delay: 0.3 }}
               className="text-5xl font-bold leading-tight mb-6"
             >
-              <span className="gradient-text">Empower</span> your team's{' '}
-              <span className="text-foreground">growth journey</span>
+              <span className="gradient-text">Your team's</span>{' '}
+              <span className="text-foreground">central hub</span>
             </motion.h1>
             <motion.p 
               initial={{ opacity: 0, y: 20 }}
@@ -144,20 +144,20 @@ export default function LoginPage() {
               transition={{ delay: 0.4 }}
               className="text-lg text-muted leading-relaxed"
             >
-              360° performance evaluations that drive meaningful conversations, 
-              foster development, and celebrate achievements at {COMPANY_NAME}.
+              Performance reviews, leave management, and team collaboration - 
+              everything you need to thrive at {COMPANY_NAME}.
             </motion.p>
 
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.5 }}
-              className="flex gap-8 mt-12"
+              className="flex gap-6 mt-12"
             >
               {[
-                { icon: Users, label: 'Multi-perspective', desc: 'Feedback' },
-                { icon: Shield, label: 'Confidential', desc: 'Reviews' },
-                { icon: Sparkles, label: 'Actionable', desc: 'Insights' },
+                { icon: BarChart3, label: 'Performance', desc: 'Reviews' },
+                { icon: Calendar, label: 'Leave', desc: 'Management' },
+                { icon: Users, label: 'Team', desc: 'Collaboration' },
               ].map((item, i) => (
                 <div key={i} className="flex items-start gap-3">
                   <div className="w-10 h-10 rounded-lg bg-indigo-500/10 dark:bg-indigo-500/20 flex items-center justify-center">
@@ -201,7 +201,7 @@ export default function LoginPage() {
                   <span className="text-xl font-semibold">{PLATFORM_NAME}</span>
                 </div>
               </div>
-              <p className="text-muted text-sm">{COMPANY_NAME} Performance Platform</p>
+              <p className="text-muted text-sm">{COMPANY_NAME} Internal HR Hub</p>
             </div>
 
             <div className="glass rounded-2xl p-8 shadow-premium-lg">

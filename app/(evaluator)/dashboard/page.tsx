@@ -118,6 +118,13 @@ export default function DashboardPage() {
               <span className="text-sm text-muted hidden sm:block">
                 {user?.name}
               </span>
+              <Link
+                href="/leave"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-sm font-medium transition-colors"
+              >
+                <Calendar className="w-4 h-4" />
+                <span className="hidden sm:inline">Leave</span>
+              </Link>
               {user?.role === 'HR' && (
                 <Link
                   href="/admin"

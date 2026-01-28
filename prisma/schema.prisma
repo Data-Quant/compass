@@ -35,6 +35,21 @@ enum EmailStatus {
   FAILED
 }
 
+enum LeaveType {
+  CASUAL
+  SICK
+  ANNUAL
+}
+
+enum LeaveStatus {
+  PENDING           // Waiting for approvals
+  LEAD_APPROVED     // Lead approved, waiting for HR
+  HR_APPROVED       // HR approved, waiting for Lead  
+  APPROVED          // Both approved
+  REJECTED          // Either rejected
+  CANCELLED         // Employee cancelled
+}
+
 model User {
   id          String   @id @default(cuid())
   name        String
@@ -56,6 +71,11 @@ model User {
   weightages          Weightage[]
   reports              Report[]
   emailQueue           EmailQueue[]
+  
+  // Leave management relations
+  leaveRequests       LeaveRequest[]     @relation("LeaveEmployee")
+  leaveCovering       LeaveRequest[]     @relation("LeaveCover")
+  leaveBalances       LeaveBalance[]
 
   @@index([name])
   @@index([email])
@@ -179,5 +199,59 @@ model EmailQueue {
   report   Report? @relation(fields: [reportId], references: [id], onDelete: SetNull)
 
   @@index([emailStatus])
+  @@index([employeeId])
+}
+
+// Leave Management
+model LeaveRequest {
+  id              String      @id @default(cuid())
+  employeeId      String
+  leaveType       LeaveType
+  startDate       DateTime
+  endDate         DateTime
+  reason          String
+  transitionPlan  String      // Tasks and handover details
+  coverPersonId   String?     // Who covers their tasks
+  status          LeaveStatus @default(PENDING)
+  
+  leadApprovedBy  String?     // Lead who approved
+  leadApprovedAt  DateTime?
+  leadComment     String?
+  
+  hrApprovedBy    String?     // HR who approved
+  hrApprovedAt    DateTime?
+  hrComment       String?
+  
+  rejectedBy      String?
+  rejectedAt      DateTime?
+  rejectionReason String?
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  employee        User        @relation("LeaveEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  coverPerson     User?       @relation("LeaveCover", fields: [coverPersonId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId])
+  @@index([status])
+  @@index([startDate, endDate])
+}
+
+model LeaveBalance {
+  id          String   @id @default(cuid())
+  employeeId  String
+  year        Int
+  casualDays  Int      @default(10)
+  sickDays    Int      @default(10)
+  annualDays  Int      @default(15)
+  casualUsed  Int      @default(0)
+  sickUsed    Int      @default(0)
+  annualUsed  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  employee    User     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  
+  @@unique([employeeId, year])
   @@index([employeeId])
 }

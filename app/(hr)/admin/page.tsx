@@ -21,7 +21,8 @@ import {
   CheckCircle2,
   Clock,
   ArrowUpRight,
-  Eye
+  Eye,
+  CalendarDays
 } from 'lucide-react'
 import { PLATFORM_NAME, COMPANY_NAME, LOGO } from '@/lib/config'
 
@@ -32,6 +33,7 @@ const adminTools = [
   { href: '/admin/mappings', icon: Link2, label: 'Mappings', color: 'from-amber-500 to-orange-500' },
   { href: '/admin/settings', icon: Sliders, label: 'Weightages', color: 'from-rose-500 to-red-500' },
   { href: '/admin/analytics', icon: BarChart3, label: 'Analytics', color: 'from-indigo-500 to-violet-500' },
+  { href: '/admin/leave', icon: CalendarDays, label: 'Leave', color: 'from-teal-500 to-emerald-500' },
 ]
 
 export default function AdminDashboardPage() {

@@ -162,3 +162,172 @@ export async function sendBatchEmails(periodId: string) {
 
   return results
 }
+
+// Leave Management Email Functions
+
+export async function sendLeaveRequestNotification(requestId: string) {
+  const leaveRequest = await prisma.leaveRequest.findUnique({
+    where: { id: requestId },
+    include: {
+      employee: true,
+      coverPerson: true,
+    },
+  })
+
+  if (!leaveRequest) {
+    throw new Error('Leave request not found')
+  }
+
+  const employee = leaveRequest.employee
+  const startDate = new Date(leaveRequest.startDate).toLocaleDateString()
+  const endDate = new Date(leaveRequest.endDate).toLocaleDateString()
+  const daysCount = Math.ceil(
+    (new Date(leaveRequest.endDate).getTime() - new Date(leaveRequest.startDate).getTime()) / 
+    (1000 * 60 * 60 * 24)
+  ) + 1
+
+  // Fixed HR email address
+  const HR_EMAIL = 'hr@plutus21.com'
+
+  // Get employee's lead(s)
+  const leadMappings = await prisma.evaluatorMapping.findMany({
+    where: {
+      evaluateeId: employee.id,
+      relationshipType: 'TEAM_LEAD',
+    },
+    include: {
+      evaluator: true,
+    },
+  })
+
+  // Build recipient list: HR inbox + lead emails
+  const leadEmails = leadMappings
+    .filter(m => m.evaluator.email)
+    .map(m => m.evaluator.email!)
+  
+  const recipients = [HR_EMAIL, ...leadEmails]
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #4F46E5;">Leave Request Submitted</h2>
+      
+      <div style="background: #F8FAFC; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>Employee:</strong> ${employee.name}</p>
+        <p><strong>Department:</strong> ${employee.department || 'N/A'}</p>
+        <p><strong>Leave Type:</strong> ${leaveRequest.leaveType}</p>
+        <p><strong>Duration:</strong> ${startDate} to ${endDate} (${daysCount} day${daysCount > 1 ? 's' : ''})</p>
+        <p><strong>Reason:</strong> ${leaveRequest.reason}</p>
+        ${leaveRequest.coverPerson ? `<p><strong>Cover Person:</strong> ${leaveRequest.coverPerson.name}</p>` : ''}
+      </div>
+      
+      <div style="background: #FEF3C7; padding: 15px; border-radius: 8px; margin: 20px 0;">
+        <h4 style="margin: 0 0 10px; color: #92400E;">Transition Plan:</h4>
+        <p style="margin: 0; color: #92400E;">${leaveRequest.transitionPlan}</p>
+      </div>
+      
+      <p style="color: #64748B; font-size: 14px;">
+        Please review this request and take action in the HR Portal.
+      </p>
+    </div>
+  `
+
+  try {
+    const { data, error } = await resend.emails.send({
+      from: process.env.RESEND_FROM_EMAIL || 'HR Portal <noreply@example.com>',
+      to: recipients,
+      subject: `Leave Request: ${employee.name} - ${leaveRequest.leaveType} (${daysCount} days)`,
+      html: htmlContent,
+    })
+
+    if (error) {
+      console.error('Failed to send leave request notification:', error)
+      return { success: false, error: error.message }
+    }
+
+    return { success: true, data }
+  } catch (error: any) {
+    console.error('Failed to send leave request notification:', error)
+    return { success: false, error: error.message }
+  }
+}
+
+export async function sendLeaveApprovalNotification(
+  requestId: string, 
+  status: 'approved' | 'rejected',
+  approverName: string,
+  comment?: string
+) {
+  const leaveRequest = await prisma.leaveRequest.findUnique({
+    where: { id: requestId },
+    include: {
+      employee: true,
+    },
+  })
+
+  if (!leaveRequest || !leaveRequest.employee.email) {
+    return { success: false, message: 'Request or employee email not found' }
+  }
+
+  const employee = leaveRequest.employee
+  const employeeEmail = employee.email as string // Already validated above
+  const startDate = new Date(leaveRequest.startDate).toLocaleDateString()
+  const endDate = new Date(leaveRequest.endDate).toLocaleDateString()
+  const daysCount = Math.ceil(
+    (new Date(leaveRequest.endDate).getTime() - new Date(leaveRequest.startDate).getTime()) / 
+    (1000 * 60 * 60 * 24)
+  ) + 1
+
+  const isApproved = status === 'approved'
+  const statusColor = isApproved ? '#10B981' : '#EF4444'
+  const statusBg = isApproved ? '#D1FAE5' : '#FEE2E2'
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: ${statusColor};">
+        Leave Request ${isApproved ? 'Approved' : 'Rejected'}
+      </h2>
+      
+      <div style="background: ${statusBg}; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p style="font-size: 18px; color: ${statusColor}; margin: 0;">
+          Your ${leaveRequest.leaveType.toLowerCase()} leave request has been <strong>${status}</strong>.
+        </p>
+      </div>
+      
+      <div style="background: #F8FAFC; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>Leave Type:</strong> ${leaveRequest.leaveType}</p>
+        <p><strong>Duration:</strong> ${startDate} to ${endDate} (${daysCount} day${daysCount > 1 ? 's' : ''})</p>
+        <p><strong>${isApproved ? 'Approved' : 'Reviewed'} by:</strong> ${approverName}</p>
+        ${comment ? `<p><strong>Comment:</strong> ${comment}</p>` : ''}
+      </div>
+      
+      ${isApproved ? `
+        <p style="color: #059669;">
+          Your leave balance has been updated. Enjoy your time off!
+        </p>
+      ` : `
+        <p style="color: #64748B;">
+          If you have questions about this decision, please contact HR.
+        </p>
+      `}
+    </div>
+  `
+
+  try {
+    const { data, error } = await resend.emails.send({
+      from: process.env.RESEND_FROM_EMAIL || 'HR Portal <noreply@example.com>',
+      to: employeeEmail,
+      subject: `Leave Request ${isApproved ? 'Approved' : 'Rejected'}: ${leaveRequest.leaveType} (${startDate} - ${endDate})`,
+      html: htmlContent,
+    })
+
+    if (error) {
+      console.error('Failed to send leave approval notification:', error)
+      return { success: false, error: error.message }
+    }
+
+    return { success: true, data }
+  } catch (error: any) {
+    console.error('Failed to send leave approval notification:', error)
+    return { success: false, error: error.message }
+  }
+}
