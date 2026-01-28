@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { RELATIONSHIP_TYPE_LABELS } from '@/types'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
+import { Modal } from '@/components/ui/modal'
 import { 
   Compass, 
   LogOut, 
@@ -16,7 +17,13 @@ import {
   ArrowRight,
   Calendar,
   Target,
-  TrendingUp
+  TrendingUp,
+  AlertCircle,
+  Sun,
+  Thermometer,
+  Palmtree,
+  MessageSquare,
+  XCircle
 } from 'lucide-react'
 import { PLATFORM_NAME, COMPANY_NAME, LOGO } from '@/lib/config'
 
@@ -34,12 +41,43 @@ interface Mapping {
   isComplete: boolean
 }
 
+interface LeaveRequest {
+  id: string
+  leaveType: 'CASUAL' | 'SICK' | 'ANNUAL'
+  startDate: string
+  endDate: string
+  reason: string
+  transitionPlan: string
+  status: string
+  employee: {
+    id: string
+    name: string
+    department: string | null
+    position: string | null
+  }
+  coverPerson?: { id: string; name: string }
+  leadApprovedBy?: string
+  hrApprovedBy?: string
+}
+
+const LEAVE_TYPE_CONFIG = {
+  CASUAL: { icon: Sun, color: 'text-amber-500', bg: 'bg-amber-100 dark:bg-amber-500/20', label: 'Casual' },
+  SICK: { icon: Thermometer, color: 'text-red-500', bg: 'bg-red-100 dark:bg-red-500/20', label: 'Sick' },
+  ANNUAL: { icon: Palmtree, color: 'text-emerald-500', bg: 'bg-emerald-100 dark:bg-emerald-500/20', label: 'Annual' },
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const [mappings, setMappings] = useState<Record<string, Mapping[]>>({})
   const [period, setPeriod] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState<any>(null)
+  
+  // Leave approval state
+  const [pendingLeaves, setPendingLeaves] = useState<LeaveRequest[]>([])
+  const [actionModal, setActionModal] = useState<{ open: boolean; action: 'approve' | 'reject' | null; request: LeaveRequest | null }>({ open: false, action: null, request: null })
+  const [comment, setComment] = useState('')
+  const [processing, setProcessing] = useState(false)
 
   useEffect(() => {
     fetch('/api/auth/session')
@@ -51,6 +89,7 @@ export default function DashboardPage() {
         }
         setUser(data.user)
         loadDashboard()
+        loadPendingLeaves()
       })
       .catch(() => router.push('/login'))
   }, [])
@@ -68,6 +107,54 @@ export default function DashboardPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const loadPendingLeaves = async () => {
+    try {
+      const response = await fetch('/api/leave/requests?forApproval=true')
+      const data = await response.json()
+      setPendingLeaves(data.requests || [])
+    } catch (error) {
+      console.error('Failed to load pending leaves:', error)
+    }
+  }
+
+  const handleLeaveAction = async () => {
+    if (!actionModal.request || !actionModal.action) return
+    
+    setProcessing(true)
+    try {
+      const res = await fetch('/api/leave/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestId: actionModal.request.id,
+          action: actionModal.action,
+          comment: comment || undefined,
+        }),
+      })
+      
+      const data = await res.json()
+      
+      if (data.success) {
+        toast.success(actionModal.action === 'approve' ? 'Leave approved' : 'Leave rejected')
+        setActionModal({ open: false, action: null, request: null })
+        setComment('')
+        loadPendingLeaves()
+      } else {
+        toast.error(data.error || 'Action failed')
+      }
+    } catch {
+      toast.error('Action failed')
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  const getDaysCount = (start: string, end: string) => {
+    const startDate = new Date(start)
+    const endDate = new Date(end)
+    return Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
   }
 
   const handleLogout = async () => {
@@ -236,6 +323,94 @@ export default function DashboardPage() {
           </motion.div>
         )}
 
+        {/* Pending Leave Approvals (for Leads) */}
+        {pendingLeaves.length > 0 && (
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="mb-8"
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <AlertCircle className="w-5 h-5 text-amber-500" />
+              <h2 className="text-lg font-semibold text-foreground">Pending Leave Approvals</h2>
+              <span className="px-2 py-0.5 text-xs bg-amber-100 dark:bg-amber-500/20 text-amber-600 rounded-full">
+                {pendingLeaves.length}
+              </span>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {pendingLeaves.map((request) => {
+                const typeConfig = LEAVE_TYPE_CONFIG[request.leaveType]
+                const TypeIcon = typeConfig.icon
+                const days = getDaysCount(request.startDate, request.endDate)
+                
+                return (
+                  <div 
+                    key={request.id}
+                    className="glass rounded-xl p-4 border border-amber-200 dark:border-amber-500/30"
+                  >
+                    <div className="flex items-start gap-3 mb-3">
+                      <div className={`w-10 h-10 rounded-lg ${typeConfig.bg} flex items-center justify-center flex-shrink-0`}>
+                        <TypeIcon className={`w-5 h-5 ${typeConfig.color}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-medium text-foreground">{request.employee.name}</h4>
+                        <p className="text-sm text-muted">{request.employee.department || 'No dept'}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-1 text-sm mb-3">
+                      <div className="flex justify-between">
+                        <span className="text-muted">Type</span>
+                        <span className="font-medium text-foreground">{typeConfig.label}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted">Duration</span>
+                        <span className="font-medium text-foreground">{days} day{days > 1 ? 's' : ''}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted">Dates</span>
+                        <span className="text-foreground text-xs">
+                          {new Date(request.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {new Date(request.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <p className="text-xs text-muted mb-3 line-clamp-2">{request.reason}</p>
+                    
+                    {/* Approval status */}
+                    <div className="flex gap-2 text-xs mb-3">
+                      <span className={request.hrApprovedBy ? 'text-emerald-600' : 'text-muted'}>
+                        {request.hrApprovedBy ? '✓ HR' : '○ HR'}
+                      </span>
+                      <span className={request.leadApprovedBy ? 'text-emerald-600' : 'text-muted'}>
+                        {request.leadApprovedBy ? '✓ Lead' : '○ Lead'}
+                      </span>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setActionModal({ open: true, action: 'approve', request })}
+                        className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 transition-colors"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        Approve
+                      </button>
+                      <button
+                        onClick={() => setActionModal({ open: true, action: 'reject', request })}
+                        className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors"
+                      >
+                        <XCircle className="w-4 h-4" />
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </motion.div>
+        )}
+
         {/* Evaluations */}
         {relationshipTypes.length === 0 ? (
           <motion.div 
@@ -343,6 +518,68 @@ export default function DashboardPage() {
           <span>Powered by {COMPANY_NAME}</span>
         </motion.div>
       </main>
+
+      {/* Leave Action Modal */}
+      <Modal 
+        isOpen={actionModal.open} 
+        onClose={() => setActionModal({ open: false, action: null, request: null })} 
+        title={actionModal.action === 'approve' ? 'Approve Leave Request' : 'Reject Leave Request'}
+        size="sm"
+      >
+        {actionModal.request && (
+          <div className="space-y-4">
+            <div className="p-3 bg-surface rounded-lg">
+              <p className="font-medium text-foreground">{actionModal.request.employee.name}</p>
+              <p className="text-sm text-muted">
+                {LEAVE_TYPE_CONFIG[actionModal.request.leaveType].label} Leave • 
+                {getDaysCount(actionModal.request.startDate, actionModal.request.endDate)} days
+              </p>
+              <p className="text-sm text-muted mt-1">
+                {new Date(actionModal.request.startDate).toLocaleDateString()} - {new Date(actionModal.request.endDate).toLocaleDateString()}
+              </p>
+            </div>
+            
+            <div className="p-3 bg-amber-50 dark:bg-amber-500/10 rounded-lg">
+              <p className="text-xs text-amber-700 dark:text-amber-400 font-medium mb-1">Transition Plan:</p>
+              <p className="text-sm text-amber-800 dark:text-amber-300">{actionModal.request.transitionPlan}</p>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">
+                <MessageSquare className="w-4 h-4 inline mr-1" />
+                Comment {actionModal.action === 'reject' ? '(recommended)' : '(optional)'}
+              </label>
+              <textarea
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                rows={2}
+                placeholder={actionModal.action === 'reject' ? 'Please provide a reason for rejection...' : 'Add a comment...'}
+                className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setActionModal({ open: false, action: null, request: null })}
+                className="px-4 py-2 border border-border rounded-lg text-foreground hover:bg-surface transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleLeaveAction}
+                disabled={processing}
+                className={`px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 ${
+                  actionModal.action === 'approve' 
+                    ? 'bg-emerald-600 hover:bg-emerald-700' 
+                    : 'bg-red-600 hover:bg-red-700'
+                }`}
+              >
+                {processing ? 'Processing...' : actionModal.action === 'approve' ? 'Approve' : 'Reject'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }
