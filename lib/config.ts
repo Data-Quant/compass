@@ -8,13 +8,13 @@
 export const PLATFORM_NAME = 'Compass'
 
 // Company name
-export const COMPANY_NAME = 'Plutus 21'
+export const COMPANY_NAME = 'Plutus21'
 
 // Full platform title
 export const PLATFORM_TITLE = `${PLATFORM_NAME} | ${COMPANY_NAME} Performance Platform`
 
 // Platform description
-export const PLATFORM_DESCRIPTION = '360-degree performance evaluations that drive meaningful conversations, foster development, and celebrate achievements.'
+export const PLATFORM_DESCRIPTION = 'Your central hub for performance reviews, leave management, and team collaboration at Plutus21.'
 
 // Logo paths
 export const LOGO = {
