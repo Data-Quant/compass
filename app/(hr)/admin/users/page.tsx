@@ -10,7 +10,7 @@ import { PageHeader } from '@/components/layout/page-header'
 import { PageFooter } from '@/components/layout/page-footer'
 import { PageContainer, PageContent } from '@/components/layout/page-container'
 import Papa from 'papaparse'
-import { Users, Plus, Search, Upload, Edit2, Trash2, UserCheck, Shield } from 'lucide-react'
+import { Users, Plus, Search, Upload, Edit2, Trash2, UserCheck, Shield, Key, Eye, EyeOff } from 'lucide-react'
 
 interface User {
   id: string
@@ -41,6 +41,13 @@ export default function UsersPage() {
   const [importData, setImportData] = useState<any[]>([])
   const [importPreview, setImportPreview] = useState<any[]>([])
   const [importing, setImporting] = useState(false)
+  
+  // Password management
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false)
+  const [passwordUser, setPasswordUser] = useState<User | null>(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [settingPassword, setSettingPassword] = useState(false)
 
   useEffect(() => { checkAuth() }, [])
 
@@ -124,6 +131,57 @@ export default function UsersPage() {
       else { toast.success(`Imported ${data.created} users, updated ${data.updated}`); setIsImportModalOpen(false); setImportData([]); setImportPreview([]); loadUsers() }
     } catch (error) { toast.error('Failed to import users') }
     finally { setImporting(false) }
+  }
+
+  const handleOpenPasswordModal = (user: User) => {
+    setPasswordUser(user)
+    setNewPassword('')
+    setShowPassword(false)
+    setIsPasswordModalOpen(true)
+  }
+
+  const handleSetPassword = async () => {
+    if (!passwordUser || !newPassword) return
+    if (newPassword.length < 6) {
+      toast.error('Password must be at least 6 characters')
+      return
+    }
+    setSettingPassword(true)
+    try {
+      const res = await fetch('/api/admin/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: passwordUser.id, password: newPassword }),
+      })
+      const data = await res.json()
+      if (data.error) {
+        toast.error(data.error)
+      } else {
+        toast.success(`Password set for ${passwordUser.name}`)
+        setIsPasswordModalOpen(false)
+      }
+    } catch (error) {
+      toast.error('Failed to set password')
+    } finally {
+      setSettingPassword(false)
+    }
+  }
+
+  const handleRemovePassword = async () => {
+    if (!passwordUser) return
+    if (!confirm(`Remove password for ${passwordUser.name}? They will be able to log in without a password.`)) return
+    try {
+      const res = await fetch(`/api/admin/password?userId=${passwordUser.id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (data.error) {
+        toast.error(data.error)
+      } else {
+        toast.success('Password removed')
+        setIsPasswordModalOpen(false)
+      }
+    } catch (error) {
+      toast.error('Failed to remove password')
+    }
   }
 
   const departments = [...new Set(users.map(u => u.department).filter(Boolean))]
@@ -222,9 +280,10 @@ export default function UsersPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => handleOpenModal(user)} className="p-2 text-muted hover:text-foreground hover:bg-surface rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
-                        <button onClick={() => { setUserToDelete(user); setIsDeleteDialogOpen(true) }} className="p-2 text-muted hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => handleOpenPasswordModal(user)} title="Set Password" className="p-2 text-muted hover:text-amber-500 hover:bg-amber-500/10 rounded-lg transition-colors"><Key className="w-4 h-4" /></button>
+                        <button onClick={() => handleOpenModal(user)} title="Edit User" className="p-2 text-muted hover:text-foreground hover:bg-surface rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
+                        <button onClick={() => { setUserToDelete(user); setIsDeleteDialogOpen(true) }} title="Delete User" className="p-2 text-muted hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </td>
                   </motion.tr>
@@ -307,6 +366,68 @@ export default function UsersPage() {
       </Modal>
 
       <ConfirmDialog isOpen={isDeleteDialogOpen} onClose={() => setIsDeleteDialogOpen(false)} onConfirm={handleDelete} title="Delete User" message={`Are you sure you want to delete ${userToDelete?.name}?`} confirmText="Delete" variant="danger" />
+
+      {/* Password Modal */}
+      <Modal isOpen={isPasswordModalOpen} onClose={() => setIsPasswordModalOpen(false)} title="Set Password">
+        {passwordUser && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 p-3 bg-surface rounded-lg">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-sm font-medium">
+                {passwordUser.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+              </div>
+              <div>
+                <div className="font-medium text-foreground">{passwordUser.name}</div>
+                <div className="text-sm text-muted">{passwordUser.email || 'No email'}</div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">New Password</label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Enter new password (min 6 characters)"
+                  className="w-full px-4 py-2 bg-surface border border-border rounded-lg text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-indigo-500/50 pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-foreground"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-xs text-muted mt-1">This will set or reset the user's password.</p>
+            </div>
+
+            <div className="flex justify-between pt-4">
+              <button
+                onClick={handleRemovePassword}
+                className="px-4 py-2 text-red-600 hover:bg-red-500/10 rounded-lg transition-colors text-sm"
+              >
+                Remove Password
+              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setIsPasswordModalOpen(false)}
+                  className="px-4 py-2 border border-border rounded-lg hover:bg-surface text-foreground transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSetPassword}
+                  disabled={settingPassword || newPassword.length < 6}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                >
+                  {settingPassword ? 'Setting...' : 'Set Password'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
     </PageContainer>
   )
 }

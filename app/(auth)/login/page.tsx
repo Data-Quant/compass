@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
-import { Search, Users, Shield, ChevronRight, Compass, Sparkles, Calendar, BarChart3 } from 'lucide-react'
+import { Search, Users, Shield, ChevronRight, Compass, Sparkles, Calendar, BarChart3, ArrowLeft, Lock, Eye, EyeOff } from 'lucide-react'
 import { PLATFORM_NAME, COMPANY_NAME, LOGO } from '@/lib/config'
 
 interface User {
@@ -20,8 +20,12 @@ export default function LoginPage() {
   const [users, setUsers] = useState<User[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [loading, setLoading] = useState(true)
-  const [loggingIn, setLoggingIn] = useState<string | null>(null)
+  const [loggingIn, setLoggingIn] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [selectedUser, setSelectedUser] = useState<User | null>(null)
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [needsPassword, setNeedsPassword] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -40,30 +44,51 @@ export default function LoginPage() {
       })
   }, [])
 
-  const handleLogin = async (userId: string) => {
-    const user = users.find((u) => u.id === userId)
-    if (!user) return
+  const handleSelectUser = (user: User) => {
+    setSelectedUser(user)
+    setPassword('')
+    setNeedsPassword(false)
+    // Try logging in without password first
+    attemptLogin(user, '')
+  }
 
-    setLoggingIn(userId)
+  const attemptLogin = async (user: User, pwd: string) => {
+    setLoggingIn(true)
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: user.name }),
+        body: JSON.stringify({ name: user.name, password: pwd || undefined }),
       })
 
       const data = await response.json()
       if (data.success) {
         toast.success(`Welcome back, ${user.name.split(' ')[0]}`)
         router.push('/dashboard')
+      } else if (data.error === 'Password is required') {
+        // User has a password set, show password field
+        setNeedsPassword(true)
       } else {
         toast.error(data.error || 'Login failed')
       }
     } catch (error) {
       toast.error('Login failed')
     } finally {
-      setLoggingIn(null)
+      setLoggingIn(false)
     }
+  }
+
+  const handlePasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (selectedUser && password) {
+      attemptLogin(selectedUser, password)
+    }
+  }
+
+  const handleBack = () => {
+    setSelectedUser(null)
+    setPassword('')
+    setNeedsPassword(false)
   }
 
   const filteredUsers = users.filter((user) =>
@@ -205,85 +230,166 @@ export default function LoginPage() {
             </div>
 
             <div className="glass rounded-2xl p-8 shadow-premium-lg">
-              <div className="mb-8">
-                <h2 className="text-2xl font-semibold text-foreground mb-2">Welcome back</h2>
-                <p className="text-muted">Select your name to continue</p>
-              </div>
-
-              {/* Search */}
-              <div className="relative mb-6">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted" />
-                <input
-                  type="text"
-                  placeholder="Search by name or department..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-12 pr-4 py-3.5 bg-surface border border-border rounded-xl text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
-                />
-              </div>
-
-              {/* Users list */}
-              <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
-                <AnimatePresence mode="popLayout">
-                  {filteredUsers.length === 0 ? (
-                    <motion.div 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="text-center py-12"
+              <AnimatePresence mode="wait">
+                {selectedUser && needsPassword ? (
+                  /* Password Entry Screen */
+                  <motion.div
+                    key="password"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                  >
+                    <button
+                      onClick={handleBack}
+                      className="flex items-center gap-2 text-muted hover:text-foreground mb-6 transition-colors"
                     >
-                      <Users className="w-12 h-12 text-muted/30 mx-auto mb-3" />
-                      <p className="text-muted">No users found</p>
-                    </motion.div>
-                  ) : (
-                    filteredUsers.map((user, index) => (
-                      <motion.button
-                        key={user.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        transition={{ delay: index * 0.03 }}
-                        onClick={() => handleLogin(user.id)}
-                        disabled={loggingIn !== null}
-                        className={`w-full px-4 py-3.5 text-left bg-surface hover:bg-surface-hover rounded-xl transition-all duration-200 border border-border hover:border-indigo-500/30 group ${
-                          loggingIn === user.id ? 'opacity-60' : ''
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-medium text-sm">
-                              {user.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">{user.name}</div>
-                              {user.department && (
-                                <div className="text-sm text-muted">{user.department}</div>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {user.role === 'HR' && (
-                              <span className="px-2 py-1 text-xs bg-purple-500/10 text-purple-600 dark:text-purple-400 rounded-md font-medium">
-                                HR
-                              </span>
-                            )}
-                            {loggingIn === user.id ? (
-                              <div className="w-5 h-5 spinner" />
-                            ) : (
-                              <ChevronRight className="w-5 h-5 text-muted group-hover:text-indigo-500 transition-colors" />
-                            )}
-                          </div>
-                        </div>
-                      </motion.button>
-                    ))
-                  )}
-                </AnimatePresence>
-              </div>
+                      <ArrowLeft className="w-4 h-4" />
+                      <span className="text-sm">Back</span>
+                    </button>
 
-              <div className="mt-6 pt-6 border-t border-border">
-                <p className="text-xs text-center text-muted">
-                  {users.length} team members • {COMPANY_NAME}
-                </p>
-              </div>
+                    <div className="flex items-center gap-4 mb-6">
+                      <div className="w-14 h-14 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-medium text-lg">
+                        {selectedUser.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                      </div>
+                      <div>
+                        <h2 className="text-xl font-semibold text-foreground">{selectedUser.name}</h2>
+                        {selectedUser.department && (
+                          <p className="text-muted">{selectedUser.department}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <form onSubmit={handlePasswordSubmit}>
+                      <div className="mb-6">
+                        <label className="block text-sm font-medium text-foreground mb-2">
+                          <Lock className="w-4 h-4 inline mr-1" />
+                          Password
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showPassword ? 'text' : 'password'}
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder="Enter your password"
+                            autoFocus
+                            className="w-full px-4 py-3.5 bg-surface border border-border rounded-xl text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all pr-12"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-muted hover:text-foreground"
+                          >
+                            {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={loggingIn || !password}
+                        className="w-full py-3.5 rounded-xl gradient-primary text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                      >
+                        {loggingIn ? (
+                          <>
+                            <div className="w-5 h-5 spinner" />
+                            Signing in...
+                          </>
+                        ) : (
+                          'Sign In'
+                        )}
+                      </button>
+                    </form>
+
+                    <p className="text-xs text-center text-muted mt-6">
+                      Forgot your password? Contact HR.
+                    </p>
+                  </motion.div>
+                ) : (
+                  /* User Selection Screen */
+                  <motion.div
+                    key="users"
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                  >
+                    <div className="mb-8">
+                      <h2 className="text-2xl font-semibold text-foreground mb-2">Welcome back</h2>
+                      <p className="text-muted">Select your name to continue</p>
+                    </div>
+
+                    {/* Search */}
+                    <div className="relative mb-6">
+                      <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted" />
+                      <input
+                        type="text"
+                        placeholder="Search by name or department..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full pl-12 pr-4 py-3.5 bg-surface border border-border rounded-xl text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
+                      />
+                    </div>
+
+                    {/* Users list */}
+                    <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+                      <AnimatePresence mode="popLayout">
+                        {filteredUsers.length === 0 ? (
+                          <motion.div 
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            className="text-center py-12"
+                          >
+                            <Users className="w-12 h-12 text-muted/30 mx-auto mb-3" />
+                            <p className="text-muted">No users found</p>
+                          </motion.div>
+                        ) : (
+                          filteredUsers.map((user, index) => (
+                            <motion.button
+                              key={user.id}
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -10 }}
+                              transition={{ delay: index * 0.03 }}
+                              onClick={() => handleSelectUser(user)}
+                              disabled={loggingIn}
+                              className={`w-full px-4 py-3.5 text-left bg-surface hover:bg-surface-hover rounded-xl transition-all duration-200 border border-border hover:border-indigo-500/30 group ${
+                                loggingIn ? 'opacity-60' : ''
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-medium text-sm">
+                                    {user.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                                  </div>
+                                  <div>
+                                    <div className="font-medium text-foreground">{user.name}</div>
+                                    {user.department && (
+                                      <div className="text-sm text-muted">{user.department}</div>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {user.role === 'HR' && (
+                                    <span className="px-2 py-1 text-xs bg-purple-500/10 text-purple-600 dark:text-purple-400 rounded-md font-medium">
+                                      HR
+                                    </span>
+                                  )}
+                                  <ChevronRight className="w-5 h-5 text-muted group-hover:text-indigo-500 transition-colors" />
+                                </div>
+                              </div>
+                            </motion.button>
+                          ))
+                        )}
+                      </AnimatePresence>
+                    </div>
+
+                    <div className="mt-6 pt-6 border-t border-border">
+                      <p className="text-xs text-center text-muted">
+                        {users.length} team members • {COMPANY_NAME}
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* Mobile signature */}

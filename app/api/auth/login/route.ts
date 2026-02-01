@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { cookies } from 'next/headers'
+import bcrypt from 'bcryptjs'
 
 export async function POST(request: NextRequest) {
   try {
-    const { name } = await request.json()
+    const { name, password } = await request.json()
 
     if (!name || typeof name !== 'string') {
       return NextResponse.json(
@@ -28,6 +29,25 @@ export async function POST(request: NextRequest) {
         { error: 'User not found' },
         { status: 404 }
       )
+    }
+
+    // Check if user has a password set
+    if (user.passwordHash) {
+      if (!password) {
+        return NextResponse.json(
+          { error: 'Password is required' },
+          { status: 400 }
+        )
+      }
+      
+      // Verify password
+      const isValid = await bcrypt.compare(password, user.passwordHash)
+      if (!isValid) {
+        return NextResponse.json(
+          { error: 'Invalid password' },
+          { status: 401 }
+        )
+      }
     }
 
     // Set session cookie
