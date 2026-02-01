@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs'
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, password } = await request.json()
+    const { name, password, newPassword, confirmPassword } = await request.json()
 
     if (!name || typeof name !== 'string') {
       return NextResponse.json(
@@ -31,16 +31,36 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if user has a password set
-    if (user.passwordHash) {
+    // First-time setup: user has no password yet
+    if (!user.passwordHash) {
+      const setupPassword = newPassword ?? password
+      const confirm = confirmPassword ?? password
+      if (!setupPassword || setupPassword.length < 6) {
+        return NextResponse.json(
+          { error: 'Password must be at least 6 characters' },
+          { status: 400 }
+        )
+      }
+      if (setupPassword !== confirm) {
+        return NextResponse.json(
+          { error: 'Passwords do not match' },
+          { status: 400 }
+        )
+      }
+      const passwordHash = await bcrypt.hash(setupPassword, 10)
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash },
+      })
+      // Fall through to set session
+    } else {
+      // Sign in: verify existing password
       if (!password) {
         return NextResponse.json(
           { error: 'Password is required' },
           { status: 400 }
         )
       }
-      
-      // Verify password
       const isValid = await bcrypt.compare(password, user.passwordHash)
       if (!isValid) {
         return NextResponse.json(
@@ -78,13 +98,20 @@ export async function GET() {
         department: true,
         position: true,
         role: true,
+        passwordHash: true,
       },
       orderBy: {
         name: 'asc',
       },
     })
 
-    return NextResponse.json({ users })
+    // Don't send passwordHash to client; only whether they have one set
+    const usersWithHasPassword = users.map(({ passwordHash, ...u }) => ({
+      ...u,
+      hasPassword: !!passwordHash,
+    }))
+
+    return NextResponse.json({ users: usersWithHasPassword })
   } catch (error: any) {
     return NextResponse.json(
       { error: error.message || 'Failed to fetch users' },

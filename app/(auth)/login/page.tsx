@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
-import { Search, Users, Shield, ChevronRight, Compass, Sparkles, Calendar, BarChart3, ArrowLeft, Lock, Eye, EyeOff } from 'lucide-react'
+import { Search, Users, ChevronRight, Compass, Calendar, BarChart3, ArrowLeft, Lock, Eye, EyeOff } from 'lucide-react'
 import { PLATFORM_NAME, COMPANY_NAME, LOGO } from '@/lib/config'
 
 interface User {
@@ -14,6 +14,7 @@ interface User {
   department?: string
   position?: string
   role: string
+  hasPassword?: boolean
 }
 
 export default function LoginPage() {
@@ -24,8 +25,9 @@ export default function LoginPage() {
   const [mounted, setMounted] = useState(false)
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [password, setPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [needsPassword, setNeedsPassword] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -47,27 +49,27 @@ export default function LoginPage() {
   const handleSelectUser = (user: User) => {
     setSelectedUser(user)
     setPassword('')
-    setNeedsPassword(false)
-    // Try logging in without password first
-    attemptLogin(user, '')
+    setNewPassword('')
+    setConfirmPassword('')
   }
 
-  const attemptLogin = async (user: User, pwd: string) => {
+  const handleSignIn = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedUser) return
     setLoggingIn(true)
     try {
+      const body = selectedUser.hasPassword
+        ? { name: selectedUser.name, password }
+        : { name: selectedUser.name, newPassword, confirmPassword }
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: user.name, password: pwd || undefined }),
+        body: JSON.stringify(body),
       })
-
       const data = await response.json()
       if (data.success) {
-        toast.success(`Welcome back, ${user.name.split(' ')[0]}`)
+        toast.success(selectedUser.hasPassword ? `Welcome back, ${selectedUser.name.split(' ')[0]}` : `Account set up. Welcome, ${selectedUser.name.split(' ')[0]}!`)
         router.push('/dashboard')
-      } else if (data.error === 'Password is required') {
-        // User has a password set, show password field
-        setNeedsPassword(true)
       } else {
         toast.error(data.error || 'Login failed')
       }
@@ -78,18 +80,16 @@ export default function LoginPage() {
     }
   }
 
-  const handlePasswordSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (selectedUser && password) {
-      attemptLogin(selectedUser, password)
-    }
-  }
-
   const handleBack = () => {
     setSelectedUser(null)
     setPassword('')
-    setNeedsPassword(false)
+    setNewPassword('')
+    setConfirmPassword('')
   }
+
+  const isSetup = selectedUser && !selectedUser.hasPassword
+  const canSubmitSignIn = selectedUser?.hasPassword && password.length > 0
+  const canSubmitSetup = selectedUser && !selectedUser.hasPassword && newPassword.length >= 6 && newPassword === confirmPassword
 
   const filteredUsers = users.filter((user) =>
     user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -231,10 +231,10 @@ export default function LoginPage() {
 
             <div className="glass rounded-2xl p-8 shadow-premium-lg">
               <AnimatePresence mode="wait">
-                {selectedUser && needsPassword ? (
-                  /* Password Entry Screen */
+                {selectedUser ? (
+                  /* Sign in / Set up password */
                   <motion.div
-                    key="password"
+                    key="signin"
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -20 }}
@@ -259,50 +259,98 @@ export default function LoginPage() {
                       </div>
                     </div>
 
-                    <form onSubmit={handlePasswordSubmit}>
-                      <div className="mb-6">
-                        <label className="block text-sm font-medium text-foreground mb-2">
-                          <Lock className="w-4 h-4 inline mr-1" />
-                          Password
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={showPassword ? 'text' : 'password'}
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="Enter your password"
-                            autoFocus
-                            className="w-full px-4 py-3.5 bg-surface border border-border rounded-xl text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all pr-12"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-4 top-1/2 -translate-y-1/2 text-muted hover:text-foreground"
-                          >
-                            {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                          </button>
+                    <form onSubmit={handleSignIn}>
+                      {isSetup ? (
+                        /* First time: set up password */
+                        <>
+                          <p className="text-sm text-muted mb-4">Set up your password to sign in.</p>
+                          <div className="mb-4">
+                            <label className="block text-sm font-medium text-foreground mb-2">
+                              <Lock className="w-4 h-4 inline mr-1" />
+                              New password
+                            </label>
+                            <div className="relative">
+                              <input
+                                type={showPassword ? 'text' : 'password'}
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)}
+                                placeholder="At least 6 characters"
+                                autoFocus
+                                className="w-full px-4 py-3.5 bg-surface border border-border rounded-xl text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all pr-12"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="absolute right-4 top-1/2 -translate-y-1/2 text-muted hover:text-foreground"
+                              >
+                                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                              </button>
+                            </div>
+                          </div>
+                          <div className="mb-6">
+                            <label className="block text-sm font-medium text-foreground mb-2">Confirm password</label>
+                            <input
+                              type={showPassword ? 'text' : 'password'}
+                              value={confirmPassword}
+                              onChange={(e) => setConfirmPassword(e.target.value)}
+                              placeholder="Re-enter password"
+                              className="w-full px-4 py-3.5 bg-surface border border-border rounded-xl text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
+                            />
+                            {confirmPassword && newPassword !== confirmPassword && (
+                              <p className="text-xs text-red-500 mt-1">Passwords do not match</p>
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        /* Returning: enter password */
+                        <div className="mb-6">
+                          <label className="block text-sm font-medium text-foreground mb-2">
+                            <Lock className="w-4 h-4 inline mr-1" />
+                            Password
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showPassword ? 'text' : 'password'}
+                              value={password}
+                              onChange={(e) => setPassword(e.target.value)}
+                              placeholder="Enter your password"
+                              autoFocus
+                              className="w-full px-4 py-3.5 bg-surface border border-border rounded-xl text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all pr-12"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowPassword(!showPassword)}
+                              className="absolute right-4 top-1/2 -translate-y-1/2 text-muted hover:text-foreground"
+                            >
+                              {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                            </button>
+                          </div>
                         </div>
-                      </div>
+                      )}
 
                       <button
                         type="submit"
-                        disabled={loggingIn || !password}
+                        disabled={loggingIn || (isSetup ? !canSubmitSetup : !canSubmitSignIn)}
                         className="w-full py-3.5 rounded-xl gradient-primary text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
                       >
                         {loggingIn ? (
                           <>
                             <div className="w-5 h-5 spinner" />
-                            Signing in...
+                            {isSetup ? 'Setting up...' : 'Signing in...'}
                           </>
+                        ) : isSetup ? (
+                          'Set password & sign in'
                         ) : (
                           'Sign In'
                         )}
                       </button>
                     </form>
 
-                    <p className="text-xs text-center text-muted mt-6">
-                      Forgot your password? Contact HR.
-                    </p>
+                    {!isSetup && (
+                      <p className="text-xs text-center text-muted mt-6">
+                        Forgot your password? Contact HR.
+                      </p>
+                    )}
                   </motion.div>
                 ) : (
                   /* User Selection Screen */
