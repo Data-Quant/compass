@@ -186,8 +186,9 @@ export async function sendLeaveRequestNotification(requestId: string) {
     (1000 * 60 * 60 * 24)
   ) + 1
 
-  // Fixed HR email address
+  // Fixed email addresses
   const HR_EMAIL = 'hr@plutus21.com'
+  const EXECUTION_EMAIL = 'execution@plutus21.com'
 
   // Get employee's lead(s)
   const leadMappings = await prisma.evaluatorMapping.findMany({
@@ -200,12 +201,25 @@ export async function sendLeaveRequestNotification(requestId: string) {
     },
   })
 
-  // Build recipient list: HR inbox + lead emails
   const leadEmails = leadMappings
     .filter(m => m.evaluator.email)
     .map(m => m.evaluator.email!)
-  
-  const recipients = [HR_EMAIL, ...leadEmails]
+
+  // Optional additional recipients (notification only, not approval)
+  let additionalEmails: string[] = []
+  const additionalIds = leaveRequest.additionalNotifyIds as string[] | null
+  if (additionalIds && Array.isArray(additionalIds) && additionalIds.length > 0) {
+    const additionalUsers = await prisma.user.findMany({
+      where: { id: { in: additionalIds } },
+      select: { email: true },
+    })
+    additionalEmails = additionalUsers
+      .filter(u => u.email)
+      .map(u => u.email!)
+  }
+
+  // Build recipient list: HR + Execution + leads + optional additional (deduplicated)
+  const recipients = [...new Set([HR_EMAIL, EXECUTION_EMAIL, ...leadEmails, ...additionalEmails])]
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">

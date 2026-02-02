@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
     
     const body = await request.json()
     
-    const { leaveType, startDate, endDate, reason, transitionPlan, coverPersonId } = body
+    const { leaveType, startDate, endDate, reason, transitionPlan, coverPersonId, additionalNotifyIds } = body
     
     // Validate required fields
     if (!leaveType || !startDate || !endDate || !reason || !transitionPlan) {
@@ -126,6 +126,11 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
     
+    // Validate additionalNotifyIds are valid user IDs (optional)
+    const validNotifyIds = Array.isArray(additionalNotifyIds)
+      ? additionalNotifyIds.filter((id: unknown) => typeof id === 'string' && id.length > 0).slice(0, 20)
+      : []
+
     // Create the leave request
     const leaveRequest = await prisma.leaveRequest.create({
       data: {
@@ -136,6 +141,7 @@ export async function POST(request: NextRequest) {
         reason,
         transitionPlan,
         coverPersonId: coverPersonId || null,
+        ...(validNotifyIds.length > 0 && { additionalNotifyIds: validNotifyIds }),
         status: 'PENDING',
       },
       include: {

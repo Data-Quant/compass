@@ -113,6 +113,7 @@ export default function LeavePage() {
     reason: '',
     transitionPlan: '',
     coverPersonId: '',
+    additionalNotifyIds: [] as string[],
   })
 
   useEffect(() => {
@@ -259,7 +260,10 @@ export default function LeavePage() {
       const res = await fetch('/api/leave/requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          additionalNotifyIds: formData.additionalNotifyIds,
+        }),
       })
       
       const data = await res.json()
@@ -275,6 +279,7 @@ export default function LeavePage() {
           reason: '',
           transitionPlan: '',
           coverPersonId: '',
+          additionalNotifyIds: [],
         })
         loadData()
         loadCalendarEvents()
@@ -791,6 +796,39 @@ export default function LeavePage() {
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Additional notify (email only, not approval) */}
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">
+              Notify additional team members
+              <span className="text-muted font-normal ml-1">(optional)</span>
+            </label>
+            <p className="text-xs text-muted mb-2">
+              These people will receive an email notification. Approval still goes to your lead and HR only.
+            </p>
+            <div className="max-h-32 overflow-y-auto border border-border rounded-lg p-2 bg-surface space-y-1.5">
+              {users.filter(u => u.id !== user?.id).map((u) => (
+                <label key={u.id} className="flex items-center gap-2 cursor-pointer hover:bg-surface-hover rounded px-2 py-1.5">
+                  <input
+                    type="checkbox"
+                    checked={formData.additionalNotifyIds.includes(u.id)}
+                    onChange={(e) => {
+                      const ids = e.target.checked
+                        ? [...formData.additionalNotifyIds, u.id]
+                        : formData.additionalNotifyIds.filter(id => id !== u.id)
+                      setFormData({ ...formData, additionalNotifyIds: ids })
+                    }}
+                    className="rounded border-border"
+                  />
+                  <span className="text-sm text-foreground">{u.name}</span>
+                  {u.department && <span className="text-xs text-muted">({u.department})</span>}
+                </label>
+              ))}
+              {users.filter(u => u.id !== user?.id).length === 0 && (
+                <p className="text-xs text-muted py-2">No other team members</p>
+              )}
+            </div>
           </div>
 
           {/* Submit */}

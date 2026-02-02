@@ -213,6 +213,7 @@ model LeaveRequest {
   reason          String
   transitionPlan  String      // Tasks and handover details
   coverPersonId   String?     // Who covers their tasks
+  additionalNotifyIds Json?   // Array of user IDs to CC on email (notification only, not approval)
   status          LeaveStatus @default(PENDING)
   
   leadApprovedBy  String?     // Lead who approved
@@ -243,8 +244,8 @@ model LeaveBalance {
   employeeId  String
   year        Int
   casualDays  Int      @default(10)
-  sickDays    Int      @default(10)
-  annualDays  Int      @default(15)
+  sickDays    Int      @default(6)
+  annualDays  Int      @default(14)
   casualUsed  Int      @default(0)
   sickUsed    Int      @default(0)
   annualUsed  Int      @default(0)
