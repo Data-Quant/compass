@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+import { getSession } from '@/lib/auth'
 
 // Save chart positions
 export async function POST(request: NextRequest) {
   try {
+    const user = await getSession()
+    if (!user || user.role !== 'HR') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const { positions } = await request.json()
     
     if (!positions || !Array.isArray(positions)) {
@@ -30,6 +36,11 @@ export async function POST(request: NextRequest) {
 // Reset all chart positions
 export async function DELETE() {
   try {
+    const user = await getSession()
+    if (!user || user.role !== 'HR') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     await prisma.user.updateMany({
       data: { chartX: null, chartY: null },
     })

@@ -1,12 +1,16 @@
 import { SessionOptions } from 'iron-session'
 
+if (!process.env.SESSION_SECRET) {
+  throw new Error('SESSION_SECRET environment variable is required')
+}
+
 export interface SessionData {
   userId: string
   passwordVersion: number
 }
 
 export const sessionOptions: SessionOptions = {
-  password: process.env.SESSION_SECRET || 'fallback-secret-change-me-in-production-32chars!!',
+  password: process.env.SESSION_SECRET,
   cookieName: 'pe_session',
   cookieOptions: {
     httpOnly: true,
