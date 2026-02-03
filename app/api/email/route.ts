@@ -46,9 +46,10 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to process email action:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to process email action' },
+      { error: 'Failed to process email action' },
       { status: 500 }
     )
   }
@@ -93,9 +94,10 @@ export async function GET(request: NextRequest) {
     })
 
     return NextResponse.json({ queueEntries })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to fetch email queue:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch email queue' },
+      { error: 'Failed to fetch email queue' },
       { status: 500 }
     )
   }

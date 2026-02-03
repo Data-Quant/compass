@@ -1,10 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { cookies } from 'next/headers'
+import { setSession } from '@/lib/auth'
+import { checkRateLimit } from '@/lib/rate-limit'
 import bcrypt from 'bcryptjs'
 
 export async function POST(request: NextRequest) {
   try {
+    const ip = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown'
+    const { allowed } = checkRateLimit(ip)
+    if (!allowed) {
+      return NextResponse.json(
+        { error: 'Too many login attempts. Please try again later.' },
+        { status: 429 }
+      )
+    }
+
     const { name, password, newPassword, confirmPassword } = await request.json()
 
     if (!name || typeof name !== 'string') {
@@ -14,11 +24,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Find user by name (case-insensitive, handle variations)
+    // Use exact match instead of fuzzy contains
     const user = await prisma.user.findFirst({
       where: {
         name: {
-          contains: name,
+          equals: name,
           mode: 'insensitive',
         },
       },
@@ -70,19 +80,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Set session cookie
-    const cookieStore = await cookies()
-    cookieStore.set('user_id', user.id, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7, // 7 days
-    })
+    // Set encrypted session cookie
+    await setSession(user.id)
 
-    return NextResponse.json({ success: true, user })
-  } catch (error: any) {
+    // Return safe fields only
+    return NextResponse.json({
+      success: true,
+      user: {
+        name: user.name,
+        department: user.department,
+        position: user.position,
+        role: user.role,
+      },
+    })
+  } catch (error) {
+    console.error('Login error:', error)
     return NextResponse.json(
-      { error: error.message || 'Authentication failed' },
+      { error: 'Authentication failed' },
       { status: 500 }
     )
   }
@@ -92,9 +106,7 @@ export async function GET() {
   try {
     const users = await prisma.user.findMany({
       select: {
-        id: true,
         name: true,
-        email: true,
         department: true,
         position: true,
         role: true,
@@ -112,9 +124,10 @@ export async function GET() {
     }))
 
     return NextResponse.json({ users: usersWithHasPassword })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to fetch users:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch users' },
+      { error: 'Failed to fetch users' },
       { status: 500 }
     )
   }

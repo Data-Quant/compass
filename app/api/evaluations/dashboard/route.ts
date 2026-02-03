@@ -97,9 +97,10 @@ export async function GET(request: NextRequest) {
       totalMappings: mappings.length,
       completedMappings: mappingsWithStatus.filter((m) => m.isComplete).length,
     })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to fetch dashboard data:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch dashboard data' },
+      { error: 'Failed to fetch dashboard data' },
       { status: 500 }
     )
   }

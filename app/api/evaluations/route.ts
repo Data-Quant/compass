@@ -83,15 +83,16 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ success: true, evaluations })
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: 'Invalid request data', details: error.errors },
         { status: 400 }
       )
     }
+    console.error('Failed to submit evaluation:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to submit evaluation' },
+      { error: 'Failed to submit evaluation' },
       { status: 500 }
     )
   }
@@ -106,6 +107,33 @@ export async function PUT(request: NextRequest) {
 
     const body = await request.json()
     const { evaluateeId, periodId, questionId, ratingValue, textResponse } = body
+
+    // Check if period is locked
+    const period = await prisma.evaluationPeriod.findUnique({
+      where: { id: periodId },
+    })
+
+    if (period?.isLocked) {
+      return NextResponse.json(
+        { error: 'This evaluation period is locked. Submissions are no longer accepted.' },
+        { status: 403 }
+      )
+    }
+
+    // Validate that evaluator has permission to evaluate this person
+    const mapping = await prisma.evaluatorMapping.findFirst({
+      where: {
+        evaluatorId: user.id,
+        evaluateeId,
+      },
+    })
+
+    if (!mapping) {
+      return NextResponse.json(
+        { error: 'You are not authorized to evaluate this person' },
+        { status: 403 }
+      )
+    }
 
     // Save as draft (no submittedAt)
     const evaluation = await prisma.evaluation.upsert({
@@ -132,9 +160,10 @@ export async function PUT(request: NextRequest) {
     })
 
     return NextResponse.json({ success: true, evaluation })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to save draft:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to save draft' },
+      { error: 'Failed to save draft' },
       { status: 500 }
     )
   }

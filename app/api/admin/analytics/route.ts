@@ -170,9 +170,10 @@ export async function GET(request: NextRequest) {
       topPerformers,
       bottomPerformers,
     })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to fetch analytics:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch analytics' },
+      { error: 'Failed to fetch analytics' },
       { status: 500 }
     )
   }

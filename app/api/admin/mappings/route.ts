@@ -35,9 +35,10 @@ export async function GET(request: NextRequest) {
     })
 
     return NextResponse.json({ mappings })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to fetch mappings:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch mappings' },
+      { error: 'Failed to fetch mappings' },
       { status: 500 }
     )
   }
@@ -89,9 +90,10 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json({ success: true, mapping })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to create mapping:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to create mapping' },
+      { error: 'Failed to create mapping' },
       { status: 500 }
     )
   }
@@ -117,9 +119,10 @@ export async function DELETE(request: NextRequest) {
     })
 
     return NextResponse.json({ success: true })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to delete mapping:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to delete mapping' },
+      { error: 'Failed to delete mapping' },
       { status: 500 }
     )
   }
@@ -199,15 +202,17 @@ export async function PUT(request: NextRequest) {
         })
 
         results.created++
-      } catch (error: any) {
-        results.errors.push(`Error processing mapping: ${error.message}`)
+      } catch (error) {
+        console.error('Error processing mapping:', error)
+        results.errors.push('Error processing mapping')
       }
     }
 
     return NextResponse.json({ success: true, results })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to import mappings:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to import mappings' },
+      { error: 'Failed to import mappings' },
       { status: 500 }
     )
   }

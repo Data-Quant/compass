@@ -59,9 +59,10 @@ export async function GET(request: NextRequest) {
 
     // Return JSON format (default)
     return NextResponse.json({ success: true, report: detailedReport })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to fetch report:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch report' },
+      { error: 'Failed to fetch report' },
       { status: 500 }
     )
   }
@@ -85,9 +86,10 @@ export async function POST(request: NextRequest) {
 
     const report = await generateDetailedReport(employeeId, periodId)
     return NextResponse.json({ success: true, report })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to generate report:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to generate report' },
+      { error: 'Failed to generate report' },
       { status: 500 }
     )
   }

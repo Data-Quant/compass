@@ -25,9 +25,10 @@ export async function GET(request: NextRequest) {
     })
 
     return NextResponse.json({ weightages })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to fetch weightages:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch weightages' },
+      { error: 'Failed to fetch weightages' },
       { status: 500 }
     )
   }
@@ -81,9 +82,10 @@ export async function POST(request: NextRequest) {
     )
 
     return NextResponse.json({ success: true, weightages: created })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to save weightages:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to save weightages' },
+      { error: 'Failed to save weightages' },
       { status: 500 }
     )
   }

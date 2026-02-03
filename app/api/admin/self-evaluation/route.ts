@@ -116,9 +116,10 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Operation failed:', error)
     return NextResponse.json(
-      { error: error.message || 'Operation failed' },
+      { error: 'Operation failed' },
       { status: 500 }
     )
   }
@@ -150,9 +151,10 @@ export async function GET(request: NextRequest) {
       totalEmployees,
       enabledCount: selfEvaluations.length,
     })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to fetch self-evaluation status:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch self-evaluation status' },
+      { error: 'Failed to fetch self-evaluation status' },
       { status: 500 }
     )
   }

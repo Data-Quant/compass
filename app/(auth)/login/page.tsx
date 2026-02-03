@@ -9,7 +9,6 @@ import { Search, Users, ChevronRight, Compass, Calendar, BarChart3, ArrowLeft, L
 import { PLATFORM_NAME, COMPANY_NAME, LOGO } from '@/lib/config'
 
 interface User {
-  id: string
   name: string
   department?: string
   position?: string
@@ -70,6 +69,8 @@ export default function LoginPage() {
       if (data.success) {
         toast.success(selectedUser.hasPassword ? `Welcome back, ${selectedUser.name.split(' ')[0]}` : `Account set up. Welcome, ${selectedUser.name.split(' ')[0]}!`)
         router.push('/dashboard')
+      } else if (response.status === 429) {
+        toast.error('Too many login attempts. Please try again later.')
       } else {
         toast.error(data.error || 'Login failed')
       }
@@ -392,7 +393,7 @@ export default function LoginPage() {
                         ) : (
                           filteredUsers.map((user, index) => (
                             <motion.button
-                              key={user.id}
+                              key={user.name}
                               initial={{ opacity: 0, y: 10 }}
                               animate={{ opacity: 1, y: 0 }}
                               exit={{ opacity: 0, y: -10 }}

@@ -14,7 +14,12 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const employeeId = searchParams.get('employeeId') || user.id
     const year = parseInt(searchParams.get('year') || new Date().getFullYear().toString())
-    
+
+    // Only allow own balance or HR
+    if (employeeId !== user.id && user.role !== 'HR') {
+      return NextResponse.json({ error: 'Not authorized to view this balance' }, { status: 403 })
+    }
+
     // Get or create balance for the year
     let balance = await prisma.leaveBalance.findUnique({
       where: {
@@ -91,8 +96,8 @@ export async function POST(request: NextRequest) {
         employeeId,
         year,
         casualDays: casualDays ?? 10,
-        sickDays: sickDays ?? 10,
-        annualDays: annualDays ?? 15,
+        sickDays: sickDays ?? 6,
+        annualDays: annualDays ?? 14,
       },
     })
     

@@ -86,9 +86,10 @@ export async function GET() {
       },
       employees: statusData,
     })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to fetch admin data:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch admin data' },
+      { error: 'Failed to fetch admin data' },
       { status: 500 }
     )
   }

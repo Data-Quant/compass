@@ -27,9 +27,10 @@ export async function GET(request: NextRequest) {
         'Content-Disposition': `attachment; filename="evaluation-report-${periodId}.xlsx"`,
       },
     })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to generate spreadsheet:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to generate spreadsheet' },
+      { error: 'Failed to generate spreadsheet' },
       { status: 500 }
     )
   }

@@ -79,9 +79,10 @@ export async function GET(
       questions: questionsWithResponses,
       isSubmitted: evaluations.some((e) => e.submittedAt !== null),
     })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to fetch evaluation data:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch evaluation data' },
+      { error: 'Failed to fetch evaluation data' },
       { status: 500 }
     )
   }

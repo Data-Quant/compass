@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db'
 import { calculateWeightedScore, EvaluationReport } from '@/lib/scoring'
 import { RelationshipType, RELATIONSHIP_TYPE_LABELS, RATING_LABELS } from '@/types'
+import { escapeHtml } from '@/lib/sanitize'
 
 export interface DetailedEvaluationSection {
   relationshipType: RelationshipType
@@ -322,12 +323,12 @@ export function formatReportAsHTML(
         <table>
           <tr>
             <td style="width: 200px;"><strong>Team Member Name:</strong></td>
-            <td>${detailedReport.employeeName}</td>
+            <td>${escapeHtml(detailedReport.employeeName)}</td>
           </tr>
           ${detailedReport.employeeDepartment ? `
           <tr>
             <td><strong>Department:</strong></td>
-            <td>${detailedReport.employeeDepartment}</td>
+            <td>${escapeHtml(detailedReport.employeeDepartment)}</td>
           </tr>
           ` : ''}
         </table>
@@ -360,7 +361,7 @@ export function formatReportAsHTML(
     html += `<h2>${getSectionTitle(type)}</h2>`
 
     for (const section of sections) {
-      html += `<div class="evaluator-name">${getSectionTitle(type)} by ${section.evaluatorName}</div>`
+      html += `<div class="evaluator-name">${getSectionTitle(type)} by ${escapeHtml(section.evaluatorName)}</div>`
 
       // Check if this is a rating-based evaluation
       const hasRatings = section.categories.some((c) => c.rating !== null)
@@ -373,10 +374,10 @@ export function formatReportAsHTML(
         for (const category of section.categories) {
           if (category.rating !== null) {
             html += `<tr>`
-            html += `<td>${category.questionText}</td>`
+            html += `<td>${escapeHtml(category.questionText)}</td>`
             html += `<td>${category.rating.toFixed(2)}</td>`
             if (section.categories.some(c => c.feedback)) {
-              html += `<td>${category.feedback || '—'}</td>`
+              html += `<td>${escapeHtml(category.feedback) || '—'}</td>`
             }
             html += `</tr>`
           }
@@ -397,7 +398,7 @@ export function formatReportAsHTML(
       if (feedbackCategories.length > 0) {
         for (const category of feedbackCategories) {
           if (category.feedback && category.feedback.trim()) {
-            html += `<div class="feedback-item"><strong>${category.questionText}:</strong> ${category.feedback}</div>`
+            html += `<div class="feedback-item"><strong>${escapeHtml(category.questionText)}:</strong> ${escapeHtml(category.feedback)}</div>`
           }
         }
       }

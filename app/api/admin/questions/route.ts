@@ -24,9 +24,10 @@ export async function GET(request: NextRequest) {
     })
 
     return NextResponse.json({ questions })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to fetch questions:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch questions' },
+      { error: 'Failed to fetch questions' },
       { status: 500 }
     )
   }
@@ -68,9 +69,10 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json({ success: true, question })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to create question:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to create question' },
+      { error: 'Failed to create question' },
       { status: 500 }
     )
   }
@@ -104,9 +106,10 @@ export async function PUT(request: NextRequest) {
     })
 
     return NextResponse.json({ success: true, question })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to update question:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to update question' },
+      { error: 'Failed to update question' },
       { status: 500 }
     )
   }
@@ -149,9 +152,10 @@ export async function DELETE(request: NextRequest) {
     })
 
     return NextResponse.json({ success: true })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to delete question:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to delete question' },
+      { error: 'Failed to delete question' },
       { status: 500 }
     )
   }

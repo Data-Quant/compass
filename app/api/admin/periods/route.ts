@@ -23,9 +23,10 @@ export async function GET(request: NextRequest) {
     })
 
     return NextResponse.json({ periods })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to fetch periods:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch periods' },
+      { error: 'Failed to fetch periods' },
       { status: 500 }
     )
   }
@@ -65,9 +66,10 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json({ success: true, period })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to create period:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to create period' },
+      { error: 'Failed to create period' },
       { status: 500 }
     )
   }
@@ -110,9 +112,10 @@ export async function PUT(request: NextRequest) {
     })
 
     return NextResponse.json({ success: true, period })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to update period:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to update period' },
+      { error: 'Failed to update period' },
       { status: 500 }
     )
   }
@@ -155,9 +158,10 @@ export async function DELETE(request: NextRequest) {
     })
 
     return NextResponse.json({ success: true })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to delete period:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to delete period' },
+      { error: 'Failed to delete period' },
       { status: 500 }
     )
   }

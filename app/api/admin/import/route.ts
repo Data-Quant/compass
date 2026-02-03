@@ -26,9 +26,10 @@ export async function POST(request: NextRequest) {
     } else {
       return NextResponse.json({ error: 'Invalid import type' }, { status: 400 })
     }
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Import failed:', error)
     return NextResponse.json(
-      { error: error.message || 'Import failed' },
+      { error: 'Import failed' },
       { status: 500 }
     )
   }
@@ -111,11 +112,12 @@ async function importUsers(data: any[]) {
         },
       })
       results.created++
-    } catch (error: any) {
-      if (error.code === 'P2002') {
+    } catch (error) {
+      console.error(`Row ${rowNum} import error:`, error)
+      if (error instanceof Error && 'code' in error && (error as any).code === 'P2002') {
         results.errors.push(`Row ${rowNum}: Duplicate email`)
       } else {
-        results.errors.push(`Row ${rowNum}: ${error.message}`)
+        results.errors.push(`Row ${rowNum}: Import error`)
       }
     }
   }
@@ -218,8 +220,9 @@ async function importMappings(data: any[]) {
         },
       })
       results.created++
-    } catch (error: any) {
-      results.errors.push(`Row ${rowNum}: ${error.message}`)
+    } catch (error) {
+      console.error(`Row ${rowNum} mapping import error:`, error)
+      results.errors.push(`Row ${rowNum}: Import error`)
     }
   }
 

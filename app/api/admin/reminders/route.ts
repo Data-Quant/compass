@@ -112,9 +112,10 @@ export async function POST(request: NextRequest) {
         }
 
         results.sent++
-      } catch (error: any) {
+      } catch (error) {
         results.failed++
-        results.errors.push(`Failed to send to ${data.evaluator.email}: ${error.message}`)
+        console.error(`Failed to send to ${data.evaluator.email}:`, error)
+        results.errors.push(`Failed to send to ${data.evaluator.email}`)
       }
     }
 
@@ -129,9 +130,10 @@ export async function POST(request: NextRequest) {
       results,
       totalPending: Object.keys(pendingByEvaluator).length,
     })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to send reminders:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to send reminders' },
+      { error: 'Failed to send reminders' },
       { status: 500 }
     )
   }

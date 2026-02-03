@@ -1,6 +1,7 @@
 import { Resend } from 'resend'
 import { prisma } from '@/lib/db'
 import { formatReportAsHTML, generateDetailedReport } from './reports'
+import { escapeHtml } from '@/lib/sanitize'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -224,21 +225,21 @@ export async function sendLeaveRequestNotification(requestId: string) {
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <h2 style="color: #4F46E5;">Leave Request Submitted</h2>
-      
+
       <div style="background: #F8FAFC; padding: 20px; border-radius: 8px; margin: 20px 0;">
-        <p><strong>Employee:</strong> ${employee.name}</p>
-        <p><strong>Department:</strong> ${employee.department || 'N/A'}</p>
-        <p><strong>Leave Type:</strong> ${leaveRequest.leaveType}</p>
+        <p><strong>Employee:</strong> ${escapeHtml(employee.name)}</p>
+        <p><strong>Department:</strong> ${escapeHtml(employee.department) || 'N/A'}</p>
+        <p><strong>Leave Type:</strong> ${escapeHtml(leaveRequest.leaveType)}</p>
         <p><strong>Duration:</strong> ${startDate} to ${endDate} (${daysCount} day${daysCount > 1 ? 's' : ''})</p>
-        <p><strong>Reason:</strong> ${leaveRequest.reason}</p>
-        ${leaveRequest.coverPerson ? `<p><strong>Cover Person:</strong> ${leaveRequest.coverPerson.name}</p>` : ''}
+        <p><strong>Reason:</strong> ${escapeHtml(leaveRequest.reason)}</p>
+        ${leaveRequest.coverPerson ? `<p><strong>Cover Person:</strong> ${escapeHtml(leaveRequest.coverPerson.name)}</p>` : ''}
       </div>
-      
+
       <div style="background: #FEF3C7; padding: 15px; border-radius: 8px; margin: 20px 0;">
         <h4 style="margin: 0 0 10px; color: #92400E;">Transition Plan:</h4>
-        <p style="margin: 0; color: #92400E;">${leaveRequest.transitionPlan}</p>
+        <p style="margin: 0; color: #92400E;">${escapeHtml(leaveRequest.transitionPlan)}</p>
       </div>
-      
+
       <p style="color: #64748B; font-size: 14px;">
         Please review this request and take action in the HR Portal.
       </p>
@@ -310,8 +311,8 @@ export async function sendLeaveApprovalNotification(
       <div style="background: #F8FAFC; padding: 20px; border-radius: 8px; margin: 20px 0;">
         <p><strong>Leave Type:</strong> ${leaveRequest.leaveType}</p>
         <p><strong>Duration:</strong> ${startDate} to ${endDate} (${daysCount} day${daysCount > 1 ? 's' : ''})</p>
-        <p><strong>${isApproved ? 'Approved' : 'Reviewed'} by:</strong> ${approverName}</p>
-        ${comment ? `<p><strong>Comment:</strong> ${comment}</p>` : ''}
+        <p><strong>${isApproved ? 'Approved' : 'Reviewed'} by:</strong> ${escapeHtml(approverName)}</p>
+        ${comment ? `<p><strong>Comment:</strong> ${escapeHtml(comment)}</p>` : ''}
       </div>
       
       ${isApproved ? `

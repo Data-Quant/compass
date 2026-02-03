@@ -109,8 +109,9 @@ export async function POST(request: NextRequest) {
           result.usersCreated++
           userMap.set(normalizedName, newUser.id)
         }
-      } catch (error: any) {
-        result.errors.push(`Error processing user ${name}: ${error.message}`)
+      } catch (error) {
+        console.error(`Error processing user ${name}:`, error)
+        result.errors.push(`Error processing user ${name}`)
       }
     }
 
@@ -259,10 +260,10 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ success: true, result })
-  } catch (error: any) {
-    console.error('Import error:', error)
+  } catch (error) {
+    console.error('Failed to import mappings:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to import mappings' },
+      { error: 'Failed to import mappings' },
       { status: 500 }
     )
   }

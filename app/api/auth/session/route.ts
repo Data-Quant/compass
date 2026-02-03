@@ -8,9 +8,10 @@ export async function GET() {
       return NextResponse.json({ user: null }, { status: 401 })
     }
     return NextResponse.json({ user })
-  } catch (error: any) {
+  } catch (error) {
+    console.error('Failed to get session:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to get session' },
+      { error: 'Failed to get session' },
       { status: 500 }
     )
   }

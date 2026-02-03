@@ -23,6 +23,20 @@ export async function GET(request: NextRequest) {
     if (employeeId === 'me') {
       where.employeeId = user.id
     } else if (employeeId) {
+      // Non-HR users can only see their own requests or team members they lead
+      if (user.role !== 'HR' && employeeId !== user.id) {
+        const leadMappings = await prisma.evaluatorMapping.findMany({
+          where: {
+            evaluatorId: user.id,
+            relationshipType: 'TEAM_LEAD',
+          },
+          select: { evaluateeId: true },
+        })
+        const teamMemberIds = leadMappings.map(m => m.evaluateeId)
+        if (!teamMemberIds.includes(employeeId)) {
+          return NextResponse.json({ error: 'Not authorized to view these requests' }, { status: 403 })
+        }
+      }
       where.employeeId = employeeId
     }
     
