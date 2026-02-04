@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { Resend } from 'resend'
-
-const resend = new Resend(process.env.RESEND_API_KEY)
+import { sendMail } from '@/lib/email'
 
 export async function POST(request: NextRequest) {
   try {
@@ -102,13 +100,12 @@ export async function POST(request: NextRequest) {
           </div>
         `
 
-        if (process.env.RESEND_API_KEY) {
-          await resend.emails.send({
-            from: process.env.RESEND_FROM_EMAIL || 'Performance Portal <noreply@example.com>',
-            to: data.evaluator.email,
-            subject: `Reminder: ${data.pendingEvaluatees.length} Pending Evaluation(s) - ${period.name}`,
-            html: emailContent,
-          })
+        if (process.env.GMAIL_APP_PASSWORD) {
+          await sendMail(
+            data.evaluator.email,
+            `Reminder: ${data.pendingEvaluatees.length} Pending Evaluation(s) - ${period.name}`,
+            emailContent,
+          )
         }
 
         results.sent++

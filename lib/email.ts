@@ -1,9 +1,26 @@
-import { Resend } from 'resend'
+import nodemailer from 'nodemailer'
 import { prisma } from '@/lib/db'
 import { formatReportAsHTML, generateDetailedReport } from './reports'
 import { escapeHtml } from '@/lib/sanitize'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_APP_PASSWORD,
+  },
+})
+
+const FROM_EMAIL = process.env.GMAIL_USER || 'plutuscompass@gmail.com'
+
+export async function sendMail(to: string, subject: string, html: string) {
+  return transporter.sendMail({
+    from: `PE Portal <${FROM_EMAIL}>`,
+    to,
+    subject,
+    html,
+  })
+}
 
 export async function queueEmails(periodId: string) {
   const period = await prisma.evaluationPeriod.findUnique({
@@ -101,23 +118,12 @@ export async function sendEmail(emailQueueId: string) {
       endDate: period.endDate,
     })
 
-    const { data, error } = await resend.emails.send({
-      from: process.env.RESEND_FROM_EMAIL || 'Performance Portal <noreply@example.com>',
+    const info = await transporter.sendMail({
+      from: `PE Portal <${FROM_EMAIL}>`,
       to: employee.email,
       subject: `Performance Evaluation Report - ${period.name}`,
       html: htmlContent,
     })
-
-    if (error) {
-      await prisma.emailQueue.update({
-        where: { id: emailQueueId },
-        data: {
-          emailStatus: 'FAILED',
-          errorMessage: error.message,
-        },
-      })
-      throw error
-    }
 
     await prisma.emailQueue.update({
       where: { id: emailQueueId },
@@ -127,7 +133,7 @@ export async function sendEmail(emailQueueId: string) {
       },
     })
 
-    return { success: true, data }
+    return { success: true, data: { messageId: info.messageId } }
   } catch (error: any) {
     await prisma.emailQueue.update({
       where: { id: emailQueueId },
@@ -247,19 +253,14 @@ export async function sendLeaveRequestNotification(requestId: string) {
   `
 
   try {
-    const { data, error } = await resend.emails.send({
-      from: process.env.RESEND_FROM_EMAIL || 'HR Portal <noreply@example.com>',
-      to: recipients,
+    const info = await transporter.sendMail({
+      from: `PE Portal <${FROM_EMAIL}>`,
+      to: recipients.join(', '),
       subject: `Leave Request: ${employee.name} - ${leaveRequest.leaveType} (${daysCount} days)`,
       html: htmlContent,
     })
 
-    if (error) {
-      console.error('Failed to send leave request notification:', error)
-      return { success: false, error: error.message }
-    }
-
-    return { success: true, data }
+    return { success: true, data: { messageId: info.messageId } }
   } catch (error: any) {
     console.error('Failed to send leave request notification:', error)
     return { success: false, error: error.message }
@@ -328,19 +329,14 @@ export async function sendLeaveApprovalNotification(
   `
 
   try {
-    const { data, error } = await resend.emails.send({
-      from: process.env.RESEND_FROM_EMAIL || 'HR Portal <noreply@example.com>',
+    const info = await transporter.sendMail({
+      from: `PE Portal <${FROM_EMAIL}>`,
       to: employeeEmail,
       subject: `Leave Request ${isApproved ? 'Approved' : 'Rejected'}: ${leaveRequest.leaveType} (${startDate} - ${endDate})`,
       html: htmlContent,
     })
 
-    if (error) {
-      console.error('Failed to send leave approval notification:', error)
-      return { success: false, error: error.message }
-    }
-
-    return { success: true, data }
+    return { success: true, data: { messageId: info.messageId } }
   } catch (error: any) {
     console.error('Failed to send leave approval notification:', error)
     return { success: false, error: error.message }
