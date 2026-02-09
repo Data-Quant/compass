@@ -9,6 +9,7 @@ import { Search, Users, ChevronRight, Compass, Calendar, BarChart3, ArrowLeft, L
 import { PLATFORM_NAME, COMPANY_NAME, LOGO } from '@/lib/config'
 
 interface User {
+  id: string
   name: string
   department?: string
   position?: string
@@ -19,6 +20,7 @@ interface User {
 export default function LoginPage() {
   const [users, setUsers] = useState<User[]>([])
   const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
   const [loading, setLoading] = useState(true)
   const [loggingIn, setLoggingIn] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -28,6 +30,14 @@ export default function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const router = useRouter()
+
+  // Debounce search input to prevent rapid filtering
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm)
+    }, 150)
+    return () => clearTimeout(timer)
+  }, [searchTerm])
 
   useEffect(() => {
     setMounted(true)
@@ -46,6 +56,8 @@ export default function LoginPage() {
   }, [])
 
   const handleSelectUser = (user: User) => {
+    // Prevent rapid clicks from selecting wrong user
+    if (loggingIn) return
     setSelectedUser(user)
     setPassword('')
     setNewPassword('')
@@ -93,8 +105,8 @@ export default function LoginPage() {
   const canSubmitSetup = selectedUser && !selectedUser.hasPassword && newPassword.length >= 6 && newPassword === confirmPassword
 
   const filteredUsers = users.filter((user) =>
-    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.department?.toLowerCase().includes(searchTerm.toLowerCase())
+    user.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+    user.department?.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
   )
 
   if (!mounted || loading) {
@@ -393,7 +405,7 @@ export default function LoginPage() {
                         ) : (
                           filteredUsers.map((user, index) => (
                             <motion.button
-                              key={user.name}
+                              key={user.id}
                               initial={{ opacity: 0, y: 10 }}
                               animate={{ opacity: 1, y: 0 }}
                               exit={{ opacity: 0, y: -10 }}
