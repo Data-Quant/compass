@@ -259,6 +259,31 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Fourth pass: Create DEPT mappings (Hamiz evaluates departments)
+    // Find Hamiz user for DEPT evaluations
+    const hamizName = C_LEVEL_EVALUATORS.find(n => normalizeName(n).includes('hamiz'))
+    if (hamizName) {
+      const hamizNormalized = normalizeName(hamizName)
+      const hamizId = userMap.get(hamizNormalized)
+
+      if (hamizId) {
+        for (const row of rows) {
+          if (!row.Name || row.Name.trim() === '') continue
+          
+          // Check if this employee has a Dept score in the CSV
+          const deptScore = row['Dept']?.trim()
+          if (deptScore && deptScore !== '' && !isNaN(parseFloat(deptScore))) {
+            const evaluateeNormalized = normalizeName(row.Name.trim())
+            const evaluateeId = userMap.get(evaluateeNormalized)
+            
+            if (evaluateeId && evaluateeId !== hamizId) {
+              await createMapping(hamizName, evaluateeId, 'DEPT')
+            }
+          }
+        }
+      }
+    }
+
     return NextResponse.json({ success: true, result })
   } catch (error) {
     console.error('Failed to import mappings:', error)

@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db'
-import { RelationshipType } from '@/types'
-import { calculateRedistributedWeights, DEFAULT_WEIGHTS } from '@/lib/config'
+import { RelationshipType, toCategorySetKey } from '@/types'
+import { calculateRedistributedWeights } from '@/lib/config'
 
 export interface ScoreBreakdown {
   relationshipType: RelationshipType
@@ -35,18 +35,48 @@ export async function getAvailableEvaluatorTypes(employeeId: string): Promise<Re
 }
 
 /**
- * Calculate dynamic weights for an employee based on their available evaluator types
+ * Look up the weight profile for a set of relationship types.
+ * Returns the profile weights if found, null otherwise.
+ */
+export async function getWeightProfileWeights(
+  types: string[]
+): Promise<Record<string, number> | null> {
+  const key = toCategorySetKey(types)
+  if (!key) return null
+
+  const profile = await prisma.weightProfile.findUnique({
+    where: { categorySetKey: key },
+  })
+
+  if (profile) {
+    return profile.weights as Record<string, number>
+  }
+  return null
+}
+
+/**
+ * Calculate dynamic weights for an employee based on their available evaluator types.
+ * 
+ * Priority:
+ * 1. WeightProfile match (category-set based weights from compiled data)
+ * 2. Per-employee custom Weightage overrides
+ * 3. Proportional redistribution of default weights (fallback)
  */
 export async function getDynamicWeights(employeeId: string): Promise<Record<string, number>> {
   const availableTypes = await getAvailableEvaluatorTypes(employeeId)
-  
-  // Check for custom weightages first
+
+  // 1. Try weight profile based on category set
+  const profileWeights = await getWeightProfileWeights(availableTypes)
+  if (profileWeights) {
+    return profileWeights
+  }
+
+  // 2. Check for per-employee custom weightages
   const customWeightages = await prisma.weightage.findMany({
     where: { employeeId },
   })
 
   if (customWeightages.length > 0) {
-    // Use custom weightages
     const weights: Record<string, number> = {}
     customWeightages.forEach(w => {
       weights[w.relationshipType] = w.weightagePercentage
@@ -54,7 +84,7 @@ export async function getDynamicWeights(employeeId: string): Promise<Record<stri
     return weights
   }
 
-  // Calculate redistributed weights based on available types
+  // 3. Fallback: redistribute defaults proportionally
   return calculateRedistributedWeights(availableTypes)
 }
 
@@ -105,7 +135,7 @@ export async function calculateWeightedScore(
 
   // Group evaluations by relationship type
   const evaluationsByType = new Map<RelationshipType, typeof evaluations>()
-  
+
   for (const evaluation of evaluations) {
     const type = evaluatorToTypeMap.get(evaluation.evaluatorId)
     if (type) {
@@ -116,17 +146,35 @@ export async function calculateWeightedScore(
     }
   }
 
-  // Get the types that actually have evaluations submitted
-  const typesWithEvaluations = Array.from(evaluationsByType.keys())
+  // Determine weights: use the employee's full mapped category set (not just types with evaluations)
+  // This ensures consistent weighting even if some evaluators haven't submitted yet
+  const allMappedTypes = [...new Set(mappings.map(m => m.relationshipType))]
   
-  // Calculate redistributed weights based on types with actual evaluations
-  const dynamicWeights = calculateRedistributedWeights(typesWithEvaluations)
+  // Try weight profile first, then per-employee, then fallback
+  let dynamicWeights = await getWeightProfileWeights(allMappedTypes)
+  
+  if (!dynamicWeights) {
+    // Check per-employee custom weightages
+    const customWeightages = await prisma.weightage.findMany({
+      where: { employeeId },
+    })
+    if (customWeightages.length > 0) {
+      dynamicWeights = {}
+      customWeightages.forEach(w => {
+        dynamicWeights![w.relationshipType] = w.weightagePercentage
+      })
+    } else {
+      // Fallback to redistributed defaults based on types with actual evaluations
+      const typesWithEvaluations = Array.from(evaluationsByType.keys())
+      dynamicWeights = calculateRedistributedWeights(typesWithEvaluations)
+    }
+  }
 
   // Calculate breakdown for each relationship type
   const breakdown: ScoreBreakdown[] = []
 
   for (const [relationshipType, typeEvaluations] of evaluationsByType.entries()) {
-    // Get the dynamic weight for this type
+    // Get the weight for this type
     const weight = dynamicWeights[relationshipType] ?? 0
 
     // Skip SELF evaluations in weighted calculation
@@ -144,18 +192,16 @@ export async function calculateWeightedScore(
     }
 
     // Calculate average rating for this relationship type
-    // When multiple evaluators of same type, average their scores
     let totalRating = 0
     let totalMaxRating = 0
-    let evaluatorIds = new Set<string>()
+    const evaluatorIds = new Set<string>()
 
-    for (const [questionId, questionEvals] of questionGroups.entries()) {
+    for (const [, questionEvals] of questionGroups.entries()) {
       const question = questionEvals[0].question
       if (question.questionType === 'RATING') {
-        // Average scores from multiple evaluators for each question
         let questionTotal = 0
         let questionCount = 0
-        
+
         for (const evaluation of questionEvals) {
           if (evaluation.ratingValue !== null) {
             questionTotal += evaluation.ratingValue
@@ -163,7 +209,7 @@ export async function calculateWeightedScore(
             evaluatorIds.add(evaluation.evaluatorId)
           }
         }
-        
+
         if (questionCount > 0) {
           totalRating += questionTotal / questionCount
           totalMaxRating += question.maxRating
@@ -187,8 +233,9 @@ export async function calculateWeightedScore(
     })
   }
 
-  // Calculate overall score
-  // Sum of all weighted contributions divided by 4 (max score) times 100 for percentage
+  // Overall score = sum of weighted contributions (each is normalizedScore * weight)
+  // normalizedScore is on 0-4 scale, weight is a fraction summing to 1.0
+  // So totalWeightedContribution is on 0-4 scale, divide by 4 for percentage
   const totalWeightedContribution = breakdown.reduce(
     (sum, b) => sum + b.weightedContribution,
     0

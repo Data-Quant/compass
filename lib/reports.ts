@@ -216,6 +216,7 @@ export function formatReportAsHTML(
       DIRECT_REPORT: 'Evaluation as a Reporting Team Member',
       PEER: 'Evaluation as a Peer',
       HR: 'HR Evaluation',
+      DEPT: 'Department Evaluation',
       SELF: 'Self-Evaluation',
     }
     return labels[type]
@@ -351,7 +352,7 @@ export function formatReportAsHTML(
   }
 
   // Render each evaluation section
-  const sectionOrder: RelationshipType[] = ['C_LEVEL', 'TEAM_LEAD', 'DIRECT_REPORT', 'PEER', 'HR']
+  const sectionOrder: RelationshipType[] = ['C_LEVEL', 'TEAM_LEAD', 'DIRECT_REPORT', 'PEER', 'HR', 'DEPT']
   
   for (const type of sectionOrder) {
     const sections = sectionsByType.get(type)
@@ -421,6 +422,7 @@ export function formatReportAsHTML(
     PEER: 'Evaluation As Peer',
     HR: 'HR Evaluation',
     C_LEVEL: 'CEO Evaluation',
+    DEPT: 'Department Evaluation',
     SELF: 'Self-Evaluation',
   }
 
@@ -440,11 +442,12 @@ export function formatReportAsHTML(
   } else {
     // Show default weightages even if no evaluations
     const defaultWeightages: Record<RelationshipType, number> = {
-      C_LEVEL: 0.40,
-      TEAM_LEAD: 0.30,
+      C_LEVEL: 0.35,
+      TEAM_LEAD: 0.20,
       DIRECT_REPORT: 0.15,
       PEER: 0.10,
       HR: 0.05,
+      DEPT: 0.15,
       SELF: 0.00,
     }
     
@@ -538,11 +541,12 @@ export async function generateHRSpreadsheet(periodId: string): Promise<Buffer> {
     { header: 'Department', key: 'department', width: 15 },
     { header: 'Position', key: 'position', width: 20 },
     { header: 'Overall Score %', key: 'overallScore', width: 15 },
-    { header: 'C-Level Score', key: 'cLevel', width: 15 },
+    { header: 'C-Level (Hamiz) Score', key: 'cLevel', width: 15 },
     { header: 'Team Lead Score', key: 'teamLead', width: 15 },
     { header: 'Direct Report Score', key: 'directReport', width: 15 },
     { header: 'Peer Score', key: 'peer', width: 15 },
     { header: 'HR Score', key: 'hr', width: 15 },
+    { header: 'Department (Hamiz) Score', key: 'dept', width: 18 },
   ]
 
   // Add data rows
@@ -553,6 +557,7 @@ export async function generateHRSpreadsheet(periodId: string): Promise<Buffer> {
     const directReportBreakdown = report.breakdown.find((b) => b.relationshipType === 'DIRECT_REPORT')
     const peerBreakdown = report.breakdown.find((b) => b.relationshipType === 'PEER')
     const hrBreakdown = report.breakdown.find((b) => b.relationshipType === 'HR')
+    const deptBreakdown = report.breakdown.find((b) => b.relationshipType === 'DEPT')
 
     worksheet.addRow({
       name: report.employeeName,
@@ -564,6 +569,7 @@ export async function generateHRSpreadsheet(periodId: string): Promise<Buffer> {
       directReport: directReportBreakdown ? directReportBreakdown.normalizedScore.toFixed(2) : 'N/A',
       peer: peerBreakdown ? peerBreakdown.normalizedScore.toFixed(2) : 'N/A',
       hr: hrBreakdown ? hrBreakdown.normalizedScore.toFixed(2) : 'N/A',
+      dept: deptBreakdown ? deptBreakdown.normalizedScore.toFixed(2) : 'N/A',
     })
   }
 

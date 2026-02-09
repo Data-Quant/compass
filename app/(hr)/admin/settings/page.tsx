@@ -4,19 +4,38 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
-import { RelationshipType, DEFAULT_WEIGHTAGES, RELATIONSHIP_TYPE_LABELS } from '@/types'
+import { RelationshipType, RELATIONSHIP_TYPE_LABELS } from '@/types'
 import { PageHeader } from '@/components/layout/page-header'
 import { PageFooter } from '@/components/layout/page-footer'
 import { PageContainer, PageContent } from '@/components/layout/page-container'
-import { Sliders, Save, RotateCcw, Info } from 'lucide-react'
+import { Sliders, Save, Upload, Trash2, Info, Users, ChevronDown, ChevronUp } from 'lucide-react'
+
+interface WeightProfile {
+  id: string
+  categorySetKey: string
+  displayName: string
+  weights: Record<string, number>
+  employeeCount: number
+}
+
+const ALL_TYPES: RelationshipType[] = ['TEAM_LEAD', 'DIRECT_REPORT', 'PEER', 'HR', 'C_LEVEL', 'DEPT']
+const TYPE_SHORT_LABELS: Record<string, string> = {
+  TEAM_LEAD: 'Lead',
+  DIRECT_REPORT: 'Direct Reports',
+  PEER: 'Peer',
+  HR: 'HR',
+  C_LEVEL: 'Hamiz',
+  DEPT: 'Dept',
+}
 
 export default function SettingsPage() {
   const router = useRouter()
-  const [employees, setEmployees] = useState<any[]>([])
-  const [selectedEmployee, setSelectedEmployee] = useState<string>('')
-  const [weightages, setWeightages] = useState<Record<RelationshipType, number>>(DEFAULT_WEIGHTAGES)
+  const [profiles, setProfiles] = useState<WeightProfile[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [seeding, setSeeding] = useState(false)
+  const [expandedProfile, setExpandedProfile] = useState<string | null>(null)
+  const [editWeights, setEditWeights] = useState<Record<string, number>>({})
 
   useEffect(() => {
     fetch('/api/auth/session')
@@ -26,100 +45,113 @@ export default function SettingsPage() {
           router.push('/login')
           return
         }
-        loadEmployees()
+        loadProfiles()
       })
       .catch(() => router.push('/login'))
   }, [])
 
-  useEffect(() => {
-    if (selectedEmployee) {
-      loadWeightages(selectedEmployee)
-    }
-  }, [selectedEmployee])
-
-  const loadEmployees = async () => {
+  const loadProfiles = async () => {
     try {
-      const response = await fetch('/api/auth/login')
+      const response = await fetch('/api/admin/weight-profiles')
       const data = await response.json()
-      const employeeList = data.users?.filter((u: any) => u.role === 'EMPLOYEE') || []
-      setEmployees(employeeList)
-      if (employeeList.length > 0) {
-        setSelectedEmployee(employeeList[0].id)
-      }
-    } catch (error) {
-      toast.error('Failed to load employees')
+      setProfiles(data.profiles || [])
+    } catch {
+      toast.error('Failed to load weight profiles')
     } finally {
       setLoading(false)
     }
   }
 
-  const loadWeightages = async (employeeId: string) => {
+  const handleSeedProfiles = async () => {
+    setSeeding(true)
     try {
-      const response = await fetch(`/api/admin/weightages?employeeId=${employeeId}`)
+      const response = await fetch('/api/admin/import-compiled', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'seed-profiles' }),
+      })
       const data = await response.json()
-      if (data.weightages && data.weightages.length > 0) {
-        const customWeightages: Record<RelationshipType, number> = { ...DEFAULT_WEIGHTAGES }
-        data.weightages.forEach((w: { relationshipType: RelationshipType; weightagePercentage: number }) => {
-          customWeightages[w.relationshipType] = w.weightagePercentage
-        })
-        setWeightages(customWeightages)
+      if (data.success) {
+        toast.success(data.message)
+        loadProfiles()
       } else {
-        setWeightages(DEFAULT_WEIGHTAGES)
+        toast.error(data.error || 'Failed to seed profiles')
       }
-    } catch (error) {
-      toast.error('Failed to load weightages')
-      setWeightages(DEFAULT_WEIGHTAGES)
+    } catch {
+      toast.error('Failed to seed weight profiles')
+    } finally {
+      setSeeding(false)
     }
   }
 
-  const handleWeightageChange = (type: RelationshipType, value: number) => {
-    setWeightages((prev) => ({
+  const handleExpand = (profile: WeightProfile) => {
+    if (expandedProfile === profile.id) {
+      setExpandedProfile(null)
+    } else {
+      setExpandedProfile(profile.id)
+      setEditWeights({ ...profile.weights })
+    }
+  }
+
+  const handleWeightChange = (type: string, value: number) => {
+    setEditWeights(prev => ({
       ...prev,
       [type]: Math.max(0, Math.min(100, value)) / 100,
     }))
   }
 
-  const calculateTotal = () => {
-    return Object.values(weightages).reduce((sum, w) => sum + w, 0) * 100
+  const getEditTotal = () => {
+    return Object.values(editWeights).reduce((sum, w) => sum + w, 0) * 100
   }
 
-  const handleSave = async () => {
-    const total = calculateTotal()
-    if (Math.abs(total - 100) > 0.01) {
-      toast.error(`Weightages must sum to 100%. Current total: ${total.toFixed(2)}%`)
+  const handleSaveProfile = async (profile: WeightProfile) => {
+    const total = getEditTotal()
+    if (Math.abs(total - 100) > 1) {
+      toast.error(`Weights must sum to 100%. Current: ${total.toFixed(1)}%`)
       return
     }
 
     setSaving(true)
     try {
-      const response = await fetch('/api/admin/weightages', {
+      const types = profile.categorySetKey.split(',')
+      const response = await fetch('/api/admin/weight-profiles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          employeeId: selectedEmployee,
-          weightages: Object.entries(weightages).map(([type, percentage]) => ({
-            relationshipType: type,
-            weightagePercentage: percentage,
-          })),
+          categoryTypes: types,
+          weights: editWeights,
+          displayName: profile.displayName,
         }),
       })
-
       const data = await response.json()
       if (data.success) {
-        toast.success('Weightages saved successfully!')
+        toast.success('Profile saved!')
+        setExpandedProfile(null)
+        loadProfiles()
       } else {
-        toast.error(data.error || 'Failed to save weightages')
+        toast.error(data.error || 'Save failed')
       }
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to save weightages')
+    } catch {
+      toast.error('Failed to save profile')
     } finally {
       setSaving(false)
     }
   }
 
-  const handleReset = () => {
-    setWeightages(DEFAULT_WEIGHTAGES)
-    toast.info('Weightages reset to defaults')
+  const handleDeleteProfile = async (id: string) => {
+    if (!confirm('Delete this weight profile?')) return
+    try {
+      const response = await fetch(`/api/admin/weight-profiles?id=${id}`, { method: 'DELETE' })
+      const data = await response.json()
+      if (data.success) {
+        toast.success('Profile deleted')
+        loadProfiles()
+      } else {
+        toast.error(data.error || 'Delete failed')
+      }
+    } catch {
+      toast.error('Failed to delete profile')
+    }
   }
 
   if (loading) {
@@ -139,134 +171,196 @@ export default function SettingsPage() {
     )
   }
 
-  const total = calculateTotal()
-  const isValid = Math.abs(total - 100) < 0.01
-
   return (
     <PageContainer>
       <PageHeader backHref="/admin" backLabel="Back to Admin" badge="Settings" />
-      
-      <PageContent className="max-w-4xl">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-foreground">Weightage Settings</h1>
-          <p className="text-muted mt-1">Configure custom weightages for performance calculations</p>
+
+      <PageContent className="max-w-6xl">
+        <div className="mb-8 flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Weight Profiles</h1>
+            <p className="text-muted mt-1">
+              Each employee&apos;s weight profile is determined by their set of evaluator categories.
+              Employees with the same evaluator types share the same weights.
+            </p>
+          </div>
+          <button
+            onClick={handleSeedProfiles}
+            disabled={seeding}
+            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors text-sm font-medium"
+          >
+            <Upload className="w-4 h-4" />
+            {seeding ? 'Seeding...' : 'Seed Q4 2025 Profiles'}
+          </button>
         </div>
 
-        {/* Employee Selector */}
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="glass rounded-xl p-6 mb-6"
-        >
-          <label className="block text-sm font-medium text-foreground mb-2">
-            Select Employee
-          </label>
-          <select
-            value={selectedEmployee}
-            onChange={(e) => setSelectedEmployee(e.target.value)}
-            className="w-full px-4 py-3 bg-surface border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+        {profiles.length === 0 ? (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="glass rounded-xl p-12 text-center"
           >
-            {employees.map((emp) => (
-              <option key={emp.id} value={emp.id}>
-                {emp.name} {emp.department ? `(${emp.department})` : ''}
-              </option>
-            ))}
-          </select>
-        </motion.div>
-
-        {/* Weightages */}
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="glass rounded-xl p-6 mb-6"
-        >
-          <div className="flex items-center gap-2 mb-6">
-            <Sliders className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-            <h2 className="text-lg font-semibold text-foreground">Custom Weightages</h2>
-          </div>
-          
-          <p className="text-sm text-muted mb-6">
-            Adjust weightages for this employee. Total must equal 100%.
-          </p>
-
-          <div className="space-y-5">
-            {(Object.keys(weightages) as RelationshipType[]).map((type, index) => (
-              <motion.div 
-                key={type} 
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.05 * index }}
-                className="flex items-center gap-4"
-              >
-                <label className="flex-1 text-sm font-medium text-foreground">
-                  {RELATIONSHIP_TYPE_LABELS[type]}
-                </label>
-                <div className="flex items-center gap-4 flex-1">
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.1"
-                    value={(weightages[type] * 100).toFixed(1)}
-                    onChange={(e) =>
-                      handleWeightageChange(type, parseFloat(e.target.value) || 0)
-                    }
-                    className="w-24 px-3 py-2 bg-surface border border-border rounded-lg text-foreground text-center focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                  />
-                  <span className="text-sm text-muted w-6">%</span>
-                  <div className="flex-1 hidden sm:block">
-                    <div className="w-full bg-surface rounded-full h-2">
-                      <div
-                        className="bg-indigo-600 h-2 rounded-full transition-all"
-                        style={{ width: `${weightages[type] * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-
-          <div className="mt-8 pt-6 border-t border-border">
-            <div className="flex justify-between items-center mb-4">
-              <span className="text-lg font-semibold text-foreground">Total:</span>
-              <span
-                className={`text-2xl font-bold ${
-                  isValid ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
-                }`}
-              >
-                {total.toFixed(2)}%
-              </span>
-            </div>
-            {!isValid && (
-              <p className="text-sm text-red-600 dark:text-red-400 mb-4">
-                Weightages must sum to exactly 100%
-              </p>
-            )}
-          </div>
-
-          <div className="flex gap-4 mt-6">
-            <button
-              onClick={handleSave}
-              disabled={!isValid || saving}
-              className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            <Sliders className="w-12 h-12 text-muted/30 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-foreground mb-2">No Weight Profiles</h3>
+            <p className="text-muted mb-6">
+              Click &quot;Seed Q4 2025 Profiles&quot; to import the 10 weight profiles from the compiled spreadsheet.
+            </p>
+          </motion.div>
+        ) : (
+          <>
+            {/* Weight Profile Table */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="glass rounded-xl overflow-hidden mb-6"
             >
-              <Save className="w-4 h-4" />
-              {saving ? 'Saving...' : 'Save Weightages'}
-            </button>
-            <button
-              onClick={handleReset}
-              className="flex items-center gap-2 px-6 py-2.5 border border-border rounded-lg hover:bg-surface text-foreground transition-colors"
-            >
-              <RotateCcw className="w-4 h-4" />
-              Reset to Defaults
-            </button>
-          </div>
-        </motion.div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-surface/50 border-b border-border">
+                      <th className="text-left px-4 py-3 font-semibold text-foreground">Category Set</th>
+                      {ALL_TYPES.map(type => (
+                        <th key={type} className="text-center px-3 py-3 font-semibold text-foreground whitespace-nowrap">
+                          {TYPE_SHORT_LABELS[type]}
+                        </th>
+                      ))}
+                      <th className="text-center px-3 py-3 font-semibold text-foreground">Total</th>
+                      <th className="text-center px-3 py-3 font-semibold text-foreground">
+                        <Users className="w-4 h-4 inline" />
+                      </th>
+                      <th className="text-center px-3 py-3 font-semibold text-foreground">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {profiles.map((profile, idx) => {
+                      const total = Object.values(profile.weights).reduce((s, w) => s + w, 0) * 100
+                      const isExpanded = expandedProfile === profile.id
+
+                      return (
+                        <motion.tr
+                          key={profile.id}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ delay: idx * 0.03 }}
+                          className="border-b border-border/50 hover:bg-surface/30 transition-colors"
+                        >
+                          {isExpanded ? (
+                            <td colSpan={ALL_TYPES.length + 4} className="px-4 py-4">
+                              <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-medium text-foreground">{profile.displayName}</span>
+                                  <button
+                                    onClick={() => setExpandedProfile(null)}
+                                    className="text-muted hover:text-foreground"
+                                  >
+                                    <ChevronUp className="w-4 h-4" />
+                                  </button>
+                                </div>
+
+                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                                  {ALL_TYPES.map(type => {
+                                    const isInSet = profile.categorySetKey.includes(type)
+                                    return (
+                                      <div key={type} className="space-y-1">
+                                        <label className="text-xs font-medium text-muted">
+                                          {TYPE_SHORT_LABELS[type]}
+                                        </label>
+                                        <div className="flex items-center gap-1">
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            max="100"
+                                            step="1"
+                                            disabled={!isInSet}
+                                            value={isInSet ? ((editWeights[type] || 0) * 100).toFixed(0) : ''}
+                                            onChange={(e) => handleWeightChange(type, parseFloat(e.target.value) || 0)}
+                                            className="w-full px-2 py-1.5 bg-surface border border-border rounded-lg text-foreground text-center text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 disabled:opacity-30 disabled:cursor-not-allowed"
+                                          />
+                                          <span className="text-xs text-muted">%</span>
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+
+                                <div className="flex items-center justify-between pt-2">
+                                  <span className={`text-sm font-medium ${
+                                    Math.abs(getEditTotal() - 100) < 1 
+                                      ? 'text-emerald-600 dark:text-emerald-400' 
+                                      : 'text-red-600 dark:text-red-400'
+                                  }`}>
+                                    Total: {getEditTotal().toFixed(1)}%
+                                  </span>
+                                  <button
+                                    onClick={() => handleSaveProfile(profile)}
+                                    disabled={saving || Math.abs(getEditTotal() - 100) > 1}
+                                    className="flex items-center gap-1.5 px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                                  >
+                                    <Save className="w-3.5 h-3.5" />
+                                    {saving ? 'Saving...' : 'Save'}
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                          ) : (
+                            <>
+                              <td className="px-4 py-3 text-foreground font-medium max-w-[280px]">
+                                <span className="truncate block" title={profile.displayName}>
+                                  {profile.displayName}
+                                </span>
+                              </td>
+                              {ALL_TYPES.map(type => {
+                                const w = (profile.weights[type] || 0) as number
+                                return (
+                                  <td key={type} className="text-center px-3 py-3">
+                                    {w > 0 ? (
+                                      <span className="inline-block min-w-[48px] px-2 py-0.5 rounded-md bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 font-medium text-xs">
+                                        {(w * 100).toFixed(0)}%
+                                      </span>
+                                    ) : (
+                                      <span className="text-muted/30">-</span>
+                                    )}
+                                  </td>
+                                )
+                              })}
+                              <td className="text-center px-3 py-3 font-semibold text-emerald-600 dark:text-emerald-400">
+                                {total.toFixed(0)}%
+                              </td>
+                              <td className="text-center px-3 py-3 text-muted">
+                                {profile.employeeCount}
+                              </td>
+                              <td className="text-center px-3 py-3">
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    onClick={() => handleExpand(profile)}
+                                    className="p-1.5 rounded-lg hover:bg-surface text-muted hover:text-foreground transition-colors"
+                                    title="Edit weights"
+                                  >
+                                    <ChevronDown className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteProfile(profile.id)}
+                                    className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted hover:text-red-500 transition-colors"
+                                    title="Delete profile"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </td>
+                            </>
+                          )}
+                        </motion.tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </motion.div>
+          </>
+        )}
 
         {/* Info Box */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
@@ -275,14 +369,13 @@ export default function SettingsPage() {
           <div className="flex items-start gap-3">
             <Info className="w-5 h-5 text-indigo-600 dark:text-indigo-400 flex-shrink-0 mt-0.5" />
             <div>
-              <h3 className="font-semibold text-indigo-900 dark:text-indigo-200 mb-2">Default Weightages</h3>
+              <h3 className="font-semibold text-indigo-900 dark:text-indigo-200 mb-2">How Weight Profiles Work</h3>
               <ul className="text-sm text-indigo-800 dark:text-indigo-300 space-y-1">
-                <li>• C-Level Executive: 40%</li>
-                <li>• Team Lead/Manager: 30%</li>
-                <li>• Direct Reports: 15%</li>
-                <li>• Peer: 10%</li>
-                <li>• HR: 5%</li>
-                <li>• Self-Evaluation: 0%</li>
+                <li>Each employee is assigned evaluators from various categories (Lead, Direct Reports, Peer, HR, Hamiz, Dept).</li>
+                <li>The specific combination of categories determines which weight profile applies.</li>
+                <li>For example, an employee with only &quot;Direct Reports&quot; and &quot;HR&quot; evaluators gets 95%/5% weighting.</li>
+                <li>&quot;Hamiz&quot; refers to C-Level evaluation. &quot;Dept&quot; is the whole-department evaluation done by Hamiz.</li>
+                <li>Weights must sum to 100% for each profile. Click the expand arrow to edit.</li>
               </ul>
             </div>
           </div>

@@ -51,17 +51,20 @@ export const HR_EVALUATORS = [
 ]
 
 // Default weights for each relationship type (must sum to 1.0)
-export const DEFAULT_WEIGHTS = {
-  C_LEVEL: 0.40,
-  TEAM_LEAD: 0.30,
+export const DEFAULT_WEIGHTS: Record<string, number> = {
+  C_LEVEL: 0.35,
+  TEAM_LEAD: 0.20,
   DIRECT_REPORT: 0.15,
   PEER: 0.10,
   HR: 0.05,
+  DEPT: 0.15,
   SELF: 0.00, // Self-evaluation is qualitative only
 }
 
 /**
  * Calculate redistributed weights when some categories are missing
+ * and no weight profile exists for this category set.
+ * Falls back to proportional redistribution of DEFAULT_WEIGHTS.
  * @param availableTypes - Array of relationship types that have evaluators
  * @returns Record of relationship types to their adjusted weights
  */

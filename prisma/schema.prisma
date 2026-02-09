@@ -21,6 +21,7 @@ enum RelationshipType {
   PEER
   C_LEVEL
   HR
+  DEPT
   SELF
 }
 
@@ -257,4 +258,14 @@ model LeaveBalance {
   
   @@unique([employeeId, year])
   @@index([employeeId])
+}
+
+// Weight profiles - maps a set of evaluator categories to their weights
+model WeightProfile {
+  id              String   @id @default(cuid())
+  categorySetKey  String   @unique  // Sorted relationship types joined, e.g. "C_LEVEL,DEPT,DIRECT_REPORT,HR,PEER,TEAM_LEAD"
+  displayName     String             // Human-readable, e.g. "Team Lead, Direct Reports, Peer, HR, Hamiz, Dept"
+  weights         Json               // { "TEAM_LEAD": 0.15, "DIRECT_REPORT": 0.25, ... }
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
