@@ -400,29 +400,16 @@ export default function LoginPage() {
 
                     {/* Users list */}
                     <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
-                      <AnimatePresence mode="popLayout">
                         {filteredUsers.length === 0 ? (
-                          <motion.div 
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            className="text-center py-12"
-                          >
+                          <div className="text-center py-12">
                             <Users className="w-12 h-12 text-muted/30 mx-auto mb-3" />
                             <p className="text-muted">No users found</p>
-                          </motion.div>
+                          </div>
                         ) : (
-                          filteredUsers.map((user, index) => (
-                            <motion.button
+                          filteredUsers.map((user) => (
+                            <button
                               key={user.id}
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: -10 }}
-                              transition={{ delay: index * 0.03 }}
-                              onClick={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                handleSelectUser(user.id)
-                              }}
+                              onClick={() => handleSelectUser(user.id)}
                               disabled={loggingIn}
                               className={`w-full px-4 py-3.5 text-left bg-surface hover:bg-surface-hover rounded-xl transition-all duration-200 border border-border hover:border-indigo-500/30 group ${
                                 loggingIn ? 'opacity-60' : ''
@@ -448,11 +435,10 @@ export default function LoginPage() {
                                   )}
                                   <ChevronRight className="w-5 h-5 text-muted group-hover:text-indigo-500 transition-colors" />
                                 </div>
-                              </div>
-                            </motion.button>
+                                </div>
+                            </button>
                           ))
                         )}
-                      </AnimatePresence>
                     </div>
 
                     <div className="mt-6 pt-6 border-t border-border">
