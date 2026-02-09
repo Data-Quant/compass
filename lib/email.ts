@@ -15,7 +15,7 @@ const FROM_EMAIL = process.env.GMAIL_USER || 'plutuscompass@gmail.com'
 
 export async function sendMail(to: string, subject: string, html: string) {
   return transporter.sendMail({
-    from: `PE Portal <${FROM_EMAIL}>`,
+    from: `P21 Compass <${FROM_EMAIL}>`,
     to,
     subject,
     html,
@@ -119,7 +119,7 @@ export async function sendEmail(emailQueueId: string) {
     })
 
     const info = await transporter.sendMail({
-      from: `PE Portal <${FROM_EMAIL}>`,
+      from: `P21 Compass <${FROM_EMAIL}>`,
       to: employee.email,
       subject: `Performance Evaluation Report - ${period.name}`,
       html: htmlContent,
@@ -254,7 +254,7 @@ export async function sendLeaveRequestNotification(requestId: string) {
 
   try {
     const info = await transporter.sendMail({
-      from: `PE Portal <${FROM_EMAIL}>`,
+      from: `P21 Compass <${FROM_EMAIL}>`,
       to: recipients.join(', '),
       subject: `Leave Request: ${employee.name} - ${leaveRequest.leaveType} (${daysCount} days)`,
       html: htmlContent,
@@ -330,7 +330,7 @@ export async function sendLeaveApprovalNotification(
 
   try {
     const info = await transporter.sendMail({
-      from: `PE Portal <${FROM_EMAIL}>`,
+      from: `P21 Compass <${FROM_EMAIL}>`,
       to: employeeEmail,
       subject: `Leave Request ${isApproved ? 'Approved' : 'Rejected'}: ${leaveRequest.leaveType} (${startDate} - ${endDate})`,
       html: htmlContent,
