@@ -55,9 +55,17 @@ export default function LoginPage() {
       })
   }, [])
 
-  const handleSelectUser = (user: User) => {
+  const handleSelectUser = (userId: string) => {
     // Prevent rapid clicks from selecting wrong user
     if (loggingIn) return
+    
+    // Find user by ID to avoid closure issues
+    const user = users.find(u => u.id === userId)
+    if (!user) {
+      toast.error('User not found')
+      return
+    }
+    
     setSelectedUser(user)
     setPassword('')
     setNewPassword('')
@@ -410,7 +418,11 @@ export default function LoginPage() {
                               animate={{ opacity: 1, y: 0 }}
                               exit={{ opacity: 0, y: -10 }}
                               transition={{ delay: index * 0.03 }}
-                              onClick={() => handleSelectUser(user)}
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                handleSelectUser(user.id)
+                              }}
                               disabled={loggingIn}
                               className={`w-full px-4 py-3.5 text-left bg-surface hover:bg-surface-hover rounded-xl transition-all duration-200 border border-border hover:border-indigo-500/30 group ${
                                 loggingIn ? 'opacity-60' : ''
