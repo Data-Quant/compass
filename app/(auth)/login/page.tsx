@@ -20,7 +20,6 @@ interface User {
 export default function LoginPage() {
   const [users, setUsers] = useState<User[]>([])
   const [searchTerm, setSearchTerm] = useState('')
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
   const [loading, setLoading] = useState(true)
   const [loggingIn, setLoggingIn] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -30,14 +29,6 @@ export default function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const router = useRouter()
-
-  // Debounce search input to prevent rapid filtering
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchTerm(searchTerm)
-    }, 150)
-    return () => clearTimeout(timer)
-  }, [searchTerm])
 
   useEffect(() => {
     setMounted(true)
@@ -113,8 +104,8 @@ export default function LoginPage() {
   const canSubmitSetup = selectedUser && !selectedUser.hasPassword && newPassword.length >= 6 && newPassword === confirmPassword
 
   const filteredUsers = users.filter((user) =>
-    user.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-    user.department?.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
+    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.department?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   if (!mounted || loading) {
