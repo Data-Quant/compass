@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { Compass, LogOut, ArrowLeft } from 'lucide-react'
+import { LogOut, ArrowLeft } from 'lucide-react'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { PLATFORM_NAME, COMPANY_NAME, LOGO } from '@/lib/config'
 
@@ -39,7 +39,10 @@ export function PageHeader({
               <img src={LOGO.company} alt={COMPANY_NAME} className="h-8 w-auto" />
               <div className="h-6 w-px bg-border hidden sm:block" />
               <div className="hidden sm:flex items-center gap-2">
-                <Compass className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <span className="inline-flex h-4 w-4 items-center justify-center">
+                  <img src={LOGO.platformLight} alt="" aria-hidden="true" className="h-4 w-4 dark:hidden" />
+                  <img src={LOGO.platformDark} alt="" aria-hidden="true" className="hidden h-4 w-4 dark:block" />
+                </span>
                 <span className="text-lg font-semibold text-foreground">{PLATFORM_NAME}</span>
               </div>
               {badge && (

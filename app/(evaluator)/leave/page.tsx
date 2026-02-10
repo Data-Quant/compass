@@ -7,7 +7,6 @@ import { toast } from 'sonner'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { Modal } from '@/components/ui/modal'
 import { 
-  Compass, 
   LogOut, 
   Calendar,
   Plus,
@@ -367,7 +366,10 @@ export default function LeavePage() {
               <div className="flex items-center gap-3">
                 <img src={LOGO.company} alt={COMPANY_NAME} className="h-8 w-auto" />
                 <div className="hidden sm:flex items-center gap-2">
-                  <Compass className="w-5 h-5 text-indigo-600" />
+                  <span className="inline-flex h-5 w-5 items-center justify-center">
+                    <img src={LOGO.platformLight} alt="" aria-hidden="true" className="h-5 w-5 dark:hidden" />
+                    <img src={LOGO.platformDark} alt="" aria-hidden="true" className="hidden h-5 w-5 dark:block" />
+                  </span>
                   <span className="font-semibold text-foreground">{PLATFORM_NAME}</span>
                 </div>
               </div>

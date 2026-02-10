@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
-import { Search, Users, ChevronRight, Compass, Calendar, BarChart3, ArrowLeft, Lock, Eye, EyeOff } from 'lucide-react'
+import { Search, Users, ChevronRight, Calendar, BarChart3, ArrowLeft, Lock, Eye, EyeOff } from 'lucide-react'
 import { PLATFORM_NAME, COMPANY_NAME, LOGO } from '@/lib/config'
 
 interface User {
@@ -159,7 +159,10 @@ export default function LoginPage() {
               <img src={LOGO.company} alt={COMPANY_NAME} className="h-10 w-auto" />
               <div className="h-8 w-px bg-border" />
               <div className="flex items-center gap-2">
-                <Compass className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                <span className="inline-flex h-5 w-5 items-center justify-center">
+                  <img src={LOGO.platformLight} alt="" aria-hidden="true" className="h-5 w-5 dark:hidden" />
+                  <img src={LOGO.platformDark} alt="" aria-hidden="true" className="hidden h-5 w-5 dark:block" />
+                </span>
                 <span className="text-xl font-semibold text-foreground">{PLATFORM_NAME}</span>
               </div>
             </motion.div>
@@ -234,7 +237,10 @@ export default function LoginPage() {
               <div className="flex items-center justify-center gap-3 mb-4">
                 <img src={LOGO.company} alt={COMPANY_NAME} className="h-10 w-auto" />
                 <div className="flex items-center gap-2">
-                  <Compass className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                  <span className="inline-flex h-5 w-5 items-center justify-center">
+                    <img src={LOGO.platformLight} alt="" aria-hidden="true" className="h-5 w-5 dark:hidden" />
+                    <img src={LOGO.platformDark} alt="" aria-hidden="true" className="hidden h-5 w-5 dark:block" />
+                  </span>
                   <span className="text-xl font-semibold">{PLATFORM_NAME}</span>
                 </div>
               </div>
