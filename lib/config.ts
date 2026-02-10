@@ -18,10 +18,9 @@ export const PLATFORM_DESCRIPTION = 'Your central hub for performance reviews, l
 
 // Logo paths
 export const LOGO = {
-  company: '/images/logo.png',
+  company: '/icons/plutus21/plutus-light-32.png',
+  companyDark: '/icons/plutus21/plutus-dark-32.png',
   signature: '/images/signature.png',
-  platformLight: '/icons/plutus21/plutus-light-32.png',
-  platformDark: '/icons/plutus21/plutus-dark-32.png',
 }
 
 // Theme colors (these match the CSS variables)

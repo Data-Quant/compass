@@ -364,12 +364,11 @@ export default function LeavePage() {
                 <ArrowLeft className="w-5 h-5 text-muted" />
               </button>
               <div className="flex items-center gap-3">
-                <img src={LOGO.company} alt={COMPANY_NAME} className="h-8 w-auto" />
-                <div className="hidden sm:flex items-center gap-2">
-                  <span className="inline-flex h-5 w-5 items-center justify-center">
-                    <img src={LOGO.platformLight} alt="" aria-hidden="true" className="h-5 w-5 dark:hidden" />
-                    <img src={LOGO.platformDark} alt="" aria-hidden="true" className="hidden h-5 w-5 dark:block" />
-                  </span>
+                <span className="inline-flex h-8 w-8 items-center justify-center">
+                  <img src={LOGO.company} alt={COMPANY_NAME} className="h-8 w-8 dark:hidden" />
+                  <img src={LOGO.companyDark} alt={COMPANY_NAME} className="hidden h-8 w-8 dark:block" />
+                </span>
+                <div className="hidden sm:flex items-center">
                   <span className="font-semibold text-foreground">{PLATFORM_NAME}</span>
                 </div>
               </div>

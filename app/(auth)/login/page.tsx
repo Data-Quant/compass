@@ -156,13 +156,12 @@ export default function LoginPage() {
               transition={{ delay: 0.2 }}
               className="flex items-center gap-4"
             >
-              <img src={LOGO.company} alt={COMPANY_NAME} className="h-10 w-auto" />
+              <span className="inline-flex h-10 w-10 items-center justify-center">
+                <img src={LOGO.company} alt={COMPANY_NAME} className="h-10 w-10 dark:hidden" />
+                <img src={LOGO.companyDark} alt={COMPANY_NAME} className="hidden h-10 w-10 dark:block" />
+              </span>
               <div className="h-8 w-px bg-border" />
-              <div className="flex items-center gap-2">
-                <span className="inline-flex h-5 w-5 items-center justify-center">
-                  <img src={LOGO.platformLight} alt="" aria-hidden="true" className="h-5 w-5 dark:hidden" />
-                  <img src={LOGO.platformDark} alt="" aria-hidden="true" className="hidden h-5 w-5 dark:block" />
-                </span>
+              <div className="flex items-center">
                 <span className="text-xl font-semibold text-foreground">{PLATFORM_NAME}</span>
               </div>
             </motion.div>
@@ -235,12 +234,11 @@ export default function LoginPage() {
             {/* Mobile branding */}
             <div className="lg:hidden text-center mb-8">
               <div className="flex items-center justify-center gap-3 mb-4">
-                <img src={LOGO.company} alt={COMPANY_NAME} className="h-10 w-auto" />
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex h-5 w-5 items-center justify-center">
-                    <img src={LOGO.platformLight} alt="" aria-hidden="true" className="h-5 w-5 dark:hidden" />
-                    <img src={LOGO.platformDark} alt="" aria-hidden="true" className="hidden h-5 w-5 dark:block" />
-                  </span>
+                <span className="inline-flex h-10 w-10 items-center justify-center">
+                  <img src={LOGO.company} alt={COMPANY_NAME} className="h-10 w-10 dark:hidden" />
+                  <img src={LOGO.companyDark} alt={COMPANY_NAME} className="hidden h-10 w-10 dark:block" />
+                </span>
+                <div className="flex items-center">
                   <span className="text-xl font-semibold">{PLATFORM_NAME}</span>
                 </div>
               </div>
