@@ -21,7 +21,8 @@ import {
   Clock,
   ArrowUpRight,
   Eye,
-  CalendarDays
+  CalendarDays,
+  Monitor
 } from 'lucide-react'
 import { PLATFORM_NAME, COMPANY_NAME, LOGO } from '@/lib/config'
 
@@ -33,6 +34,7 @@ const adminTools = [
   { href: '/admin/settings', icon: Sliders, label: 'Weightages', color: 'from-rose-500 to-red-500' },
   { href: '/admin/analytics', icon: BarChart3, label: 'Analytics', color: 'from-indigo-500 to-violet-500' },
   { href: '/admin/leave', icon: CalendarDays, label: 'Leave', color: 'from-teal-500 to-emerald-500' },
+  { href: '/admin/device-tickets', icon: Monitor, label: 'Device Support', color: 'from-slate-500 to-zinc-500' },
 ]
 
 export default function AdminDashboardPage() {
@@ -132,7 +134,7 @@ export default function AdminDashboardPage() {
       <nav className="sticky top-0 z-50 glass border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               className="flex items-center gap-3"
@@ -149,7 +151,7 @@ export default function AdminDashboardPage() {
                 Admin
               </span>
             </motion.div>
-            
+
             <div className="flex items-center gap-3">
               <Link
                 href="/dashboard"
@@ -172,7 +174,7 @@ export default function AdminDashboardPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
@@ -194,7 +196,7 @@ export default function AdminDashboardPage() {
 
         {/* Stats */}
         {dashboardData?.summary && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
@@ -234,7 +236,7 @@ export default function AdminDashboardPage() {
         )}
 
         {/* Admin Tools */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
@@ -258,7 +260,7 @@ export default function AdminDashboardPage() {
         </motion.div>
 
         {/* Quick Actions */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
@@ -296,7 +298,7 @@ export default function AdminDashboardPage() {
         </motion.div>
 
         {/* Employees Table */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
@@ -317,7 +319,7 @@ export default function AdminDashboardPage() {
               </thead>
               <tbody className="divide-y divide-border">
                 {dashboardData?.employees?.map((employee: any, index: number) => (
-                  <motion.tr 
+                  <motion.tr
                     key={employee.id}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -344,9 +346,8 @@ export default function AdminDashboardPage() {
                       <div className="flex items-center gap-3">
                         <div className="w-24 h-1.5 bg-surface rounded-full overflow-hidden">
                           <div
-                            className={`h-full rounded-full ${
-                              employee.completionRate === 100 ? 'bg-green-500' : 'gradient-primary'
-                            }`}
+                            className={`h-full rounded-full ${employee.completionRate === 100 ? 'bg-green-500' : 'gradient-primary'
+                              }`}
                             style={{ width: `${employee.completionRate}%` }}
                           />
                         </div>
@@ -374,7 +375,7 @@ export default function AdminDashboardPage() {
         </motion.div>
 
         {/* Footer signature */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1 }}

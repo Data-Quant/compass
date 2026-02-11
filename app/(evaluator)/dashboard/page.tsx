@@ -8,11 +8,11 @@ import { toast } from 'sonner'
 import { RELATIONSHIP_TYPE_LABELS } from '@/types'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { Modal } from '@/components/ui/modal'
-import { 
-  LogOut, 
-  Settings, 
-  CheckCircle2, 
-  Clock, 
+import {
+  LogOut,
+  Settings,
+  CheckCircle2,
+  Clock,
   ArrowRight,
   Calendar,
   Target,
@@ -22,7 +22,8 @@ import {
   Thermometer,
   Palmtree,
   MessageSquare,
-  XCircle
+  XCircle,
+  Monitor
 } from 'lucide-react'
 import { PLATFORM_NAME, COMPANY_NAME, LOGO } from '@/lib/config'
 
@@ -59,6 +60,21 @@ interface LeaveRequest {
   hrApprovedBy?: string
 }
 
+interface DeviceTicket {
+  id: string
+  title: string
+  description: string
+  deviceType: string
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
+  status: 'OPEN' | 'UNDER_REVIEW' | 'SOLUTION' | 'RESOLVED'
+  createdAt: string
+  employee: {
+    id: string
+    name: string
+    department: string | null
+  }
+}
+
 const LEAVE_TYPE_CONFIG = {
   CASUAL: { icon: Sun, color: 'text-amber-500', bg: 'bg-amber-100 dark:bg-amber-500/20', label: 'Casual' },
   SICK: { icon: Thermometer, color: 'text-red-500', bg: 'bg-red-100 dark:bg-red-500/20', label: 'Sick' },
@@ -71,12 +87,15 @@ export default function DashboardPage() {
   const [period, setPeriod] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState<any>(null)
-  
+
   // Leave approval state
   const [pendingLeaves, setPendingLeaves] = useState<LeaveRequest[]>([])
   const [actionModal, setActionModal] = useState<{ open: boolean; action: 'approve' | 'reject' | null; request: LeaveRequest | null }>({ open: false, action: null, request: null })
   const [comment, setComment] = useState('')
   const [processing, setProcessing] = useState(false)
+
+  // Device ticket state
+  const [pendingTickets, setPendingTickets] = useState<DeviceTicket[]>([])
 
   useEffect(() => {
     fetch('/api/auth/session')
@@ -89,6 +108,9 @@ export default function DashboardPage() {
         setUser(data.user)
         loadDashboard()
         loadPendingLeaves()
+        if (data.user.role === 'HR') {
+          loadPendingTickets()
+        }
       })
       .catch(() => router.push('/login'))
   }, [])
@@ -120,7 +142,7 @@ export default function DashboardPage() {
 
   const handleLeaveAction = async () => {
     if (!actionModal.request || !actionModal.action) return
-    
+
     setProcessing(true)
     try {
       const res = await fetch('/api/leave/approve', {
@@ -132,9 +154,9 @@ export default function DashboardPage() {
           comment: comment || undefined,
         }),
       })
-      
+
       const data = await res.json()
-      
+
       if (data.success) {
         toast.success(actionModal.action === 'approve' ? 'Leave approved' : 'Leave rejected')
         setActionModal({ open: false, action: null, request: null })
@@ -147,6 +169,20 @@ export default function DashboardPage() {
       toast.error('Action failed')
     } finally {
       setProcessing(false)
+    }
+  }
+
+  const loadPendingTickets = async () => {
+    try {
+      // Fetch tickets that are either OPEN or UNDER_REVIEW
+      const response = await fetch('/api/device-tickets')
+      const data = await response.json()
+      const pending = (data.tickets || []).filter((t: any) =>
+        t.status === 'OPEN' || t.status === 'UNDER_REVIEW'
+      )
+      setPendingTickets(pending)
+    } catch (error) {
+      console.error('Failed to load pending tickets:', error)
     }
   }
 
@@ -187,7 +223,7 @@ export default function DashboardPage() {
       <nav className="sticky top-0 z-50 glass border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               className="flex items-center gap-3"
@@ -201,7 +237,7 @@ export default function DashboardPage() {
                 <span className="text-lg font-semibold text-foreground">{PLATFORM_NAME}</span>
               </div>
             </motion.div>
-            
+
             <div className="flex items-center gap-3">
               <span className="text-sm text-muted hidden sm:block">
                 {user?.name}
@@ -212,6 +248,13 @@ export default function DashboardPage() {
               >
                 <Calendar className="w-4 h-4" />
                 <span className="hidden sm:inline">Leave</span>
+              </Link>
+              <Link
+                href="/device-support"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-500/10 hover:bg-slate-500/20 text-slate-600 dark:text-slate-400 text-sm font-medium transition-colors"
+              >
+                <AlertCircle className="w-4 h-4" />
+                <span className="hidden sm:inline">Device Support</span>
               </Link>
               {user?.role === 'HR' && (
                 <Link
@@ -236,7 +279,7 @@ export default function DashboardPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
@@ -258,7 +301,7 @@ export default function DashboardPage() {
 
         {/* Stats Grid */}
         {totalEvaluations > 0 && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
@@ -274,8 +317,8 @@ export default function DashboardPage() {
                   <div>
                     <h3 className="font-semibold text-foreground">Your Progress</h3>
                     <p className="text-sm text-muted">
-                      {completedEvaluations === totalEvaluations 
-                        ? 'All evaluations complete!' 
+                      {completedEvaluations === totalEvaluations
+                        ? 'All evaluations complete!'
                         : `${totalEvaluations - completedEvaluations} remaining`}
                     </p>
                   </div>
@@ -326,7 +369,7 @@ export default function DashboardPage() {
 
         {/* Pending Leave Approvals (for Leads) */}
         {pendingLeaves.length > 0 && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15 }}
@@ -344,9 +387,9 @@ export default function DashboardPage() {
                 const typeConfig = LEAVE_TYPE_CONFIG[request.leaveType]
                 const TypeIcon = typeConfig.icon
                 const days = getDaysCount(request.startDate, request.endDate)
-                
+
                 return (
-                  <div 
+                  <div
                     key={request.id}
                     className="glass rounded-xl p-4 border border-amber-200 dark:border-amber-500/30"
                   >
@@ -359,7 +402,7 @@ export default function DashboardPage() {
                         <p className="text-sm text-muted">{request.employee.department || 'No dept'}</p>
                       </div>
                     </div>
-                    
+
                     <div className="space-y-1 text-sm mb-3">
                       <div className="flex justify-between">
                         <span className="text-muted">Type</span>
@@ -376,9 +419,9 @@ export default function DashboardPage() {
                         </span>
                       </div>
                     </div>
-                    
+
                     <p className="text-xs text-muted mb-3 line-clamp-2">{request.reason}</p>
-                    
+
                     {/* Approval status */}
                     <div className="flex gap-2 text-xs mb-3">
                       <span className={request.hrApprovedBy ? 'text-emerald-600' : 'text-muted'}>
@@ -388,7 +431,7 @@ export default function DashboardPage() {
                         {request.leadApprovedBy ? '✓ Lead' : '○ Lead'}
                       </span>
                     </div>
-                    
+
                     <div className="flex gap-2">
                       <button
                         onClick={() => setActionModal({ open: true, action: 'approve', request })}
@@ -412,9 +455,71 @@ export default function DashboardPage() {
           </motion.div>
         )}
 
+        {/* Pending Device Tickets (for HR) */}
+        {user?.role === 'HR' && pendingTickets.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="mb-8"
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <Monitor className="w-5 h-5 text-indigo-500" />
+              <h2 className="text-lg font-semibold text-foreground">Pending Device Support Tickets</h2>
+              <span className="px-2 py-0.5 text-xs bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 rounded-full">
+                {pendingTickets.length}
+              </span>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {pendingTickets.map((ticket) => (
+                <div
+                  key={ticket.id}
+                  className="glass rounded-xl p-4 border border-indigo-200 dark:border-indigo-500/30"
+                >
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-lg bg-indigo-100 dark:bg-indigo-500/10 flex items-center justify-center flex-shrink-0">
+                      <Monitor className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-foreground">{ticket.employee.name}</h4>
+                      <p className="text-sm text-muted">{ticket.employee.department || 'No dept'}</p>
+                    </div>
+                  </div>
+
+                  <div className="mb-3">
+                    <h5 className="text-sm font-medium text-foreground">{ticket.title}</h5>
+                    <p className="text-xs text-muted line-clamp-1 mt-1">{ticket.description}</p>
+                  </div>
+
+                  <div className="flex items-center justify-between mt-auto">
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${ticket.priority === 'URGENT' ? 'bg-red-100 text-red-700' :
+                        ticket.priority === 'HIGH' ? 'bg-orange-100 text-orange-700' :
+                          ticket.priority === 'MEDIUM' ? 'bg-blue-100 text-blue-700' :
+                            'bg-gray-100 text-gray-700'
+                        }`}>
+                        {ticket.priority}
+                      </span>
+                      <span className="text-[10px] text-muted">
+                        {new Date(ticket.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <Link
+                      href="/admin/device-tickets"
+                      className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+                    >
+                      Manage →
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
         {/* Evaluations */}
         {relationshipTypes.length === 0 ? (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="glass rounded-2xl p-12 border border-border text-center"
@@ -428,7 +533,7 @@ export default function DashboardPage() {
         ) : (
           <div className="space-y-8">
             {relationshipTypes.map((type, typeIndex) => (
-              <motion.div 
+              <motion.div
                 key={type}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -471,7 +576,7 @@ export default function DashboardPage() {
                               <Clock className="w-5 h-5 text-amber-500" />
                             )}
                           </div>
-                          
+
                           <div className="space-y-2">
                             <div className="flex justify-between text-sm">
                               <span className="text-muted">Progress</span>
@@ -481,20 +586,18 @@ export default function DashboardPage() {
                             </div>
                             <div className="h-1.5 bg-surface rounded-full overflow-hidden">
                               <div
-                                className={`h-full rounded-full transition-all duration-500 ${
-                                  mapping.isComplete ? 'bg-green-500' : 'gradient-primary'
-                                }`}
+                                className={`h-full rounded-full transition-all duration-500 ${mapping.isComplete ? 'bg-green-500' : 'gradient-primary'
+                                  }`}
                                 style={{ width: `${(mapping.completedCount / mapping.questionsCount) * 100}%` }}
                               />
                             </div>
                           </div>
 
                           <div className="mt-4 flex items-center justify-between text-sm">
-                            <span className={`px-2 py-1 rounded-md ${
-                              mapping.isComplete 
-                                ? 'bg-green-500/10 text-green-600 dark:text-green-400' 
-                                : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                            }`}>
+                            <span className={`px-2 py-1 rounded-md ${mapping.isComplete
+                              ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                              : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                              }`}>
                               {mapping.isComplete ? 'Complete' : 'In Progress'}
                             </span>
                             <ArrowRight className="w-4 h-4 text-muted group-hover:text-indigo-500 group-hover:translate-x-1 transition-all" />
@@ -510,7 +613,7 @@ export default function DashboardPage() {
         )}
 
         {/* Footer signature */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1 }}
@@ -521,9 +624,9 @@ export default function DashboardPage() {
       </main>
 
       {/* Leave Action Modal */}
-      <Modal 
-        isOpen={actionModal.open} 
-        onClose={() => setActionModal({ open: false, action: null, request: null })} 
+      <Modal
+        isOpen={actionModal.open}
+        onClose={() => setActionModal({ open: false, action: null, request: null })}
         title={actionModal.action === 'approve' ? 'Approve Leave Request' : 'Reject Leave Request'}
         size="sm"
       >
@@ -532,19 +635,19 @@ export default function DashboardPage() {
             <div className="p-3 bg-surface rounded-lg">
               <p className="font-medium text-foreground">{actionModal.request.employee.name}</p>
               <p className="text-sm text-muted">
-                {LEAVE_TYPE_CONFIG[actionModal.request.leaveType].label} Leave • 
+                {LEAVE_TYPE_CONFIG[actionModal.request.leaveType].label} Leave •
                 {getDaysCount(actionModal.request.startDate, actionModal.request.endDate)} days
               </p>
               <p className="text-sm text-muted mt-1">
                 {new Date(actionModal.request.startDate).toLocaleDateString()} - {new Date(actionModal.request.endDate).toLocaleDateString()}
               </p>
             </div>
-            
+
             <div className="p-3 bg-amber-50 dark:bg-amber-500/10 rounded-lg">
               <p className="text-xs text-amber-700 dark:text-amber-400 font-medium mb-1">Transition Plan:</p>
               <p className="text-sm text-amber-800 dark:text-amber-300">{actionModal.request.transitionPlan}</p>
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">
                 <MessageSquare className="w-4 h-4 inline mr-1" />
@@ -558,7 +661,7 @@ export default function DashboardPage() {
                 className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
-            
+
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setActionModal({ open: false, action: null, request: null })}
@@ -569,11 +672,10 @@ export default function DashboardPage() {
               <button
                 onClick={handleLeaveAction}
                 disabled={processing}
-                className={`px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 ${
-                  actionModal.action === 'approve' 
-                    ? 'bg-emerald-600 hover:bg-emerald-700' 
-                    : 'bg-red-600 hover:bg-red-700'
-                }`}
+                className={`px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 ${actionModal.action === 'approve'
+                  ? 'bg-emerald-600 hover:bg-emerald-700'
+                  : 'bg-red-600 hover:bg-red-700'
+                  }`}
               >
                 {processing ? 'Processing...' : actionModal.action === 'approve' ? 'Approve' : 'Reject'}
               </button>

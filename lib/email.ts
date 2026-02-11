@@ -11,6 +11,11 @@ const transporter = nodemailer.createTransport({
   },
 })
 
+// Validate Gmail credentials
+if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
+  console.warn('⚠️ GMAIL_USER or GMAIL_APP_PASSWORD missing or empty in .env. Emails will fail to send.')
+}
+
 const FROM_EMAIL = process.env.GMAIL_USER || 'plutuscompass@gmail.com'
 
 export async function sendMail(to: string, subject: string, html: string) {
@@ -189,7 +194,7 @@ export async function sendLeaveRequestNotification(requestId: string) {
   const startDate = new Date(leaveRequest.startDate).toLocaleDateString()
   const endDate = new Date(leaveRequest.endDate).toLocaleDateString()
   const daysCount = Math.ceil(
-    (new Date(leaveRequest.endDate).getTime() - new Date(leaveRequest.startDate).getTime()) / 
+    (new Date(leaveRequest.endDate).getTime() - new Date(leaveRequest.startDate).getTime()) /
     (1000 * 60 * 60 * 24)
   ) + 1
 
@@ -268,7 +273,7 @@ export async function sendLeaveRequestNotification(requestId: string) {
 }
 
 export async function sendLeaveApprovalNotification(
-  requestId: string, 
+  requestId: string,
   status: 'approved' | 'rejected',
   approverName: string,
   comment?: string
@@ -289,7 +294,7 @@ export async function sendLeaveApprovalNotification(
   const startDate = new Date(leaveRequest.startDate).toLocaleDateString()
   const endDate = new Date(leaveRequest.endDate).toLocaleDateString()
   const daysCount = Math.ceil(
-    (new Date(leaveRequest.endDate).getTime() - new Date(leaveRequest.startDate).getTime()) / 
+    (new Date(leaveRequest.endDate).getTime() - new Date(leaveRequest.startDate).getTime()) /
     (1000 * 60 * 60 * 24)
   ) + 1
 
@@ -339,6 +344,164 @@ export async function sendLeaveApprovalNotification(
     return { success: true, data: { messageId: info.messageId } }
   } catch (error: any) {
     console.error('Failed to send leave approval notification:', error)
+    return { success: false, error: error.message }
+  }
+}
+
+// Device Management Email Functions
+
+// Device Management Email Functions
+
+export async function sendNewTicketNotificationToHR(ticketId: string) {
+  const ticket = await prisma.deviceTicket.findUnique({
+    where: { id: ticketId },
+    include: {
+      employee: true,
+    },
+  })
+
+  if (!ticket) {
+    console.error(`[Email] New ticket ${ticketId} not found`)
+    return { success: false, message: 'Ticket not found' }
+  }
+
+  const HR_EMAIL = 'hr@plutus21.com'
+  const EXECUTION_EMAIL = 'execution@plutus21.com'
+  const recipients = [HR_EMAIL, EXECUTION_EMAIL]
+
+  const priorityColors: Record<string, string> = {
+    LOW: '#6B7280',
+    MEDIUM: '#3B82F6',
+    HIGH: '#F59E0B',
+    URGENT: '#EF4444',
+  }
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #4F46E5;">New Device Support Ticket</h2>
+
+      <div style="background: #F8FAFC; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>Employee:</strong> ${escapeHtml(ticket.employee.name)}</p>
+        <p><strong>Department:</strong> ${escapeHtml(ticket.employee.department) || 'N/A'}</p>
+        <p><strong>Device:</strong> ${escapeHtml(ticket.deviceType)}</p>
+        <p><strong>Priority:</strong> <span style="color: ${priorityColors[ticket.priority]}; font-weight: bold;">${ticket.priority}</span></p>
+        <p><strong>Issue:</strong> ${escapeHtml(ticket.title)}</p>
+      </div>
+
+      <div style="background: #FFFBEB; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #FEF3C7;">
+        <h4 style="margin: 0 0 10px; color: #92400E;">Description:</h4>
+        <p style="margin: 0; color: #92400E; white-space: pre-wrap;">${escapeHtml(ticket.description)}</p>
+      </div>
+
+      <p style="color: #64748B; font-size: 14px;">
+        Please review and update the ticket status in the HR Portal.
+      </p>
+    </div>
+  `
+
+  try {
+    const info = await transporter.sendMail({
+      from: `P21 Compass <${FROM_EMAIL}>`,
+      to: recipients.join(', '),
+      subject: `New Device Ticket [${ticket.priority}]: ${ticket.title}`,
+      html: htmlContent,
+    })
+    console.log(`[Email] New ticket notification sent to HR: ${ticketId}`)
+    return { success: true, data: { messageId: info.messageId } }
+  } catch (error: any) {
+    console.error(`[Email] Failed to send new ticket notification to HR:`, error)
+    return { success: false, error: error.message }
+  }
+}
+
+export async function sendTicketStatusNotification(ticketId: string) {
+  console.log(`[Email] Triggering status notification for ticket: ${ticketId}`)
+
+  const ticket = await prisma.deviceTicket.findUnique({
+    where: { id: ticketId },
+    include: {
+      employee: true,
+    },
+  })
+
+  if (!ticket) {
+    console.error(`[Email] Ticket ${ticketId} not found for notification`)
+    return { success: false, message: 'Ticket not found' }
+  }
+
+  if (!ticket.employee.email) {
+    console.error(`[Email] Employee email missing for ticket: ${ticketId}`)
+    return { success: false, message: 'Employee email not found' }
+  }
+
+  const employee = ticket.employee
+  const employeeEmail = employee.email as string
+
+  const statusLabels: Record<string, string> = {
+    OPEN: 'Open',
+    UNDER_REVIEW: 'Under Review',
+    SOLUTION: 'Solution Provided',
+    RESOLVED: 'Resolved',
+  }
+
+  const statusColors: Record<string, { text: string; bg: string }> = {
+    OPEN: { text: '#3B82F6', bg: '#DBEAFE' },
+    UNDER_REVIEW: { text: '#F59E0B', bg: '#FEF3C7' },
+    SOLUTION: { text: '#8B5CF6', bg: '#EDE9FE' },
+    RESOLVED: { text: '#10B981', bg: '#D1FAE5' },
+  }
+
+  const statusLabel = statusLabels[ticket.status] || ticket.status
+  const colors = statusColors[ticket.status] || { text: '#6B7280', bg: '#F3F4F6' }
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #4F46E5;">Device Support Ticket Update</h2>
+
+      <div style="background: ${colors.bg}; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p style="font-size: 18px; color: ${colors.text}; margin: 0;">
+          Your ticket status has been updated to: <strong>${statusLabel}</strong>
+        </p>
+      </div>
+
+      <div style="background: #F8FAFC; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>Ticket:</strong> ${escapeHtml(ticket.title)}</p>
+        <p><strong>Device:</strong> ${escapeHtml(ticket.deviceType)}</p>
+        <p><strong>Priority:</strong> ${ticket.priority}</p>
+        ${ticket.hrAssignedTo ? `<p><strong>Handled by:</strong> ${escapeHtml(ticket.hrAssignedTo)}</p>` : ''}
+      </div>
+
+      ${ticket.solution ? `
+        <div style="background: #EDE9FE; padding: 15px; border-radius: 8px; margin: 20px 0;">
+          <h4 style="margin: 0 0 10px; color: #6D28D9;">Solution:</h4>
+          <p style="margin: 0; color: #5B21B6; white-space: pre-wrap;">${escapeHtml(ticket.solution)}</p>
+        </div>
+      ` : ''}
+
+      ${ticket.status === 'RESOLVED' ? `
+        <p style="color: #059669;">
+          This ticket has been resolved. If you're still experiencing issues, feel free to open a new ticket.
+        </p>
+      ` : `
+        <p style="color: #64748B; font-size: 14px;">
+          You can check the latest updates on your ticket in the Compass portal.
+        </p>
+      `}
+    </div>
+  `
+
+  try {
+    const info = await transporter.sendMail({
+      from: `P21 Compass <${FROM_EMAIL}>`,
+      to: employeeEmail,
+      subject: `Device Ticket ${statusLabel}: ${ticket.title}`,
+      html: htmlContent,
+    })
+
+    console.log(`[Email] Status notification sent to ${employeeEmail} for ticket: ${ticketId}`)
+    return { success: true, data: { messageId: info.messageId } }
+  } catch (error: any) {
+    console.error(`[Email] Failed to send status notification for ticket: ${ticketId}`, error)
     return { success: false, error: error.message }
   }
 }

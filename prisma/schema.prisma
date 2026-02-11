@@ -51,6 +51,20 @@ enum LeaveStatus {
   CANCELLED         // Employee cancelled
 }
 
+enum TicketStatus {
+  OPEN             // Employee just submitted
+  UNDER_REVIEW     // HR is looking at it
+  SOLUTION         // HR has a solution, sharing with employee
+  RESOLVED         // Issue is closed
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
 model User {
   id           String   @id @default(cuid())
   name         String
@@ -78,6 +92,9 @@ model User {
   // Leave management relations
   leaveRequests       LeaveRequest[]     @relation("LeaveEmployee")
   leaveCovering       LeaveRequest[]     @relation("LeaveCover")
+  
+  // Device management relations
+  deviceTickets       DeviceTicket[]     @relation("DeviceTicketEmployee")
   leaveBalances       LeaveBalance[]
 
   @@index([name])
@@ -268,4 +285,29 @@ model WeightProfile {
   weights         Json               // { "TEAM_LEAD": 0.15, "DIRECT_REPORT": 0.25, ... }
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+// Device Management / IT Support Tickets
+model DeviceTicket {
+  id            String         @id @default(cuid())
+  employeeId    String
+  title         String         // Short description
+  description   String         // Full problem details
+  deviceType    String         // e.g. "Laptop", "Monitor", "Keyboard", etc.
+  priority      TicketPriority @default(MEDIUM)
+  status        TicketStatus   @default(OPEN)
+
+  // HR response fields
+  hrAssignedTo  String?        // HR person handling it
+  solution      String?        // Solution description
+  hrNotes       String?        // Internal HR notes
+
+  resolvedAt    DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  employee      User           @relation("DeviceTicketEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@index([status])
 }
