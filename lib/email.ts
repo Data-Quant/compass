@@ -18,6 +18,24 @@ if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
 
 const FROM_EMAIL = process.env.GMAIL_USER || 'plutuscompass@gmail.com'
 
+function parseRecipientList(raw: string | undefined | null) {
+  return (raw || '')
+    .split(',')
+    .map((email) => email.trim())
+    .filter(Boolean)
+}
+
+async function getHrRecipientEmails() {
+  const hrUsers = await prisma.user.findMany({
+    where: {
+      role: 'HR',
+      email: { not: null },
+    },
+    select: { email: true },
+  })
+  return hrUsers.map((u) => u.email).filter(Boolean) as string[]
+}
+
 export async function sendMail(to: string, subject: string, html: string) {
   return transporter.sendMail({
     from: `P21 Compass <${FROM_EMAIL}>`,
@@ -198,9 +216,10 @@ export async function sendLeaveRequestNotification(requestId: string) {
     (1000 * 60 * 60 * 24)
   ) + 1
 
-  // Fixed email addresses
-  const HR_EMAIL = 'hr@plutus21.com'
-  const EXECUTION_EMAIL = 'execution@plutus21.com'
+  const hrEmails = await getHrRecipientEmails()
+  const fallbackRecipients = parseRecipientList(
+    process.env.LEAVE_FALLBACK_RECIPIENTS || 'hr@plutus21.com,execution@plutus21.com'
+  )
 
   // Get employee's lead(s)
   const leadMappings = await prisma.evaluatorMapping.findMany({
@@ -230,8 +249,11 @@ export async function sendLeaveRequestNotification(requestId: string) {
       .map(u => u.email!)
   }
 
-  // Build recipient list: HR + Execution + leads + optional additional (deduplicated)
-  const recipients = [...new Set([HR_EMAIL, EXECUTION_EMAIL, ...leadEmails, ...additionalEmails])]
+  // Build recipient list: HR + configured fallback + leads + optional additional (deduplicated)
+  const recipients = [...new Set([...hrEmails, ...fallbackRecipients, ...leadEmails, ...additionalEmails])]
+  if (recipients.length === 0) {
+    return { success: false, message: 'No recipients configured for leave request notification' }
+  }
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">

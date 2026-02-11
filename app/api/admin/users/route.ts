@@ -52,7 +52,8 @@ export async function POST(request: NextRequest) {
 
     const { name, email, department, position, role, password } = await request.json()
 
-    if (!name) {
+    const normalizedName = typeof name === 'string' ? name.trim() : ''
+    if (!normalizedName) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 })
     }
 
@@ -64,17 +65,20 @@ export async function POST(request: NextRequest) {
     // Hash password if provided
     let passwordHash = null
     if (password) {
+      if (typeof password !== 'string' || password.length < 6) {
+        return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 })
+      }
       passwordHash = await bcrypt.hash(password, 10)
     }
 
     const newUser = await prisma.user.create({
       data: {
-        name,
+        name: normalizedName,
         email: email || null,
         department: department || null,
         position: position || null,
         role: normalizedRole as (typeof VALID_USER_ROLES)[number],
-        // Note: Add password field to schema if implementing password auth
+        passwordHash,
       },
     })
 

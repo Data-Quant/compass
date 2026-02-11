@@ -2,18 +2,35 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { z } from 'zod'
+import type { RelationshipType } from '@/types'
 
 const evaluationSchema = z.object({
-  evaluateeId: z.string(),
-  periodId: z.string(),
+  evaluateeId: z.string().trim().min(1),
+  periodId: z.string().trim().min(1),
   responses: z.array(
     z.object({
-      questionId: z.string(),
+      questionId: z.string().trim().min(1),
       ratingValue: z.number().min(1).max(4).optional(),
-      textResponse: z.string().optional(),
+      textResponse: z.string().max(5000).optional(),
     })
-  ),
+  ).min(1),
 })
+
+const evaluationDraftSchema = z.object({
+  evaluateeId: z.string().trim().min(1),
+  periodId: z.string().trim().min(1),
+  questionId: z.string().trim().min(1),
+  ratingValue: z.number().min(1).max(4).nullable().optional(),
+  textResponse: z.string().max(5000).nullable().optional(),
+})
+
+async function getAllowedQuestionIds(relationshipType: RelationshipType) {
+  const questions = await prisma.evaluationQuestion.findMany({
+    where: { relationshipType },
+    select: { id: true },
+  })
+  return new Set(questions.map((q) => q.id))
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -50,6 +67,31 @@ export async function POST(request: NextRequest) {
         { error: 'You are not authorized to evaluate this person' },
         { status: 403 }
       )
+    }
+
+    const allowedQuestionIds = await getAllowedQuestionIds(mapping.relationshipType as RelationshipType)
+    if (allowedQuestionIds.size === 0) {
+      return NextResponse.json(
+        { error: 'No evaluation questions configured for this relationship type' },
+        { status: 400 }
+      )
+    }
+
+    const seenQuestionIds = new Set<string>()
+    for (const response of data.responses) {
+      if (!allowedQuestionIds.has(response.questionId)) {
+        return NextResponse.json(
+          { error: 'One or more questions are not valid for this evaluation relationship' },
+          { status: 400 }
+        )
+      }
+      if (seenQuestionIds.has(response.questionId)) {
+        return NextResponse.json(
+          { error: 'Duplicate question responses are not allowed' },
+          { status: 400 }
+        )
+      }
+      seenQuestionIds.add(response.questionId)
     }
 
     // Save or update evaluations
@@ -106,7 +148,8 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { evaluateeId, periodId, questionId, ratingValue, textResponse } = body
+    const data = evaluationDraftSchema.parse(body)
+    const { evaluateeId, periodId, questionId, ratingValue, textResponse } = data
 
     // Check if period is locked
     const period = await prisma.evaluationPeriod.findUnique({
@@ -132,6 +175,14 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json(
         { error: 'You are not authorized to evaluate this person' },
         { status: 403 }
+      )
+    }
+
+    const allowedQuestionIds = await getAllowedQuestionIds(mapping.relationshipType as RelationshipType)
+    if (!allowedQuestionIds.has(questionId)) {
+      return NextResponse.json(
+        { error: 'Question is not valid for this evaluation relationship' },
+        { status: 400 }
       )
     }
 
@@ -161,6 +212,12 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ success: true, evaluation })
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: 'Invalid request data', details: error.errors },
+        { status: 400 }
+      )
+    }
     console.error('Failed to save draft:', error)
     return NextResponse.json(
       { error: 'Failed to save draft' },

@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { setSession } from '@/lib/auth'
-import { checkRateLimit } from '@/lib/rate-limit'
+import { checkRateLimit, normalizeClientIp } from '@/lib/rate-limit'
 import bcrypt from 'bcryptjs'
 
 export async function POST(request: NextRequest) {
   try {
-    const ip = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown'
-    const { allowed } = checkRateLimit(ip)
-    if (!allowed) {
+    const ip = normalizeClientIp(
+      request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip')
+    )
+    const ipKey = `login:ip:${ip}`
+    const ipLimit = checkRateLimit(ipKey, 20)
+    if (!ipLimit.allowed) {
       return NextResponse.json(
         { error: 'Too many login attempts. Please try again later.' },
         { status: 429 }
@@ -24,11 +27,27 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const normalizedName = name.trim().toLowerCase()
+    if (!normalizedName) {
+      return NextResponse.json(
+        { error: 'Name is required' },
+        { status: 400 }
+      )
+    }
+    const accountKey = `login:account:${normalizedName}`
+    const accountLimit = checkRateLimit(accountKey, 10)
+    if (!accountLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Too many login attempts. Please try again later.' },
+        { status: 429 }
+      )
+    }
+
     // Use exact match instead of fuzzy contains
     const user = await prisma.user.findFirst({
       where: {
         name: {
-          equals: name,
+          equals: name.trim(),
           mode: 'insensitive',
         },
       },

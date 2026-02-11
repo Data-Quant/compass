@@ -2,6 +2,29 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getSession } from '@/lib/auth'
 import { sendLeaveRequestNotification } from '@/lib/email'
+import { z } from 'zod'
+import { calculateLeaveDays, isValidLeaveDateRange } from '@/lib/leave-utils'
+
+const LEAVE_TYPES = ['CASUAL', 'SICK', 'ANNUAL'] as const
+const LEAVE_STATUSES = ['PENDING', 'LEAD_APPROVED', 'HR_APPROVED', 'APPROVED', 'REJECTED', 'CANCELLED'] as const
+
+const leaveRequestCreateSchema = z.object({
+  leaveType: z.enum(LEAVE_TYPES),
+  startDate: z.coerce.date(),
+  endDate: z.coerce.date(),
+  reason: z.string().trim().min(1).max(4000),
+  transitionPlan: z.string().trim().min(1).max(6000),
+  coverPersonId: z.string().trim().min(1).optional().nullable(),
+  additionalNotifyIds: z.array(z.string().trim().min(1)).max(20).optional(),
+}).refine(
+  (data) => isValidLeaveDateRange(data.startDate, data.endDate),
+  {
+    message: 'End date must be on or after start date',
+    path: ['endDate'],
+  }
+)
+
+const leaveStatusSchema = z.enum(LEAVE_STATUSES)
 
 // GET - List leave requests
 export async function GET(request: NextRequest) {
@@ -18,7 +41,10 @@ export async function GET(request: NextRequest) {
     const forApproval = searchParams.get('forApproval') === 'true'
     
     // Build where clause
-    const where: any = {}
+    const where: {
+      employeeId?: string | { in: string[] }
+      status?: (typeof LEAVE_STATUSES)[number] | { in: (typeof LEAVE_STATUSES)[number][] }
+    } = {}
     
     if (employeeId === 'me') {
       where.employeeId = user.id
@@ -41,7 +67,11 @@ export async function GET(request: NextRequest) {
     }
     
     if (status) {
-      where.status = status
+      const parsedStatus = leaveStatusSchema.safeParse(status)
+      if (!parsedStatus.success) {
+        return NextResponse.json({ error: 'Invalid status filter' }, { status: 400 })
+      }
+      where.status = parsedStatus.data
     }
     
     // If HR user wants to see requests pending their approval
@@ -95,18 +125,20 @@ export async function POST(request: NextRequest) {
     }
     
     const body = await request.json()
-    
-    const { leaveType, startDate, endDate, reason, transitionPlan, coverPersonId, additionalNotifyIds } = body
-    
-    // Validate required fields
-    if (!leaveType || !startDate || !endDate || !reason || !transitionPlan) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    const parsed = leaveRequestCreateSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Invalid leave request payload', details: parsed.error.errors },
+        { status: 400 }
+      )
     }
+
+    const { leaveType, startDate, endDate, reason, transitionPlan, coverPersonId, additionalNotifyIds } = parsed.data
     
     // Calculate days requested
     const start = new Date(startDate)
     const end = new Date(endDate)
-    const daysRequested = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
+    const daysRequested = calculateLeaveDays(start, end)
     
     // Check leave balance
     const currentYear = new Date().getFullYear()
@@ -142,7 +174,7 @@ export async function POST(request: NextRequest) {
     
     // Validate additionalNotifyIds are valid user IDs (optional)
     const validNotifyIds = Array.isArray(additionalNotifyIds)
-      ? additionalNotifyIds.filter((id: unknown) => typeof id === 'string' && id.length > 0).slice(0, 20)
+      ? additionalNotifyIds
       : []
 
     // Create the leave request

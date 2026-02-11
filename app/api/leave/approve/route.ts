@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getSession } from '@/lib/auth'
 import { sendLeaveApprovalNotification } from '@/lib/email'
+import { LeaveStatus, Prisma } from '@prisma/client'
+import { z } from 'zod'
+import { calculateLeaveDays } from '@/lib/leave-utils'
+
+const leaveApprovalSchema = z.object({
+  requestId: z.string().trim().min(1),
+  action: z.enum(['approve', 'reject']),
+  comment: z.string().trim().max(2000).optional(),
+})
 
 // POST - Approve or reject a leave request
 export async function POST(request: NextRequest) {
@@ -13,12 +22,12 @@ export async function POST(request: NextRequest) {
     }
     
     const body = await request.json()
-    
-    const { requestId, action, comment } = body // action: 'approve' or 'reject'
-    
-    if (!requestId || !action) {
-      return NextResponse.json({ error: 'Request ID and action required' }, { status: 400 })
+    const parsed = leaveApprovalSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Invalid request payload', details: parsed.error.errors }, { status: 400 })
     }
+    
+    const { requestId, action, comment } = parsed.data
     
     // Get the leave request
     const leaveRequest = await prisma.leaveRequest.findUnique({
@@ -56,6 +65,13 @@ export async function POST(request: NextRequest) {
     
     // Handle rejection
     if (action === 'reject') {
+      if (leaveRequest.status === 'APPROVED' || leaveRequest.status === 'CANCELLED') {
+        return NextResponse.json({ error: `Cannot reject a ${leaveRequest.status.toLowerCase()} request` }, { status: 400 })
+      }
+      if (leaveRequest.status === 'REJECTED') {
+        return NextResponse.json({ success: true, status: 'REJECTED' })
+      }
+
       await prisma.leaveRequest.update({
         where: { id: requestId },
         data: {
@@ -78,10 +94,21 @@ export async function POST(request: NextRequest) {
     
     // Handle approval
     if (action === 'approve') {
-      let newStatus = leaveRequest.status
-      const updateData: any = {}
+      if (leaveRequest.status === 'APPROVED') {
+        return NextResponse.json({ success: true, status: 'APPROVED' })
+      }
+      if (leaveRequest.status === 'REJECTED' || leaveRequest.status === 'CANCELLED') {
+        return NextResponse.json({ error: `Cannot approve a ${leaveRequest.status.toLowerCase()} request` }, { status: 400 })
+      }
+
+      let newStatus: LeaveStatus = leaveRequest.status
+      const updateData: Prisma.LeaveRequestUpdateInput = {}
       
       if (isHR) {
+        if (leaveRequest.status === 'HR_APPROVED' && leaveRequest.hrApprovedBy) {
+          return NextResponse.json({ success: true, status: 'HR_APPROVED' })
+        }
+
         updateData.hrApprovedBy = user.id
         updateData.hrApprovedAt = new Date()
         updateData.hrComment = comment || null
@@ -93,6 +120,10 @@ export async function POST(request: NextRequest) {
           newStatus = 'HR_APPROVED'
         }
       } else if (isLead) {
+        if (leaveRequest.status === 'LEAD_APPROVED' && leaveRequest.leadApprovedBy) {
+          return NextResponse.json({ success: true, status: 'LEAD_APPROVED' })
+        }
+
         updateData.leadApprovedBy = user.id
         updateData.leadApprovedAt = new Date()
         updateData.leadComment = comment || null
@@ -106,39 +137,81 @@ export async function POST(request: NextRequest) {
       }
       
       updateData.status = newStatus
-      
-      await prisma.leaveRequest.update({
-        where: { id: requestId },
-        data: updateData,
-      })
-      
-      // If fully approved, deduct from balance
+
+      // If fully approved, atomically update request + leave balance.
       if (newStatus === 'APPROVED') {
         const start = new Date(leaveRequest.startDate)
         const end = new Date(leaveRequest.endDate)
-        const daysUsed = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
-        
-        const currentYear = new Date().getFullYear()
+        const daysUsed = calculateLeaveDays(start, end)
+        const balanceYear = start.getFullYear()
         const usedField = `${leaveRequest.leaveType.toLowerCase()}Used` as 'casualUsed' | 'sickUsed' | 'annualUsed'
-        
-        await prisma.leaveBalance.update({
-          where: {
-            employeeId_year: {
-              employeeId: leaveRequest.employeeId,
-              year: currentYear,
+        const totalField = `${leaveRequest.leaveType.toLowerCase()}Days` as 'casualDays' | 'sickDays' | 'annualDays'
+
+        const result = await prisma.$transaction(async (tx) => {
+          const requestUpdate = await tx.leaveRequest.updateMany({
+            where: {
+              id: requestId,
+              status: { in: ['PENDING', 'LEAD_APPROVED', 'HR_APPROVED'] },
             },
-          },
-          data: {
-            [usedField]: { increment: daysUsed },
-          },
+            data: updateData,
+          })
+
+          if (requestUpdate.count === 0) {
+            return { alreadyFinalized: true }
+          }
+
+          const balance = await tx.leaveBalance.upsert({
+            where: {
+              employeeId_year: {
+                employeeId: leaveRequest.employeeId,
+                year: balanceYear,
+              },
+            },
+            update: {},
+            create: {
+              employeeId: leaveRequest.employeeId,
+              year: balanceYear,
+            },
+          })
+
+          const available = balance[totalField] - balance[usedField]
+          if (daysUsed > available) {
+            throw new Error(
+              `Insufficient ${leaveRequest.leaveType.toLowerCase()} leave balance at approval time. Available: ${available}, required: ${daysUsed}`
+            )
+          }
+
+          await tx.leaveBalance.update({
+            where: {
+              employeeId_year: {
+                employeeId: leaveRequest.employeeId,
+                year: balanceYear,
+              },
+            },
+            data: {
+              [usedField]: { increment: daysUsed },
+            },
+          })
+
+          return { alreadyFinalized: false }
         })
-        
-        // Send approval notification
-        try {
-          await sendLeaveApprovalNotification(requestId, 'approved', user.name, comment)
-        } catch (e) {
-          console.error('Failed to send approval notification:', e)
+
+        if (!result.alreadyFinalized) {
+          // Send approval notification
+          try {
+            await sendLeaveApprovalNotification(requestId, 'approved', user.name, comment)
+          } catch (e) {
+            console.error('Failed to send approval notification:', e)
+          }
         }
+      } else {
+        await prisma.leaveRequest.updateMany({
+          where: {
+            id: requestId,
+            status: { in: ['PENDING', 'LEAD_APPROVED', 'HR_APPROVED'] },
+          },
+          data: updateData,
+        })
       }
       
       return NextResponse.json({ success: true, status: newStatus })
@@ -146,6 +219,9 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
   } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Insufficient')) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
     console.error('Failed to process approval:', error)
     return NextResponse.json({ error: 'Failed to process approval' }, { status: 500 })
   }
