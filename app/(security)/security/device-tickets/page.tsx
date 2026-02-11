@@ -27,7 +27,6 @@ interface DeviceTicket {
     status: 'OPEN' | 'UNDER_REVIEW' | 'SOLUTION' | 'RESOLVED'
     solution: string | null
     expectedResolutionDate: string | null
-    hrNotes: string | null
     hrAssignedTo: string | null
     resolvedAt: string | null
     createdAt: string
@@ -61,7 +60,7 @@ const STATUS_FLOW: Record<string, string> = {
     SOLUTION: 'RESOLVED',
 }
 
-export default function HRDeviceTicketsPage() {
+export default function SecurityDeviceTicketsPage() {
     const router = useRouter()
     const [tickets, setTickets] = useState<DeviceTicket[]>([])
     const [allTickets, setAllTickets] = useState<DeviceTicket[]>([])
@@ -74,14 +73,13 @@ export default function HRDeviceTicketsPage() {
     const [newStatus, setNewStatus] = useState('')
     const [solution, setSolution] = useState('')
     const [expectedResolutionDate, setExpectedResolutionDate] = useState('')
-    const [hrNotes, setHrNotes] = useState('')
     const [processing, setProcessing] = useState(false)
 
     useEffect(() => {
         fetch('/api/auth/session')
             .then((res) => res.json())
             .then((data) => {
-                if (!data.user || data.user.role !== 'HR') {
+                if (!data.user || data.user.role !== 'SECURITY') {
                     router.push('/login')
                     return
                 }
@@ -140,7 +138,6 @@ export default function HRDeviceTicketsPage() {
                 ? new Date(ticket.expectedResolutionDate).toISOString().split('T')[0]
                 : ''
         )
-        setHrNotes(ticket.hrNotes || '')
     }
 
     const handleUpdate = async () => {
@@ -167,7 +164,6 @@ export default function HRDeviceTicketsPage() {
                     status: newStatus,
                     solution: normalizedSolution || undefined,
                     expectedResolutionDate: normalizedExpectedResolutionDate || undefined,
-                    hrNotes: hrNotes.trim() || undefined,
                 }),
             })
 
@@ -213,7 +209,7 @@ export default function HRDeviceTicketsPage() {
 
     return (
         <PageContainer>
-            <PageHeader backHref="/admin" badge="Device Support" />
+            <PageHeader backHref="/security" badge="Security" />
             <PageContent>
                 {/* Stats Row */}
                 <motion.div
@@ -449,20 +445,6 @@ export default function HRDeviceTicketsPage() {
                                 value={expectedResolutionDate}
                                 onChange={(e) => setExpectedResolutionDate(e.target.value)}
                                 className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                            />
-                        </div>
-
-                        {/* HR Notes (internal) */}
-                        <div>
-                            <label className="block text-sm font-medium text-foreground mb-1.5">
-                                Internal Notes <span className="text-xs text-muted">(not visible to employee)</span>
-                            </label>
-                            <textarea
-                                value={hrNotes}
-                                onChange={(e) => setHrNotes(e.target.value)}
-                                rows={2}
-                                placeholder="Internal notes for HR team..."
-                                className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
                             />
                         </div>
 

@@ -28,15 +28,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid priority filter' }, { status: 400 })
     }
 
-    const isHR = user.role === 'HR'
+    const canManageAllTickets = user.role === 'HR' || user.role === 'SECURITY'
     const where: {
       employeeId?: string
       status?: (typeof VALID_STATUSES)[number]
       priority?: (typeof VALID_PRIORITIES)[number]
     } = {}
 
-    // Employees see only their own tickets; HR can see all or only own.
-    if (!isHR || onlyOwn) {
+    // Employees see only their own tickets; HR/Security can see all or only own.
+    if (!canManageAllTickets || onlyOwn) {
       where.employeeId = user.id
     }
 
@@ -48,10 +48,37 @@ export async function GET(request: NextRequest) {
       where.priority = priority as (typeof VALID_PRIORITIES)[number]
     }
 
-    if (isHR) {
+    if (user.role === 'HR') {
       const tickets = await prisma.deviceTicket.findMany({
         where,
         include: {
+          employee: {
+            select: { id: true, name: true, department: true, position: true, email: true },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      })
+
+      return NextResponse.json({ tickets })
+    }
+
+    if (user.role === 'SECURITY') {
+      const tickets = await prisma.deviceTicket.findMany({
+        where,
+        select: {
+          id: true,
+          employeeId: true,
+          title: true,
+          description: true,
+          deviceType: true,
+          priority: true,
+          status: true,
+          hrAssignedTo: true,
+          solution: true,
+          expectedResolutionDate: true,
+          resolvedAt: true,
+          createdAt: true,
+          updatedAt: true,
           employee: {
             select: { id: true, name: true, department: true, position: true, email: true },
           },
@@ -73,6 +100,7 @@ export async function GET(request: NextRequest) {
         priority: true,
         status: true,
         solution: true,
+        expectedResolutionDate: true,
         hrAssignedTo: true,
         resolvedAt: true,
         createdAt: true,
@@ -133,11 +161,11 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Send notification to HR
+    // Send notification to support team (HR + Security)
     try {
       await sendNewTicketNotificationToHR(ticket.id)
     } catch (e) {
-      console.error('Failed to send new ticket notification to HR:', e)
+      console.error('Failed to send new ticket notification to support team:', e)
     }
 
     return NextResponse.json({ success: true, ticket })

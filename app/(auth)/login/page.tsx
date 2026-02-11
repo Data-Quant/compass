@@ -428,6 +428,11 @@ export default function LoginPage() {
                                       HR
                                     </span>
                                   )}
+                                  {user.role === 'SECURITY' && (
+                                    <span className="px-2 py-1 text-xs bg-slate-500/10 text-slate-600 dark:text-slate-300 rounded-md font-medium">
+                                      Security
+                                    </span>
+                                  )}
                                   <ChevronRight className="w-5 h-5 text-muted group-hover:text-indigo-500 transition-colors" />
                                 </div>
                                 </div>

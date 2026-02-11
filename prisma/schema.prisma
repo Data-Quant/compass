@@ -13,6 +13,7 @@ datasource db {
 enum UserRole {
   EMPLOYEE
   HR
+  SECURITY
 }
 
 enum RelationshipType {
@@ -297,10 +298,11 @@ model DeviceTicket {
   priority      TicketPriority @default(MEDIUM)
   status        TicketStatus   @default(OPEN)
 
-  // HR response fields
-  hrAssignedTo  String?        // HR person handling it
-  solution      String?        // Solution description
-  hrNotes       String?        // Internal HR notes
+  // Support-team response fields
+  hrAssignedTo              String?        // Current support owner (HR/Security)
+  solution                  String?        // Resolution/proposed solution shown to employee
+  expectedResolutionDate    DateTime?      // Required when support proposes/commits resolution
+  hrNotes                   String?        // Internal HR notes (not visible to security/employee)
 
   resolvedAt    DateTime?
   createdAt     DateTime       @default(now())

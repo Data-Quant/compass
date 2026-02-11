@@ -349,8 +349,17 @@ export async function sendLeaveApprovalNotification(
 }
 
 // Device Management Email Functions
+async function getSupportRecipientEmails() {
+  const supportUsers = await prisma.user.findMany({
+    where: {
+      role: { in: ['HR', 'SECURITY'] },
+      email: { not: null },
+    },
+    select: { email: true },
+  })
 
-// Device Management Email Functions
+  return [...new Set(supportUsers.map((u) => u.email).filter(Boolean) as string[])]
+}
 
 export async function sendNewTicketNotificationToHR(ticketId: string) {
   const ticket = await prisma.deviceTicket.findUnique({
@@ -365,9 +374,11 @@ export async function sendNewTicketNotificationToHR(ticketId: string) {
     return { success: false, message: 'Ticket not found' }
   }
 
-  const HR_EMAIL = 'hr@plutus21.com'
-  const EXECUTION_EMAIL = 'execution@plutus21.com'
-  const recipients = [HR_EMAIL, EXECUTION_EMAIL]
+  const recipients = await getSupportRecipientEmails()
+  if (recipients.length === 0) {
+    console.warn('[Email] No HR/Security recipients found for new ticket notification')
+    return { success: false, message: 'No support recipients configured' }
+  }
 
   const priorityColors: Record<string, string> = {
     LOW: '#6B7280',
@@ -394,7 +405,7 @@ export async function sendNewTicketNotificationToHR(ticketId: string) {
       </div>
 
       <p style="color: #64748B; font-size: 14px;">
-        Please review and update the ticket status in the HR Portal.
+        Please review and update the ticket status in the support dashboard.
       </p>
     </div>
   `
@@ -403,18 +414,22 @@ export async function sendNewTicketNotificationToHR(ticketId: string) {
     const info = await transporter.sendMail({
       from: `P21 Compass <${FROM_EMAIL}>`,
       to: recipients.join(', '),
-      subject: `New Device Ticket [${ticket.priority}]: ${ticket.title}`,
+      subject: `New Device Support Ticket [${ticket.priority}]: ${ticket.title}`,
       html: htmlContent,
     })
-    console.log(`[Email] New ticket notification sent to HR: ${ticketId}`)
+    console.log(`[Email] New ticket notification sent to support team: ${ticketId}`)
     return { success: true, data: { messageId: info.messageId } }
   } catch (error: any) {
-    console.error(`[Email] Failed to send new ticket notification to HR:`, error)
+    console.error(`[Email] Failed to send new ticket notification to support team:`, error)
     return { success: false, error: error.message }
   }
 }
 
-export async function sendTicketStatusNotification(ticketId: string) {
+export async function sendTicketStatusNotification(
+  ticketId: string,
+  updatedByName?: string,
+  updatedByRole?: 'EMPLOYEE' | 'HR' | 'SECURITY'
+) {
   console.log(`[Email] Triggering status notification for ticket: ${ticketId}`)
 
   const ticket = await prisma.deviceTicket.findUnique({
@@ -429,13 +444,12 @@ export async function sendTicketStatusNotification(ticketId: string) {
     return { success: false, message: 'Ticket not found' }
   }
 
-  if (!ticket.employee.email) {
-    console.error(`[Email] Employee email missing for ticket: ${ticketId}`)
-    return { success: false, message: 'Employee email not found' }
-  }
-
   const employee = ticket.employee
-  const employeeEmail = employee.email as string
+  const supportRecipients = await getSupportRecipientEmails()
+  const recipients = [...new Set([employee.email, ...supportRecipients].filter(Boolean) as string[])]
+  if (recipients.length === 0) {
+    return { success: false, message: 'No recipients available for status notification' }
+  }
 
   const statusLabels: Record<string, string> = {
     OPEN: 'Open',
@@ -465,10 +479,13 @@ export async function sendTicketStatusNotification(ticketId: string) {
       </div>
 
       <div style="background: #F8FAFC; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>Employee:</strong> ${escapeHtml(employee.name)}</p>
         <p><strong>Ticket:</strong> ${escapeHtml(ticket.title)}</p>
         <p><strong>Device:</strong> ${escapeHtml(ticket.deviceType)}</p>
         <p><strong>Priority:</strong> ${ticket.priority}</p>
+        ${ticket.expectedResolutionDate ? `<p><strong>Expected Resolution:</strong> ${new Date(ticket.expectedResolutionDate).toLocaleDateString()}</p>` : ''}
         ${ticket.hrAssignedTo ? `<p><strong>Handled by:</strong> ${escapeHtml(ticket.hrAssignedTo)}</p>` : ''}
+        ${updatedByName ? `<p><strong>Updated by:</strong> ${escapeHtml(updatedByName)}${updatedByRole ? ` (${escapeHtml(updatedByRole)})` : ''}</p>` : ''}
       </div>
 
       ${ticket.solution ? `
@@ -493,12 +510,12 @@ export async function sendTicketStatusNotification(ticketId: string) {
   try {
     const info = await transporter.sendMail({
       from: `P21 Compass <${FROM_EMAIL}>`,
-      to: employeeEmail,
-      subject: `Device Ticket ${statusLabel}: ${ticket.title}`,
+      to: recipients.join(', '),
+      subject: `Device Support Ticket ${statusLabel}: ${ticket.title}`,
       html: htmlContent,
     })
 
-    console.log(`[Email] Status notification sent to ${employeeEmail} for ticket: ${ticketId}`)
+    console.log(`[Email] Status notification sent to ${recipients.length} recipients for ticket: ${ticketId}`)
     return { success: true, data: { messageId: info.messageId } }
   } catch (error: any) {
     console.error(`[Email] Failed to send status notification for ticket: ${ticketId}`, error)

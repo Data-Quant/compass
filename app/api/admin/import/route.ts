@@ -53,6 +53,7 @@ async function importUsers(data: any[]) {
       const department = row.department || row.Department || row.DEPARTMENT
       const position = row.position || row.Position || row.POSITION || row.title || row.Title
       const role = (row.role || row.Role || row.ROLE || 'EMPLOYEE').toUpperCase()
+      const normalizedRole = role === 'HR' || role === 'SECURITY' ? role : 'EMPLOYEE'
 
       if (!name) {
         results.errors.push(`Row ${rowNum}: Name is required`)
@@ -73,7 +74,7 @@ async function importUsers(data: any[]) {
               name,
               department: department || null,
               position: position || null,
-              role: role === 'HR' ? 'HR' : 'EMPLOYEE',
+              role: normalizedRole as 'EMPLOYEE' | 'HR' | 'SECURITY',
             },
           })
           results.updated++
@@ -94,7 +95,7 @@ async function importUsers(data: any[]) {
             email: email || existingByName.email,
             department: department || existingByName.department,
             position: position || existingByName.position,
-            role: role === 'HR' ? 'HR' : 'EMPLOYEE',
+            role: normalizedRole as 'EMPLOYEE' | 'HR' | 'SECURITY',
           },
         })
         results.updated++
@@ -108,7 +109,7 @@ async function importUsers(data: any[]) {
           email: email || null,
           department: department || null,
           position: position || null,
-          role: role === 'HR' ? 'HR' : 'EMPLOYEE',
+          role: normalizedRole as 'EMPLOYEE' | 'HR' | 'SECURITY',
         },
       })
       results.created++

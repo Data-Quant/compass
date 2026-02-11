@@ -18,7 +18,7 @@ interface User {
   email: string | null
   department: string | null
   position: string | null
-  role: 'EMPLOYEE' | 'HR'
+  role: 'EMPLOYEE' | 'HR' | 'SECURITY'
   createdAt: string
 }
 
@@ -236,6 +236,7 @@ export default function UsersPage() {
               <option value="">All Roles</option>
               <option value="EMPLOYEE">Employee</option>
               <option value="HR">HR</option>
+              <option value="SECURITY">Security</option>
             </select>
             <select value={filterDepartment} onChange={(e) => setFilterDepartment(e.target.value)} className="px-4 py-2 bg-surface border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50">
               <option value="">All Departments</option>
@@ -274,8 +275,14 @@ export default function UsersPage() {
                     <td className="px-6 py-4 text-sm text-muted">{user.email || '—'}</td>
                     <td className="px-6 py-4 text-sm text-muted">{user.department || '—'}</td>
                     <td className="px-6 py-4">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${user.role === 'HR' ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400' : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'}`}>
-                        {user.role === 'HR' ? <Shield className="w-3 h-3" /> : <UserCheck className="w-3 h-3" />}
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                        user.role === 'HR'
+                          ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400'
+                          : user.role === 'SECURITY'
+                            ? 'bg-slate-500/10 text-slate-600 dark:text-slate-400'
+                            : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
+                      }`}>
+                        {user.role === 'EMPLOYEE' ? <UserCheck className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
                         {user.role}
                       </span>
                     </td>
@@ -328,6 +335,7 @@ export default function UsersPage() {
             <select value={formData.role} onChange={(e) => setFormData({ ...formData, role: e.target.value })} className="w-full px-4 py-2 bg-surface border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50">
               <option value="EMPLOYEE">Employee</option>
               <option value="HR">HR</option>
+              <option value="SECURITY">Security</option>
             </select>
           </div>
           <div className="flex justify-end gap-3 pt-4">

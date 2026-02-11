@@ -9,7 +9,7 @@ export type SafeUser = {
   email: string | null
   department: string | null
   position: string | null
-  role: 'EMPLOYEE' | 'HR'
+  role: 'EMPLOYEE' | 'HR' | 'SECURITY'
   createdAt: Date
   updatedAt: Date
   chartX: number | null

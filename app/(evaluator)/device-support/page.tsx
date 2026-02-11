@@ -29,6 +29,7 @@ interface DeviceTicket {
     priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
     status: 'OPEN' | 'UNDER_REVIEW' | 'SOLUTION' | 'RESOLVED'
     solution: string | null
+    expectedResolutionDate: string | null
     hrAssignedTo: string | null
     resolvedAt: string | null
     createdAt: string
@@ -418,6 +419,14 @@ export default function DeviceSupportPage() {
                                                                     <p className="text-sm text-foreground">{ticket.hrAssignedTo}</p>
                                                                 </div>
                                                             )}
+                                                            {ticket.expectedResolutionDate && (
+                                                                <div>
+                                                                    <p className="text-xs font-medium text-muted mb-1">Expected resolution date</p>
+                                                                    <p className="text-sm text-foreground">
+                                                                        {new Date(ticket.expectedResolutionDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                                    </p>
+                                                                </div>
+                                                            )}
                                                             {ticket.solution && (
                                                                 <div className="p-3 bg-purple-50 dark:bg-purple-500/10 rounded-lg">
                                                                     <p className="text-xs font-medium text-purple-700 dark:text-purple-400 mb-1">Solution</p>
@@ -508,6 +517,14 @@ export default function DeviceSupportPage() {
                                                                 <div className="p-3 bg-green-50 dark:bg-green-500/10 rounded-lg">
                                                                     <p className="text-xs font-medium text-green-700 dark:text-green-400 mb-1">Solution</p>
                                                                     <p className="text-sm text-green-800 dark:text-green-300 whitespace-pre-wrap">{ticket.solution}</p>
+                                                                </div>
+                                                            )}
+                                                            {ticket.expectedResolutionDate && (
+                                                                <div>
+                                                                    <p className="text-xs font-medium text-muted mb-1">Expected resolution date</p>
+                                                                    <p className="text-sm text-foreground">
+                                                                        {new Date(ticket.expectedResolutionDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                                    </p>
                                                                 </div>
                                                             )}
                                                         </div>

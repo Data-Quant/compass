@@ -1,5 +1,5 @@
 export type RelationshipType = 'DIRECT_REPORT' | 'TEAM_LEAD' | 'PEER' | 'C_LEVEL' | 'HR' | 'DEPT' | 'SELF'
-export type UserRole = 'EMPLOYEE' | 'HR'
+export type UserRole = 'EMPLOYEE' | 'HR' | 'SECURITY'
 export type QuestionType = 'RATING' | 'TEXT'
 export type EmailStatus = 'PENDING' | 'SENT' | 'FAILED'
 

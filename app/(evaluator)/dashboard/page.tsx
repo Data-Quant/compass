@@ -96,6 +96,8 @@ export default function DashboardPage() {
 
   // Device ticket state
   const [pendingTickets, setPendingTickets] = useState<DeviceTicket[]>([])
+  const isSupportUser = user?.role === 'HR' || user?.role === 'SECURITY'
+  const supportManageHref = user?.role === 'SECURITY' ? '/security/device-tickets' : '/admin/device-tickets'
 
   useEffect(() => {
     fetch('/api/auth/session')
@@ -108,7 +110,7 @@ export default function DashboardPage() {
         setUser(data.user)
         loadDashboard()
         loadPendingLeaves()
-        if (data.user.role === 'HR') {
+        if (data.user.role === 'HR' || data.user.role === 'SECURITY') {
           loadPendingTickets()
         }
       })
@@ -263,6 +265,15 @@ export default function DashboardPage() {
                 >
                   <Settings className="w-4 h-4" />
                   <span className="hidden sm:inline">Admin</span>
+                </Link>
+              )}
+              {user?.role === 'SECURITY' && (
+                <Link
+                  href="/security"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-600 text-white text-sm font-medium hover:bg-slate-700 transition-colors"
+                >
+                  <Settings className="w-4 h-4" />
+                  <span className="hidden sm:inline">Security</span>
                 </Link>
               )}
               <ThemeToggle />
@@ -455,8 +466,8 @@ export default function DashboardPage() {
           </motion.div>
         )}
 
-        {/* Pending Device Tickets (for HR) */}
-        {user?.role === 'HR' && pendingTickets.length > 0 && (
+        {/* Pending Device Tickets (for HR/Security) */}
+        {isSupportUser && pendingTickets.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -505,7 +516,7 @@ export default function DashboardPage() {
                       </span>
                     </div>
                     <Link
-                      href="/admin/device-tickets"
+                      href={supportManageHref}
                       className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
                     >
                       Manage →

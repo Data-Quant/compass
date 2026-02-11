@@ -3,6 +3,8 @@ import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import bcrypt from 'bcryptjs'
 
+const VALID_USER_ROLES = ['EMPLOYEE', 'HR', 'SECURITY'] as const
+
 // GET - List all users
 export async function GET(request: NextRequest) {
   try {
@@ -54,6 +56,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 })
     }
 
+    const normalizedRole = typeof role === 'string' ? role.toUpperCase() : 'EMPLOYEE'
+    if (!VALID_USER_ROLES.includes(normalizedRole as (typeof VALID_USER_ROLES)[number])) {
+      return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
+    }
+
     // Hash password if provided
     let passwordHash = null
     if (password) {
@@ -66,7 +73,7 @@ export async function POST(request: NextRequest) {
         email: email || null,
         department: department || null,
         position: position || null,
-        role: role || 'EMPLOYEE',
+        role: normalizedRole as (typeof VALID_USER_ROLES)[number],
         // Note: Add password field to schema if implementing password auth
       },
     })
@@ -98,6 +105,11 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'ID and name are required' }, { status: 400 })
     }
 
+    const normalizedRole = typeof role === 'string' ? role.toUpperCase() : 'EMPLOYEE'
+    if (!VALID_USER_ROLES.includes(normalizedRole as (typeof VALID_USER_ROLES)[number])) {
+      return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
+    }
+
     const updatedUser = await prisma.user.update({
       where: { id },
       data: {
@@ -105,7 +117,7 @@ export async function PUT(request: NextRequest) {
         email: email || null,
         department: department || null,
         position: position || null,
-        role: role || 'EMPLOYEE',
+        role: normalizedRole as (typeof VALID_USER_ROLES)[number],
       },
     })
 
