@@ -54,41 +54,17 @@ function ReportsPageContent() {
 
   const loadReports = async () => {
     try {
-      const periodResponse = await fetch('/api/evaluations/dashboard?periodId=' + periodId)
-      const periodData = await periodResponse.json()
-      setPeriod(periodData.period)
+      // Single bulk endpoint instead of 40+ sequential requests
+      const response = await fetch(`/api/reports/bulk?periodId=${periodId}`)
+      const data = await response.json()
 
-      const employeesResponse = await fetch('/api/auth/login')
-      const employeesData = await employeesResponse.json()
-      const employeeList = employeesData.users?.filter((u: any) => u.role !== 'HR') || []
-
-      const reportsList = []
-      for (const employee of employeeList) {
-        try {
-          const response = await fetch(`/api/reports?employeeId=${employee.id}&periodId=${periodId}`)
-          const data = await response.json()
-          if (data.report) {
-            reportsList.push({ ...data.report, employee })
-          } else {
-            reportsList.push({
-              employeeId: employee.id,
-              employeeName: employee.name,
-              overallScore: 0,
-              breakdown: [],
-              employee,
-            })
-          }
-        } catch (error) {
-          reportsList.push({
-            employeeId: employee.id,
-            employeeName: employee.name,
-            overallScore: 0,
-            breakdown: [],
-            employee,
-          })
-        }
+      if (data.error) {
+        toast.error(data.error)
+        return
       }
-      setReports(reportsList)
+
+      setPeriod(data.period)
+      setReports(data.reports || [])
     } catch (error) {
       toast.error('Failed to load reports')
     } finally {
