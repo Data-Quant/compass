@@ -11,7 +11,6 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { BackgroundBeams } from '@/components/aceternity/background-beams'
-import { ProgressiveBlur } from '@/components/ui/progressive-blur'
 import { ShimmerButton } from '@/components/magicui/shimmer-button'
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import { Plutus21Logo } from '@/components/brand/Plutus21Logo'
@@ -661,8 +660,6 @@ export default function LoginPage() {
                         </div>
 
                         {/* Users list */}
-                        <div className="relative">
-                        <ProgressiveBlur position="bottom" height={32} />
                         <div className="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
                           {filteredUsers.length === 0 ? (
                             <div className="text-center py-12">
@@ -719,7 +716,6 @@ export default function LoginPage() {
                               </motion.button>
                             ))
                           )}
-                        </div>
                         </div>
 
                         <div className="mt-6 pt-6 border-t border-border">
