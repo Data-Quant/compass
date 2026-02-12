@@ -25,7 +25,6 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/ui/modal'
-import { ProgressiveBlur } from '@/components/ui/progressive-blur'
 import {
   Select,
   SelectContent,
@@ -593,9 +592,7 @@ export default function LeavePage() {
                     </Button>
                   </div>
 
-                  <div className="relative">
-                  <ProgressiveBlur position="bottom" height={32} />
-                  <div className="max-h-[500px] overflow-y-auto">
+                  <div className="max-h-[400px] overflow-y-auto">
                     {requests.length === 0 ? (
                       <div className="p-6 text-center">
                         <Calendar className="w-10 h-10 text-muted-foreground/30 mx-auto mb-2" />
@@ -647,7 +644,6 @@ export default function LeavePage() {
                         })}
                       </div>
                     )}
-                  </div>
                   </div>
                 </CardContent>
               </Card>

@@ -20,7 +20,6 @@ import { PageHeading } from '@/components/composed/PageHeading'
 import { EmptyState } from '@/components/composed/EmptyState'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { GlareCard } from '@/components/ui/glare-card'
-import { FocusBlurGroup, FocusBlurItem } from '@/components/ui/focus-blur-group'
 import { BorderBeam } from '@/components/magicui/border-beam'
 import {
   CheckCircle2,
@@ -269,13 +268,13 @@ export default function DashboardPage() {
                 {pendingLeaves.length}
               </Badge>
             </div>
-            <FocusBlurGroup className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {pendingLeaves.map((request, leaveIdx) => {
                 const typeConfig = LEAVE_TYPE_CONFIG[request.leaveType]
                 const TypeIcon = typeConfig.icon
                 const days = getDaysCount(request.startDate, request.endDate)
                 return (
-                  <FocusBlurItem key={request.id} index={leaveIdx}>
+                  <div key={request.id}>
                     <Card className="rounded-card border-amber-200 dark:border-amber-500/30">
                       <CardContent className="p-4">
                         <div className="flex items-start gap-3 mb-3">
@@ -322,10 +321,10 @@ export default function DashboardPage() {
                         </div>
                       </CardContent>
                     </Card>
-                  </FocusBlurItem>
+                  </div>
                 )
               })}
-            </FocusBlurGroup>
+            </div>
           </motion.div>
         )}
 
@@ -344,9 +343,9 @@ export default function DashboardPage() {
                 {pendingTickets.length}
               </Badge>
             </div>
-            <FocusBlurGroup className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {pendingTickets.map((ticket, ticketIdx) => (
-                <FocusBlurItem key={ticket.id} index={ticketIdx}>
+                <div key={ticket.id}>
                 <Card className="rounded-card border-primary/20">
                   <CardContent className="p-4">
                     <div className="flex items-start gap-3 mb-3">
@@ -377,9 +376,9 @@ export default function DashboardPage() {
                     </div>
                   </CardContent>
                 </Card>
-                </FocusBlurItem>
+                </div>
               ))}
-            </FocusBlurGroup>
+            </div>
           </motion.div>
         )}
 

@@ -9,6 +9,13 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { PageFooter } from '@/components/layout/page-footer'
 import { PageContainer, PageContent } from '@/components/layout/page-container'
+import { LoadingScreen } from '@/components/composed/LoadingScreen'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Calendar, Plus, Edit2, Trash2, Lock, Unlock, Bell, CheckCircle, Clock } from 'lucide-react'
 
 interface Period {
@@ -111,12 +118,7 @@ export default function PeriodsPage() {
   if (loading) {
     return (
       <PageContainer>
-        <div className="min-h-screen flex items-center justify-center">
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-4">
-            <div className="w-12 h-12 rounded-full gradient-primary animate-pulse" />
-            <p className="text-muted text-sm">Loading periods...</p>
-          </motion.div>
-        </div>
+        <LoadingScreen />
       </PageContainer>
     )
   }
@@ -128,51 +130,71 @@ export default function PeriodsPage() {
       <PageContent>
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Evaluation Periods</h1>
-            <p className="text-muted mt-1">{periods.length} periods configured</p>
+            <h1 className="text-2xl font-light tracking-tight text-foreground font-display">Evaluation Periods</h1>
+            <p className="text-muted-foreground mt-1">{periods.length} periods configured</p>
           </div>
-          <button onClick={() => handleOpenModal()} className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors mt-4 md:mt-0">
+          <Button onClick={() => handleOpenModal()} className="mt-4 md:mt-0">
             <Plus className="w-4 h-4" /> Add Period
-          </button>
+          </Button>
         </div>
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {periods.map((period, index) => (
-            <motion.div key={period.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 * index }} className="glass rounded-xl p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="font-semibold text-foreground text-lg">{period.name}</h3>
-                  <p className="text-sm text-muted">{formatDate(period.startDate)} - {formatDate(period.endDate)}</p>
-                </div>
-                <div className="flex gap-1">
-                  {period.isActive && <span className="px-2 py-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-md text-xs font-medium flex items-center gap-1"><CheckCircle className="w-3 h-3" />Active</span>}
-                  {period.isLocked && <span className="px-2 py-1 bg-red-500/10 text-red-600 dark:text-red-400 rounded-md text-xs font-medium flex items-center gap-1"><Lock className="w-3 h-3" />Locked</span>}
-                </div>
-              </div>
-              
-              <div className="space-y-2 text-sm text-muted mb-4">
-                <div className="flex justify-between"><span>Evaluations</span><span className="font-medium text-foreground">{period._count?.evaluations || 0}</span></div>
-                <div className="flex justify-between"><span>Reports</span><span className="font-medium text-foreground">{period._count?.reports || 0}</span></div>
-              </div>
+            <motion.div key={period.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 * index }}>
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <h3 className="font-semibold text-foreground text-lg">{period.name}</h3>
+                      <p className="text-sm text-muted-foreground">{formatDate(period.startDate)} - {formatDate(period.endDate)}</p>
+                    </div>
+                    <div className="flex gap-1">
+                      {period.isActive && (
+                        <Badge variant="default" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
+                          <CheckCircle className="w-3 h-3 mr-1" />Active
+                        </Badge>
+                      )}
+                      {period.isLocked && (
+                        <Badge variant="default" className="bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20">
+                          <Lock className="w-3 h-3 mr-1" />Locked
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2 text-sm text-muted-foreground mb-4">
+                    <div className="flex justify-between"><span>Evaluations</span><span className="font-medium text-foreground">{period._count?.evaluations || 0}</span></div>
+                    <div className="flex justify-between"><span>Reports</span><span className="font-medium text-foreground">{period._count?.reports || 0}</span></div>
+                  </div>
 
-              <div className="flex gap-2 pt-4 border-t border-border">
-                <button onClick={() => handleOpenModal(period)} className="p-2 text-muted hover:text-foreground hover:bg-surface rounded-lg transition-colors" title="Edit"><Edit2 className="w-4 h-4" /></button>
-                <button onClick={() => handleToggleLock(period)} className={`p-2 rounded-lg transition-colors ${period.isLocked ? 'text-red-500 hover:bg-red-500/10' : 'text-muted hover:text-foreground hover:bg-surface'}`} title={period.isLocked ? 'Unlock' : 'Lock'}>
-                  {period.isLocked ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-                </button>
-                <button onClick={() => handleSendReminders(period.id)} disabled={sendingReminders === period.id} className="p-2 text-muted hover:text-indigo-500 hover:bg-indigo-500/10 rounded-lg transition-colors disabled:opacity-50" title="Send Reminders">
-                  <Bell className="w-4 h-4" />
-                </button>
-                <button onClick={() => { setPeriodToDelete(period); setIsDeleteDialogOpen(true) }} className="p-2 text-muted hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
-              </div>
+                  <div className="flex gap-2 pt-4 border-t border-border">
+                    <Button variant="ghost" size="icon" onClick={() => handleOpenModal(period)} className="text-muted-foreground hover:text-foreground" title="Edit">
+                      <Edit2 className="w-4 h-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => handleToggleLock(period)} className={period.isLocked ? 'text-red-500 hover:bg-red-500/10' : 'text-muted-foreground hover:text-foreground'} title={period.isLocked ? 'Unlock' : 'Lock'}>
+                      {period.isLocked ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => handleSendReminders(period.id)} disabled={sendingReminders === period.id} className="text-muted-foreground hover:text-primary hover:bg-primary/10" title="Send Reminders">
+                      <Bell className="w-4 h-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => { setPeriodToDelete(period); setIsDeleteDialogOpen(true) }} className="text-muted-foreground hover:text-red-500 hover:bg-red-500/10" title="Delete">
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             </motion.div>
           ))}
         </div>
 
         {periods.length === 0 && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass rounded-xl p-12 text-center">
-            <Calendar className="w-12 h-12 text-muted mx-auto mb-4" />
-            <p className="text-muted">No evaluation periods yet</p>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <Card>
+              <CardContent className="p-12 text-center">
+                <Calendar className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground">No evaluation periods yet</p>
+              </CardContent>
+            </Card>
           </motion.div>
         )}
 
@@ -182,32 +204,32 @@ export default function PeriodsPage() {
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={selectedPeriod ? 'Edit Period' : 'Add Period'}>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Name *</label>
-            <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="e.g., Q1 2026" className="w-full px-4 py-2 bg-surface border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+            <Label htmlFor="period-name" className="mb-1">Name *</Label>
+            <Input id="period-name" type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="e.g., Q1 2026" />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Start Date *</label>
-              <input type="date" value={formData.startDate} onChange={(e) => setFormData({ ...formData, startDate: e.target.value })} className="w-full px-4 py-2 bg-surface border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+              <Label htmlFor="start-date" className="mb-1">Start Date *</Label>
+              <Input id="start-date" type="date" value={formData.startDate} onChange={(e) => setFormData({ ...formData, startDate: e.target.value })} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">End Date *</label>
-              <input type="date" value={formData.endDate} onChange={(e) => setFormData({ ...formData, endDate: e.target.value })} className="w-full px-4 py-2 bg-surface border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+              <Label htmlFor="end-date" className="mb-1">End Date *</Label>
+              <Input id="end-date" type="date" value={formData.endDate} onChange={(e) => setFormData({ ...formData, endDate: e.target.value })} />
             </div>
           </div>
-          <div className="flex gap-4">
+          <div className="flex gap-6">
             <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={formData.isActive} onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })} className="w-4 h-4 text-indigo-600 border-border rounded focus:ring-indigo-500" />
+              <Checkbox checked={formData.isActive} onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked === true })} />
               <span className="text-sm text-foreground">Active</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={formData.isLocked} onChange={(e) => setFormData({ ...formData, isLocked: e.target.checked })} className="w-4 h-4 text-indigo-600 border-border rounded focus:ring-indigo-500" />
+              <Checkbox checked={formData.isLocked} onCheckedChange={(checked) => setFormData({ ...formData, isLocked: checked === true })} />
               <span className="text-sm text-foreground">Locked</span>
             </label>
           </div>
           <div className="flex justify-end gap-3 pt-4">
-            <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 border border-border rounded-lg hover:bg-surface text-foreground transition-colors">Cancel</button>
-            <button type="submit" disabled={saving} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors">{saving ? 'Saving...' : 'Save'}</button>
+            <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>Cancel</Button>
+            <Button type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save'}</Button>
           </div>
         </form>
       </Modal>

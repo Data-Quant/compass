@@ -19,7 +19,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
-import { FocusBlurGroup, FocusBlurItem } from '@/components/ui/focus-blur-group'
 import { ShimmerButton } from '@/components/magicui/shimmer-button'
 import {
   Monitor,
@@ -331,7 +330,7 @@ export default function DeviceSupportPage() {
               </CardContent>
             </Card>
           ) : (
-            <FocusBlurGroup className="space-y-3">
+            <div className="space-y-3">
               {activeTickets.map((ticket, index) => {
                 const statusConfig = STATUS_CONFIG[ticket.status]
                 const priorityConfig = PRIORITY_CONFIG[ticket.priority]
@@ -339,8 +338,8 @@ export default function DeviceSupportPage() {
                 const isExpanded = expandedTicket === ticket.id
 
                 return (
-                  <FocusBlurItem key={ticket.id} index={index}>
                   <motion.div
+                    key={ticket.id}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.05 }}
@@ -416,10 +415,9 @@ export default function DeviceSupportPage() {
                       </AnimatePresence>
                     </Card>
                   </motion.div>
-                  </FocusBlurItem>
                 )
               })}
-            </FocusBlurGroup>
+            </div>
           )}
         </motion.div>
 

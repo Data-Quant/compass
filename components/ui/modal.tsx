@@ -8,7 +8,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { ProgressiveBlur } from '@/components/ui/progressive-blur'
 import { BorderBeam } from '@/components/magicui/border-beam'
 
 interface ModalProps {
@@ -44,8 +43,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
           </DialogHeader>
-          <div className="relative mt-2">
-            <ProgressiveBlur position="bottom" height={24} />
+          <div className="mt-2">
             {children}
           </div>
         </motion.div>
