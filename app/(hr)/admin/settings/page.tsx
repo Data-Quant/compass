@@ -8,6 +8,20 @@ import { RelationshipType, RELATIONSHIP_TYPE_LABELS } from '@/types'
 import { PageHeader } from '@/components/layout/page-header'
 import { PageFooter } from '@/components/layout/page-footer'
 import { PageContainer, PageContent } from '@/components/layout/page-container'
+import { LoadingScreen } from '@/components/composed/LoadingScreen'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { Sliders, Save, Upload, Trash2, Info, Users, ChevronDown, ChevronUp } from 'lucide-react'
 
 interface WeightProfile {
@@ -157,16 +171,7 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <PageContainer>
-        <div className="min-h-screen flex items-center justify-center">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="flex flex-col items-center gap-4"
-          >
-            <div className="w-12 h-12 rounded-full gradient-primary animate-pulse" />
-            <p className="text-muted text-sm">Loading settings...</p>
-          </motion.div>
-        </div>
+        <LoadingScreen message="Loading settings..." />
       </PageContainer>
     )
   }
@@ -178,33 +183,35 @@ export default function SettingsPage() {
       <PageContent className="max-w-6xl">
         <div className="mb-8 flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Weight Profiles</h1>
-            <p className="text-muted mt-1">
+            <h1 className="text-2xl font-bold text-foreground font-display">Weight Profiles</h1>
+            <p className="text-muted-foreground mt-1">
               Each employee&apos;s weight profile is determined by their set of evaluator categories.
               Employees with the same evaluator types share the same weights.
             </p>
           </div>
-          <button
+          <Button
             onClick={handleSeedProfiles}
             disabled={seeding}
-            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors text-sm font-medium"
           >
             <Upload className="w-4 h-4" />
             {seeding ? 'Seeding...' : 'Seed Q4 2025 Profiles'}
-          </button>
+          </Button>
         </div>
 
         {profiles.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="glass rounded-xl p-12 text-center"
           >
-            <Sliders className="w-12 h-12 text-muted/30 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-foreground mb-2">No Weight Profiles</h3>
-            <p className="text-muted mb-6">
-              Click &quot;Seed Q4 2025 Profiles&quot; to import the 10 weight profiles from the compiled spreadsheet.
-            </p>
+            <Card>
+              <CardContent className="p-12 text-center">
+                <Sliders className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-foreground mb-2">No Weight Profiles</h3>
+                <p className="text-muted-foreground mb-6">
+                  Click &quot;Seed Q4 2025 Profiles&quot; to import the 10 weight profiles from the compiled spreadsheet.
+                </p>
+              </CardContent>
+            </Card>
           </motion.div>
         ) : (
           <>
@@ -212,149 +219,155 @@ export default function SettingsPage() {
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="glass rounded-xl overflow-hidden mb-6"
+              className="mb-6"
             >
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-surface/50 border-b border-border">
-                      <th className="text-left px-4 py-3 font-semibold text-foreground">Category Set</th>
-                      {ALL_TYPES.map(type => (
-                        <th key={type} className="text-center px-3 py-3 font-semibold text-foreground whitespace-nowrap">
-                          {TYPE_SHORT_LABELS[type]}
-                        </th>
-                      ))}
-                      <th className="text-center px-3 py-3 font-semibold text-foreground">Total</th>
-                      <th className="text-center px-3 py-3 font-semibold text-foreground">
-                        <Users className="w-4 h-4 inline" />
-                      </th>
-                      <th className="text-center px-3 py-3 font-semibold text-foreground">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {profiles.map((profile, idx) => {
-                      const total = Object.values(profile.weights).reduce((s, w) => s + w, 0) * 100
-                      const isExpanded = expandedProfile === profile.id
+              <Card>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="font-semibold">Category Set</TableHead>
+                        {ALL_TYPES.map(type => (
+                          <TableHead key={type} className="text-center whitespace-nowrap">
+                            {TYPE_SHORT_LABELS[type]}
+                          </TableHead>
+                        ))}
+                        <TableHead className="text-center">Total</TableHead>
+                        <TableHead className="text-center">
+                          <Users className="w-4 h-4 inline" />
+                        </TableHead>
+                        <TableHead className="text-center">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {profiles.map((profile, idx) => {
+                        const total = Object.values(profile.weights).reduce((s, w) => s + w, 0) * 100
+                        const isExpanded = expandedProfile === profile.id
 
-                      return (
-                        <motion.tr
-                          key={profile.id}
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          transition={{ delay: idx * 0.03 }}
-                          className="border-b border-border/50 hover:bg-surface/30 transition-colors"
-                        >
-                          {isExpanded ? (
-                            <td colSpan={ALL_TYPES.length + 4} className="px-4 py-4">
-                              <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                  <span className="font-medium text-foreground">{profile.displayName}</span>
-                                  <button
-                                    onClick={() => setExpandedProfile(null)}
-                                    className="text-muted hover:text-foreground"
-                                  >
-                                    <ChevronUp className="w-4 h-4" />
-                                  </button>
-                                </div>
+                        return (
+                          <motion.tr
+                            key={profile.id}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ delay: idx * 0.03 }}
+                            className="border-b transition-colors hover:bg-muted/30"
+                          >
+                            {isExpanded ? (
+                              <TableCell colSpan={ALL_TYPES.length + 4} className="px-4 py-4">
+                                <div className="space-y-4">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-medium text-foreground">{profile.displayName}</span>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => setExpandedProfile(null)}
+                                    >
+                                      <ChevronUp className="w-4 h-4" />
+                                    </Button>
+                                  </div>
 
-                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                                  {ALL_TYPES.map(type => {
-                                    const isInSet = profile.categorySetKey.includes(type)
-                                    return (
-                                      <div key={type} className="space-y-1">
-                                        <label className="text-xs font-medium text-muted">
-                                          {TYPE_SHORT_LABELS[type]}
-                                        </label>
-                                        <div className="flex items-center gap-1">
-                                          <input
-                                            type="number"
-                                            min="0"
-                                            max="100"
-                                            step="1"
-                                            disabled={!isInSet}
-                                            value={isInSet ? ((editWeights[type] || 0) * 100).toFixed(0) : ''}
-                                            onChange={(e) => handleWeightChange(type, parseFloat(e.target.value) || 0)}
-                                            className="w-full px-2 py-1.5 bg-surface border border-border rounded-lg text-foreground text-center text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 disabled:opacity-30 disabled:cursor-not-allowed"
-                                          />
-                                          <span className="text-xs text-muted">%</span>
+                                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                                    {ALL_TYPES.map(type => {
+                                      const isInSet = profile.categorySetKey.includes(type)
+                                      return (
+                                        <div key={type} className="space-y-1">
+                                          <Label className="text-xs text-muted-foreground">
+                                            {TYPE_SHORT_LABELS[type]}
+                                          </Label>
+                                          <div className="flex items-center gap-1">
+                                            <Input
+                                              type="number"
+                                              min={0}
+                                              max={100}
+                                              step={1}
+                                              disabled={!isInSet}
+                                              value={isInSet ? ((editWeights[type] || 0) * 100).toFixed(0) : ''}
+                                              onChange={(e) => handleWeightChange(type, parseFloat(e.target.value) || 0)}
+                                              className="text-center text-sm disabled:opacity-30 disabled:cursor-not-allowed"
+                                            />
+                                            <span className="text-xs text-muted-foreground">%</span>
+                                          </div>
                                         </div>
-                                      </div>
-                                    )
-                                  })}
-                                </div>
+                                      )
+                                    })}
+                                  </div>
 
-                                <div className="flex items-center justify-between pt-2">
-                                  <span className={`text-sm font-medium ${
-                                    Math.abs(getEditTotal() - 100) < 1 
-                                      ? 'text-emerald-600 dark:text-emerald-400' 
-                                      : 'text-red-600 dark:text-red-400'
-                                  }`}>
-                                    Total: {getEditTotal().toFixed(1)}%
+                                  <div className="flex items-center justify-between pt-2">
+                                    <span className={`text-sm font-medium ${
+                                      Math.abs(getEditTotal() - 100) < 1 
+                                        ? 'text-emerald-600 dark:text-emerald-400' 
+                                        : 'text-red-600 dark:text-red-400'
+                                    }`}>
+                                      Total: {getEditTotal().toFixed(1)}%
+                                    </span>
+                                    <Button
+                                      onClick={() => handleSaveProfile(profile)}
+                                      disabled={saving || Math.abs(getEditTotal() - 100) > 1}
+                                      size="sm"
+                                    >
+                                      <Save className="w-3.5 h-3.5" />
+                                      {saving ? 'Saving...' : 'Save'}
+                                    </Button>
+                                  </div>
+                                </div>
+                              </TableCell>
+                            ) : (
+                              <>
+                                <TableCell className="font-medium max-w-[280px]">
+                                  <span className="truncate block" title={profile.displayName}>
+                                    {profile.displayName}
                                   </span>
-                                  <button
-                                    onClick={() => handleSaveProfile(profile)}
-                                    disabled={saving || Math.abs(getEditTotal() - 100) > 1}
-                                    className="flex items-center gap-1.5 px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-                                  >
-                                    <Save className="w-3.5 h-3.5" />
-                                    {saving ? 'Saving...' : 'Save'}
-                                  </button>
-                                </div>
-                              </div>
-                            </td>
-                          ) : (
-                            <>
-                              <td className="px-4 py-3 text-foreground font-medium max-w-[280px]">
-                                <span className="truncate block" title={profile.displayName}>
-                                  {profile.displayName}
-                                </span>
-                              </td>
-                              {ALL_TYPES.map(type => {
-                                const w = (profile.weights[type] || 0) as number
-                                return (
-                                  <td key={type} className="text-center px-3 py-3">
-                                    {w > 0 ? (
-                                      <span className="inline-block min-w-[48px] px-2 py-0.5 rounded-md bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 font-medium text-xs">
-                                        {(w * 100).toFixed(0)}%
-                                      </span>
-                                    ) : (
-                                      <span className="text-muted/30">-</span>
-                                    )}
-                                  </td>
-                                )
-                              })}
-                              <td className="text-center px-3 py-3 font-semibold text-emerald-600 dark:text-emerald-400">
-                                {total.toFixed(0)}%
-                              </td>
-                              <td className="text-center px-3 py-3 text-muted">
-                                {profile.employeeCount}
-                              </td>
-                              <td className="text-center px-3 py-3">
-                                <div className="flex items-center justify-center gap-1">
-                                  <button
-                                    onClick={() => handleExpand(profile)}
-                                    className="p-1.5 rounded-lg hover:bg-surface text-muted hover:text-foreground transition-colors"
-                                    title="Edit weights"
-                                  >
-                                    <ChevronDown className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteProfile(profile.id)}
-                                    className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted hover:text-red-500 transition-colors"
-                                    title="Delete profile"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              </td>
-                            </>
-                          )}
-                        </motion.tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                                </TableCell>
+                                {ALL_TYPES.map(type => {
+                                  const w = (profile.weights[type] || 0) as number
+                                  return (
+                                    <TableCell key={type} className="text-center">
+                                      {w > 0 ? (
+                                        <Badge variant="secondary" className="min-w-[48px]">
+                                          {(w * 100).toFixed(0)}%
+                                        </Badge>
+                                      ) : (
+                                        <span className="text-muted-foreground/30">-</span>
+                                      )}
+                                    </TableCell>
+                                  )
+                                })}
+                                <TableCell className="text-center font-semibold text-emerald-600 dark:text-emerald-400">
+                                  {total.toFixed(0)}%
+                                </TableCell>
+                                <TableCell className="text-center text-muted-foreground">
+                                  {profile.employeeCount}
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  <div className="flex items-center justify-center gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => handleExpand(profile)}
+                                      title="Edit weights"
+                                    >
+                                      <ChevronDown className="w-4 h-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => handleDeleteProfile(profile.id)}
+                                      className="hover:bg-destructive/10 hover:text-destructive"
+                                      title="Delete profile"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </>
+                            )}
+                          </motion.tr>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </Card>
             </motion.div>
           </>
         )}
@@ -364,21 +377,24 @@ export default function SettingsPage() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-6"
         >
-          <div className="flex items-start gap-3">
-            <Info className="w-5 h-5 text-indigo-600 dark:text-indigo-400 flex-shrink-0 mt-0.5" />
-            <div>
-              <h3 className="font-semibold text-indigo-900 dark:text-indigo-200 mb-2">How Weight Profiles Work</h3>
-              <ul className="text-sm text-indigo-800 dark:text-indigo-300 space-y-1">
-                <li>Each employee is assigned evaluators from various categories (Lead, Direct Reports, Peer, HR, Hamiz, Dept).</li>
-                <li>The specific combination of categories determines which weight profile applies.</li>
-                <li>For example, an employee with only &quot;Direct Reports&quot; and &quot;HR&quot; evaluators gets 95%/5% weighting.</li>
-                <li>&quot;Hamiz&quot; refers to C-Level evaluation. &quot;Dept&quot; is the whole-department evaluation done by Hamiz.</li>
-                <li>Weights must sum to 100% for each profile. Click the expand arrow to edit.</li>
-              </ul>
-            </div>
-          </div>
+          <Card className="bg-primary/10 border-primary/20">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-3">
+                <Info className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-semibold text-primary mb-2">How Weight Profiles Work</h3>
+                  <ul className="text-sm text-muted-foreground space-y-1">
+                    <li>Each employee is assigned evaluators from various categories (Lead, Direct Reports, Peer, HR, Hamiz, Dept).</li>
+                    <li>The specific combination of categories determines which weight profile applies.</li>
+                    <li>For example, an employee with only &quot;Direct Reports&quot; and &quot;HR&quot; evaluators gets 95%/5% weighting.</li>
+                    <li>&quot;Hamiz&quot; refers to C-Level evaluation. &quot;Dept&quot; is the whole-department evaluation done by Hamiz.</li>
+                    <li>Weights must sum to 100% for each profile. Click the expand arrow to edit.</li>
+                  </ul>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </motion.div>
 
         <PageFooter />

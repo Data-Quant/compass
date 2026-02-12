@@ -18,64 +18,72 @@ export async function GET() {
       return NextResponse.json({ error: 'No active period found' }, { status: 404 })
     }
 
-    // Get all employees
-    const employees = await prisma.user.findMany({
-      where: { role: 'EMPLOYEE' },
-      select: {
-        id: true,
-        name: true,
-        department: true,
-        position: true,
-      },
-    })
+    // ── Batch queries (6 DB calls instead of 202) ──
 
-    // Get completion status for each employee
-    const statusData = await Promise.all(
-      employees.map(async (employee) => {
-        // Get all evaluator mappings for this employee
-        const mappings = await prisma.evaluatorMapping.findMany({
-          where: { evaluateeId: employee.id },
-        })
+    const [employees, totalQuestions, allMappings, allCompletedEvals, allReports] =
+      await Promise.all([
+        // 1. All employees
+        prisma.user.findMany({
+          where: { role: 'EMPLOYEE' },
+          select: { id: true, name: true, department: true, position: true },
+        }),
 
-        // Get total questions needed
-        const totalQuestions = await prisma.evaluationQuestion.count()
+        // 2. Total question count (was repeated N times in loop)
+        prisma.evaluationQuestion.count(),
 
-        // Get completed evaluations
-        const completedEvaluations = await prisma.evaluation.count({
-          where: {
-            evaluateeId: employee.id,
-            periodId: period.id,
-            submittedAt: { not: null },
-          },
-        })
+        // 3. All mappings grouped by evaluateeId
+        prisma.evaluatorMapping.groupBy({
+          by: ['evaluateeId'],
+          _count: { id: true },
+        }),
 
-        const totalNeeded = mappings.length * totalQuestions
-        const completionRate = totalNeeded > 0 ? (completedEvaluations / totalNeeded) * 100 : 0
+        // 4. All completed evaluations grouped by evaluateeId
+        prisma.evaluation.groupBy({
+          by: ['evaluateeId'],
+          where: { periodId: period.id, submittedAt: { not: null } },
+          _count: { id: true },
+        }),
 
-        // Check if report exists
-        const report = await prisma.report.findUnique({
-          where: {
-            employeeId_periodId: {
-              employeeId: employee.id,
-              periodId: period.id,
-            },
-          },
-        })
+        // 5. All reports for this period
+        prisma.report.findMany({
+          where: { periodId: period.id },
+          select: { employeeId: true },
+        }),
+      ])
 
-        return {
-          ...employee,
-          totalEvaluators: mappings.length,
-          completedEvaluations,
-          totalNeeded,
-          completionRate: Math.round(completionRate),
-          reportGenerated: !!report,
-        }
-      })
+    // ── Join in-memory using Maps ──
+
+    const mappingsMap = new Map(
+      allMappings.map((m) => [m.evaluateeId, m._count.id])
     )
+    const evalsMap = new Map(
+      allCompletedEvals.map((e) => [e.evaluateeId, e._count.id])
+    )
+    const reportSet = new Set(allReports.map((r) => r.employeeId))
+
+    const statusData = employees.map((employee) => {
+      const evaluatorCount = mappingsMap.get(employee.id) || 0
+      const completedEvaluations = evalsMap.get(employee.id) || 0
+      const totalNeeded = evaluatorCount * totalQuestions
+      const completionRate =
+        totalNeeded > 0 ? (completedEvaluations / totalNeeded) * 100 : 0
+
+      return {
+        ...employee,
+        totalEvaluators: evaluatorCount,
+        completedEvaluations,
+        totalNeeded,
+        completionRate: Math.round(completionRate),
+        reportGenerated: reportSet.has(employee.id),
+      }
+    })
 
     const totalEmployees = employees.length
     const employeesWithReports = statusData.filter((s) => s.reportGenerated).length
-    const averageCompletion = statusData.reduce((sum, s) => sum + s.completionRate, 0) / totalEmployees
+    const averageCompletion =
+      totalEmployees > 0
+        ? statusData.reduce((sum, s) => sum + s.completionRate, 0) / totalEmployees
+        : 0
 
     return NextResponse.json({
       period,

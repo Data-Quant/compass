@@ -10,7 +10,7 @@ export function ToastProvider() {
       closeButton
       toastOptions={{
         duration: 4000,
-        className: 'toast-notification',
+        className: 'toast-notification font-sans',
       }}
     />
   )

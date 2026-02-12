@@ -6,11 +6,23 @@ import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { RELATIONSHIP_TYPE_LABELS } from '@/types'
-import { ThemeToggle } from '@/components/ui/theme-toggle'
+import { AppNavbar } from '@/components/layout/AppNavbar'
 import { Modal } from '@/components/ui/modal'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Progress } from '@/components/ui/progress'
+import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
+import { StatsCard } from '@/components/composed/StatsCard'
+import { UserAvatar } from '@/components/composed/UserAvatar'
+import { PageHeading } from '@/components/composed/PageHeading'
+import { EmptyState } from '@/components/composed/EmptyState'
+import { LoadingScreen } from '@/components/composed/LoadingScreen'
+import { GlareCard } from '@/components/ui/glare-card'
+import { FocusBlurGroup, FocusBlurItem } from '@/components/ui/focus-blur-group'
+import { BorderBeam } from '@/components/magicui/border-beam'
 import {
-  LogOut,
-  Settings,
   CheckCircle2,
   Clock,
   ArrowRight,
@@ -23,9 +35,9 @@ import {
   Palmtree,
   MessageSquare,
   XCircle,
-  Monitor
+  Monitor,
 } from 'lucide-react'
-import { PLATFORM_NAME, COMPANY_NAME, LOGO } from '@/lib/config'
+import { COMPANY_NAME } from '@/lib/config'
 
 interface Mapping {
   id: string
@@ -88,13 +100,11 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState<any>(null)
 
-  // Leave approval state
   const [pendingLeaves, setPendingLeaves] = useState<LeaveRequest[]>([])
   const [actionModal, setActionModal] = useState<{ open: boolean; action: 'approve' | 'reject' | null; request: LeaveRequest | null }>({ open: false, action: null, request: null })
   const [comment, setComment] = useState('')
   const [processing, setProcessing] = useState(false)
 
-  // Device ticket state
   const [pendingTickets, setPendingTickets] = useState<DeviceTicket[]>([])
   const isSupportUser = user?.role === 'HR' || user?.role === 'SECURITY'
   const supportManageHref = user?.role === 'SECURITY' ? '/security/device-tickets' : '/admin/device-tickets'
@@ -103,16 +113,14 @@ export default function DashboardPage() {
     fetch('/api/auth/session')
       .then((res) => res.json())
       .then((data) => {
-        if (!data.user) {
-          router.push('/login')
-          return
-        }
+        if (!data.user) { router.push('/login'); return }
         setUser(data.user)
-        loadDashboard()
-        loadPendingLeaves()
-        if (data.user.role === 'HR' || data.user.role === 'SECURITY') {
-          loadPendingTickets()
-        }
+        // Fire all data calls in parallel
+        Promise.all([
+          loadDashboard(),
+          loadPendingLeaves(),
+          ...(data.user.role === 'HR' || data.user.role === 'SECURITY' ? [loadPendingTickets()] : []),
+        ])
       })
       .catch(() => router.push('/login'))
   }, [])
@@ -121,15 +129,9 @@ export default function DashboardPage() {
     try {
       const response = await fetch('/api/evaluations/dashboard?periodId=active')
       const data = await response.json()
-      if (data.mappings) {
-        setMappings(data.mappings)
-        setPeriod(data.period)
-      }
-    } catch (error) {
-      toast.error('Failed to load dashboard')
-    } finally {
-      setLoading(false)
-    }
+      if (data.mappings) { setMappings(data.mappings); setPeriod(data.period) }
+    } catch { toast.error('Failed to load dashboard') }
+    finally { setLoading(false) }
   }
 
   const loadPendingLeaves = async () => {
@@ -137,61 +139,39 @@ export default function DashboardPage() {
       const response = await fetch('/api/leave/requests?forApproval=true')
       const data = await response.json()
       setPendingLeaves(data.requests || [])
-    } catch (error) {
-      console.error('Failed to load pending leaves:', error)
-    }
+    } catch (error) { console.error('Failed to load pending leaves:', error) }
   }
 
   const handleLeaveAction = async () => {
     if (!actionModal.request || !actionModal.action) return
-
     setProcessing(true)
     try {
       const res = await fetch('/api/leave/approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requestId: actionModal.request.id,
-          action: actionModal.action,
-          comment: comment || undefined,
-        }),
+        body: JSON.stringify({ requestId: actionModal.request.id, action: actionModal.action, comment: comment || undefined }),
       })
-
       const data = await res.json()
-
       if (data.success) {
         toast.success(actionModal.action === 'approve' ? 'Leave approved' : 'Leave rejected')
         setActionModal({ open: false, action: null, request: null })
         setComment('')
         loadPendingLeaves()
-      } else {
-        toast.error(data.error || 'Action failed')
-      }
-    } catch {
-      toast.error('Action failed')
-    } finally {
-      setProcessing(false)
-    }
+      } else { toast.error(data.error || 'Action failed') }
+    } catch { toast.error('Action failed') }
+    finally { setProcessing(false) }
   }
 
   const loadPendingTickets = async () => {
     try {
-      // Fetch tickets that are either OPEN or UNDER_REVIEW
       const response = await fetch('/api/device-tickets')
       const data = await response.json()
-      const pending = (data.tickets || []).filter((t: any) =>
-        t.status === 'OPEN' || t.status === 'UNDER_REVIEW'
-      )
-      setPendingTickets(pending)
-    } catch (error) {
-      console.error('Failed to load pending tickets:', error)
-    }
+      setPendingTickets((data.tickets || []).filter((t: any) => t.status === 'OPEN' || t.status === 'UNDER_REVIEW'))
+    } catch (error) { console.error('Failed to load pending tickets:', error) }
   }
 
   const getDaysCount = (start: string, end: string) => {
-    const startDate = new Date(start)
-    const endDate = new Date(end)
-    return Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+    return Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24)) + 1
   }
 
   const handleLogout = async () => {
@@ -200,18 +180,7 @@ export default function DashboardPage() {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--background)]">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="flex flex-col items-center gap-4"
-        >
-          <div className="w-12 h-12 rounded-full gradient-primary animate-pulse" />
-          <p className="text-muted text-sm">Loading your evaluations...</p>
-        </motion.div>
-      </div>
-    )
+    return <LoadingScreen message="Loading your evaluations..." />
   }
 
   const relationshipTypes = Object.keys(mappings) as Array<keyof typeof RELATIONSHIP_TYPE_LABELS>
@@ -220,95 +189,22 @@ export default function DashboardPage() {
   const progressPercent = totalEvaluations > 0 ? (completedEvaluations / totalEvaluations) * 100 : 0
 
   return (
-    <div className="min-h-screen bg-[var(--background)]">
-      {/* Navigation */}
-      <nav className="sticky top-0 z-50 glass border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="flex items-center gap-3"
-            >
-              <span className="inline-flex h-8 w-8 items-center justify-center">
-                <img src={LOGO.company} alt={COMPANY_NAME} className="h-8 w-8 dark:hidden" />
-                <img src={LOGO.companyDark} alt={COMPANY_NAME} className="hidden h-8 w-8 dark:block" />
-              </span>
-              <div className="h-6 w-px bg-border hidden sm:block" />
-              <div className="hidden sm:flex items-center">
-                <span className="text-lg font-semibold text-foreground">{PLATFORM_NAME}</span>
-              </div>
-            </motion.div>
-
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-muted hidden sm:block">
-                {user?.name}
-              </span>
-              <Link
-                href="/leave"
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-sm font-medium transition-colors"
-              >
-                <Calendar className="w-4 h-4" />
-                <span className="hidden sm:inline">Leave</span>
-              </Link>
-              <Link
-                href="/device-support"
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-500/10 hover:bg-slate-500/20 text-slate-600 dark:text-slate-400 text-sm font-medium transition-colors"
-              >
-                <AlertCircle className="w-4 h-4" />
-                <span className="hidden sm:inline">Device Support</span>
-              </Link>
-              {user?.role === 'HR' && (
-                <Link
-                  href="/admin"
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg gradient-primary text-white text-sm font-medium hover:opacity-90 transition-opacity"
-                >
-                  <Settings className="w-4 h-4" />
-                  <span className="hidden sm:inline">Admin</span>
-                </Link>
-              )}
-              {user?.role === 'SECURITY' && (
-                <Link
-                  href="/security"
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-600 text-white text-sm font-medium hover:bg-slate-700 transition-colors"
-                >
-                  <Settings className="w-4 h-4" />
-                  <span className="hidden sm:inline">Security</span>
-                </Link>
-              )}
-              <ThemeToggle />
-              <button
-                onClick={handleLogout}
-                className="p-2 text-muted hover:text-foreground transition-colors"
-              >
-                <LogOut className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </nav>
+    <div className="min-h-screen bg-background">
+      <AppNavbar user={user} onLogout={handleLogout} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
-        >
-          <h1 className="text-3xl font-bold text-foreground mb-2">
-            Welcome back, {user?.name?.split(' ')[0]}
-          </h1>
+        <PageHeading title={`Welcome back, ${user?.name?.split(' ')[0]}`}>
           {period && (
-            <div className="flex items-center gap-2 text-muted">
+            <div className="flex items-center gap-2 text-muted-foreground">
               <Calendar className="w-4 h-4" />
               <span>{period.name}</span>
-              <span className="text-border">•</span>
+              <span className="text-border">&bull;</span>
               <span className="text-sm">
-                {new Date(period.startDate).toLocaleDateString()} – {new Date(period.endDate).toLocaleDateString()}
+                {new Date(period.startDate).toLocaleDateString()} &ndash; {new Date(period.endDate).toLocaleDateString()}
               </span>
             </div>
           )}
-        </motion.div>
+        </PageHeading>
 
         {/* Stats Grid */}
         {totalEvaluations > 0 && (
@@ -318,67 +214,47 @@ export default function DashboardPage() {
             transition={{ delay: 0.1 }}
             className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8"
           >
-            {/* Progress Card */}
-            <div className="md:col-span-2 glass rounded-2xl p-6 border border-border">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center">
-                    <Target className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+            <Card className="md:col-span-2 rounded-card relative overflow-hidden">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                      <Target className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-foreground">Your Progress</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {completedEvaluations === totalEvaluations
+                          ? 'All evaluations complete!'
+                          : `${totalEvaluations - completedEvaluations} remaining`}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-foreground">Your Progress</h3>
-                    <p className="text-sm text-muted">
-                      {completedEvaluations === totalEvaluations
-                        ? 'All evaluations complete!'
-                        : `${totalEvaluations - completedEvaluations} remaining`}
-                    </p>
+                  <div className="text-right">
+                    <div className="text-3xl font-light tracking-tight gradient-text">
+                      {Math.round(progressPercent)}%
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {completedEvaluations}/{totalEvaluations}
+                    </div>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-3xl font-bold gradient-text">
-                    {Math.round(progressPercent)}%
-                  </div>
-                  <div className="text-xs text-muted">
-                    {completedEvaluations}/{totalEvaluations}
-                  </div>
-                </div>
-              </div>
-              <div className="h-3 bg-surface rounded-full overflow-hidden">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${progressPercent}%` }}
-                  transition={{ duration: 1, ease: "easeOut" }}
-                  className="h-full gradient-primary rounded-full"
-                />
-              </div>
-            </div>
+                <Progress value={progressPercent} className="h-3" />
+              </CardContent>
+              <BorderBeam size={200} duration={10} borderWidth={1.5} />
+            </Card>
 
-            {/* Quick Stats */}
-            <div className="glass rounded-2xl p-6 border border-border">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center">
-                  <TrendingUp className="w-5 h-5 text-green-600 dark:text-green-400" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-foreground">Activity</h3>
-                  <p className="text-sm text-muted">This period</p>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted">Completed</span>
-                  <span className="font-medium text-green-600 dark:text-green-400">{completedEvaluations}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted">Pending</span>
-                  <span className="font-medium text-amber-600 dark:text-amber-400">{totalEvaluations - completedEvaluations}</span>
-                </div>
-              </div>
-            </div>
+            <StatsCard
+              title="Activity"
+              value={completedEvaluations}
+              suffix={`/ ${totalEvaluations}`}
+              icon={<TrendingUp className="w-5 h-5" />}
+              description="Evaluations this period"
+            />
           </motion.div>
         )}
 
-        {/* Pending Leave Approvals (for Leads) */}
+        {/* Pending Leave Approvals */}
         {pendingLeaves.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -389,84 +265,71 @@ export default function DashboardPage() {
             <div className="flex items-center gap-2 mb-4">
               <AlertCircle className="w-5 h-5 text-amber-500" />
               <h2 className="text-lg font-semibold text-foreground">Pending Leave Approvals</h2>
-              <span className="px-2 py-0.5 text-xs bg-amber-100 dark:bg-amber-500/20 text-amber-600 rounded-full">
+              <Badge variant="secondary" className="bg-amber-100 dark:bg-amber-500/20 text-amber-600 border-0">
                 {pendingLeaves.length}
-              </span>
+              </Badge>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {pendingLeaves.map((request) => {
+            <FocusBlurGroup className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {pendingLeaves.map((request, leaveIdx) => {
                 const typeConfig = LEAVE_TYPE_CONFIG[request.leaveType]
                 const TypeIcon = typeConfig.icon
                 const days = getDaysCount(request.startDate, request.endDate)
-
                 return (
-                  <div
-                    key={request.id}
-                    className="glass rounded-xl p-4 border border-amber-200 dark:border-amber-500/30"
-                  >
-                    <div className="flex items-start gap-3 mb-3">
-                      <div className={`w-10 h-10 rounded-lg ${typeConfig.bg} flex items-center justify-center flex-shrink-0`}>
-                        <TypeIcon className={`w-5 h-5 ${typeConfig.color}`} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-medium text-foreground">{request.employee.name}</h4>
-                        <p className="text-sm text-muted">{request.employee.department || 'No dept'}</p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1 text-sm mb-3">
-                      <div className="flex justify-between">
-                        <span className="text-muted">Type</span>
-                        <span className="font-medium text-foreground">{typeConfig.label}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted">Duration</span>
-                        <span className="font-medium text-foreground">{days} day{days > 1 ? 's' : ''}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted">Dates</span>
-                        <span className="text-foreground text-xs">
-                          {new Date(request.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {new Date(request.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                        </span>
-                      </div>
-                    </div>
-
-                    <p className="text-xs text-muted mb-3 line-clamp-2">{request.reason}</p>
-
-                    {/* Approval status */}
-                    <div className="flex gap-2 text-xs mb-3">
-                      <span className={request.hrApprovedBy ? 'text-emerald-600' : 'text-muted'}>
-                        {request.hrApprovedBy ? '✓ HR' : '○ HR'}
-                      </span>
-                      <span className={request.leadApprovedBy ? 'text-emerald-600' : 'text-muted'}>
-                        {request.leadApprovedBy ? '✓ Lead' : '○ Lead'}
-                      </span>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setActionModal({ open: true, action: 'approve', request })}
-                        className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 transition-colors"
-                      >
-                        <CheckCircle2 className="w-4 h-4" />
-                        Approve
-                      </button>
-                      <button
-                        onClick={() => setActionModal({ open: true, action: 'reject', request })}
-                        className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors"
-                      >
-                        <XCircle className="w-4 h-4" />
-                        Reject
-                      </button>
-                    </div>
-                  </div>
+                  <FocusBlurItem key={request.id} index={leaveIdx}>
+                    <Card className="rounded-card border-amber-200 dark:border-amber-500/30">
+                      <CardContent className="p-4">
+                        <div className="flex items-start gap-3 mb-3">
+                          <div className={`w-10 h-10 rounded-lg ${typeConfig.bg} flex items-center justify-center shrink-0`}>
+                            <TypeIcon className={`w-5 h-5 ${typeConfig.color}`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-medium text-foreground">{request.employee.name}</h4>
+                            <p className="text-sm text-muted-foreground">{request.employee.department || 'No dept'}</p>
+                          </div>
+                        </div>
+                        <div className="space-y-1 text-sm mb-3">
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Type</span>
+                            <span className="font-medium text-foreground">{typeConfig.label}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Duration</span>
+                            <span className="font-medium text-foreground">{days} day{days > 1 ? 's' : ''}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Dates</span>
+                            <span className="text-foreground text-xs">
+                              {new Date(request.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {new Date(request.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            </span>
+                          </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground mb-3 line-clamp-2">{request.reason}</p>
+                        <div className="flex gap-2 text-xs mb-3">
+                          <span className={request.hrApprovedBy ? 'text-emerald-600' : 'text-muted-foreground'}>
+                            {request.hrApprovedBy ? '✓ HR' : '○ HR'}
+                          </span>
+                          <span className={request.leadApprovedBy ? 'text-emerald-600' : 'text-muted-foreground'}>
+                            {request.leadApprovedBy ? '✓ Lead' : '○ Lead'}
+                          </span>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" className="flex-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => setActionModal({ open: true, action: 'approve', request })}>
+                            <CheckCircle2 className="w-4 h-4 mr-1" /> Approve
+                          </Button>
+                          <Button size="sm" variant="destructive" className="flex-1" onClick={() => setActionModal({ open: true, action: 'reject', request })}>
+                            <XCircle className="w-4 h-4 mr-1" /> Reject
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </FocusBlurItem>
                 )
               })}
-            </div>
+            </FocusBlurGroup>
           </motion.div>
         )}
 
-        {/* Pending Device Tickets (for HR/Security) */}
+        {/* Pending Device Tickets */}
         {isSupportUser && pendingTickets.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -475,72 +338,58 @@ export default function DashboardPage() {
             className="mb-8"
           >
             <div className="flex items-center gap-2 mb-4">
-              <Monitor className="w-5 h-5 text-indigo-500" />
+              <Monitor className="w-5 h-5 text-primary" />
               <h2 className="text-lg font-semibold text-foreground">Pending Device Support Tickets</h2>
-              <span className="px-2 py-0.5 text-xs bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 rounded-full">
+              <Badge variant="secondary" className="bg-primary/10 text-primary border-0">
                 {pendingTickets.length}
-              </span>
+              </Badge>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {pendingTickets.map((ticket) => (
-                <div
-                  key={ticket.id}
-                  className="glass rounded-xl p-4 border border-indigo-200 dark:border-indigo-500/30"
-                >
-                  <div className="flex items-start gap-3 mb-3">
-                    <div className="w-10 h-10 rounded-lg bg-indigo-100 dark:bg-indigo-500/10 flex items-center justify-center flex-shrink-0">
-                      <Monitor className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+            <FocusBlurGroup className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {pendingTickets.map((ticket, ticketIdx) => (
+                <FocusBlurItem key={ticket.id} index={ticketIdx}>
+                <Card className="rounded-card border-primary/20">
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-3 mb-3">
+                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                        <Monitor className="w-5 h-5 text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-medium text-foreground">{ticket.employee.name}</h4>
+                        <p className="text-sm text-muted-foreground">{ticket.employee.department || 'No dept'}</p>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-foreground">{ticket.employee.name}</h4>
-                      <p className="text-sm text-muted">{ticket.employee.department || 'No dept'}</p>
+                    <div className="mb-3">
+                      <h5 className="text-sm font-medium text-foreground">{ticket.title}</h5>
+                      <p className="text-xs text-muted-foreground line-clamp-1 mt-1">{ticket.description}</p>
                     </div>
-                  </div>
-
-                  <div className="mb-3">
-                    <h5 className="text-sm font-medium text-foreground">{ticket.title}</h5>
-                    <p className="text-xs text-muted line-clamp-1 mt-1">{ticket.description}</p>
-                  </div>
-
-                  <div className="flex items-center justify-between mt-auto">
-                    <div className="flex items-center gap-2">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${ticket.priority === 'URGENT' ? 'bg-red-100 text-red-700' :
-                        ticket.priority === 'HIGH' ? 'bg-orange-100 text-orange-700' :
-                          ticket.priority === 'MEDIUM' ? 'bg-blue-100 text-blue-700' :
-                            'bg-gray-100 text-gray-700'
-                        }`}>
-                        {ticket.priority}
-                      </span>
-                      <span className="text-[10px] text-muted">
-                        {new Date(ticket.createdAt).toLocaleDateString()}
-                      </span>
+                    <div className="flex items-center justify-between mt-auto">
+                      <div className="flex items-center gap-2">
+                        <Badge variant={ticket.priority === 'URGENT' ? 'destructive' : 'secondary'} className="text-[10px] uppercase tracking-wider">
+                          {ticket.priority}
+                        </Badge>
+                        <span className="text-[10px] text-muted-foreground">
+                          {new Date(ticket.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <Link href={supportManageHref} className="text-xs font-semibold text-primary hover:underline">
+                        Manage &rarr;
+                      </Link>
                     </div>
-                    <Link
-                      href={supportManageHref}
-                      className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
-                    >
-                      Manage →
-                    </Link>
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
+                </FocusBlurItem>
               ))}
-            </div>
+            </FocusBlurGroup>
           </motion.div>
         )}
 
         {/* Evaluations */}
         {relationshipTypes.length === 0 ? (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="glass rounded-2xl p-12 border border-border text-center"
-          >
-            <div className="w-16 h-16 rounded-2xl bg-surface mx-auto mb-4 flex items-center justify-center">
-              <CheckCircle2 className="w-8 h-8 text-muted" />
-            </div>
-            <h3 className="text-lg font-semibold text-foreground mb-2">No evaluations assigned</h3>
-            <p className="text-muted">You'll see your evaluation tasks here when they're assigned.</p>
-          </motion.div>
+          <EmptyState
+            icon={<CheckCircle2 className="w-16 h-16" />}
+            title="No evaluations assigned"
+            description="You'll see your evaluation tasks here when they're assigned."
+          />
         ) : (
           <div className="space-y-8">
             {relationshipTypes.map((type, typeIndex) => (
@@ -552,7 +401,7 @@ export default function DashboardPage() {
               >
                 <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
                   <span>{RELATIONSHIP_TYPE_LABELS[type]}</span>
-                  <span className="text-sm font-normal text-muted">({mappings[type].length})</span>
+                  <Badge variant="outline">{mappings[type].length}</Badge>
                 </h2>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   <AnimatePresence>
@@ -563,56 +412,49 @@ export default function DashboardPage() {
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ delay: index * 0.05 }}
                       >
-                        <Link
-                          href={`/evaluate/${mapping.evaluatee.id}`}
-                          className="block glass rounded-xl p-5 border border-border hover:border-indigo-500/30 transition-all duration-300 group"
-                        >
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-medium text-sm">
-                                {mapping.evaluatee.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                              </div>
-                              <div>
-                                <h4 className="font-medium text-foreground group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                                  {mapping.evaluatee.name}
-                                </h4>
-                                {mapping.evaluatee.department && (
-                                  <p className="text-sm text-muted">{mapping.evaluatee.department}</p>
+                        <Link href={`/evaluate/${mapping.evaluatee.id}`}>
+                          <GlareCard className="rounded-card">
+                          <Card className="rounded-card hover:border-primary/30 hover:-translate-y-1 hover:shadow-glow transition-all duration-300 group cursor-pointer">
+                            <CardContent className="p-5">
+                              <div className="flex items-start justify-between mb-3">
+                                <div className="flex items-center gap-3">
+                                  <UserAvatar name={mapping.evaluatee.name} size="sm" />
+                                  <div>
+                                    <h4 className="font-medium text-foreground group-hover:text-primary transition-colors">
+                                      {mapping.evaluatee.name}
+                                    </h4>
+                                    {mapping.evaluatee.department && (
+                                      <p className="text-sm text-muted-foreground">{mapping.evaluatee.department}</p>
+                                    )}
+                                  </div>
+                                </div>
+                                {mapping.isComplete ? (
+                                  <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                ) : (
+                                  <Clock className="w-5 h-5 text-amber-500" />
                                 )}
                               </div>
-                            </div>
-                            {mapping.isComplete ? (
-                              <CheckCircle2 className="w-5 h-5 text-green-500" />
-                            ) : (
-                              <Clock className="w-5 h-5 text-amber-500" />
-                            )}
-                          </div>
-
-                          <div className="space-y-2">
-                            <div className="flex justify-between text-sm">
-                              <span className="text-muted">Progress</span>
-                              <span className="font-medium text-foreground">
-                                {mapping.completedCount}/{mapping.questionsCount}
-                              </span>
-                            </div>
-                            <div className="h-1.5 bg-surface rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all duration-500 ${mapping.isComplete ? 'bg-green-500' : 'gradient-primary'
-                                  }`}
-                                style={{ width: `${(mapping.completedCount / mapping.questionsCount) * 100}%` }}
-                              />
-                            </div>
-                          </div>
-
-                          <div className="mt-4 flex items-center justify-between text-sm">
-                            <span className={`px-2 py-1 rounded-md ${mapping.isComplete
-                              ? 'bg-green-500/10 text-green-600 dark:text-green-400'
-                              : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                              }`}>
-                              {mapping.isComplete ? 'Complete' : 'In Progress'}
-                            </span>
-                            <ArrowRight className="w-4 h-4 text-muted group-hover:text-indigo-500 group-hover:translate-x-1 transition-all" />
-                          </div>
+                              <div className="space-y-2">
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-muted-foreground">Progress</span>
+                                  <span className="font-medium text-foreground">
+                                    {mapping.completedCount}/{mapping.questionsCount}
+                                  </span>
+                                </div>
+                                <Progress
+                                  value={(mapping.completedCount / mapping.questionsCount) * 100}
+                                  className={`h-1.5 ${mapping.isComplete ? '[&>div]:bg-green-500' : ''}`}
+                                />
+                              </div>
+                              <div className="mt-4 flex items-center justify-between text-sm">
+                                <Badge variant={mapping.isComplete ? 'default' : 'secondary'} className={mapping.isComplete ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-0' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-0'}>
+                                  {mapping.isComplete ? 'Complete' : 'In Progress'}
+                                </Badge>
+                                <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
+                              </div>
+                            </CardContent>
+                          </Card>
+                          </GlareCard>
                         </Link>
                       </motion.div>
                     ))}
@@ -623,12 +465,11 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Footer signature */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1 }}
-          className="mt-16 flex items-center justify-center gap-2 text-xs text-muted/50"
+          className="mt-16 flex items-center justify-center gap-2 text-xs text-muted-foreground/50"
         >
           <span>Powered by {COMPANY_NAME}</span>
         </motion.div>
@@ -643,53 +484,50 @@ export default function DashboardPage() {
       >
         {actionModal.request && (
           <div className="space-y-4">
-            <div className="p-3 bg-surface rounded-lg">
-              <p className="font-medium text-foreground">{actionModal.request.employee.name}</p>
-              <p className="text-sm text-muted">
-                {LEAVE_TYPE_CONFIG[actionModal.request.leaveType].label} Leave •
-                {getDaysCount(actionModal.request.startDate, actionModal.request.endDate)} days
-              </p>
-              <p className="text-sm text-muted mt-1">
-                {new Date(actionModal.request.startDate).toLocaleDateString()} - {new Date(actionModal.request.endDate).toLocaleDateString()}
-              </p>
-            </div>
+            <Card className="bg-muted/50">
+              <CardContent className="p-3">
+                <p className="font-medium text-foreground">{actionModal.request.employee.name}</p>
+                <p className="text-sm text-muted-foreground">
+                  {LEAVE_TYPE_CONFIG[actionModal.request.leaveType].label} Leave &bull;{' '}
+                  {getDaysCount(actionModal.request.startDate, actionModal.request.endDate)} days
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {new Date(actionModal.request.startDate).toLocaleDateString()} - {new Date(actionModal.request.endDate).toLocaleDateString()}
+                </p>
+              </CardContent>
+            </Card>
 
-            <div className="p-3 bg-amber-50 dark:bg-amber-500/10 rounded-lg">
-              <p className="text-xs text-amber-700 dark:text-amber-400 font-medium mb-1">Transition Plan:</p>
-              <p className="text-sm text-amber-800 dark:text-amber-300">{actionModal.request.transitionPlan}</p>
-            </div>
+            <Card className="bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20">
+              <CardContent className="p-3">
+                <p className="text-xs text-amber-700 dark:text-amber-400 font-medium mb-1">Transition Plan:</p>
+                <p className="text-sm text-amber-800 dark:text-amber-300">{actionModal.request.transitionPlan}</p>
+              </CardContent>
+            </Card>
 
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-2">
-                <MessageSquare className="w-4 h-4 inline mr-1" />
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1">
+                <MessageSquare className="w-4 h-4" />
                 Comment {actionModal.action === 'reject' ? '(recommended)' : '(optional)'}
-              </label>
-              <textarea
+              </Label>
+              <Textarea
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 rows={2}
                 placeholder={actionModal.action === 'reject' ? 'Please provide a reason for rejection...' : 'Add a comment...'}
-                className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
 
             <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setActionModal({ open: false, action: null, request: null })}
-                className="px-4 py-2 border border-border rounded-lg text-foreground hover:bg-surface transition-colors"
-              >
+              <Button variant="outline" onClick={() => setActionModal({ open: false, action: null, request: null })}>
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={handleLeaveAction}
                 disabled={processing}
-                className={`px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 ${actionModal.action === 'approve'
-                  ? 'bg-emerald-600 hover:bg-emerald-700'
-                  : 'bg-red-600 hover:bg-red-700'
-                  }`}
+                className={actionModal.action === 'approve' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-destructive hover:bg-destructive/90'}
               >
                 {processing ? 'Processing...' : actionModal.action === 'approve' ? 'Approve' : 'Reject'}
-              </button>
+              </Button>
             </div>
           </div>
         )}

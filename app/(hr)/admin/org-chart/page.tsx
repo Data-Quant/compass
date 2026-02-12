@@ -21,6 +21,7 @@ import { Modal } from '@/components/ui/modal'
 import { PageHeader } from '@/components/layout/page-header'
 import { PageFooter } from '@/components/layout/page-footer'
 import { PageContainer, PageContent } from '@/components/layout/page-container'
+import { ProgressiveBlur } from '@/components/ui/progressive-blur'
 import { RELATIONSHIP_TYPE_LABELS, RelationshipType } from '@/types'
 import { Users, Link2, Trash2, ArrowUpRight, Building2, RotateCcw, Save } from 'lucide-react'
 import { C_LEVEL_EVALUATORS, COMPANY_NAME } from '@/lib/config'
@@ -725,6 +726,8 @@ export default function OrgChartPage() {
             
             <div>
               <h4 className="text-sm font-semibold mb-2 flex items-center gap-2"><Users className="w-4 h-4" />Evaluators ({selectedUserMappings.evaluators.length})</h4>
+              <div className="relative">
+              <ProgressiveBlur position="bottom" height={20} />
               <div className="space-y-1 max-h-36 overflow-y-auto">
                 {selectedUserMappings.evaluators.map(m => (
                   <div key={m.id} className="flex items-center justify-between p-2 bg-slate-50 rounded">
@@ -737,10 +740,13 @@ export default function OrgChartPage() {
                 ))}
                 {selectedUserMappings.evaluators.length === 0 && <p className="text-sm text-slate-500">None</p>}
               </div>
+              </div>
             </div>
             
             <div>
               <h4 className="text-sm font-semibold mb-2 flex items-center gap-2"><Link2 className="w-4 h-4" />Evaluates ({selectedUserMappings.evaluates.length})</h4>
+              <div className="relative">
+              <ProgressiveBlur position="bottom" height={20} />
               <div className="space-y-1 max-h-36 overflow-y-auto">
                 {selectedUserMappings.evaluates.map(m => (
                   <div key={m.id} className="flex items-center justify-between p-2 bg-slate-50 rounded">
@@ -752,6 +758,7 @@ export default function OrgChartPage() {
                   </div>
                 ))}
                 {selectedUserMappings.evaluates.length === 0 && <p className="text-sm text-slate-500">None</p>}
+              </div>
               </div>
             </div>
 

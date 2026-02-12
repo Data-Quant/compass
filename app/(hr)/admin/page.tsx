@@ -5,9 +5,25 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
-import { ThemeToggle } from '@/components/ui/theme-toggle'
+import { AppNavbar } from '@/components/layout/AppNavbar'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
+import { Progress } from '@/components/ui/progress'
 import {
-  LogOut,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { StatsCard } from '@/components/composed/StatsCard'
+import { UserAvatar } from '@/components/composed/UserAvatar'
+import { LoadingScreen } from '@/components/composed/LoadingScreen'
+import { HoverEffect } from '@/components/aceternity/card-hover-effect'
+import { ShimmerButton } from '@/components/magicui/shimmer-button'
+import {
   Users,
   Calendar,
   HelpCircle,
@@ -19,22 +35,61 @@ import {
   Download,
   CheckCircle2,
   Clock,
-  ArrowUpRight,
   Eye,
   CalendarDays,
-  Monitor
+  Monitor,
 } from 'lucide-react'
-import { PLATFORM_NAME, COMPANY_NAME, LOGO } from '@/lib/config'
+import { COMPANY_NAME } from '@/lib/config'
 
 const adminTools = [
-  { href: '/admin/users', icon: Users, label: 'Users', color: 'from-blue-500 to-cyan-500' },
-  { href: '/admin/periods', icon: Calendar, label: 'Periods', color: 'from-green-500 to-emerald-500' },
-  { href: '/admin/questions', icon: HelpCircle, label: 'Questions', color: 'from-purple-500 to-pink-500' },
-  { href: '/admin/mappings', icon: Link2, label: 'Mappings', color: 'from-amber-500 to-orange-500' },
-  { href: '/admin/settings', icon: Sliders, label: 'Weightages', color: 'from-rose-500 to-red-500' },
-  { href: '/admin/analytics', icon: BarChart3, label: 'Analytics', color: 'from-indigo-500 to-violet-500' },
-  { href: '/admin/leave', icon: CalendarDays, label: 'Leave', color: 'from-teal-500 to-emerald-500' },
-  { href: '/admin/device-tickets', icon: Monitor, label: 'Device Support', color: 'from-slate-500 to-zinc-500' },
+  {
+    title: 'Users',
+    description: 'Manage users and permissions',
+    link: '/admin/users',
+    icon: <Users className="w-5 h-5" />,
+  },
+  {
+    title: 'Periods',
+    description: 'Configure evaluation periods',
+    link: '/admin/periods',
+    icon: <Calendar className="w-5 h-5" />,
+  },
+  {
+    title: 'Questions',
+    description: 'Manage evaluation questions',
+    link: '/admin/questions',
+    icon: <HelpCircle className="w-5 h-5" />,
+  },
+  {
+    title: 'Mappings',
+    description: 'Manage evaluator mappings',
+    link: '/admin/mappings',
+    icon: <Link2 className="w-5 h-5" />,
+  },
+  {
+    title: 'Weightages',
+    description: 'Configure weight settings',
+    link: '/admin/settings',
+    icon: <Sliders className="w-5 h-5" />,
+  },
+  {
+    title: 'Analytics',
+    description: 'View analytics and insights',
+    link: '/admin/analytics',
+    icon: <BarChart3 className="w-5 h-5" />,
+  },
+  {
+    title: 'Leave',
+    description: 'Manage leave requests',
+    link: '/admin/leave',
+    icon: <CalendarDays className="w-5 h-5" />,
+  },
+  {
+    title: 'Device Support',
+    description: 'Handle device support tickets',
+    link: '/admin/device-tickets',
+    icon: <Monitor className="w-5 h-5" />,
+  },
 ]
 
 export default function AdminDashboardPage() {
@@ -115,62 +170,25 @@ export default function AdminDashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--background)]">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="flex flex-col items-center gap-4"
-        >
-          <div className="w-12 h-12 rounded-full gradient-primary animate-pulse" />
-          <p className="text-muted text-sm">Loading admin dashboard...</p>
-        </motion.div>
-      </div>
+      <LoadingScreen message="Loading admin dashboard..." />
     )
   }
 
   return (
-    <div className="min-h-screen bg-[var(--background)]">
-      {/* Navigation */}
-      <nav className="sticky top-0 z-50 glass border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="flex items-center gap-3"
-            >
-              <span className="inline-flex h-8 w-8 items-center justify-center">
-                <img src={LOGO.company} alt={COMPANY_NAME} className="h-8 w-8 dark:hidden" />
-                <img src={LOGO.companyDark} alt={COMPANY_NAME} className="hidden h-8 w-8 dark:block" />
-              </span>
-              <div className="h-6 w-px bg-border hidden sm:block" />
-              <div className="hidden sm:flex items-center">
-                <span className="text-lg font-semibold text-foreground">{PLATFORM_NAME}</span>
-              </div>
-              <span className="px-2 py-0.5 text-xs bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-md font-medium">
-                Admin
-              </span>
-            </motion.div>
-
-            <div className="flex items-center gap-3">
-              <Link
-                href="/dashboard"
-                className="text-sm text-muted hover:text-foreground transition-colors flex items-center gap-1"
-              >
-                <Eye className="w-4 h-4" />
-                <span className="hidden sm:inline">Employee View</span>
-              </Link>
-              <ThemeToggle />
-              <button
-                onClick={handleLogout}
-                className="p-2 text-muted hover:text-foreground transition-colors"
-              >
-                <LogOut className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </nav>
+    <div className="min-h-screen bg-background">
+      <AppNavbar
+        user={user}
+        onLogout={handleLogout}
+        badge="Admin"
+        navLinks={[
+          {
+            href: '/dashboard',
+            label: 'Employee View',
+            icon: <Eye className="w-4 h-4" />,
+            variant: 'default' as const,
+          },
+        ]}
+      />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
@@ -179,11 +197,11 @@ export default function AdminDashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <h1 className="text-3xl font-bold text-foreground mb-2">
+          <h1 className="text-3xl font-display font-light tracking-tight text-foreground mb-2">
             Admin Dashboard
           </h1>
           {dashboardData?.period && (
-            <div className="flex items-center gap-2 text-muted">
+            <div className="flex items-center gap-2 text-muted-foreground">
               <Calendar className="w-4 h-4" />
               <span>{dashboardData.period.name}</span>
               <span className="text-border">•</span>
@@ -202,36 +220,23 @@ export default function AdminDashboardPage() {
             transition={{ delay: 0.1 }}
             className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8"
           >
-            <div className="glass rounded-2xl p-6 border border-border">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
-                  <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                </div>
-                <span className="text-sm text-muted">Total Employees</span>
-              </div>
-              <div className="text-3xl font-bold text-foreground">{dashboardData.summary.totalEmployees}</div>
-            </div>
-            <div className="glass rounded-2xl p-6 border border-border">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
-                  <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-                </div>
-                <span className="text-sm text-muted">Avg Completion</span>
-              </div>
-              <div className="text-3xl font-bold text-foreground">{dashboardData.summary.averageCompletion}%</div>
-            </div>
-            <div className="glass rounded-2xl p-6 border border-border">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center">
-                  <FileText className="w-5 h-5 text-green-600 dark:text-green-400" />
-                </div>
-                <span className="text-sm text-muted">Reports Ready</span>
-              </div>
-              <div className="text-3xl font-bold text-foreground">
-                {dashboardData.summary.employeesWithReports}
-                <span className="text-lg font-normal text-muted">/{dashboardData.summary.totalEmployees}</span>
-              </div>
-            </div>
+            <StatsCard
+              title="Total Employees"
+              value={dashboardData.summary.totalEmployees}
+              icon={<Users className="w-5 h-5" />}
+            />
+            <StatsCard
+              title="Avg Completion"
+              value={dashboardData.summary.averageCompletion}
+              suffix="%"
+              icon={<Clock className="w-5 h-5" />}
+            />
+            <StatsCard
+              title="Reports Ready"
+              value={dashboardData.summary.employeesWithReports}
+              suffix={`/${dashboardData.summary.totalEmployees}`}
+              icon={<FileText className="w-5 h-5" />}
+            />
           </motion.div>
         )}
 
@@ -240,23 +245,10 @@ export default function AdminDashboardPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="glass rounded-2xl p-6 border border-border mb-8"
+          className="mb-8"
         >
-          <h2 className="text-lg font-semibold text-foreground mb-4">Admin Tools</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            {adminTools.map((tool, index) => (
-              <Link
-                key={tool.href}
-                href={tool.href}
-                className="group flex flex-col items-center p-4 rounded-xl bg-surface hover:bg-surface-hover border border-transparent hover:border-indigo-500/20 transition-all duration-200"
-              >
-                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${tool.color} flex items-center justify-center mb-3 group-hover:scale-110 transition-transform`}>
-                  <tool.icon className="w-6 h-6 text-white" />
-                </div>
-                <span className="text-sm font-medium text-foreground">{tool.label}</span>
-              </Link>
-            ))}
-          </div>
+          <h2 className="text-lg font-display font-semibold text-foreground mb-4">Admin Tools</h2>
+          <HoverEffect items={adminTools} />
         </motion.div>
 
         {/* Quick Actions */}
@@ -266,35 +258,41 @@ export default function AdminDashboardPage() {
           transition={{ delay: 0.3 }}
           className="flex flex-wrap gap-3 mb-8"
         >
-          <button
+          <ShimmerButton
             onClick={handleGenerateReports}
             disabled={generating}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl gradient-primary text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all"
+            className="flex items-center gap-2"
           >
             <FileText className="w-4 h-4" />
             {generating ? 'Generating...' : 'Generate Reports'}
-          </button>
-          <Link
-            href={`/admin/reports?periodId=${dashboardData?.period?.id || ''}`}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-surface border border-border text-foreground font-medium hover:bg-surface-hover hover:border-indigo-500/30 transition-all"
-          >
-            <Eye className="w-4 h-4" />
-            View Reports
-          </Link>
-          <Link
-            href={`/admin/email?periodId=${dashboardData?.period?.id || ''}`}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-surface border border-border text-foreground font-medium hover:bg-surface-hover hover:border-indigo-500/30 transition-all"
-          >
-            <Mail className="w-4 h-4" />
-            Email Distribution
-          </Link>
-          <a
-            href={`/api/reports/export?periodId=${dashboardData?.period?.id || ''}`}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-surface border border-border text-foreground font-medium hover:bg-surface-hover hover:border-indigo-500/30 transition-all"
-          >
-            <Download className="w-4 h-4" />
-            Export Excel
-          </a>
+          </ShimmerButton>
+          <Button variant="outline" asChild>
+            <Link
+              href={`/admin/reports?periodId=${dashboardData?.period?.id || ''}`}
+              className="flex items-center gap-2"
+            >
+              <Eye className="w-4 h-4" />
+              View Reports
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link
+              href={`/admin/email?periodId=${dashboardData?.period?.id || ''}`}
+              className="flex items-center gap-2"
+            >
+              <Mail className="w-4 h-4" />
+              Email Distribution
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <a
+              href={`/api/reports/export?periodId=${dashboardData?.period?.id || ''}`}
+              className="flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              Export Excel
+            </a>
+          </Button>
         </motion.div>
 
         {/* Employees Table */}
@@ -302,76 +300,69 @@ export default function AdminDashboardPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="glass rounded-2xl border border-border overflow-hidden"
         >
-          <div className="px-6 py-4 border-b border-border">
-            <h2 className="text-lg font-semibold text-foreground">Employee Progress</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border bg-surface/50">
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Employee</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Department</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Completion</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Report</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {dashboardData?.employees?.map((employee: any, index: number) => (
-                  <motion.tr
-                    key={employee.id}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.5 + index * 0.02 }}
-                    className="hover:bg-surface/50 transition-colors"
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-sm font-medium">
-                          {employee.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+          <Card>
+            <CardContent className="p-0">
+              <div className="px-6 py-4 border-b border-border">
+                <h2 className="text-lg font-display font-semibold text-foreground">Employee Progress</h2>
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead className="px-6 py-3 text-xs uppercase tracking-wider">Employee</TableHead>
+                    <TableHead className="px-6 py-3 text-xs uppercase tracking-wider">Department</TableHead>
+                    <TableHead className="px-6 py-3 text-xs uppercase tracking-wider">Completion</TableHead>
+                    <TableHead className="px-6 py-3 text-xs uppercase tracking-wider">Report</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {dashboardData?.employees?.map((employee: any, index: number) => (
+                    <TableRow
+                      key={employee.id}
+                      className="border-b transition-colors hover:bg-muted/50"
+                    >
+                      <TableCell className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-3">
+                          <UserAvatar name={employee.name} size="sm" />
+                          <div>
+                            <div className="font-medium text-foreground">{employee.name}</div>
+                            {employee.position && (
+                              <div className="text-sm text-muted-foreground">{employee.position}</div>
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          <div className="font-medium text-foreground">{employee.name}</div>
-                          {employee.position && (
-                            <div className="text-sm text-muted">{employee.position}</div>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">
-                      {employee.department || '—'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-3">
-                        <div className="w-24 h-1.5 bg-surface rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full ${employee.completionRate === 100 ? 'bg-green-500' : 'gradient-primary'
-                              }`}
-                            style={{ width: `${employee.completionRate}%` }}
+                      </TableCell>
+                      <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                        {employee.department || '—'}
+                      </TableCell>
+                      <TableCell className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-3">
+                          <Progress
+                            value={employee.completionRate}
+                            className="w-24 h-1.5"
                           />
+                          <span className="text-sm font-medium text-foreground w-10">{employee.completionRate}%</span>
                         </div>
-                        <span className="text-sm font-medium text-foreground w-10">{employee.completionRate}%</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {employee.reportGenerated ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-500/10 text-green-600 dark:text-green-400 text-xs rounded-md font-medium">
-                          <CheckCircle2 className="w-3 h-3" />
-                          Ready
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-surface text-muted text-xs rounded-md font-medium">
-                          <Clock className="w-3 h-3" />
-                          Pending
-                        </span>
-                      )}
-                    </td>
-                  </motion.tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      </TableCell>
+                      <TableCell className="px-6 py-4 whitespace-nowrap">
+                        {employee.reportGenerated ? (
+                          <Badge variant="secondary" className="bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500/20">
+                            <CheckCircle2 className="w-3 h-3 mr-1" />
+                            Ready
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="bg-muted text-muted-foreground">
+                            <Clock className="w-3 h-3 mr-1" />
+                            Pending
+                          </Badge>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         </motion.div>
 
         {/* Footer signature */}
@@ -379,7 +370,7 @@ export default function AdminDashboardPage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1 }}
-          className="mt-16 flex items-center justify-center gap-2 text-xs text-muted/50"
+          className="mt-16 flex items-center justify-center gap-2 text-xs text-muted-foreground/50"
         >
           <span>Powered by {COMPANY_NAME}</span>
         </motion.div>

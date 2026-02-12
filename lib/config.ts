@@ -18,8 +18,10 @@ export const PLATFORM_DESCRIPTION = 'Your central hub for performance reviews, l
 
 // Logo paths
 export const LOGO = {
-  company: '/icons/plutus21/plutus-light-32.png',
-  companyDark: '/icons/plutus21/plutus-dark-32.png',
+  company: '/icons/plutus21/plutus-light-48.png',
+  companyDark: '/icons/plutus21/plutus-dark-48.png',
+  companyLg: '/icons/plutus21/plutus-light-192.png',
+  companyDarkLg: '/icons/plutus21/plutus-dark-192.png',
   signature: '/images/signature.png',
 }
 

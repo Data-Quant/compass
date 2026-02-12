@@ -9,8 +9,31 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { PageFooter } from '@/components/layout/page-footer'
 import { PageContainer, PageContent } from '@/components/layout/page-container'
+import { LoadingScreen } from '@/components/composed/LoadingScreen'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import Papa from 'papaparse'
 import { Users, Plus, Search, Upload, Edit2, Trash2, UserCheck, Shield, Key, Eye, EyeOff } from 'lucide-react'
+
+const MotionTableRow = motion(TableRow)
 
 interface User {
   id: string
@@ -195,12 +218,7 @@ export default function UsersPage() {
   if (loading) {
     return (
       <PageContainer>
-        <div className="min-h-screen flex items-center justify-center">
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-4">
-            <div className="w-12 h-12 rounded-full gradient-primary animate-pulse" />
-            <p className="text-muted text-sm">Loading users...</p>
-          </motion.div>
-        </div>
+        <LoadingScreen message="Loading users..." />
       </PageContainer>
     )
   }
@@ -212,98 +230,128 @@ export default function UsersPage() {
       <PageContent>
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">User Management</h1>
-            <p className="text-muted mt-1">{users.length} users total</p>
+            <h1 className="text-2xl font-bold text-foreground font-display">User Management</h1>
+            <p className="text-muted-foreground mt-1">{users.length} users total</p>
           </div>
           <div className="flex gap-3 mt-4 md:mt-0">
-            <button onClick={() => setIsImportModalOpen(true)} className="flex items-center gap-2 px-4 py-2.5 border border-border rounded-lg hover:bg-surface text-foreground transition-colors">
+            <Button variant="outline" onClick={() => setIsImportModalOpen(true)}>
               <Upload className="w-4 h-4" /> Import CSV
-            </button>
-            <button onClick={() => handleOpenModal()} className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
+            </Button>
+            <Button onClick={() => handleOpenModal()}>
               <Plus className="w-4 h-4" /> Add User
-            </button>
+            </Button>
           </div>
         </div>
 
         {/* Filters */}
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass rounded-xl p-4 mb-6">
-          <div className="flex flex-wrap gap-4">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
-              <input type="text" placeholder="Search users..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 bg-surface border border-border rounded-lg text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
-            </div>
-            <select value={filterRole} onChange={(e) => setFilterRole(e.target.value)} className="px-4 py-2 bg-surface border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50">
-              <option value="">All Roles</option>
-              <option value="EMPLOYEE">Employee</option>
-              <option value="HR">HR</option>
-              <option value="SECURITY">Security</option>
-            </select>
-            <select value={filterDepartment} onChange={(e) => setFilterDepartment(e.target.value)} className="px-4 py-2 bg-surface border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50">
-              <option value="">All Departments</option>
-              {departments.map(d => <option key={d} value={d!}>{d}</option>)}
-            </select>
-          </div>
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+          <Card className="mb-6">
+            <CardContent className="p-4">
+              <div className="flex flex-wrap gap-4">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Search users..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+                <Select value={filterRole || '__all__'} onValueChange={(v) => setFilterRole(v === '__all__' ? '' : v)}>
+                  <SelectTrigger className="min-w-[140px]">
+                    <SelectValue placeholder="All Roles" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All Roles</SelectItem>
+                    <SelectItem value="EMPLOYEE">Employee</SelectItem>
+                    <SelectItem value="HR">HR</SelectItem>
+                    <SelectItem value="SECURITY">Security</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={filterDepartment || '__all__'} onValueChange={(v) => setFilterDepartment(v === '__all__' ? '' : v)}>
+                  <SelectTrigger className="min-w-[140px]">
+                    <SelectValue placeholder="All Departments" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All Departments</SelectItem>
+                    {departments.map(d => <SelectItem key={d} value={d!}>{d}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
         </motion.div>
 
         {/* Users Table */}
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-surface border-b border-border">
-                <tr>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-muted uppercase">User</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-muted uppercase">Email</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-muted uppercase">Department</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-muted uppercase">Role</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-muted uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+          <Card className="overflow-hidden">
+            {filteredUsers.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                  <TableHead className="px-6 py-4">User</TableHead>
+                  <TableHead className="px-6 py-4">Email</TableHead>
+                  <TableHead className="px-6 py-4">Department</TableHead>
+                  <TableHead className="px-6 py-4">Role</TableHead>
+                  <TableHead className="px-6 py-4">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {filteredUsers.map((user, index) => (
-                  <motion.tr key={user.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.02 * index }} className="hover:bg-surface/50 transition-colors">
-                    <td className="px-6 py-4">
+                  <MotionTableRow key={user.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.02 * index }} className="border-b transition-colors hover:bg-muted/50">
+                    <TableCell className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-sm font-medium">
                           {user.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                         </div>
                         <div>
                           <div className="font-medium text-foreground">{user.name}</div>
-                          {user.position && <div className="text-xs text-muted">{user.position}</div>}
+                          {user.position && <div className="text-xs text-muted-foreground">{user.position}</div>}
                         </div>
                       </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-muted">{user.email || '—'}</td>
-                    <td className="px-6 py-4 text-sm text-muted">{user.department || '—'}</td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-                        user.role === 'HR'
-                          ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400'
-                          : user.role === 'SECURITY'
-                            ? 'bg-slate-500/10 text-slate-600 dark:text-slate-400'
-                            : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
-                      }`}>
+                    </TableCell>
+                    <TableCell className="px-6 py-4 text-sm text-muted-foreground">{user.email || '—'}</TableCell>
+                    <TableCell className="px-6 py-4 text-sm text-muted-foreground">{user.department || '—'}</TableCell>
+                    <TableCell className="px-6 py-4">
+                      <Badge
+                        variant={user.role === 'HR' ? 'default' : 'secondary'}
+                        className={
+                          user.role === 'HR'
+                            ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-0'
+                            : user.role === 'SECURITY'
+                              ? 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-0'
+                              : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-0'
+                        }
+                      >
                         {user.role === 'EMPLOYEE' ? <UserCheck className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
                         {user.role}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="px-6 py-4">
                       <div className="flex items-center gap-1">
-                        <button onClick={() => handleOpenPasswordModal(user)} title="Set Password" className="p-2 text-muted hover:text-amber-500 hover:bg-amber-500/10 rounded-lg transition-colors"><Key className="w-4 h-4" /></button>
-                        <button onClick={() => handleOpenModal(user)} title="Edit User" className="p-2 text-muted hover:text-foreground hover:bg-surface rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
-                        <button onClick={() => { setUserToDelete(user); setIsDeleteDialogOpen(true) }} title="Delete User" className="p-2 text-muted hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
+                        <Button variant="ghost" size="icon" onClick={() => handleOpenPasswordModal(user)} title="Set Password" className="text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10">
+                          <Key className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleOpenModal(user)} title="Edit User" className="text-muted-foreground hover:text-foreground hover:bg-muted">
+                          <Edit2 className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => { setUserToDelete(user); setIsDeleteDialogOpen(true) }} title="Delete User" className="text-muted-foreground hover:text-red-500 hover:bg-red-500/10">
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       </div>
-                    </td>
-                  </motion.tr>
+                    </TableCell>
+                  </MotionTableRow>
                 ))}
-              </tbody>
-            </table>
-          </div>
-          {filteredUsers.length === 0 && (
-            <div className="p-12 text-center">
-              <Users className="w-12 h-12 text-muted mx-auto mb-4" />
-              <p className="text-muted">No users found</p>
-            </div>
-          )}
+              </TableBody>
+            </Table>
+            ) : (
+              <div className="p-12 text-center">
+                <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground">No users found</p>
+              </div>
+            )}
+          </Card>
         </motion.div>
 
         <PageFooter />
@@ -313,34 +361,39 @@ export default function UsersPage() {
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={selectedUser ? 'Edit User' : 'Add User'}>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Name *</label>
-            <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="w-full px-4 py-2 bg-surface border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+            <Label htmlFor="name" className="mb-1">Name *</Label>
+            <Input id="name" type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Email</label>
-            <input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className="w-full px-4 py-2 bg-surface border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+            <Label htmlFor="email" className="mb-1">Email</Label>
+            <Input id="email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Department</label>
-              <input type="text" value={formData.department} onChange={(e) => setFormData({ ...formData, department: e.target.value })} className="w-full px-4 py-2 bg-surface border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+              <Label htmlFor="department" className="mb-1">Department</Label>
+              <Input id="department" type="text" value={formData.department} onChange={(e) => setFormData({ ...formData, department: e.target.value })} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Position</label>
-              <input type="text" value={formData.position} onChange={(e) => setFormData({ ...formData, position: e.target.value })} className="w-full px-4 py-2 bg-surface border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+              <Label htmlFor="position" className="mb-1">Position</Label>
+              <Input id="position" type="text" value={formData.position} onChange={(e) => setFormData({ ...formData, position: e.target.value })} />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Role</label>
-            <select value={formData.role} onChange={(e) => setFormData({ ...formData, role: e.target.value })} className="w-full px-4 py-2 bg-surface border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50">
-              <option value="EMPLOYEE">Employee</option>
-              <option value="HR">HR</option>
-              <option value="SECURITY">Security</option>
-            </select>
+            <Label htmlFor="role" className="mb-1">Role</Label>
+            <Select value={formData.role} onValueChange={(v) => setFormData({ ...formData, role: v })}>
+              <SelectTrigger id="role">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="EMPLOYEE">Employee</SelectItem>
+                <SelectItem value="HR">HR</SelectItem>
+                <SelectItem value="SECURITY">Security</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex justify-end gap-3 pt-4">
-            <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 border border-border rounded-lg hover:bg-surface text-foreground transition-colors">Cancel</button>
-            <button type="submit" disabled={saving} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors">{saving ? 'Saving...' : 'Save'}</button>
+            <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>Cancel</Button>
+            <Button type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save'}</Button>
           </div>
         </form>
       </Modal>
@@ -348,27 +401,37 @@ export default function UsersPage() {
       {/* Import Modal */}
       <Modal isOpen={isImportModalOpen} onClose={() => { setIsImportModalOpen(false); setImportData([]); setImportPreview([]) }} title="Import Users from CSV">
         <div className="space-y-4">
-          <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
-            <input type="file" accept=".csv" onChange={handleFileUpload} className="hidden" id="csv-upload" />
-            <label htmlFor="csv-upload" className="cursor-pointer">
-              <Upload className="w-8 h-8 text-muted mx-auto mb-2" />
+          <div className="border-2 border-dashed border-input rounded-lg p-8 text-center">
+            <Input type="file" accept=".csv" onChange={handleFileUpload} className="hidden" id="csv-upload" />
+            <Label htmlFor="csv-upload" className="cursor-pointer block">
+              <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2 block" />
               <p className="text-foreground font-medium">Click to upload CSV</p>
-              <p className="text-sm text-muted mt-1">Columns: name, email, department, position, role</p>
-            </label>
+              <p className="text-sm text-muted-foreground mt-1">Columns: name, email, department, position, role</p>
+            </Label>
           </div>
           {importPreview.length > 0 && (
-            <div className="bg-surface rounded-lg p-4">
-              <p className="text-sm font-medium text-foreground mb-2">Preview ({importData.length} rows)</p>
-              <div className="overflow-x-auto text-xs">
-                <table className="w-full"><tbody>
-                  {importPreview.map((row, i) => <tr key={i} className="border-b border-border"><td className="py-1 text-muted">{row.name}</td><td className="py-1 text-muted">{row.email}</td><td className="py-1 text-muted">{row.department}</td></tr>)}
-                </tbody></table>
-              </div>
-            </div>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-sm font-medium text-foreground mb-2">Preview ({importData.length} rows)</p>
+                <div className="overflow-x-auto text-xs">
+                  <Table>
+                    <TableBody>
+                      {importPreview.map((row, i) => (
+                        <TableRow key={i}>
+                          <TableCell className="py-1 text-muted-foreground">{row.name}</TableCell>
+                          <TableCell className="py-1 text-muted-foreground">{row.email}</TableCell>
+                          <TableCell className="py-1 text-muted-foreground">{row.department}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
           )}
           <div className="flex justify-end gap-3">
-            <button onClick={() => { setIsImportModalOpen(false); setImportData([]); setImportPreview([]) }} className="px-4 py-2 border border-border rounded-lg hover:bg-surface text-foreground transition-colors">Cancel</button>
-            <button onClick={handleImport} disabled={importing || importData.length === 0} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors">{importing ? 'Importing...' : `Import ${importData.length} Users`}</button>
+            <Button variant="outline" onClick={() => { setIsImportModalOpen(false); setImportData([]); setImportPreview([]) }}>Cancel</Button>
+            <Button onClick={handleImport} disabled={importing || importData.length === 0}>{importing ? 'Importing...' : `Import ${importData.length} Users`}</Button>
           </div>
         </div>
       </Modal>
@@ -379,58 +442,58 @@ export default function UsersPage() {
       <Modal isOpen={isPasswordModalOpen} onClose={() => setIsPasswordModalOpen(false)} title="Set Password">
         {passwordUser && (
           <div className="space-y-4">
-            <div className="flex items-center gap-3 p-3 bg-surface rounded-lg">
+            <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-sm font-medium">
                 {passwordUser.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
               </div>
               <div>
                 <div className="font-medium text-foreground">{passwordUser.name}</div>
-                <div className="text-sm text-muted">{passwordUser.email || 'No email'}</div>
+                <div className="text-sm text-muted-foreground">{passwordUser.email || 'No email'}</div>
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">New Password</label>
+              <Label htmlFor="new-password" className="mb-1">New Password</Label>
               <div className="relative">
-                <input
+                <Input
+                  id="new-password"
                   type={showPassword ? 'text' : 'password'}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="Enter new password (min 6 characters)"
-                  className="w-full px-4 py-2 bg-surface border border-border rounded-lg text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-indigo-500/50 pr-10"
+                  className="pr-10"
                 />
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="icon"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-foreground"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground hover:bg-transparent h-8 w-8"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
+                </Button>
               </div>
-              <p className="text-xs text-muted mt-1">This will set or reset the user's password.</p>
+              <p className="text-xs text-muted-foreground mt-1">This will set or reset the user's password.</p>
             </div>
 
             <div className="flex justify-between pt-4">
-              <button
+              <Button
+                variant="ghost"
                 onClick={handleRemovePassword}
-                className="px-4 py-2 text-red-600 hover:bg-red-500/10 rounded-lg transition-colors text-sm"
+                className="text-red-600 hover:bg-red-500/10 hover:text-red-600"
               >
                 Remove Password
-              </button>
+              </Button>
               <div className="flex gap-3">
-                <button
-                  onClick={() => setIsPasswordModalOpen(false)}
-                  className="px-4 py-2 border border-border rounded-lg hover:bg-surface text-foreground transition-colors"
-                >
+                <Button variant="outline" onClick={() => setIsPasswordModalOpen(false)}>
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={handleSetPassword}
                   disabled={settingPassword || newPassword.length < 6}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
                 >
                   {settingPassword ? 'Setting...' : 'Set Password'}
-                </button>
+                </Button>
               </div>
             </div>
           </div>

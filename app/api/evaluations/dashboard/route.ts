@@ -20,13 +20,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Get active period if not specified
-    const period = periodId === 'active'
-      ? await prisma.evaluationPeriod.findFirst({
-          where: { isActive: true },
-        })
-      : await prisma.evaluationPeriod.findUnique({
-          where: { id: periodId },
-        })
+    const period =
+      periodId === 'active'
+        ? await prisma.evaluationPeriod.findFirst({
+            where: { isActive: true },
+          })
+        : await prisma.evaluationPeriod.findUnique({
+            where: { id: periodId },
+          })
 
     if (!period) {
       return NextResponse.json(
@@ -35,61 +36,81 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get evaluator mappings
-    const mappings = await prisma.evaluatorMapping.findMany({
-      where: { evaluatorId: user.id },
-      include: {
-        evaluatee: {
-          select: {
-            id: true,
-            name: true,
-            department: true,
-            position: true,
+    // ── Batch queries (4 DB calls instead of 42) ──
+
+    const [mappings, questionsByType, allEvaluations] = await Promise.all([
+      // 1. Get evaluator mappings with evaluatee info
+      prisma.evaluatorMapping.findMany({
+        where: { evaluatorId: user.id },
+        include: {
+          evaluatee: {
+            select: {
+              id: true,
+              name: true,
+              department: true,
+              position: true,
+            },
           },
         },
-      },
-    })
+      }),
 
-    // Get completion status for each mapping
-    const mappingsWithStatus = await Promise.all(
-      mappings.map(async (mapping) => {
-        // Get questions for this relationship type
-        const questions = await prisma.evaluationQuestion.findMany({
-          where: { relationshipType: mapping.relationshipType },
-          orderBy: { orderIndex: 'asc' },
-        })
+      // 2. All questions grouped by relationship type (was repeated per mapping)
+      prisma.evaluationQuestion.groupBy({
+        by: ['relationshipType'],
+        _count: { id: true },
+      }),
 
-        // Get evaluations
-        const evaluations = await prisma.evaluation.findMany({
-          where: {
-            evaluatorId: user.id,
-            evaluateeId: mapping.evaluateeId,
-            periodId: period.id,
-          },
-        })
+      // 3. All evaluations for this user + period in one query
+      prisma.evaluation.findMany({
+        where: {
+          evaluatorId: user.id,
+          periodId: period.id,
+          submittedAt: { not: null },
+        },
+        select: { evaluateeId: true },
+      }),
+    ])
 
-        const completed = evaluations.filter((e) => e.submittedAt !== null).length
-        const total = questions.length
-        const isComplete = completed === total && total > 0
+    // ── Join in-memory ──
 
-        return {
-          ...mapping,
-          questionsCount: total,
-          completedCount: completed,
-          isComplete,
-        }
-      })
+    const questionCountMap = new Map(
+      questionsByType.map((q) => [q.relationshipType, q._count.id])
     )
 
-    // Group by relationship type
-    const grouped = mappingsWithStatus.reduce((acc, mapping) => {
-      const type = mapping.relationshipType
-      if (!acc[type]) {
-        acc[type] = []
+    // Group evaluations by evaluateeId
+    const evalsByEvaluatee = new Map<string, number>()
+    for (const ev of allEvaluations) {
+      evalsByEvaluatee.set(
+        ev.evaluateeId,
+        (evalsByEvaluatee.get(ev.evaluateeId) || 0) + 1
+      )
+    }
+
+    const mappingsWithStatus = mappings.map((mapping) => {
+      const total = questionCountMap.get(mapping.relationshipType) || 0
+      const completed = evalsByEvaluatee.get(mapping.evaluateeId) || 0
+      const isComplete = completed >= total && total > 0
+
+      return {
+        ...mapping,
+        questionsCount: total,
+        completedCount: completed,
+        isComplete,
       }
-      acc[type].push(mapping)
-      return acc
-    }, {} as Record<string, typeof mappingsWithStatus>)
+    })
+
+    // Group by relationship type
+    const grouped = mappingsWithStatus.reduce(
+      (acc, mapping) => {
+        const type = mapping.relationshipType
+        if (!acc[type]) {
+          acc[type] = []
+        }
+        acc[type].push(mapping)
+        return acc
+      },
+      {} as Record<string, typeof mappingsWithStatus>
+    )
 
     return NextResponse.json({
       period,

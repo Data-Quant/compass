@@ -2,18 +2,21 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { PageHeader } from '@/components/layout/page-header'
 import { PageFooter } from '@/components/layout/page-footer'
 import { PageContainer, PageContent } from '@/components/layout/page-container'
+import { LoadingScreen } from '@/components/composed/LoadingScreen'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { 
   Calendar,
   CheckCircle2,
   XCircle,
-  Clock,
   Filter,
   Sun,
   Thermometer,
@@ -164,12 +167,7 @@ export default function HRLeavePage() {
   if (loading) {
     return (
       <PageContainer>
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="flex flex-col items-center gap-4">
-            <div className="w-12 h-12 rounded-full gradient-primary animate-pulse" />
-            <p className="text-muted text-sm">Loading...</p>
-          </div>
-        </div>
+        <LoadingScreen message="Loading..." />
       </PageContainer>
     )
   }
@@ -225,12 +223,12 @@ export default function HRLeavePage() {
         </div>
 
         {/* Requests Table */}
-        <div className="glass rounded-xl border border-border overflow-hidden">
+        <Card>
           {requests.length === 0 ? (
-            <div className="p-12 text-center">
-              <Calendar className="w-12 h-12 text-muted/30 mx-auto mb-3" />
-              <p className="text-muted">No leave requests found</p>
-            </div>
+            <CardContent className="p-12 text-center">
+              <Calendar className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
+              <p className="text-muted-foreground">No leave requests found</p>
+            </CardContent>
           ) : (
             <div className="divide-y divide-border">
               {requests.map((request) => {
@@ -241,7 +239,7 @@ export default function HRLeavePage() {
                 const needsHRApproval = request.status === 'PENDING' || request.status === 'LEAD_APPROVED'
                 
                 return (
-                  <div key={request.id} className="p-4 hover:bg-surface/50 transition-colors">
+                  <div key={request.id} className="p-4 hover:bg-muted/50 transition-colors">
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-4">
                         <div className={`w-10 h-10 rounded-lg ${typeConfig.bg} flex items-center justify-center flex-shrink-0`}>
@@ -250,11 +248,11 @@ export default function HRLeavePage() {
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             <span className="font-medium text-foreground">{request.employee.name}</span>
-                            <span className="text-muted text-sm">•</span>
-                            <span className="text-sm text-muted">{request.employee.department || 'No dept'}</span>
-                            <span className={`px-2 py-0.5 text-xs rounded-full ${statusConfig.bg} ${statusConfig.color}`}>
+                            <span className="text-muted-foreground text-sm">•</span>
+                            <span className="text-sm text-muted-foreground">{request.employee.department || 'No dept'}</span>
+                            <Badge variant="outline" className={`${statusConfig.bg} ${statusConfig.color} border-0`}>
                               {statusConfig.label}
-                            </span>
+                            </Badge>
                           </div>
                           <p className="text-sm text-foreground">
                             <span className="font-medium">{typeConfig.label} Leave</span>
@@ -263,7 +261,7 @@ export default function HRLeavePage() {
                             <span className="mx-2">•</span>
                             <span className="font-medium">{days} day{days > 1 ? 's' : ''}</span>
                           </p>
-                          <p className="text-sm text-muted mt-1">{request.reason}</p>
+                          <p className="text-sm text-muted-foreground mt-1">{request.reason}</p>
                           
                           {/* Transition Plan */}
                           <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-500/10 rounded-lg">
@@ -275,7 +273,7 @@ export default function HRLeavePage() {
                           </div>
                           
                           {request.coverPerson && (
-                            <p className="text-xs text-muted mt-2 flex items-center gap-1">
+                            <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
                               <User className="w-3 h-3" />
                               Cover: {request.coverPerson.name}
                             </p>
@@ -283,10 +281,10 @@ export default function HRLeavePage() {
                           
                           {/* Approval status */}
                           <div className="flex gap-4 mt-2 text-xs">
-                            <span className={request.leadApprovedBy ? 'text-emerald-600' : 'text-muted'}>
+                            <span className={request.leadApprovedBy ? 'text-emerald-600' : 'text-muted-foreground'}>
                               {request.leadApprovedBy ? '✓ Lead approved' : '○ Lead pending'}
                             </span>
-                            <span className={request.hrApprovedBy ? 'text-emerald-600' : 'text-muted'}>
+                            <span className={request.hrApprovedBy ? 'text-emerald-600' : 'text-muted-foreground'}>
                               {request.hrApprovedBy ? '✓ HR approved' : '○ HR pending'}
                             </span>
                           </div>
@@ -301,20 +299,22 @@ export default function HRLeavePage() {
                       
                       {needsHRApproval && (
                         <div className="flex gap-2 flex-shrink-0">
-                          <button
+                          <Button
+                            size="sm"
                             onClick={() => openActionModal(request, 'approve')}
-                            className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 transition-colors"
+                            className="bg-emerald-600 hover:bg-emerald-700"
                           >
                             <CheckCircle2 className="w-4 h-4" />
                             Approve
-                          </button>
-                          <button
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
                             onClick={() => openActionModal(request, 'reject')}
-                            className="flex items-center gap-1 px-3 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors"
                           >
                             <XCircle className="w-4 h-4" />
                             Reject
-                          </button>
+                          </Button>
                         </div>
                       )}
                     </div>
@@ -323,7 +323,7 @@ export default function HRLeavePage() {
               })}
             </div>
           )}
-        </div>
+        </Card>
         
         <PageFooter />
       </PageContent>
@@ -337,46 +337,40 @@ export default function HRLeavePage() {
       >
         {selectedRequest && (
           <div className="space-y-4">
-            <div className="p-3 bg-surface rounded-lg">
-              <p className="font-medium text-foreground">{selectedRequest.employee.name}</p>
-              <p className="text-sm text-muted">
-                {LEAVE_TYPE_CONFIG[selectedRequest.leaveType].label} Leave • 
-                {getDaysCount(selectedRequest.startDate, selectedRequest.endDate)} days
-              </p>
-            </div>
+            <Card>
+              <CardContent className="p-3">
+                <p className="font-medium text-foreground">{selectedRequest.employee.name}</p>
+                <p className="text-sm text-muted-foreground">
+                  {LEAVE_TYPE_CONFIG[selectedRequest.leaveType].label} Leave • 
+                  {getDaysCount(selectedRequest.startDate, selectedRequest.endDate)} days
+                </p>
+              </CardContent>
+            </Card>
             
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-2">
+            <div className="space-y-2">
+              <Label>
                 <MessageSquare className="w-4 h-4 inline mr-1" />
                 Comment {actionModal.action === 'reject' ? '(recommended)' : '(optional)'}
-              </label>
-              <textarea
+              </Label>
+              <Textarea
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 rows={3}
                 placeholder={actionModal.action === 'reject' ? 'Please provide a reason for rejection...' : 'Add a comment...'}
-                className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
             
             <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setActionModal({ open: false, action: null })}
-                className="px-4 py-2 border border-border rounded-lg text-foreground hover:bg-surface transition-colors"
-              >
+              <Button variant="outline" onClick={() => setActionModal({ open: false, action: null })}>
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={handleAction}
                 disabled={processing}
-                className={`px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 ${
-                  actionModal.action === 'approve' 
-                    ? 'bg-emerald-600 hover:bg-emerald-700' 
-                    : 'bg-red-600 hover:bg-red-700'
-                }`}
+                variant={actionModal.action === 'approve' ? 'default' : 'destructive'}
               >
                 {processing ? 'Processing...' : actionModal.action === 'approve' ? 'Approve' : 'Reject'}
-              </button>
+              </Button>
             </div>
           </div>
         )}
