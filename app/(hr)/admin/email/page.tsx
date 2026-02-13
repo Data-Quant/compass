@@ -9,6 +9,18 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageHeader } from '@/components/layout/page-header'
 import { PageFooter } from '@/components/layout/page-footer'
 import { PageContainer, PageContent } from '@/components/layout/page-container'
+import { LoadingScreen } from '@/components/composed/LoadingScreen'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { Mail, Send, Eye, RefreshCw, CheckCircle, Clock, AlertCircle, Plus } from 'lucide-react'
 
 function EmailPageContent() {
@@ -19,12 +31,12 @@ function EmailPageContent() {
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [queuing, setQueuing] = useState(false)
-  
+
   const [previewModalOpen, setPreviewModalOpen] = useState(false)
   const [previewHtml, setPreviewHtml] = useState('')
   const [previewEmployee, setPreviewEmployee] = useState<string>('')
   const [loadingPreview, setLoadingPreview] = useState(false)
-  
+
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
 
   useEffect(() => {
@@ -142,17 +154,17 @@ function EmailPageContent() {
       case 'SENT': return <CheckCircle className="w-4 h-4 text-emerald-500" />
       case 'PENDING': return <Clock className="w-4 h-4 text-amber-500" />
       case 'FAILED': return <AlertCircle className="w-4 h-4 text-red-500" />
-      default: return <Clock className="w-4 h-4 text-muted" />
+      default: return <Clock className="w-4 h-4 text-muted-foreground" />
     }
   }
 
-  const getStatusBadge = (status: string) => {
-    const styles: Record<string, string> = {
-      SENT: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-      PENDING: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-      FAILED: 'bg-red-500/10 text-red-600 dark:text-red-400',
+  const getStatusBadgeVariant = (status: string) => {
+    switch (status) {
+      case 'SENT': return 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+      case 'PENDING': return 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+      case 'FAILED': return 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'
+      default: return 'bg-muted text-muted-foreground'
     }
-    return styles[status] || 'bg-surface text-muted'
   }
 
   const pendingCount = queueEntries.filter(e => e.status === 'PENDING').length
@@ -161,12 +173,7 @@ function EmailPageContent() {
   if (loading) {
     return (
       <PageContainer>
-        <div className="min-h-screen flex items-center justify-center">
-          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center gap-4">
-            <div className="w-12 h-12 rounded-full gradient-primary animate-pulse" />
-            <p className="text-muted text-sm">Loading email queue...</p>
-          </motion.div>
-        </div>
+        <LoadingScreen message="Loading email queue..." />
       </PageContainer>
     )
   }
@@ -174,134 +181,143 @@ function EmailPageContent() {
   return (
     <PageContainer>
       <PageHeader backHref="/admin" backLabel="Back to Admin" badge="Email" />
-      
+
       <PageContent>
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Email Distribution</h1>
-            <p className="text-muted mt-1">Send performance reports to employees</p>
+            <h1 className="text-2xl font-bold text-foreground font-display">Email Distribution</h1>
+            <p className="text-muted-foreground mt-1">Send performance reports to employees</p>
           </div>
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4 mb-8">
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass rounded-xl p-5">
-            <Mail className="w-6 h-6 text-indigo-600 dark:text-indigo-400 mb-2" />
-            <div className="text-3xl font-bold text-foreground">{queueEntries.length}</div>
-            <div className="text-sm text-muted">Total in Queue</div>
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+            <Card>
+              <CardContent className="p-5">
+                <Mail className="w-6 h-6 text-indigo-600 dark:text-indigo-400 mb-2" />
+                <div className="text-3xl font-bold text-foreground">{queueEntries.length}</div>
+                <div className="text-sm text-muted-foreground">Total in Queue</div>
+              </CardContent>
+            </Card>
           </motion.div>
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass rounded-xl p-5">
-            <Clock className="w-6 h-6 text-amber-600 dark:text-amber-400 mb-2" />
-            <div className="text-3xl font-bold text-foreground">{pendingCount}</div>
-            <div className="text-sm text-muted">Pending</div>
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+            <Card>
+              <CardContent className="p-5">
+                <Clock className="w-6 h-6 text-amber-600 dark:text-amber-400 mb-2" />
+                <div className="text-3xl font-bold text-foreground">{pendingCount}</div>
+                <div className="text-sm text-muted-foreground">Pending</div>
+              </CardContent>
+            </Card>
           </motion.div>
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="glass rounded-xl p-5">
-            <CheckCircle className="w-6 h-6 text-emerald-600 dark:text-emerald-400 mb-2" />
-            <div className="text-3xl font-bold text-foreground">{sentCount}</div>
-            <div className="text-sm text-muted">Sent</div>
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+            <Card>
+              <CardContent className="p-5">
+                <CheckCircle className="w-6 h-6 text-emerald-600 dark:text-emerald-400 mb-2" />
+                <div className="text-3xl font-bold text-foreground">{sentCount}</div>
+                <div className="text-sm text-muted-foreground">Sent</div>
+              </CardContent>
+            </Card>
           </motion.div>
         </div>
 
         {/* Actions */}
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="glass rounded-xl p-4 mb-6">
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={handleQueueEmails}
-              disabled={queuing}
-              className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              {queuing ? 'Queuing...' : 'Queue New Emails'}
-            </button>
-            <button
-              onClick={() => setConfirmDialogOpen(true)}
-              disabled={sending || pendingCount === 0}
-              className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors"
-            >
-              <Send className="w-4 h-4" />
-              {sending ? 'Sending...' : `Send All (${pendingCount})`}
-            </button>
-            <button
-              onClick={loadEmailQueue}
-              className="flex items-center gap-2 px-4 py-2.5 border border-border rounded-lg hover:bg-surface text-foreground transition-colors"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Refresh
-            </button>
-          </div>
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="mb-6">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex flex-wrap gap-3">
+                <Button onClick={handleQueueEmails} disabled={queuing}>
+                  <Plus className="w-4 h-4" />
+                  {queuing ? 'Queuing...' : 'Queue New Emails'}
+                </Button>
+                <Button
+                  onClick={() => setConfirmDialogOpen(true)}
+                  disabled={sending || pendingCount === 0}
+                  variant="default"
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                >
+                  <Send className="w-4 h-4" />
+                  {sending ? 'Sending...' : `Send All (${pendingCount})`}
+                </Button>
+                <Button variant="outline" onClick={loadEmailQueue}>
+                  <RefreshCw className="w-4 h-4" />
+                  Refresh
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </motion.div>
 
         {/* Queue Table */}
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="glass rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-surface border-b border-border">
-                <tr>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-muted uppercase tracking-wider">Employee</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-muted uppercase tracking-wider">Email</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-muted uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-muted uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {queueEntries.map((entry, index) => (
-                  <motion.tr
-                    key={entry.id}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.02 * index }}
-                    className="hover:bg-surface/50 transition-colors"
-                  >
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-sm font-medium">
-                          {entry.employee?.name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+          <Card>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50 hover:bg-muted/50">
+                    <TableHead className="px-6 py-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Employee</TableHead>
+                    <TableHead className="px-6 py-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Email</TableHead>
+                    <TableHead className="px-6 py-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</TableHead>
+                    <TableHead className="px-6 py-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {queueEntries.map((entry) => (
+                    <TableRow key={entry.id} className="hover:bg-muted/50">
+                      <TableCell className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-sm font-medium">
+                            {entry.employee?.name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+                          </div>
+                          <div>
+                            <div className="font-medium text-foreground">{entry.employee?.name}</div>
+                            <div className="text-xs text-muted-foreground">{entry.employee?.department}</div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="font-medium text-foreground">{entry.employee?.name}</div>
-                          <div className="text-xs text-muted">{entry.employee?.department}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-muted">{entry.employee?.email}</td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusBadge(entry.status)}`}>
-                        {getStatusIcon(entry.status)}
-                        {entry.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handlePreview(entry.employeeId, entry.employee?.name)}
-                          className="p-2 text-muted hover:text-foreground hover:bg-surface rounded-lg transition-colors"
-                          title="Preview Report"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        {entry.status === 'PENDING' && (
-                          <button
-                            onClick={() => handleSendSingle(entry.id)}
-                            className="p-2 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors"
-                            title="Send Email"
+                      </TableCell>
+                      <TableCell className="px-6 py-4 text-sm text-muted-foreground">{entry.employee?.email}</TableCell>
+                      <TableCell className="px-6 py-4">
+                        <Badge variant="outline" className={`inline-flex items-center gap-1.5 border ${getStatusBadgeVariant(entry.status)}`}>
+                          {getStatusIcon(entry.status)}
+                          {entry.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handlePreview(entry.employeeId, entry.employee?.name)}
+                            title="Preview Report"
                           >
-                            <Send className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </motion.tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          
-          {queueEntries.length === 0 && (
-            <div className="p-12 text-center">
-              <Mail className="w-12 h-12 text-muted mx-auto mb-4" />
-              <p className="text-muted">No emails in queue. Click "Queue New Emails" to generate report emails.</p>
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          {entry.status === 'PENDING' && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleSendSingle(entry.id)}
+                              title="Send Email"
+                              className="text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10"
+                            >
+                              <Send className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
-          )}
+
+            {queueEntries.length === 0 && (
+              <div className="p-12 text-center">
+                <Mail className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground">No emails in queue. Click &quot;Queue New Emails&quot; to generate report emails.</p>
+              </div>
+            )}
+          </Card>
         </motion.div>
 
         <PageFooter />
@@ -319,7 +335,7 @@ function EmailPageContent() {
             <div className="w-8 h-8 rounded-full gradient-primary animate-pulse" />
           </div>
         ) : (
-          <div className="bg-white rounded-lg overflow-hidden" style={{ height: '70vh' }}>
+          <div className="bg-white rounded-lg overflow-hidden dark:bg-card" style={{ height: '70vh' }}>
             <iframe
               srcDoc={previewHtml}
               className="w-full h-full border-0"
@@ -347,12 +363,7 @@ export default function EmailPage() {
   return (
     <Suspense fallback={
       <PageContainer>
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="flex flex-col items-center gap-4">
-            <div className="w-12 h-12 rounded-full gradient-primary animate-pulse" />
-            <p className="text-muted text-sm">Loading email queue...</p>
-          </div>
-        </div>
+        <LoadingScreen message="Loading email queue..." />
       </PageContainer>
     }>
       <EmailPageContent />

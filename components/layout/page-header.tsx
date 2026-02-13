@@ -4,7 +4,11 @@ import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { LogOut, ArrowLeft } from 'lucide-react'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
-import { PLATFORM_NAME, COMPANY_NAME, LOGO } from '@/lib/config'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Separator } from '@/components/ui/separator'
+import { Plutus21Logo } from '@/components/brand/Plutus21Logo'
+import { PLATFORM_NAME, COMPANY_NAME } from '@/lib/config'
 
 interface PageHeaderProps {
   backHref: string
@@ -14,53 +18,57 @@ interface PageHeaderProps {
   badge?: string
 }
 
-export function PageHeader({ 
-  backHref, 
-  backLabel = 'Back', 
+export function PageHeader({
+  backHref,
+  backLabel = 'Back',
   showLogout = false,
   onLogout,
-  badge
+  badge,
 }: PageHeaderProps) {
   return (
-    <motion.nav 
+    <motion.nav
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="glass border-b border-[var(--border)] sticky top-0 z-50"
+      className="glass border-b border-border sticky top-0 z-50"
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
           <div className="flex items-center gap-4">
-            <Link href={backHref} className="flex items-center gap-2 text-muted hover:text-foreground transition-colors">
+            <Link
+              href={backHref}
+              className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+            >
               <ArrowLeft className="w-4 h-4" />
               <span className="hidden sm:inline">{backLabel}</span>
             </Link>
-            <div className="h-6 w-px bg-border hidden sm:block" />
+            <Separator orientation="vertical" className="h-6 hidden sm:block" />
             <div className="flex items-center gap-3">
-              <span className="inline-flex h-8 w-8 items-center justify-center">
-                <img src={LOGO.company} alt={COMPANY_NAME} className="h-8 w-8 dark:hidden" />
-                <img src={LOGO.companyDark} alt={COMPANY_NAME} className="hidden h-8 w-8 dark:block" />
-              </span>
-              <div className="h-6 w-px bg-border hidden sm:block" />
+              <Plutus21Logo size={28} className="text-foreground" />
+              <Separator orientation="vertical" className="h-6 hidden sm:block" />
               <div className="hidden sm:flex items-center gap-2">
-                <span className="text-lg font-semibold text-foreground">{PLATFORM_NAME}</span>
+                <span className="text-lg font-display tracking-tight text-foreground">
+                  {PLATFORM_NAME}
+                </span>
               </div>
               {badge && (
-                <span className="px-2 py-0.5 text-xs bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-md font-medium">
+                <Badge variant="secondary" className="text-xs">
                   {badge}
-                </span>
+                </Badge>
               )}
             </div>
           </div>
           <div className="flex items-center gap-3">
             <ThemeToggle />
             {showLogout && onLogout && (
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={onLogout}
-                className="flex items-center gap-2 px-3 py-2 text-sm text-muted hover:text-foreground hover:bg-surface rounded-lg transition-colors"
+                className="gap-2"
               >
                 <LogOut className="w-4 h-4" />
                 <span className="hidden sm:inline">Logout</span>
-              </button>
+              </Button>
             )}
           </div>
         </div>
