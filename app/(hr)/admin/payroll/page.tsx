@@ -7,7 +7,7 @@ export default function AdminPayrollPage() {
     <PayrollPeriodsWorkspace
       appBasePath="/admin"
       badge="Admin Payroll"
-      heading="Payroll Automation"
+      heading="Payroll"
       description="Manage payroll periods, workbook imports, reconciliation, approvals, and DocuSign delivery."
     />
   )

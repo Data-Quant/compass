@@ -92,7 +92,7 @@ const adminTools = [
     icon: <Monitor className="w-5 h-5" />,
   },
   {
-    title: 'Payroll Automation',
+    title: 'Payroll',
     description: 'Manage payroll periods, calculations, and receipts',
     link: '/admin/payroll',
     icon: <Wallet className="w-5 h-5" />,

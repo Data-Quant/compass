@@ -148,7 +148,20 @@ export async function DELETE(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const id = searchParams.get('id')
+    let id = searchParams.get('id')
+
+    // Support legacy/clients that send JSON body with { id } for DELETE.
+    if (!id) {
+      try {
+        const body = await request.json().catch(() => null)
+        if (body && typeof body === 'object') {
+          const candidate = (body as any).id ?? (body as any).userId
+          if (typeof candidate === 'string') id = candidate
+        }
+      } catch {
+        // Ignore body parse errors; we'll validate below.
+      }
+    }
 
     if (!id) {
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 })
