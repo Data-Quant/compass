@@ -146,7 +146,7 @@ export default function OrgChartPage() {
     try {
       const res = await fetch('/api/auth/session')
       const data = await res.json()
-      if (!data.user || (data.user.role !== 'HR' && data.user.role !== 'OA')) { router.push('/login'); return }
+      if (!data.user || data.user.role !== 'HR') { router.push('/login'); return }
       loadData()
     } catch { router.push('/login') }
   }

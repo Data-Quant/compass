@@ -2,9 +2,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { canManagePayroll, canManageSupport, isAdminRole } from '../lib/permissions'
 
-test('isAdminRole grants HR and OA only', () => {
+test('isAdminRole grants HR only', () => {
   assert.equal(isAdminRole('HR'), true)
-  assert.equal(isAdminRole('OA'), true)
+  assert.equal(isAdminRole('OA'), false)
   assert.equal(isAdminRole('SECURITY'), false)
   assert.equal(isAdminRole('EMPLOYEE'), false)
 })

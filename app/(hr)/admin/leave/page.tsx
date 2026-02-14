@@ -87,7 +87,7 @@ export default function HRLeavePage() {
     try {
       const res = await fetch('/api/auth/session')
       const data = await res.json()
-      if (!data.user || (data.user.role !== 'HR' && data.user.role !== 'OA')) {
+      if (!data.user || data.user.role !== 'HR') {
         router.push('/login')
         return
       }

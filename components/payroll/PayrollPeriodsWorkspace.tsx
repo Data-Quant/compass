@@ -61,8 +61,9 @@ interface DashboardPayload {
 
 type SourceMode = 'WORKBOOK' | 'MANUAL' | 'CARRY_FORWARD'
 
-function isAdminRole(role: string | null | undefined) {
-  return role === 'HR' || role === 'OA'
+function canAccessPayrollWorkspace(role: string | null | undefined, appBasePath: WorkspaceProps['appBasePath']) {
+  if (appBasePath === '/admin') return role === 'HR'
+  return role === 'OA'
 }
 
 export function PayrollPeriodsWorkspace({
@@ -103,7 +104,7 @@ export function PayrollPeriodsWorkspace({
     fetch('/api/auth/session')
       .then((res) => res.json())
       .then((data) => {
-        if (!data.user || !isAdminRole(data.user.role)) {
+        if (!data.user || !canAccessPayrollWorkspace(data.user.role, appBasePath)) {
           router.push('/login')
           return
         }
