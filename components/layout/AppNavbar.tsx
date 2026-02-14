@@ -78,12 +78,6 @@ export function AppNavbar({ user, onLogout, badge, navLinks = [] }: AppNavbarPro
       icon: <Settings className="w-4 h-4" />,
       variant: 'primary',
     })
-    defaultLinks.push({
-      href: '/admin',
-      label: 'Admin',
-      icon: <Settings className="w-4 h-4" />,
-      variant: 'muted',
-    })
   }
 
   const links = navLinks.length > 0 ? navLinks : defaultLinks

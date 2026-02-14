@@ -12,8 +12,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Link2, Send, ShieldCheck, Wallet } from 'lucide-react'
 
-function isAdminRole(role: string | null | undefined) {
-  return role === 'HR' || role === 'OA'
+function canAccessOa(role: string | null | undefined) {
+  return role === 'OA'
 }
 
 export default function OaDashboardPage() {
@@ -31,7 +31,7 @@ export default function OaDashboardPage() {
     fetch('/api/auth/session')
       .then((res) => res.json())
       .then((data) => {
-        if (!data.user || !isAdminRole(data.user.role)) {
+        if (!data.user || !canAccessOa(data.user.role)) {
           router.push('/login')
           return
         }
@@ -93,7 +93,7 @@ export default function OaDashboardPage() {
           <StatsCard title="DocuSign Queue" value={docusignQueue} icon={<Send className="w-4 h-4" />} />
         </motion.div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-6">
           <Card>
             <CardContent className="p-6">
               <h2 className="text-lg font-semibold font-display mb-2">Payroll Workspace</h2>
@@ -102,18 +102,6 @@ export default function OaDashboardPage() {
               </p>
               <Button asChild>
                 <Link href="/oa/payroll">Open Payroll Workspace</Link>
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <h2 className="text-lg font-semibold font-display mb-2">Admin Console</h2>
-              <p className="text-sm text-muted-foreground mb-4">
-                O&A has HR-equivalent admin permissions for cross-functional operations.
-              </p>
-              <Button asChild variant="outline">
-                <Link href="/admin">Open Admin Dashboard</Link>
               </Button>
             </CardContent>
           </Card>

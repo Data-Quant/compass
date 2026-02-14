@@ -55,7 +55,7 @@ export default function SettingsPage() {
     fetch('/api/auth/session')
       .then((res) => res.json())
       .then((data) => {
-        if (!data.user || (data.user.role !== 'HR' && data.user.role !== 'OA')) {
+        if (!data.user || data.user.role !== 'HR') {
           router.push('/login')
           return
         }

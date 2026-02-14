@@ -41,8 +41,9 @@ interface DetailProps {
 type PendingAction = 'recalculate' | 'approve' | 'send' | 'sync' | 'none'
 type PayrollPanel = 'run' | 'expenses' | 'reconciliation' | 'receipts' | 'approvals'
 
-function isAdminRole(role: string | null | undefined) {
-  return role === 'HR' || role === 'OA'
+function canAccessPayrollWorkspace(role: string | null | undefined, appBasePath: DetailProps['appBasePath']) {
+  if (appBasePath === '/admin') return role === 'HR'
+  return role === 'OA'
 }
 
 function num(value: unknown) {
@@ -82,7 +83,7 @@ export function PayrollPeriodDetailWorkspace({ appBasePath, periodId, badge }: D
     fetch('/api/auth/session')
       .then((res) => res.json())
       .then((data) => {
-        if (!data.user || !isAdminRole(data.user.role)) {
+        if (!data.user || !canAccessPayrollWorkspace(data.user.role, appBasePath)) {
           router.push('/login')
           return
         }
