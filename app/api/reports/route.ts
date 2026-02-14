@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { generateDetailedReport, formatReportAsHTML } from '@/lib/reports'
 import { prisma } from '@/lib/db'
+import { isAdminRole } from '@/lib/permissions'
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,8 +24,8 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // HR can view any report, employees can only view their own
-    if (user.role !== 'HR' && employeeId !== user.id) {
+    // Admin can view any report, employees can only view their own
+    if (!isAdminRole(user.role) && employeeId !== user.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
 
@@ -71,7 +72,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const user = await getSession()
-    if (!user || user.role !== 'HR') {
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -85,6 +86,29 @@ export async function POST(request: NextRequest) {
     }
 
     const report = await generateDetailedReport(employeeId, periodId)
+
+    // Persist/refresh report so dashboard "Reports Ready" reflects current generation runs.
+    await prisma.report.upsert({
+      where: {
+        employeeId_periodId: {
+          employeeId,
+          periodId,
+        },
+      },
+      create: {
+        employeeId,
+        periodId,
+        overallScore: report.overallScore,
+        breakdownJson: report as any,
+        generatedAt: new Date(),
+      },
+      update: {
+        overallScore: report.overallScore,
+        breakdownJson: report as any,
+        generatedAt: new Date(),
+      },
+    })
+
     return NextResponse.json({ success: true, report })
   } catch (error) {
     console.error('Failed to generate report:', error)

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
+import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { toCategorySetKey, RELATIONSHIP_TYPE_LABELS, RelationshipType } from '@/types'
 
@@ -9,7 +10,7 @@ import { toCategorySetKey, RELATIONSHIP_TYPE_LABELS, RelationshipType } from '@/
 export async function GET() {
   try {
     const user = await getSession()
-    if (!user || user.role !== 'HR') {
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -57,7 +58,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const user = await getSession()
-    if (!user || user.role !== 'HR') {
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -103,7 +104,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const user = await getSession()
-    if (!user || user.role !== 'HR') {
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -122,3 +123,4 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to delete weight profile' }, { status: 500 })
   }
 }
+

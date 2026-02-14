@@ -36,6 +36,7 @@ const COLORS = [
 interface Analytics {
   period: { id: string; name: string; startDate: string; endDate: string }
   summary: {
+    totalTeamMembers?: number
     totalEmployees: number
     employeesWithEvaluations: number
     totalEvaluations: number
@@ -63,7 +64,7 @@ export default function AnalyticsPage() {
     try {
       const res = await fetch('/api/auth/session')
       const data = await res.json()
-      if (!data.user || data.user.role !== 'HR') {
+      if (!data.user || (data.user.role !== 'HR' && data.user.role !== 'OA')) {
         router.push('/login')
         return
       }
@@ -123,7 +124,7 @@ export default function AnalyticsPage() {
   }
 
   const statCards = [
-    { label: 'Employees', value: analytics.summary.totalEmployees, icon: Users, color: 'text-primary' },
+    { label: 'Team Members', value: analytics.summary.totalTeamMembers ?? analytics.summary.totalEmployees, icon: Users, color: 'text-primary' },
     { label: 'Evaluated', value: analytics.summary.employeesWithEvaluations, icon: CheckCircle, color: 'text-emerald-600 dark:text-emerald-400' },
     { label: 'Evaluations', value: analytics.summary.totalEvaluations, icon: FileText, color: 'text-purple-600 dark:text-purple-400' },
     { label: 'Avg Score', value: `${analytics.summary.avgOverallScore.toFixed(1)}%`, icon: TrendingUp, color: 'text-amber-600 dark:text-amber-400' },
@@ -278,3 +279,4 @@ export default function AnalyticsPage() {
     </PageContainer>
   )
 }
+

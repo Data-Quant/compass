@@ -4,6 +4,7 @@ import { getSession } from '@/lib/auth'
 import { sendLeaveRequestNotification } from '@/lib/email'
 import { z } from 'zod'
 import { calculateLeaveDays, isValidLeaveDateRange } from '@/lib/leave-utils'
+import { isAdminRole } from '@/lib/permissions'
 
 const LEAVE_TYPES = ['CASUAL', 'SICK', 'ANNUAL'] as const
 const LEAVE_STATUSES = ['PENDING', 'LEAD_APPROVED', 'HR_APPROVED', 'APPROVED', 'REJECTED', 'CANCELLED'] as const
@@ -49,8 +50,8 @@ export async function GET(request: NextRequest) {
     if (employeeId === 'me') {
       where.employeeId = user.id
     } else if (employeeId) {
-      // Non-HR users can only see their own requests or team members they lead
-      if (user.role !== 'HR' && employeeId !== user.id) {
+      // Non-admin users can only see their own requests or team members they lead
+      if (!isAdminRole(user.role) && employeeId !== user.id) {
         const leadMappings = await prisma.evaluatorMapping.findMany({
           where: {
             evaluatorId: user.id,
@@ -74,13 +75,13 @@ export async function GET(request: NextRequest) {
       where.status = parsedStatus.data
     }
     
-    // If HR user wants to see requests pending their approval
-    if (forApproval && user.role === 'HR') {
+    // If admin user wants to see requests pending their approval
+    if (forApproval && isAdminRole(user.role)) {
       where.status = { in: ['PENDING', 'LEAD_APPROVED'] }
     }
     
-    // If non-HR user (lead) wants to see requests for their team
-    if (forApproval && user.role !== 'HR') {
+    // If non-admin user (lead) wants to see requests for their team
+    if (forApproval && !isAdminRole(user.role)) {
       // Get people this user leads (TEAM_LEAD relationship)
       const leadMappings = await prisma.evaluatorMapping.findMany({
         where: {

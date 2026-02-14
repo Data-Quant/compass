@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getSession } from '@/lib/auth'
+import { isAdminRole } from '@/lib/permissions'
 import bcrypt from 'bcryptjs'
 
-// POST - Set or reset password (HR only, or user changing their own)
+// POST - Set or reset password (Admin only, or user changing their own)
 export async function POST(request: NextRequest) {
   try {
     const currentUser = await getSession()
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
 
     // Check authorization
     const isOwnAccount = userId === currentUser.id
-    const isHR = currentUser.role === 'HR'
+    const isHR = isAdminRole(currentUser.role)
 
     if (!isOwnAccount && !isHR) {
       return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
@@ -70,12 +71,12 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE - Remove password (HR only) - allows user to log in without password again
+// DELETE - Remove password (Admin only) - allows user to log in without password again
 export async function DELETE(request: NextRequest) {
   try {
     const currentUser = await getSession()
 
-    if (!currentUser || currentUser.role !== 'HR') {
+    if (!currentUser || !isAdminRole(currentUser.role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

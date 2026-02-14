@@ -47,7 +47,7 @@ function EmailPageContent() {
     try {
       const res = await fetch('/api/auth/session')
       const data = await res.json()
-      if (!data.user || data.user.role !== 'HR') {
+      if (!data.user || (data.user.role !== 'HR' && data.user.role !== 'OA')) {
         router.push('/login')
         return
       }
@@ -370,3 +370,4 @@ export default function EmailPage() {
     </Suspense>
   )
 }
+

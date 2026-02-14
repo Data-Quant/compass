@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getSession } from '@/lib/auth'
+import { isAdminRole } from '@/lib/permissions'
 
 // GET - Get leave balance for current user or specified employee
 export async function GET(request: NextRequest) {
@@ -15,8 +16,8 @@ export async function GET(request: NextRequest) {
     const employeeId = searchParams.get('employeeId') || user.id
     const year = parseInt(searchParams.get('year') || new Date().getFullYear().toString())
 
-    // Only allow own balance or HR
-    if (employeeId !== user.id && user.role !== 'HR') {
+    // Only allow own balance or admin
+    if (employeeId !== user.id && !isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Not authorized to view this balance' }, { status: 403 })
     }
 
@@ -59,7 +60,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Update leave balance (HR only)
+// POST - Update leave balance (Admin only)
 export async function POST(request: NextRequest) {
   try {
     const user = await getSession()
@@ -68,9 +69,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     
-    // Only HR can update balances
-    if (user.role !== 'HR') {
-      return NextResponse.json({ error: 'Only HR can update leave balances' }, { status: 403 })
+    // Only admins can update balances
+    if (!isAdminRole(user.role)) {
+      return NextResponse.json({ error: 'Only admin users can update leave balances' }, { status: 403 })
     }
     
     const body = await request.json()

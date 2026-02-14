@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
+import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 
 // POST - Import users or mappings from CSV data
 export async function POST(request: NextRequest) {
   try {
     const user = await getSession()
-    if (!user || user.role !== 'HR') {
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -53,7 +54,8 @@ async function importUsers(data: any[]) {
       const department = row.department || row.Department || row.DEPARTMENT
       const position = row.position || row.Position || row.POSITION || row.title || row.Title
       const role = (row.role || row.Role || row.ROLE || 'EMPLOYEE').toUpperCase()
-      const normalizedRole = role === 'HR' || role === 'SECURITY' ? role : 'EMPLOYEE'
+      const normalizedRole =
+        role === 'HR' || role === 'SECURITY' || role === 'OA' ? role : 'EMPLOYEE'
 
       if (!name) {
         results.errors.push(`Row ${rowNum}: Name is required`)
@@ -74,7 +76,7 @@ async function importUsers(data: any[]) {
               name,
               department: department || null,
               position: position || null,
-              role: normalizedRole as 'EMPLOYEE' | 'HR' | 'SECURITY',
+              role: normalizedRole as 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA',
             },
           })
           results.updated++
@@ -95,7 +97,7 @@ async function importUsers(data: any[]) {
             email: email || existingByName.email,
             department: department || existingByName.department,
             position: position || existingByName.position,
-            role: normalizedRole as 'EMPLOYEE' | 'HR' | 'SECURITY',
+            role: normalizedRole as 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA',
           },
         })
         results.updated++
@@ -109,7 +111,7 @@ async function importUsers(data: any[]) {
           email: email || null,
           department: department || null,
           position: position || null,
-          role: normalizedRole as 'EMPLOYEE' | 'HR' | 'SECURITY',
+          role: normalizedRole as 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA',
         },
       })
       results.created++
@@ -229,3 +231,4 @@ async function importMappings(data: any[]) {
 
   return NextResponse.json({ success: true, results })
 }
+
