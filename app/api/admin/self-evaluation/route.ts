@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
+import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 
 // POST - Enable self-evaluation for all employees
 export async function POST(request: NextRequest) {
   try {
     const user = await getSession()
-    if (!user || user.role !== 'HR') {
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -129,7 +130,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const user = await getSession()
-    if (!user || user.role !== 'HR') {
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -159,3 +160,4 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+

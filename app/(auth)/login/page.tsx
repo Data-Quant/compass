@@ -17,6 +17,7 @@ import { Plutus21Logo } from '@/components/brand/Plutus21Logo'
 import {
   Search,
   Users,
+  AlertCircle,
   ChevronRight,
   ArrowLeft,
   Lock,
@@ -272,6 +273,7 @@ function SplashScreen({ onComplete }: { onComplete: () => void }) {
  * ──────────────────────────────────────────── */
 export default function LoginPage() {
   const [users, setUsers] = useState<User[]>([])
+  const [usersLoadError, setUsersLoadError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [loading, setLoading] = useState(true)
   const [loggingIn, setLoggingIn] = useState(false)
@@ -286,18 +288,32 @@ export default function LoginPage() {
 
   useEffect(() => {
     setMounted(true)
-    fetch('/api/auth/login')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.users) {
-          setUsers(data.users)
+
+    const loadUsers = async () => {
+      try {
+        const res = await fetch('/api/auth/login')
+        const data = await res.json()
+
+        if (!res.ok || data.error) {
+          const message = data.error || 'Failed to load users'
+          setUsers([])
+          setUsersLoadError(message)
+          toast.error(message)
+          return
         }
-        setLoading(false)
-      })
-      .catch(() => {
-        setLoading(false)
+
+        setUsers(Array.isArray(data.users) ? data.users : [])
+        setUsersLoadError(null)
+      } catch {
+        setUsers([])
+        setUsersLoadError('Failed to load users')
         toast.error('Failed to load users')
-      })
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadUsers()
   }, [])
 
   const handleSplashComplete = useCallback(() => {
@@ -661,7 +677,15 @@ export default function LoginPage() {
 
                         {/* Users list */}
                         <div className="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
-                          {filteredUsers.length === 0 ? (
+                          {usersLoadError ? (
+                            <div className="text-center py-12">
+                              <AlertCircle className="w-10 h-10 text-destructive/40 mx-auto mb-3" />
+                              <p className="text-sm text-destructive">{usersLoadError}</p>
+                              <p className="text-xs text-muted-foreground mt-2">
+                                Open <span className="font-mono">/api/auth/login</span> to inspect the backend response.
+                              </p>
+                            </div>
+                          ) : filteredUsers.length === 0 ? (
                             <div className="text-center py-12">
                               <Users className="w-10 h-10 text-muted-foreground/20 mx-auto mb-3" />
                               <p className="text-sm text-muted-foreground">
@@ -708,6 +732,14 @@ export default function LoginPage() {
                                         className="bg-muted text-muted-foreground border-0 text-[10px] uppercase tracking-wider"
                                       >
                                         Security
+                                      </Badge>
+                                    )}
+                                    {user.role === 'OA' && (
+                                      <Badge
+                                        variant="secondary"
+                                        className="bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border-0 text-[10px] uppercase tracking-wider"
+                                      >
+                                        O&amp;A
                                       </Badge>
                                     )}
                                     <ChevronRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-foreground transition-colors" />

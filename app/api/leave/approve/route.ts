@@ -5,6 +5,7 @@ import { sendLeaveApprovalNotification } from '@/lib/email'
 import { LeaveStatus, Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { calculateLeaveDays } from '@/lib/leave-utils'
+import { isAdminRole } from '@/lib/permissions'
 
 const leaveApprovalSchema = z.object({
   requestId: z.string().trim().min(1),
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Leave request not found' }, { status: 404 })
     }
     
-    const isHR = user.role === 'HR'
+    const isHR = isAdminRole(user.role)
     
     // Check if user is a lead for this employee (if not HR)
     let isLead = false

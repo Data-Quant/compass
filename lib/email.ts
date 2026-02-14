@@ -450,7 +450,7 @@ export async function sendNewTicketNotificationToHR(ticketId: string) {
 export async function sendTicketStatusNotification(
   ticketId: string,
   updatedByName?: string,
-  updatedByRole?: 'EMPLOYEE' | 'HR' | 'SECURITY'
+  updatedByRole?: 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA'
 ) {
   console.log(`[Email] Triggering status notification for ticket: ${ticketId}`)
 

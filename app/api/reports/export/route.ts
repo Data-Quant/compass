@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { generateHRSpreadsheet } from '@/lib/reports'
+import { isAdminRole } from '@/lib/permissions'
 
 export async function GET(request: NextRequest) {
   try {
     const user = await getSession()
-    if (!user || user.role !== 'HR') {
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

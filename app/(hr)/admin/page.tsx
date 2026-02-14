@@ -38,6 +38,7 @@ import {
   Eye,
   CalendarDays,
   Monitor,
+  Wallet,
 } from 'lucide-react'
 import { COMPANY_NAME } from '@/lib/config'
 
@@ -90,6 +91,12 @@ const adminTools = [
     link: '/admin/device-tickets',
     icon: <Monitor className="w-5 h-5" />,
   },
+  {
+    title: 'Payroll Automation',
+    description: 'Manage payroll periods, calculations, and receipts',
+    link: '/admin/payroll',
+    icon: <Wallet className="w-5 h-5" />,
+  },
 ]
 
 export default function AdminDashboardPage() {
@@ -103,7 +110,7 @@ export default function AdminDashboardPage() {
     fetch('/api/auth/session')
       .then((res) => res.json())
       .then((data) => {
-        if (!data.user || data.user.role !== 'HR') {
+        if (!data.user || (data.user.role !== 'HR' && data.user.role !== 'OA')) {
           router.push('/login')
           return
         }
@@ -221,8 +228,8 @@ export default function AdminDashboardPage() {
             className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8"
           >
             <StatsCard
-              title="Total Employees"
-              value={dashboardData.summary.totalEmployees}
+              title="Team Members"
+              value={dashboardData.summary.totalTeamMembers ?? dashboardData.summary.totalEmployees}
               icon={<Users className="w-5 h-5" />}
             />
             <StatsCard
@@ -234,7 +241,7 @@ export default function AdminDashboardPage() {
             <StatsCard
               title="Reports Ready"
               value={dashboardData.summary.employeesWithReports}
-              suffix={`/${dashboardData.summary.totalEmployees}`}
+              suffix={`/${dashboardData.summary.totalTeamMembers ?? dashboardData.summary.totalEmployees}`}
               icon={<FileText className="w-5 h-5" />}
             />
           </motion.div>
@@ -378,3 +385,4 @@ export default function AdminDashboardPage() {
     </div>
   )
 }
+

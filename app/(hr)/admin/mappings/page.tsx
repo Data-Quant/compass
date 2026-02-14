@@ -72,7 +72,7 @@ export default function MappingsPage() {
     try {
       const res = await fetch('/api/auth/session')
       const data = await res.json()
-      if (!data.user || data.user.role !== 'HR') { router.push('/login'); return }
+      if (!data.user || (data.user.role !== 'HR' && data.user.role !== 'OA')) { router.push('/login'); return }
       loadData()
     } catch { router.push('/login') }
   }
@@ -205,7 +205,7 @@ export default function MappingsPage() {
 
   const relationshipTypes = Object.keys(RELATIONSHIP_TYPE_LABELS) as RelationshipType[]
   const allUsers = users
-  const employees = users.filter(u => u.role !== 'HR')
+  const employees = users.filter(u => u.role === 'EMPLOYEE')
   
   const filteredMappings = mappings.filter(m => {
     const matchSearch = m.evaluator.name.toLowerCase().includes(searchTerm.toLowerCase()) || m.evaluatee.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -478,3 +478,4 @@ export default function MappingsPage() {
     </PageContainer>
   )
 }
+

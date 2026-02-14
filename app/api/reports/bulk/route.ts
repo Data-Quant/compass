@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { RelationshipType, toCategorySetKey } from '@/types'
 import { calculateRedistributedWeights } from '@/lib/config'
+import { isAdminRole } from '@/lib/permissions'
 
 /**
  * Bulk reports endpoint: fetches ALL employee report summaries in 6 DB calls
@@ -11,7 +12,7 @@ import { calculateRedistributedWeights } from '@/lib/config'
 export async function GET(request: NextRequest) {
   try {
     const user = await getSession()
-    if (!user || user.role !== 'HR') {
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -33,9 +34,9 @@ export async function GET(request: NextRequest) {
     // 2-6: Fetch all data in parallel
     const [employees, allEvaluations, allMappings, allWeightProfiles, allCustomWeightages] =
       await Promise.all([
-        // 2. All non-HR employees
+        // 2. All employees
         prisma.user.findMany({
-          where: { role: { not: 'HR' } },
+          where: { role: 'EMPLOYEE' },
           select: { id: true, name: true, department: true, position: true },
         }),
 

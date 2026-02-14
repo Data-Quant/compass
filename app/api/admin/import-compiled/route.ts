@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
+import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { toCategorySetKey, CSV_CATEGORY_MAP, RelationshipType } from '@/types'
 
@@ -82,7 +83,7 @@ function parseCategorySet(csvCategoryString: string): RelationshipType[] {
 export async function POST(request: NextRequest) {
   try {
     const user = await getSession()
-    if (!user || user.role !== 'HR') {
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -238,3 +239,4 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Import failed' }, { status: 500 })
   }
 }
+

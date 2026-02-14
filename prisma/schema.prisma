@@ -14,6 +14,7 @@ enum UserRole {
   EMPLOYEE
   HR
   SECURITY
+  OA
 }
 
 enum RelationshipType {
@@ -66,6 +67,46 @@ enum TicketPriority {
   URGENT
 }
 
+enum PayrollPeriodStatus {
+  DRAFT
+  CALCULATED
+  APPROVED
+  SENDING
+  SENT
+  PARTIAL
+  FAILED
+  LOCKED
+}
+
+enum PayrollSourceType {
+  WORKBOOK
+  MANUAL
+  CARRY_FORWARD
+}
+
+enum PayrollIdentityStatus {
+  AUTO_MATCHED
+  MANUAL_MATCHED
+  UNRESOLVED
+  AMBIGUOUS
+}
+
+enum PayrollReceiptStatus {
+  DRAFT
+  READY
+  ENVELOPE_CREATED
+  SENT
+  COMPLETED
+  FAILED
+}
+
+enum PayrollImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
 model User {
   id           String   @id @default(cuid())
   name         String
@@ -97,6 +138,15 @@ model User {
   // Device management relations
   deviceTickets       DeviceTicket[]     @relation("DeviceTicketEmployee")
   leaveBalances       LeaveBalance[]
+
+  // Payroll management relations
+  payrollCreatedPeriods   PayrollPeriod[]         @relation("PayrollCreatedBy")
+  payrollApprovedPeriods  PayrollPeriod[]         @relation("PayrollApprovedBy")
+  payrollIdentityMappings PayrollIdentityMapping[]
+  payrollImportBatches    PayrollImportBatch[]    @relation("PayrollImportedBy")
+  payrollExpenseEntries   PayrollExpenseEntry[]   @relation("PayrollExpenseEnteredBy")
+  payrollApprovalEvents   PayrollApprovalEvent[]  @relation("PayrollApprovalActor")
+  payrollReceipts         PayrollReceipt[]        @relation("PayrollReceiptUser")
 
   @@index([name])
   @@index([email])
@@ -312,4 +362,226 @@ model DeviceTicket {
 
   @@index([employeeId])
   @@index([status])
+}
+
+model PayrollPeriod {
+  id            String              @id @default(cuid())
+  label         String
+  periodStart   DateTime
+  periodEnd     DateTime
+  status        PayrollPeriodStatus @default(DRAFT)
+  sourceType    PayrollSourceType   @default(CARRY_FORWARD)
+  currency      String              @default("PKR")
+  timezone      String              @default("Asia/Karachi")
+  createdById   String
+  approvedById  String?
+  approvedAt    DateTime?
+  lockedAt      DateTime?
+  summaryJson   Json?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  createdBy     User                @relation("PayrollCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy    User?               @relation("PayrollApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  importBatches PayrollImportBatch[]
+  inputValues   PayrollInputValue[]
+  computedValues PayrollComputedValue[]
+  expenseEntries PayrollExpenseEntry[]
+  receipts      PayrollReceipt[]
+  approvalEvents PayrollApprovalEvent[]
+
+  @@index([status])
+  @@index([periodStart, periodEnd])
+  @@index([createdById])
+}
+
+model PayrollIdentityMapping {
+  id                    String                @id @default(cuid())
+  normalizedPayrollName String                @unique
+  displayPayrollName    String
+  userId                String?
+  status                PayrollIdentityStatus @default(UNRESOLVED)
+  lastMatchedAt         DateTime?
+  notes                 String?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  user                  User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([userId])
+}
+
+model PayrollImportBatch {
+  id          String             @id @default(cuid())
+  sourceType  PayrollSourceType
+  fileName    String?
+  importedById String
+  periodId    String?
+  status      PayrollImportStatus @default(PENDING)
+  summaryJson Json?
+  errorMessage String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  importedBy  User               @relation("PayrollImportedBy", fields: [importedById], references: [id], onDelete: Restrict)
+  period      PayrollPeriod?     @relation(fields: [periodId], references: [id], onDelete: SetNull)
+  rows        PayrollImportRow[]
+
+  @@index([sourceType])
+  @@index([status])
+  @@index([importedById])
+  @@index([periodId])
+}
+
+model PayrollImportRow {
+  id              String           @id @default(cuid())
+  batchId         String
+  sheetName       String
+  rowNumber       Int
+  rowJson         Json
+  periodKey       String?
+  payrollName     String?
+  normalizedName  String?
+  createdAt       DateTime         @default(now())
+
+  batch           PayrollImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+  @@index([sheetName])
+  @@index([periodKey])
+  @@index([normalizedName])
+}
+
+model PayrollInputValue {
+  id            String            @id @default(cuid())
+  periodId      String
+  payrollName   String
+  userId        String?
+  componentKey  String
+  amount        Float
+  sourceSheet   String?
+  sourceCell    String?
+  sourceMethod  PayrollSourceType @default(MANUAL)
+  isOverride    Boolean           @default(false)
+  note          String?
+  provenanceJson Json?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  period        PayrollPeriod     @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  @@unique([periodId, payrollName, componentKey])
+  @@index([periodId])
+  @@index([userId])
+  @@index([componentKey])
+}
+
+model PayrollComputedValue {
+  id            String        @id @default(cuid())
+  periodId      String
+  payrollName   String
+  userId        String?
+  metricKey     String
+  amount        Float
+  formulaKey    String
+  formulaVersion String
+  lineageJson   Json?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  period        PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  @@unique([periodId, payrollName, metricKey])
+  @@index([periodId])
+  @@index([metricKey])
+}
+
+model PayrollExpenseEntry {
+  id           String        @id @default(cuid())
+  periodId     String
+  userId       String?
+  payrollName  String?
+  categoryKey  String
+  description  String?
+  amount       Float
+  sheetName    String?
+  rowRef       String?
+  enteredById  String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  period       PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  enteredBy    User          @relation("PayrollExpenseEnteredBy", fields: [enteredById], references: [id], onDelete: Restrict)
+
+  @@index([periodId])
+  @@index([enteredById])
+  @@index([categoryKey])
+}
+
+model PayrollReceipt {
+  id           String               @id @default(cuid())
+  periodId     String
+  userId       String?
+  payrollName  String
+  receiptJson  Json
+  renderedHtml String?
+  status       PayrollReceiptStatus @default(DRAFT)
+  version      Int                  @default(1)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  period       PayrollPeriod        @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  user         User?                @relation("PayrollReceiptUser", fields: [userId], references: [id], onDelete: SetNull)
+  envelopes    PayrollDocuSignEnvelope[]
+
+  @@unique([periodId, payrollName])
+  @@index([periodId])
+  @@index([userId])
+  @@index([status])
+}
+
+model PayrollDocuSignEnvelope {
+  id            String        @id @default(cuid())
+  receiptId     String
+  envelopeId    String?       @unique
+  recipientName String
+  recipientEmail String
+  status        String
+  sentAt        DateTime?
+  completedAt   DateTime?
+  lastSyncedAt  DateTime?
+  errorMessage  String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  receipt       PayrollReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+
+  @@index([receiptId])
+  @@index([status])
+}
+
+model PayrollApprovalEvent {
+  id          String              @id @default(cuid())
+  periodId    String
+  actorId     String
+  fromStatus  PayrollPeriodStatus?
+  toStatus    PayrollPeriodStatus
+  comment     String?
+  createdAt   DateTime            @default(now())
+
+  period      PayrollPeriod       @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  actor       User                @relation("PayrollApprovalActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([periodId])
+  @@index([actorId])
+}
+
+model PayrollConfig {
+  id                String   @id @default(cuid())
+  templateId        String
+  templateRoleName  String   @default("Employee")
+  active            Boolean  @default(true) @unique
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }

@@ -12,6 +12,7 @@ A comprehensive 360-degree performance evaluation system built with Next.js, Pos
 - **HR Admin Panel** - Comprehensive dashboard for managing evaluations and reports
 - **Email Distribution** - Queue and send performance reports via Resend
 - **Excel Export** - Download comprehensive evaluation data as spreadsheets
+- **Payroll Automation (HR + O&A)** - Monthly payroll periods, workbook import/backfill, formula-driven calculations, approval workflow, and DocuSign receipt dispatch
 
 ## Tech Stack
 
@@ -46,6 +47,13 @@ A comprehensive 360-degree performance evaluation system built with Next.js, Pos
    - `RESEND_API_KEY` - Your Resend API key
    - `NEXTAUTH_SECRET` - A random secret for session management
    - `NEXTAUTH_URL` - Your application URL (e.g., http://localhost:3000)
+   - `DOCUSIGN_INTEGRATION_KEY` - DocuSign integration key (JWT)
+   - `DOCUSIGN_USER_ID` - DocuSign API user ID
+   - `DOCUSIGN_ACCOUNT_ID` - DocuSign account ID
+   - `DOCUSIGN_PRIVATE_KEY` - RSA private key for DocuSign JWT
+   - `DOCUSIGN_BASE_PATH` - DocuSign API base (`https://demo.docusign.net` for sandbox)
+   - `DOCUSIGN_OAUTH_BASE_PATH` - OAuth base (`account-d.docusign.com` for sandbox)
+   - `DOCUSIGN_WEBHOOK_HMAC_KEY` - Optional: validates `x-docusign-signature-1` on webhook
 
 3. **Set up the database**:
    ```bash
@@ -148,9 +156,36 @@ Reports include:
 ### Admin
 - `GET /api/admin/dashboard` - Get HR admin dashboard data
 
+### Payroll
+- `GET /api/payroll/dashboard` - Payroll summary cards/counters
+- `GET /api/payroll/periods` - List payroll periods
+- `POST /api/payroll/periods` - Create payroll period
+- `POST /api/payroll/import` - Import workbook inputs/expenses
+- `POST /api/payroll/backfill` - Backfill latest N months from workbook (supports dummy-values-to-real-names mode)
+- `POST /api/payroll/periods/:id/recalculate` - Recalculate computed metrics and receipts
+- `POST /api/payroll/periods/:id/approve` - Approve period
+- `POST /api/payroll/periods/:id/send-docusign` - Send receipts through DocuSign template
+- `POST /api/payroll/periods/:id/docusign/sync` - Refresh envelope statuses
+- `GET /api/payroll/config` / `PUT /api/payroll/config` - Manage DocuSign template config
+
 ### Email
 - `GET /api/email` - Get email queue
 - `POST /api/email` - Queue/send emails
+
+## Payroll Workflow
+
+1. Open `/oa/payroll` or `/admin/payroll`.
+2. Create a period using carry-forward (default monthly flow), or import workbook.
+3. Recalculate to produce computed payroll metrics and receipt payloads.
+4. Approve period.
+5. Send DocuSign envelopes and sync statuses.
+
+### Dummy Workbook Testing Mode
+
+Use `POST /api/payroll/backfill` (or the Backfill card in payroll UI) with:
+- `useEmployeeRosterNames=true` (default in UI): applies workbook dummy values to real Compass employee names.
+- `months=12`: imports and processes the latest 12 detected payroll periods.
+- `lockApproved=true`: auto-locks successful historical periods after calculation.
 
 ## Database Schema
 

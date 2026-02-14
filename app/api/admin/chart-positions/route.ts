@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getSession } from '@/lib/auth'
+import { isAdminRole } from '@/lib/permissions'
 
 // Save chart positions
 export async function POST(request: NextRequest) {
   try {
     const user = await getSession()
-    if (!user || user.role !== 'HR') {
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE() {
   try {
     const user = await getSession()
-    if (!user || user.role !== 'HR') {
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -51,3 +52,4 @@ export async function DELETE() {
     return NextResponse.json({ error: 'Failed to reset positions' }, { status: 500 })
   }
 }
+

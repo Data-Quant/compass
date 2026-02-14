@@ -123,6 +123,16 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
+    if (!process.env.DATABASE_URL) {
+      return NextResponse.json(
+        {
+          error: 'Database is not configured',
+          code: 'DB_URL_MISSING',
+        },
+        { status: 500 }
+      )
+    }
+
     const users = await prisma.user.findMany({
       select: {
         id: true,
@@ -146,8 +156,14 @@ export async function GET() {
     return NextResponse.json({ users: usersWithHasPassword })
   } catch (error) {
     console.error('Failed to fetch users:', error)
+    const detail = error instanceof Error ? error.message : 'Unknown database error'
     return NextResponse.json(
-      { error: 'Failed to fetch users' },
+      {
+        error: 'Failed to fetch users',
+        code: 'DB_QUERY_FAILED',
+        hint: 'Check DATABASE_URL, connection mode, and Prisma schema sync on deployed DB',
+        detail: process.env.NODE_ENV !== 'production' ? detail : undefined,
+      },
       { status: 500 }
     )
   }
