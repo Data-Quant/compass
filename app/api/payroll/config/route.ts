@@ -3,10 +3,10 @@ import { z } from 'zod'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { canManagePayroll } from '@/lib/permissions'
-import { getDocuSignRuntimeConfig } from '@/lib/payroll/config'
+import { getHelloSignRuntimeConfig } from '@/lib/payroll/config'
 
 const configSchema = z.object({
-  templateId: z.string().trim().min(1),
+  templateId: z.string().trim().min(1).optional().default('none'),
   templateRoleName: z.string().trim().min(1).default('Employee'),
   active: z.boolean().default(true),
 })
@@ -21,15 +21,15 @@ export async function GET() {
     const config = await prisma.payrollConfig.findFirst({
       orderBy: { updatedAt: 'desc' },
     })
-    const runtime = getDocuSignRuntimeConfig()
+    const runtime = getHelloSignRuntimeConfig()
 
     return NextResponse.json({
       config,
       runtime: {
+        provider: 'hellosign',
         ready: runtime.ready,
         missing: runtime.missing,
-        oauthBasePath: runtime.oauthBasePath,
-        basePath: runtime.basePath,
+        testMode: runtime.testMode,
       },
     })
   } catch (error) {
@@ -69,7 +69,7 @@ export async function PUT(request: NextRequest) {
         })
       : await prisma.payrollConfig.create({
           data: {
-            templateId: parsed.data.templateId,
+            templateId: parsed.data.templateId || 'none',
             templateRoleName: parsed.data.templateRoleName,
             active: parsed.data.active,
           },

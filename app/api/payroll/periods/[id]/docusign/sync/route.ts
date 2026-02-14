@@ -3,24 +3,23 @@ import { z } from 'zod'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { canManagePayroll } from '@/lib/permissions'
-import { getDocuSignEnvelopeStatus } from '@/lib/docusign'
+import { getHelloSignRequestStatus } from '@/lib/hellosign'
 
 export const runtime = 'nodejs'
 
 const syncSchema = z.object({
-  envelopeIds: z.array(z.string().trim().min(1)).optional(),
+  signatureRequestIds: z.array(z.string().trim().min(1)).optional(),
 })
 
 interface RouteContext {
   params: Promise<{ id: string }>
 }
 
-function mapEnvelopeStatusToReceiptStatus(status: string) {
+function mapHelloSignStatusToReceiptStatus(status: string) {
   const normalized = status.toLowerCase()
-  if (normalized === 'completed') return 'COMPLETED' as const
-  if (normalized === 'sent' || normalized === 'delivered') return 'SENT' as const
-  if (normalized === 'created') return 'ENVELOPE_CREATED' as const
-  if (normalized === 'declined' || normalized === 'voided') return 'FAILED' as const
+  if (normalized === 'completed' || normalized === 'signed') return 'COMPLETED' as const
+  if (normalized === 'sent' || normalized === 'partially_signed') return 'SENT' as const
+  if (normalized === 'declined' || normalized === 'error') return 'FAILED' as const
   return 'ENVELOPE_CREATED' as const
 }
 
@@ -61,10 +60,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
       )
     }
 
+    // The envelopeId field stores HelloSign signature_request_id
     const envelopes = await prisma.payrollDocuSignEnvelope.findMany({
       where: {
-        ...(parsed.data.envelopeIds?.length
-          ? { envelopeId: { in: parsed.data.envelopeIds } }
+        ...(parsed.data.signatureRequestIds?.length
+          ? { envelopeId: { in: parsed.data.signatureRequestIds } }
           : { envelopeId: { not: null } }),
         receipt: { periodId },
       },
@@ -82,23 +82,27 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     let updated = 0
-    const failures: Array<{ envelopeId: string; reason: string }> = []
+    const failures: Array<{ signatureRequestId: string; reason: string }> = []
 
     for (const envelope of envelopes) {
       if (!envelope.envelopeId) continue
       try {
-        const status = await getDocuSignEnvelopeStatus(envelope.envelopeId)
-        const receiptStatus = mapEnvelopeStatusToReceiptStatus(status.status)
+        const hsStatus = await getHelloSignRequestStatus(envelope.envelopeId)
+        const receiptStatus = mapHelloSignStatusToReceiptStatus(hsStatus.status)
+
+        // Find the first signature's signed_at timestamp
+        const firstSig = hsStatus.signatures?.[0]
+        const signedAt = firstSig?.signedAt ? new Date(firstSig.signedAt) : null
 
         await prisma.$transaction(async (tx) => {
           await tx.payrollDocuSignEnvelope.update({
             where: { id: envelope.id },
             data: {
-              status: status.status,
-              sentAt: status.sentAt,
-              completedAt: status.completedAt,
+              status: hsStatus.status,
+              sentAt: envelope.sentAt, // preserve original sent time
+              completedAt: hsStatus.isComplete ? (signedAt || new Date()) : null,
               lastSyncedAt: new Date(),
-              errorMessage: null,
+              errorMessage: hsStatus.hasError ? 'HelloSign reported an error' : null,
             },
           })
 
@@ -112,8 +116,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
         updated += 1
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown DocuSign sync error'
-        failures.push({ envelopeId: envelope.envelopeId, reason: message })
+        const message = error instanceof Error ? error.message : 'Unknown HelloSign sync error'
+        failures.push({ signatureRequestId: envelope.envelopeId, reason: message })
         await prisma.payrollDocuSignEnvelope.update({
           where: { id: envelope.id },
           data: {
@@ -144,7 +148,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       periodStatus: nextStatus,
     })
   } catch (error) {
-    console.error('Failed to sync DocuSign statuses:', error)
-    return NextResponse.json({ error: 'Failed to sync DocuSign statuses' }, { status: 500 })
+    console.error('Failed to sync HelloSign statuses:', error)
+    return NextResponse.json({ error: 'Failed to sync signature statuses' }, { status: 500 })
   }
 }

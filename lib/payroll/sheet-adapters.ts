@@ -57,6 +57,7 @@ export const SHEET_TO_COMPONENT_KEY: Partial<Record<string, PayrollComponentKey>
   'Loan Deduct': 'LOAN_REPAYMENT',
   Deductions: 'ADJUSTMENT',
   'Final Payments': 'PAID',
+  Interns: 'BASIC_SALARY',
 }
 
 export const EXPENSE_SHEETS = new Set([
@@ -82,6 +83,7 @@ export const SHEET_PRIORITY: Record<string, number> = {
   'Loan Deduct': 100,
   Deductions: 100,
   'Final Payments': 100,
+  Interns: 80,
 }
 
 export function isActiveEditableSheet(sheetName: string): boolean {

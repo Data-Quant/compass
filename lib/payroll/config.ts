@@ -29,6 +29,40 @@ export const PAYROLL_METRIC_KEYS = [
 export type PayrollComponentKey = (typeof PAYROLL_COMPONENT_KEYS)[number]
 export type PayrollMetricKey = (typeof PAYROLL_METRIC_KEYS)[number]
 
+/* ---------- HelloSign (Dropbox Sign) runtime config ---------- */
+
+export interface HelloSignRuntimeConfig {
+  apiKey: string
+  clientId: string
+  testMode: boolean
+  webhookSecret: string
+  missing: string[]
+  ready: boolean
+}
+
+export function getHelloSignRuntimeConfig(): HelloSignRuntimeConfig {
+  const apiKey = process.env.HELLOSIGN_API_KEY || ''
+  const clientId = process.env.HELLOSIGN_CLIENT_ID || ''
+  const testMode = process.env.HELLOSIGN_TEST_MODE === '1' || process.env.HELLOSIGN_TEST_MODE === 'true'
+  const webhookSecret = process.env.HELLOSIGN_WEBHOOK_SECRET || ''
+
+  const missing = [
+    !apiKey ? 'HELLOSIGN_API_KEY' : '',
+  ].filter(Boolean)
+
+  return {
+    apiKey,
+    clientId,
+    testMode,
+    webhookSecret,
+    missing,
+    ready: missing.length === 0,
+  }
+}
+
+/* ---------- Legacy DocuSign runtime config (deprecated) ---------- */
+
+/** @deprecated Use getHelloSignRuntimeConfig() instead */
 export interface DocuSignRuntimeConfig {
   integrationKey: string
   userId: string
@@ -40,6 +74,7 @@ export interface DocuSignRuntimeConfig {
   ready: boolean
 }
 
+/** @deprecated Use getHelloSignRuntimeConfig() instead */
 export function getDocuSignRuntimeConfig(): DocuSignRuntimeConfig {
   const integrationKey = process.env.DOCUSIGN_INTEGRATION_KEY || ''
   const userId = process.env.DOCUSIGN_USER_ID || ''

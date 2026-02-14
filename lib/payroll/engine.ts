@@ -100,14 +100,17 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
     const medicalTaxExemption =
       bucket.MEDICAL_TAX_EXEMPTION !== undefined
         ? getNumber(bucket, 'MEDICAL_TAX_EXEMPTION')
-        : -(medicalAllowance * 0.1)
+        : -medicalAllowance
     const bonus = getNumber(bucket, 'BONUS')
 
     const totalTaxableSalary = basicSalary + medicalTaxExemption + bonus
+    // WHT Calculations in the workbook compute tax on (salary + bonus) only,
+    // without the medical exemption adjustment. Use that same base for the
+    // slab-based fallback so carry-forward / manual periods match the workbook.
     const incomeTax =
       bucket.INCOME_TAX !== undefined
         ? getNumber(bucket, 'INCOME_TAX')
-        : estimateIncomeTaxFromSlabs(periodKey, totalTaxableSalary)
+        : estimateIncomeTaxFromSlabs(periodKey, basicSalary + bonus)
 
     const totalEarnings =
       totalTaxableSalary +

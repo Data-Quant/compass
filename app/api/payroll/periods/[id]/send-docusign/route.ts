@@ -3,8 +3,9 @@ import { z } from 'zod'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { canManagePayroll } from '@/lib/permissions'
-import { getDocuSignRuntimeConfig } from '@/lib/payroll/config'
-import { createDocuSignEnvelope } from '@/lib/docusign'
+import { getHelloSignRuntimeConfig } from '@/lib/payroll/config'
+import { sendHelloSignRequest } from '@/lib/hellosign'
+import { generateReceiptPdf, type ReceiptData } from '@/lib/payroll/receipt-pdf'
 
 export const runtime = 'nodejs'
 
@@ -17,11 +18,56 @@ interface RouteContext {
   params: Promise<{ id: string }>
 }
 
-function toReceiptStatus(envelopeStatus: string) {
-  const normalized = envelopeStatus.toLowerCase()
-  if (normalized === 'completed') return 'COMPLETED' as const
-  if (normalized === 'sent' || normalized === 'delivered') return 'SENT' as const
+function toReceiptStatus(helloSignStatus: string) {
+  const normalized = helloSignStatus.toLowerCase()
+  if (normalized === 'completed' || normalized === 'signed') return 'COMPLETED' as const
+  if (normalized === 'sent' || normalized === 'partially_signed') return 'SENT' as const
+  if (normalized === 'declined' || normalized === 'error') return 'FAILED' as const
   return 'ENVELOPE_CREATED' as const
+}
+
+function num(v: unknown): number {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : 0
+}
+
+function receiptJsonToData(
+  receiptJson: any,
+  payrollName: string,
+  periodLabel: string,
+): ReceiptData {
+  const earnings = receiptJson?.earnings || {}
+  const deductions = receiptJson?.deductions || {}
+  const net = receiptJson?.net || {}
+
+  return {
+    employeeName: payrollName,
+    periodLabel,
+    earnings: {
+      basicSalary: num(earnings.basicSalary),
+      medicalTaxExemption: num(earnings.medicalTaxExemption),
+      bonus: num(earnings.bonus),
+      medicalAllowance: num(earnings.medicalAllowance),
+      travelReimbursement: num(earnings.travelReimbursement),
+      utilityReimbursement: num(earnings.utilityReimbursement),
+      mealsReimbursement: num(earnings.mealsReimbursement),
+      mobileReimbursement: num(earnings.mobileReimbursement),
+      expenseReimbursement: num(earnings.expenseReimbursement),
+      advanceLoan: num(earnings.advanceLoan),
+      totalEarnings: num(earnings.totalEarnings),
+    },
+    deductions: {
+      incomeTax: num(deductions.incomeTax),
+      adjustment: num(deductions.adjustment),
+      loanRepayment: num(deductions.loanRepayment),
+      totalDeductions: num(deductions.totalDeductions),
+    },
+    net: {
+      netSalary: num(net.netSalary),
+      paid: num(net.paid),
+      balance: num(net.balance),
+    },
+  }
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -60,27 +106,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (period.status !== 'APPROVED') {
       return NextResponse.json(
-        { error: `DocuSign send is only allowed from APPROVED. Current status: ${period.status}` },
+        { error: `Sending receipts is only allowed from APPROVED status. Current status: ${period.status}` },
         { status: 400 }
       )
     }
 
-    const activeConfig = await prisma.payrollConfig.findFirst({
-      where: { active: true },
-      orderBy: { updatedAt: 'desc' },
-    })
-    if (!activeConfig) {
-      return NextResponse.json(
-        { error: 'Payroll DocuSign template configuration is missing. Configure /api/payroll/config first.' },
-        { status: 400 }
-      )
-    }
-
-    const runtimeConfig = getDocuSignRuntimeConfig()
+    const runtimeConfig = getHelloSignRuntimeConfig()
     if (!runtimeConfig.ready) {
       return NextResponse.json(
         {
-          error: 'DocuSign runtime configuration is missing required environment variables.',
+          error: 'HelloSign configuration is missing required environment variables.',
           missing: runtimeConfig.missing,
         },
         { status: 400 }
@@ -99,7 +134,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (receipts.length === 0) {
       return NextResponse.json(
-        { error: 'No receipts are eligible for DocuSign sending for the requested criteria.' },
+        { error: 'No receipts are eligible for sending for the requested criteria.' },
         { status: 400 }
       )
     }
@@ -130,22 +165,37 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
 
       try {
-        const envelope = await createDocuSignEnvelope({
-          templateId: activeConfig.templateId,
-          templateRoleName: activeConfig.templateRoleName || 'Employee',
-          recipientName,
-          recipientEmail,
+        // Generate the PDF receipt
+        const receiptData = receiptJsonToData(
+          receipt.receiptJson,
+          receipt.payrollName,
+          period.label,
+        )
+        const pdfBuffer = await generateReceiptPdf(receiptData)
+        const sanitizedName = receipt.payrollName.replace(/[^a-zA-Z0-9 ]/g, '').trim()
+        const fileName = `Payment_Receipt_${sanitizedName}_${period.label.replace(/\s+/g, '_')}.pdf`
+
+        // Send via HelloSign
+        const result = await sendHelloSignRequest({
+          fileBuffer: pdfBuffer,
+          fileName,
+          signerName: recipientName,
+          signerEmail: recipientEmail,
+          subject: `Payment Receipt - ${receipt.payrollName} - ${period.label}`,
+          message: `Please review and sign your payment receipt for ${period.label}.`,
+          testMode: runtimeConfig.testMode,
         })
 
         await prisma.$transaction(async (tx) => {
+          // Store in the existing envelope table (repurposed for HelloSign)
           await tx.payrollDocuSignEnvelope.create({
             data: {
               receiptId: receipt.id,
-              envelopeId: envelope.envelopeId || null,
+              envelopeId: result.signatureRequestId || null,
               recipientName,
               recipientEmail,
-              status: envelope.status || 'sent',
-              sentAt: envelope.status?.toLowerCase() === 'sent' ? new Date() : null,
+              status: result.status || 'sent',
+              sentAt: new Date(),
               lastSyncedAt: new Date(),
               errorMessage: null,
             },
@@ -154,14 +204,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
           await tx.payrollReceipt.update({
             where: { id: receipt.id },
             data: {
-              status: toReceiptStatus(envelope.status || 'sent'),
+              status: toReceiptStatus(result.status || 'sent'),
             },
           })
         })
 
         successCount += 1
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown DocuSign send error'
+        const message = error instanceof Error ? error.message : 'Unknown HelloSign send error'
         failures.push({
           receiptId: receipt.id,
           payrollName: receipt.payrollName,
@@ -206,7 +256,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       failures,
     })
   } catch (error) {
-    console.error('Failed to send payroll receipts to DocuSign:', error)
-    return NextResponse.json({ error: 'Failed to send payroll receipts to DocuSign' }, { status: 500 })
+    console.error('Failed to send payroll receipts via HelloSign:', error)
+    return NextResponse.json({ error: 'Failed to send payroll receipts' }, { status: 500 })
   }
 }
