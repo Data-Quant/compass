@@ -18,9 +18,16 @@ export async function GET(
       include: {
         owner: { select: { id: true, name: true } },
         members: { include: { user: { select: { id: true, name: true } } } },
+        sections: { orderBy: { orderIndex: 'asc' } },
+        labels: { orderBy: { name: 'asc' } },
         tasks: {
-          include: { assignee: { select: { id: true, name: true } } },
-          orderBy: [{ status: 'asc' }, { orderIndex: 'asc' }, { createdAt: 'desc' }],
+          include: {
+            assignee: { select: { id: true, name: true } },
+            section: { select: { id: true, name: true } },
+            labelAssignments: { include: { label: true } },
+            _count: { select: { comments: true } },
+          },
+          orderBy: [{ orderIndex: 'asc' }, { createdAt: 'desc' }],
         },
       },
     })
@@ -46,7 +53,7 @@ export async function PUT(
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id } = await params
-    const { name, description, status } = await request.json()
+    const { name, description, status, color } = await request.json()
 
     const project = await prisma.project.update({
       where: { id },
@@ -54,6 +61,7 @@ export async function PUT(
         ...(name && { name: name.trim() }),
         ...(description !== undefined && { description: description?.trim() || null }),
         ...(status && { status }),
+        ...(color !== undefined && { color }),
       },
     })
 

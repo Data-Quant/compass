@@ -30,6 +30,7 @@ import {
   Settings,
   Shield,
   Eye,
+  CheckSquare,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -58,6 +59,7 @@ export type SidebarConfig = {
 export const EMPLOYEE_SIDEBAR: SidebarConfig = {
   items: [
     { label: 'Home', href: '/dashboard', icon: Home },
+    { label: 'My Tasks', href: '/my-tasks', icon: CheckSquare },
     { label: 'Evaluations', href: '/evaluations', icon: ClipboardCheck },
     { label: 'Leave', href: '/leave', icon: Calendar },
     { label: 'Projects', href: '/projects', icon: FolderKanban },

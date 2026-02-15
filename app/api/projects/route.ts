@@ -28,6 +28,7 @@ export async function GET() {
       id: p.id,
       name: p.name,
       description: p.description,
+      color: p.color,
       status: p.status,
       owner: p.owner,
       members: p.members.map((m) => ({ ...m.user, role: m.role })),
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { name, description, memberIds } = await request.json()
+    const { name, description, memberIds, color } = await request.json()
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'Project name is required' }, { status: 400 })
@@ -60,6 +61,7 @@ export async function POST(request: NextRequest) {
       data: {
         name: name.trim(),
         description: description?.trim() || null,
+        color: color || null,
         ownerId: user.id,
         members: {
           create: [
@@ -69,10 +71,18 @@ export async function POST(request: NextRequest) {
               .map((id: string) => ({ userId: id, role: 'MEMBER' })),
           ],
         },
+        sections: {
+          create: [
+            { name: 'To Do', orderIndex: 0 },
+            { name: 'In Progress', orderIndex: 1 },
+            { name: 'Done', orderIndex: 2 },
+          ],
+        },
       },
       include: {
         owner: { select: { id: true, name: true } },
         members: { include: { user: { select: { id: true, name: true } } } },
+        sections: true,
       },
     })
 
