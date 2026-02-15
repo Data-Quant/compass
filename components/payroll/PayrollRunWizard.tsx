@@ -221,7 +221,7 @@ export function PayrollRunWizard({
   }, [])
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="p-6 sm:p-8">
       {/* Step header */}
       <StepHeader
         currentStep={currentStep}

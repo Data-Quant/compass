@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
-import { AppNavbar } from '@/components/layout/AppNavbar'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { PayrollStatusBadge } from '@/components/payroll/PayrollStatusBadge'
 import { PayrollImportDialog } from '@/components/payroll/PayrollImportDialog'
@@ -84,7 +83,6 @@ export function PayrollDashboard({
   description,
 }: WorkspaceProps) {
   const router = useRouter()
-  const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [periods, setPeriods] = useState<PeriodRow[]>([])
@@ -104,17 +102,7 @@ export function PayrollDashboard({
   const [basePeriodId, setBasePeriodId] = useState('AUTO')
 
   useEffect(() => {
-    fetch('/api/auth/session')
-      .then((res) => res.json())
-      .then((data) => {
-        if (!data.user || !canAccessPayrollWorkspace(data.user.role, appBasePath)) {
-          router.push('/login')
-          return
-        }
-        setUser(data.user)
-        return loadData()
-      })
-      .catch(() => router.push('/login'))
+    loadData()
   }, [])
 
   const loadData = async () => {
@@ -183,11 +171,6 @@ export function PayrollDashboard({
     }
   }
 
-  const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' })
-    router.push('/login')
-  }
-
   const pendingApprovals = dashboard.statusCounts.CALCULATED || 0
   const totalPeriods = periods.length
   const latestPeriods = useMemo(() => periods.slice(0, 10), [periods])
@@ -198,10 +181,7 @@ export function PayrollDashboard({
   if (loading) return <LoadingScreen message="Loading payroll..." />
 
   return (
-    <div className="min-h-screen bg-background">
-      <AppNavbar user={user} onLogout={handleLogout} badge={badge} />
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+    <div className="p-6 sm:p-8 max-w-7xl mx-auto space-y-6">
         {/* Hero Section */}
         <motion.section
           initial={{ opacity: 0, y: 8 }}
@@ -414,7 +394,6 @@ export function PayrollDashboard({
             </CardContent>
           </Card>
         </motion.section>
-      </main>
 
       {/* Import Dialog */}
       <PayrollImportDialog
