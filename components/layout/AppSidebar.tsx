@@ -58,7 +58,7 @@ export type SidebarConfig = {
 export const EMPLOYEE_SIDEBAR: SidebarConfig = {
   items: [
     { label: 'Home', href: '/dashboard', icon: Home },
-    { label: 'Evaluations', href: '/dashboard#evaluations', icon: ClipboardCheck },
+    { label: 'Evaluations', href: '/evaluations', icon: ClipboardCheck },
     { label: 'Leave', href: '/leave', icon: Calendar },
     { label: 'Projects', href: '/projects', icon: FolderKanban },
     { label: 'Device Support', href: '/device-support', icon: Monitor },

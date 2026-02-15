@@ -205,7 +205,7 @@ export default function DashboardPage() {
                     {allMappings.slice(0, 6).map((m) => (
                       <Link
                         key={m.id}
-                        href={`/evaluate/${m.id}`}
+                        href={`/evaluate/${m.evaluatee.id}`}
                         className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-muted transition-colors group"
                       >
                         <div className="flex items-center gap-2.5">
