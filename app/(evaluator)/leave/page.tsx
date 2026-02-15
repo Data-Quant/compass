@@ -1,12 +1,9 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import {
-  AlertCircle,
-  ArrowLeft,
   Calendar,
   ChevronLeft,
   ChevronRight,
@@ -17,7 +14,7 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { AppNavbar } from '@/components/layout/AppNavbar'
+import { useLayoutUser } from '@/components/layout/SidebarLayout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -102,7 +99,7 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
 export default function LeavePage() {
-  const router = useRouter()
+  const layoutUser = useLayoutUser()
   const [user, setUser] = useState<any>(null)
   const [balance, setBalance] = useState<LeaveBalance | null>(null)
   const [requests, setRequests] = useState<LeaveRequest[]>([])
@@ -131,29 +128,15 @@ export default function LeavePage() {
   })
 
   useEffect(() => {
-    checkAuth()
-  }, [])
+    if (layoutUser) setUser(layoutUser)
+    loadData()
+  }, [layoutUser])
 
   useEffect(() => {
     if (user) {
       loadCalendarEvents()
     }
   }, [currentMonth, currentYear, user])
-
-  const checkAuth = async () => {
-    try {
-      const res = await fetch('/api/auth/session')
-      const data = await res.json()
-      if (!data.user) {
-        router.push('/login')
-        return
-      }
-      setUser(data.user)
-      loadData()
-    } catch {
-      router.push('/login')
-    }
-  }
 
   const loadData = async () => {
     try {
@@ -329,11 +312,6 @@ export default function LeavePage() {
     }
   }
 
-  const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' })
-    router.push('/login')
-  }
-
   const getDaysCount = (start: string, end: string) => {
     const startDate = new Date(start)
     const endDate = new Date(end)
@@ -352,25 +330,14 @@ export default function LeavePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         <LoadingScreen message="Loading..." />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <AppNavbar
-        user={user}
-        onLogout={handleLogout}
-        navLinks={[
-          { href: '/dashboard', label: 'Dashboard', icon: <ArrowLeft className="w-4 h-4" />, variant: 'muted' },
-          { href: '/leave', label: 'Leave', icon: <Calendar className="w-4 h-4" />, variant: 'default' },
-          { href: '/device-support', label: 'Device Support', icon: <AlertCircle className="w-4 h-4" />, variant: 'muted' },
-        ]}
-      />
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         {/* Page Title */}
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -690,8 +657,6 @@ export default function LeavePage() {
             )}
           </div>
         </div>
-      </main>
-
       {/* Apply Leave Modal */}
       <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); clearSelection(); }} title="Apply for Leave" size="lg">
         <form onSubmit={handleSubmit} className="space-y-4">

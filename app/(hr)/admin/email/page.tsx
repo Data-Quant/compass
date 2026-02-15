@@ -1,14 +1,11 @@
 'use client'
 
 import { Suspense, useEffect, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { PageHeader } from '@/components/layout/page-header'
-import { PageFooter } from '@/components/layout/page-footer'
-import { PageContainer, PageContent } from '@/components/layout/page-container'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -24,7 +21,6 @@ import {
 import { Mail, Send, Eye, RefreshCw, CheckCircle, Clock, AlertCircle, Plus } from 'lucide-react'
 
 function EmailPageContent() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const periodId = searchParams.get('periodId') || 'active'
   const [queueEntries, setQueueEntries] = useState<any[]>([])
@@ -40,22 +36,8 @@ function EmailPageContent() {
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
 
   useEffect(() => {
-    checkAuth()
+    loadEmailQueue()
   }, [periodId])
-
-  const checkAuth = async () => {
-    try {
-      const res = await fetch('/api/auth/session')
-      const data = await res.json()
-      if (!data.user || data.user.role !== 'HR') {
-        router.push('/login')
-        return
-      }
-      loadEmailQueue()
-    } catch (error) {
-      router.push('/login')
-    }
-  }
 
   const loadEmailQueue = async () => {
     try {
@@ -172,17 +154,14 @@ function EmailPageContent() {
 
   if (loading) {
     return (
-      <PageContainer>
+      <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         <LoadingScreen message="Loading email queue..." />
-      </PageContainer>
+      </div>
     )
   }
 
   return (
-    <PageContainer>
-      <PageHeader backHref="/admin" backLabel="Back to Admin" badge="Email" />
-
-      <PageContent>
+    <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-foreground font-display">Email Distribution</h1>
@@ -320,9 +299,6 @@ function EmailPageContent() {
           </Card>
         </motion.div>
 
-        <PageFooter />
-      </PageContent>
-
       {/* Preview Modal */}
       <Modal
         isOpen={previewModalOpen}
@@ -355,16 +331,16 @@ function EmailPageContent() {
         confirmText="Send All"
         variant="info"
       />
-    </PageContainer>
+    </div>
   )
 }
 
 export default function EmailPage() {
   return (
     <Suspense fallback={
-      <PageContainer>
+      <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         <LoadingScreen message="Loading email queue..." />
-      </PageContainer>
+      </div>
     }>
       <EmailPageContent />
     </Suspense>

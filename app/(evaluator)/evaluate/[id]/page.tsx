@@ -6,9 +6,6 @@ import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { RATING_LABELS } from '@/types'
-import { PageHeader } from '@/components/layout/page-header'
-import { PageFooter } from '@/components/layout/page-footer'
-import { PageContainer, PageContent } from '@/components/layout/page-container'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -138,14 +135,11 @@ export default function EvaluatePage() {
   const progress = totalQuestions > 0 ? Math.round((completedQuestions / totalQuestions) * 100) : 0
 
   if (loading) {
-    return <PageContainer><LoadingScreen message="Loading evaluation..." variant="section" /></PageContainer>
+    return <div className="p-6 sm:p-8 max-w-7xl mx-auto"><LoadingScreen message="Loading evaluation..." variant="section" /></div>
   }
 
   return (
-    <PageContainer>
-      <PageHeader backHref="/dashboard" backLabel="Back to Dashboard" />
-
-      <PageContent className="max-w-4xl">
+    <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         {/* Header Card */}
         <Card className="rounded-card mb-6">
           <CardContent className="p-6">
@@ -264,8 +258,6 @@ export default function EvaluatePage() {
           </motion.div>
         )}
 
-        <PageFooter />
-      </PageContent>
-    </PageContainer>
+    </div>
   )
 }

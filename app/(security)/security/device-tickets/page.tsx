@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import {
@@ -16,8 +15,6 @@ import {
   Clock,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
-import { PageHeader } from '@/components/layout/page-header'
-import { PageContainer, PageContent } from '@/components/layout/page-container'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -121,7 +118,6 @@ const STATUS_FLOW: Record<string, string> = {
 }
 
 export default function SecurityDeviceTicketsPage() {
-  const router = useRouter()
   const [tickets, setTickets] = useState<DeviceTicket[]>([])
   const [allTickets, setAllTickets] = useState<DeviceTicket[]>([])
   const [loading, setLoading] = useState(true)
@@ -138,16 +134,7 @@ export default function SecurityDeviceTicketsPage() {
   const [processing, setProcessing] = useState(false)
 
   useEffect(() => {
-    fetch('/api/auth/session')
-      .then((res) => res.json())
-      .then((data) => {
-        if (!data.user || data.user.role !== 'SECURITY') {
-          router.push('/login')
-          return
-        }
-        loadTickets()
-      })
-      .catch(() => router.push('/login'))
+    loadTickets()
   }, [])
 
   const loadTickets = async () => {
@@ -278,9 +265,7 @@ export default function SecurityDeviceTicketsPage() {
   }
 
   return (
-    <PageContainer>
-      <PageHeader backHref="/security" badge="Security" />
-      <PageContent>
+    <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -506,8 +491,6 @@ export default function SecurityDeviceTicketsPage() {
             )}
           </Card>
         </motion.div>
-      </PageContent>
-
       <Modal
         isOpen={updateModal.open}
         onClose={() => setUpdateModal({ open: false, ticket: null })}
@@ -612,6 +595,6 @@ export default function SecurityDeviceTicketsPage() {
           </div>
         )}
       </Modal>
-    </PageContainer>
+    </div>
   )
 }

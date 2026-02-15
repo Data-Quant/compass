@@ -1,14 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { PageHeader } from '@/components/layout/page-header'
-import { PageFooter } from '@/components/layout/page-footer'
-import { PageContainer, PageContent } from '@/components/layout/page-container'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -24,7 +20,6 @@ interface Period {
 }
 
 export default function PeriodsPage() {
-  const router = useRouter()
   const [periods, setPeriods] = useState<Period[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -35,16 +30,7 @@ export default function PeriodsPage() {
   const [saving, setSaving] = useState(false)
   const [sendingReminders, setSendingReminders] = useState<string | null>(null)
 
-  useEffect(() => { checkAuth() }, [])
-
-  const checkAuth = async () => {
-    try {
-      const res = await fetch('/api/auth/session')
-      const data = await res.json()
-      if (!data.user || data.user.role !== 'HR') { router.push('/login'); return }
-      loadPeriods()
-    } catch { router.push('/login') }
-  }
+  useEffect(() => { loadPeriods() }, [])
 
   const loadPeriods = async () => {
     try {
@@ -117,17 +103,14 @@ export default function PeriodsPage() {
 
   if (loading) {
     return (
-      <PageContainer>
+      <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         <LoadingScreen />
-      </PageContainer>
+      </div>
     )
   }
 
   return (
-    <PageContainer>
-      <PageHeader backHref="/admin" backLabel="Back to Admin" badge="Periods" />
-      
-      <PageContent>
+    <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
           <div>
             <h1 className="text-2xl font-light tracking-tight text-foreground font-display">Evaluation Periods</h1>
@@ -198,9 +181,6 @@ export default function PeriodsPage() {
           </motion.div>
         )}
 
-        <PageFooter />
-      </PageContent>
-
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={selectedPeriod ? 'Edit Period' : 'Add Period'}>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -235,7 +215,7 @@ export default function PeriodsPage() {
       </Modal>
 
       <ConfirmDialog isOpen={isDeleteDialogOpen} onClose={() => setIsDeleteDialogOpen(false)} onConfirm={handleDelete} title="Delete Period" message={`Are you sure you want to delete "${periodToDelete?.name}"?`} confirmText="Delete" variant="danger" />
-    </PageContainer>
+    </div>
   )
 }
 

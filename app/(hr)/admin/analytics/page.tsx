@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import {
@@ -17,9 +16,6 @@ import {
   Pie,
   Cell,
 } from 'recharts'
-import { PageHeader } from '@/components/layout/page-header'
-import { PageFooter } from '@/components/layout/page-footer'
-import { PageContainer, PageContent } from '@/components/layout/page-container'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { Card, CardContent } from '@/components/ui/card'
 import { Users, CheckCircle, FileText, TrendingUp, Trophy, AlertCircle } from 'lucide-react'
@@ -52,27 +48,12 @@ interface Analytics {
 }
 
 export default function AnalyticsPage() {
-  const router = useRouter()
   const [analytics, setAnalytics] = useState<Analytics | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    checkAuth()
+    loadAnalytics()
   }, [])
-
-  const checkAuth = async () => {
-    try {
-      const res = await fetch('/api/auth/session')
-      const data = await res.json()
-      if (!data.user || data.user.role !== 'HR') {
-        router.push('/login')
-        return
-      }
-      loadAnalytics()
-    } catch (error) {
-      router.push('/login')
-    }
-  }
 
   const loadAnalytics = async () => {
     try {
@@ -101,25 +82,22 @@ export default function AnalyticsPage() {
 
   if (loading) {
     return (
-      <PageContainer>
+      <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         <LoadingScreen message="Loading analytics..." />
-      </PageContainer>
+      </div>
     )
   }
 
   if (!analytics) {
     return (
-      <PageContainer>
-        <PageHeader backHref="/admin" backLabel="Back to Admin" badge="Analytics" />
-        <PageContent>
-          <Card>
-            <CardContent className="p-12 text-center">
-              <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">No analytics data available.</p>
-            </CardContent>
-          </Card>
-        </PageContent>
-      </PageContainer>
+      <div className="p-6 sm:p-8 max-w-7xl mx-auto">
+        <Card>
+          <CardContent className="p-12 text-center">
+            <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">No analytics data available.</p>
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
@@ -131,10 +109,7 @@ export default function AnalyticsPage() {
   ]
 
   return (
-    <PageContainer>
-      <PageHeader backHref="/admin" backLabel="Back to Admin" badge="Analytics" />
-      
-      <PageContent>
+    <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-foreground font-display">Analytics Dashboard</h1>
           <p className="text-muted-foreground mt-1">
@@ -274,9 +249,7 @@ export default function AnalyticsPage() {
           </motion.div>
         </div>
 
-        <PageFooter />
-      </PageContent>
-    </PageContainer>
+    </div>
   )
 }
 

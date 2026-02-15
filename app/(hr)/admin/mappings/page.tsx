@@ -1,15 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { PageHeader } from '@/components/layout/page-header'
-import { PageFooter } from '@/components/layout/page-footer'
-import { PageContainer, PageContent } from '@/components/layout/page-container'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { ProgressiveBlur } from '@/components/ui/progressive-blur'
 import { Input } from '@/components/ui/input'
@@ -45,7 +41,6 @@ interface Mapping {
 interface User { id: string; name: string; department: string | null; role: string; position?: string }
 
 export default function MappingsPage() {
-  const router = useRouter()
   const [mappings, setMappings] = useState<Mapping[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
@@ -66,16 +61,7 @@ export default function MappingsPage() {
   const [importFormat, setImportFormat] = useState<'simple' | 'q4'>('q4')
   const [clearBeforeImport, setClearBeforeImport] = useState(true)
 
-  useEffect(() => { checkAuth() }, [])
-
-  const checkAuth = async () => {
-    try {
-      const res = await fetch('/api/auth/session')
-      const data = await res.json()
-      if (!data.user || data.user.role !== 'HR') { router.push('/login'); return }
-      loadData()
-    } catch { router.push('/login') }
-  }
+  useEffect(() => { loadData() }, [])
 
   const loadData = async () => {
     try {
@@ -225,17 +211,14 @@ export default function MappingsPage() {
 
   if (loading) {
     return (
-      <PageContainer>
+      <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         <LoadingScreen message="Loading mappings..." />
-      </PageContainer>
+      </div>
     )
   }
 
   return (
-    <PageContainer>
-      <PageHeader backHref="/admin" backLabel="Back to Admin" badge="Mappings" />
-      
-      <PageContent>
+    <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-foreground font-display">Evaluator Mappings</h1>
@@ -339,9 +322,6 @@ export default function MappingsPage() {
             </Card>
           </motion.div>
         )}
-
-        <PageFooter />
-      </PageContent>
 
       {/* Add/Edit Modal */}
       <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingMapping(null) }} title={editingMapping ? 'Edit Mapping' : 'Add Mapping'}>
@@ -475,7 +455,7 @@ export default function MappingsPage() {
 
       <ConfirmDialog isOpen={isDeleteDialogOpen} onClose={() => setIsDeleteDialogOpen(false)} onConfirm={handleDelete} title="Delete Mapping" message="Are you sure you want to delete this mapping?" confirmText="Delete" variant="danger" />
       <ConfirmDialog isOpen={isClearDialogOpen} onClose={() => setIsClearDialogOpen(false)} onConfirm={handleClearAll} title="Clear All Mappings" message="This will delete ALL existing mappings. This action cannot be undone." confirmText="Clear All" variant="danger" />
-    </PageContainer>
+    </div>
   )
 }
 

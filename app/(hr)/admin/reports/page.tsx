@@ -1,13 +1,10 @@
 'use client'
 
 import { Suspense, useEffect, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { RELATIONSHIP_TYPE_LABELS, RelationshipType } from '@/types'
-import { PageHeader } from '@/components/layout/page-header'
-import { PageFooter } from '@/components/layout/page-footer'
-import { PageContainer, PageContent } from '@/components/layout/page-container'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -24,7 +21,6 @@ import {
 import { Search, FileText, Download, Eye } from 'lucide-react'
 
 function ReportsPageContent() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const periodId = searchParams.get('periodId') || 'active'
   const [reports, setReports] = useState<any[]>([])
@@ -35,22 +31,8 @@ function ReportsPageContent() {
   const [anonymize, setAnonymize] = useState(false)
 
   useEffect(() => {
-    checkAuth()
+    loadReports()
   }, [periodId])
-
-  const checkAuth = async () => {
-    try {
-      const res = await fetch('/api/auth/session')
-      const data = await res.json()
-      if (!data.user || data.user.role !== 'HR') {
-        router.push('/login')
-        return
-      }
-      loadReports()
-    } catch (error) {
-      router.push('/login')
-    }
-  }
 
   const loadReports = async () => {
     try {
@@ -113,17 +95,14 @@ function ReportsPageContent() {
 
   if (loading) {
     return (
-      <PageContainer>
+      <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         <LoadingScreen message="Loading reports..." />
-      </PageContainer>
+      </div>
     )
   }
 
   return (
-    <PageContainer>
-      <PageHeader backHref="/admin" backLabel="Back to Admin" badge="Reports" />
-
-      <PageContent>
+    <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
           <div>
@@ -276,18 +255,16 @@ function ReportsPageContent() {
           Showing {filteredReports.length} of {reports.length} reports
         </p>
 
-        <PageFooter />
-      </PageContent>
-    </PageContainer>
+    </div>
   )
 }
 
 export default function ReportsPage() {
   return (
     <Suspense fallback={
-      <PageContainer>
+      <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         <LoadingScreen message="Loading reports..." />
-      </PageContainer>
+      </div>
     }>
       <ReportsPageContent />
     </Suspense>

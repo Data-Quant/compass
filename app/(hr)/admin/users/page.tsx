@@ -1,14 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { PageHeader } from '@/components/layout/page-header'
-import { PageFooter } from '@/components/layout/page-footer'
-import { PageContainer, PageContent } from '@/components/layout/page-container'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -46,7 +42,6 @@ interface User {
 }
 
 export default function UsersPage() {
-  const router = useRouter()
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -72,16 +67,7 @@ export default function UsersPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [settingPassword, setSettingPassword] = useState(false)
 
-  useEffect(() => { checkAuth() }, [])
-
-  const checkAuth = async () => {
-    try {
-      const res = await fetch('/api/auth/session')
-      const data = await res.json()
-      if (!data.user || data.user.role !== 'HR') { router.push('/login'); return }
-      loadUsers()
-    } catch (error) { router.push('/login') }
-  }
+  useEffect(() => { loadUsers() }, [])
 
   const loadUsers = async () => {
     try {
@@ -217,17 +203,14 @@ export default function UsersPage() {
 
   if (loading) {
     return (
-      <PageContainer>
+      <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         <LoadingScreen message="Loading users..." />
-      </PageContainer>
+      </div>
     )
   }
 
   return (
-    <PageContainer>
-      <PageHeader backHref="/admin" backLabel="Back to Admin" badge="Users" />
-      
-      <PageContent>
+    <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-foreground font-display">User Management</h1>
@@ -356,9 +339,6 @@ export default function UsersPage() {
             )}
           </Card>
         </motion.div>
-
-        <PageFooter />
-      </PageContent>
 
       {/* Add/Edit Modal */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={selectedUser ? 'Edit User' : 'Add User'}>
@@ -503,7 +483,7 @@ export default function UsersPage() {
           </div>
         )}
       </Modal>
-    </PageContainer>
+    </div>
   )
 }
 

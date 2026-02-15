@@ -1,12 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
-import { PageHeader } from '@/components/layout/page-header'
-import { PageFooter } from '@/components/layout/page-footer'
-import { PageContainer, PageContent } from '@/components/layout/page-container'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -66,7 +62,6 @@ const STATUS_CONFIG: Record<string, { color: string; bg: string; label: string }
 }
 
 export default function HRLeavePage() {
-  const router = useRouter()
   const [requests, setRequests] = useState<LeaveRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('pending')
@@ -76,26 +71,12 @@ export default function HRLeavePage() {
   const [processing, setProcessing] = useState(false)
 
   useEffect(() => {
-    checkAuth()
+    loadRequests()
   }, [])
 
   useEffect(() => {
     if (!loading) loadRequests()
   }, [filter])
-
-  const checkAuth = async () => {
-    try {
-      const res = await fetch('/api/auth/session')
-      const data = await res.json()
-      if (!data.user || data.user.role !== 'HR') {
-        router.push('/login')
-        return
-      }
-      loadRequests()
-    } catch {
-      router.push('/login')
-    }
-  }
 
   const loadRequests = async () => {
     try {
@@ -166,17 +147,14 @@ export default function HRLeavePage() {
 
   if (loading) {
     return (
-      <PageContainer>
+      <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         <LoadingScreen message="Loading..." />
-      </PageContainer>
+      </div>
     )
   }
 
   return (
-    <PageContainer>
-      <PageHeader backHref="/admin" backLabel="Dashboard" badge="Leave Requests" />
-      
-      <PageContent>
+    <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           {[
@@ -325,9 +303,6 @@ export default function HRLeavePage() {
           )}
         </Card>
         
-        <PageFooter />
-      </PageContent>
-
       {/* Action Modal */}
       <Modal 
         isOpen={actionModal.open} 
@@ -375,7 +350,7 @@ export default function HRLeavePage() {
           </div>
         )}
       </Modal>
-    </PageContainer>
+    </div>
   )
 }
 

@@ -1,13 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { RelationshipType, RELATIONSHIP_TYPE_LABELS } from '@/types'
-import { PageHeader } from '@/components/layout/page-header'
-import { PageFooter } from '@/components/layout/page-footer'
-import { PageContainer, PageContent } from '@/components/layout/page-container'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -43,7 +39,6 @@ const TYPE_SHORT_LABELS: Record<string, string> = {
 }
 
 export default function SettingsPage() {
-  const router = useRouter()
   const [profiles, setProfiles] = useState<WeightProfile[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -52,16 +47,7 @@ export default function SettingsPage() {
   const [editWeights, setEditWeights] = useState<Record<string, number>>({})
 
   useEffect(() => {
-    fetch('/api/auth/session')
-      .then((res) => res.json())
-      .then((data) => {
-        if (!data.user || data.user.role !== 'HR') {
-          router.push('/login')
-          return
-        }
-        loadProfiles()
-      })
-      .catch(() => router.push('/login'))
+    loadProfiles()
   }, [])
 
   const loadProfiles = async () => {
@@ -170,17 +156,14 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <PageContainer>
+      <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         <LoadingScreen message="Loading settings..." />
-      </PageContainer>
+      </div>
     )
   }
 
   return (
-    <PageContainer>
-      <PageHeader backHref="/admin" backLabel="Back to Admin" badge="Settings" />
-
-      <PageContent className="max-w-6xl">
+    <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         <div className="mb-8 flex items-start justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground font-display">Weight Profiles</h1>
@@ -397,9 +380,7 @@ export default function SettingsPage() {
           </Card>
         </motion.div>
 
-        <PageFooter />
-      </PageContent>
-    </PageContainer>
+    </div>
   )
 }
 

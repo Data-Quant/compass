@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import ReactFlow, { 
   Controls, 
@@ -18,9 +17,6 @@ import ReactFlow, {
 import 'reactflow/dist/style.css'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
-import { PageHeader } from '@/components/layout/page-header'
-import { PageFooter } from '@/components/layout/page-footer'
-import { PageContainer, PageContent } from '@/components/layout/page-container'
 import { ProgressiveBlur } from '@/components/ui/progressive-blur'
 import { RELATIONSHIP_TYPE_LABELS, RelationshipType } from '@/types'
 import { Users, Link2, Trash2, ArrowUpRight, Building2, RotateCcw, Save } from 'lucide-react'
@@ -129,7 +125,6 @@ const nodeTypes = {
 }
 
 export default function OrgChartPage() {
-  const router = useRouter()
   const [users, setUsers] = useState<User[]>([])
   const [mappings, setMappings] = useState<Mapping[]>([])
   const [loading, setLoading] = useState(true)
@@ -140,16 +135,7 @@ export default function OrgChartPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
 
-  useEffect(() => { checkAuth() }, [])
-
-  const checkAuth = async () => {
-    try {
-      const res = await fetch('/api/auth/session')
-      const data = await res.json()
-      if (!data.user || data.user.role !== 'HR') { router.push('/login'); return }
-      loadData()
-    } catch { router.push('/login') }
-  }
+  useEffect(() => { loadData() }, [])
 
   const loadData = async () => {
     try {
@@ -526,19 +512,19 @@ export default function OrgChartPage() {
 
   if (loading) {
     return (
-      <PageContainer>
+      <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#FDF6E3' }}>
           <div className="flex flex-col items-center gap-4">
             <div className="w-12 h-12 rounded-full bg-emerald-500 animate-pulse" />
             <p className="text-slate-600">Loading organization...</p>
           </div>
         </div>
-      </PageContainer>
+      </div>
     )
   }
 
   return (
-    <PageContainer>
+    <div className="p-6 sm:p-8 max-w-7xl mx-auto">
       <style jsx global>{`
         .employee-node {
           background: white;
@@ -651,9 +637,6 @@ export default function OrgChartPage() {
         }
       `}</style>
       
-      <PageHeader backHref="/admin/mappings" backLabel="Mappings" badge="Org Chart" />
-      
-      <PageContent className="!max-w-none !px-0">
         <div style={{ width: '100%', height: 'calc(100vh - 140px)', background: '#FDF6E3' }}>
           <ReactFlow
             nodes={nodes}
@@ -704,9 +687,6 @@ export default function OrgChartPage() {
           </div>
         </div>
         
-        <PageFooter />
-      </PageContent>
-
       {/* Detail Modal */}
       <Modal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} title={selectedUser?.name || ''} size="lg">
         {selectedUser && (
@@ -794,7 +774,7 @@ export default function OrgChartPage() {
           </div>
         )}
       </Modal>
-    </PageContainer>
+    </div>
   )
 }
 

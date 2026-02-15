@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import {
@@ -14,8 +13,6 @@ import {
   CheckCircle2,
   ArrowRight,
 } from 'lucide-react'
-import { PageContainer, PageContent } from '@/components/layout/page-container'
-import { PageHeader } from '@/components/layout/page-header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
@@ -29,21 +26,11 @@ interface DeviceTicket {
 }
 
 export default function SecurityDashboardPage() {
-  const router = useRouter()
   const [tickets, setTickets] = useState<DeviceTicket[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/auth/session')
-      .then((res) => res.json())
-      .then((data) => {
-        if (!data.user || data.user.role !== 'SECURITY') {
-          router.push('/login')
-          return
-        }
-        return loadTickets()
-      })
-      .catch(() => router.push('/login'))
+    loadTickets()
   }, [])
 
   const loadTickets = async () => {
@@ -77,9 +64,7 @@ export default function SecurityDashboardPage() {
   }
 
   return (
-    <PageContainer>
-      <PageHeader backHref="/dashboard" backLabel="Dashboard" badge="Security" />
-      <PageContent>
+    <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -161,7 +146,6 @@ export default function SecurityDashboardPage() {
             </CardContent>
           </Card>
         </motion.div>
-      </PageContent>
-    </PageContainer>
+    </div>
   )
 }

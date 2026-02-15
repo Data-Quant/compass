@@ -1,12 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
-import { PageHeader } from '@/components/layout/page-header'
-import { PageContainer, PageContent } from '@/components/layout/page-container'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -83,7 +80,6 @@ const STATUS_FLOW: Record<string, string> = {
 }
 
 export default function HRDeviceTicketsPage() {
-  const router = useRouter()
   const [tickets, setTickets] = useState<DeviceTicket[]>([])
   const [allTickets, setAllTickets] = useState<DeviceTicket[]>([])
   const [loading, setLoading] = useState(true)
@@ -99,16 +95,7 @@ export default function HRDeviceTicketsPage() {
   const [processing, setProcessing] = useState(false)
 
   useEffect(() => {
-    fetch('/api/auth/session')
-      .then((res) => res.json())
-      .then((data) => {
-        if (!data.user || data.user.role !== 'HR') {
-          router.push('/login')
-          return
-        }
-        loadTickets()
-      })
-      .catch(() => router.push('/login'))
+    loadTickets()
   }, [])
 
   const loadTickets = async () => {
@@ -219,16 +206,14 @@ export default function HRDeviceTicketsPage() {
 
   if (loading) {
     return (
-      <PageContainer>
+      <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         <LoadingScreen message="Loading device tickets..." />
-      </PageContainer>
+      </div>
     )
   }
 
   return (
-    <PageContainer>
-      <PageHeader backHref="/admin" badge="Device Support" />
-      <PageContent>
+    <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         {/* Stats Row */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -394,8 +379,6 @@ export default function HRDeviceTicketsPage() {
             )}
           </Card>
         </motion.div>
-      </PageContent>
-
       {/* Update Ticket Modal */}
       <Modal
         isOpen={updateModal.open}
@@ -499,7 +482,7 @@ export default function HRDeviceTicketsPage() {
           </div>
         )}
       </Modal>
-    </PageContainer>
+    </div>
   )
 }
 

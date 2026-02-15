@@ -1,10 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
-import { AppNavbar } from '@/components/layout/AppNavbar'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
@@ -23,7 +21,6 @@ import { ShimmerButton } from '@/components/magicui/shimmer-button'
 import {
   Monitor,
   Plus,
-  Home,
   Clock,
   Search,
   Wrench,
@@ -77,8 +74,6 @@ const STATUS_CONFIG = {
 }
 
 export default function DeviceSupportPage() {
-  const router = useRouter()
-  const [user, setUser] = useState<any>(null)
   const [tickets, setTickets] = useState<DeviceTicket[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -92,17 +87,7 @@ export default function DeviceSupportPage() {
   const [priority, setPriority] = useState('MEDIUM')
 
   useEffect(() => {
-    fetch('/api/auth/session')
-      .then((res) => res.json())
-      .then((data) => {
-        if (!data.user) {
-          router.push('/login')
-          return
-        }
-        setUser(data.user)
-        loadTickets()
-      })
-      .catch(() => router.push('/login'))
+    loadTickets()
   }, [])
 
   const loadTickets = async () => {
@@ -153,14 +138,9 @@ export default function DeviceSupportPage() {
     }
   }
 
-  const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' })
-    router.push('/login')
-  }
-
   if (loading) {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         <LoadingScreen message="Loading device support..." />
       </div>
     )
@@ -170,14 +150,7 @@ export default function DeviceSupportPage() {
   const resolvedTickets = tickets.filter(t => t.status === 'RESOLVED')
 
   return (
-    <div className="min-h-screen bg-background">
-      <AppNavbar
-        user={user}
-        onLogout={handleLogout}
-        navLinks={[{ href: '/dashboard', label: 'Dashboard', icon: <Home className="w-4 h-4" />, variant: 'default' as const }]}
-      />
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -525,7 +498,6 @@ export default function DeviceSupportPage() {
         >
           <span>Powered by {COMPANY_NAME}</span>
         </motion.div>
-      </main>
     </div>
   )
 }
