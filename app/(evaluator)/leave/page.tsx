@@ -201,13 +201,16 @@ export default function LeavePage() {
     return days
   }, [currentMonth, currentYear])
 
-  // Get events for a specific date
+  // Get events for a specific date (timezone-safe: compare calendar dates only)
+  const toYMD = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   const getEventsForDate = (date: Date) => {
-    const dateStr = date.toDateString()
+    const ymd = toYMD(date)
     return calendarEvents.filter(event => {
       const start = new Date(event.startDate)
       const end = new Date(event.endDate)
-      return date >= new Date(start.toDateString()) && date <= new Date(end.toDateString())
+      const startYmd = toYMD(start)
+      const endYmd = toYMD(end)
+      return ymd >= startYmd && ymd <= endYmd
     })
   }
 

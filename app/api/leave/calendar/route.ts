@@ -12,12 +12,13 @@ export async function GET(request: NextRequest) {
     }
     
     const { searchParams } = new URL(request.url)
-    const month = parseInt(searchParams.get('month') || String(new Date().getMonth()))
-    const year = parseInt(searchParams.get('year') || String(new Date().getFullYear()))
+    const month = parseInt(searchParams.get('month') || String(new Date().getMonth()), 10)
+    const year = parseInt(searchParams.get('year') || String(new Date().getFullYear()), 10)
     
-    // Get start and end of month
-    const startOfMonth = new Date(year, month, 1)
-    const endOfMonth = new Date(year, month + 1, 0, 23, 59, 59)
+    // Use UTC month bounds so "January 2026" is consistent regardless of server timezone.
+    // This ensures backfilled and other leave stored in UTC display correctly.
+    const startOfMonth = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0))
+    const endOfMonth = new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999))
     
     // Get all approved/pending leave requests that overlap with this month
     const leaveRequests = await prisma.leaveRequest.findMany({

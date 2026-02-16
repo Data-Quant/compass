@@ -322,9 +322,9 @@ model LeaveBalance {
   casualDays  Int      @default(10)
   sickDays    Int      @default(6)
   annualDays  Int      @default(14)
-  casualUsed  Int      @default(0)
-  sickUsed    Int      @default(0)
-  annualUsed  Int      @default(0)
+  casualUsed  Float    @default(0)
+  sickUsed    Float    @default(0)
+  annualUsed  Float    @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
