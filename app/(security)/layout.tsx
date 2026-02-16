@@ -5,7 +5,7 @@ import { EMPLOYEE_SIDEBAR } from '@/components/layout/AppSidebar'
 
 export default function SecurityLayout({ children }: { children: React.ReactNode }) {
   return (
-    <SidebarLayout sidebarConfig={EMPLOYEE_SIDEBAR}>
+    <SidebarLayout sidebarConfig={EMPLOYEE_SIDEBAR} requiredRole={['SECURITY', 'HR']}>
       {children}
     </SidebarLayout>
   )

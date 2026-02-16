@@ -281,7 +281,7 @@ export function AppSidebar({ config, collapsed, onToggle, userRole, className }:
 
       {/* Footer: role switcher + collapse toggle */}
       <div className="shrink-0 border-t border-border p-2 space-y-1">
-        {/* Employee ↔ Admin switcher */}
+        {/* HR: Employee ↔ Admin switcher */}
         {userRole === 'HR' && (
           <Link
             href={pathname.startsWith('/admin') ? '/dashboard' : '/admin'}
@@ -297,6 +297,51 @@ export function AppSidebar({ config, collapsed, onToggle, userRole, className }:
               <>
                 <Shield className="h-[18px] w-[18px] shrink-0" />
                 {!collapsed && <span>Admin Console</span>}
+              </>
+            )}
+          </Link>
+        )}
+
+        {/* HR/OA: O&A Payroll link (when on employee/admin view) */}
+        {(userRole === 'HR' || userRole === 'OA') && !pathname.startsWith('/oa') && (
+          <Link
+            href="/oa/payroll"
+            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            title={collapsed ? 'Payroll (O&A)' : undefined}
+          >
+            <Wallet className="h-[18px] w-[18px] shrink-0" />
+            {!collapsed && <span>Payroll (O&A)</span>}
+          </Link>
+        )}
+
+        {/* O&A view: back to employee/admin */}
+        {(userRole === 'HR' || userRole === 'OA') && pathname.startsWith('/oa') && (
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            title={collapsed ? 'Employee View' : undefined}
+          >
+            <Eye className="h-[18px] w-[18px] shrink-0" />
+            {!collapsed && <span>Employee View</span>}
+          </Link>
+        )}
+
+        {/* Security: Employee ↔ Security Console switcher */}
+        {userRole === 'SECURITY' && (
+          <Link
+            href={pathname.startsWith('/security') ? '/dashboard' : '/security'}
+            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            title={collapsed ? (pathname.startsWith('/security') ? 'Employee View' : 'Security Console') : undefined}
+          >
+            {pathname.startsWith('/security') ? (
+              <>
+                <Eye className="h-[18px] w-[18px] shrink-0" />
+                {!collapsed && <span>Employee View</span>}
+              </>
+            ) : (
+              <>
+                <Shield className="h-[18px] w-[18px] shrink-0" />
+                {!collapsed && <span>Security Console</span>}
               </>
             )}
           </Link>

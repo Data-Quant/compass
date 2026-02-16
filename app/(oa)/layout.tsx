@@ -5,7 +5,7 @@ import { ADMIN_SIDEBAR } from '@/components/layout/AppSidebar'
 
 export default function OALayout({ children }: { children: React.ReactNode }) {
   return (
-    <SidebarLayout sidebarConfig={ADMIN_SIDEBAR} requiredRole={['HR', 'ADMIN']}>
+    <SidebarLayout sidebarConfig={ADMIN_SIDEBAR} requiredRole={['HR', 'OA']}>
       {children}
     </SidebarLayout>
   )
