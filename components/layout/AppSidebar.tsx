@@ -302,8 +302,8 @@ export function AppSidebar({ config, collapsed, onToggle, userRole, className }:
           </Link>
         )}
 
-        {/* HR/OA: O&A Payroll link (when on employee/admin view) */}
-        {(userRole === 'HR' || userRole === 'OA') && !pathname.startsWith('/oa') && (
+        {/* OA: Payroll link (when on employee view) */}
+        {userRole === 'OA' && !pathname.startsWith('/oa') && (
           <Link
             href="/oa/payroll"
             className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
@@ -314,8 +314,8 @@ export function AppSidebar({ config, collapsed, onToggle, userRole, className }:
           </Link>
         )}
 
-        {/* O&A view: back to employee/admin */}
-        {(userRole === 'HR' || userRole === 'OA') && pathname.startsWith('/oa') && (
+        {/* O&A view: back to employee view */}
+        {userRole === 'OA' && pathname.startsWith('/oa') && (
           <Link
             href="/dashboard"
             className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
