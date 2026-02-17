@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
@@ -16,6 +16,7 @@ import { EmptyState } from '@/components/composed/EmptyState'
 import {
   ClipboardCheck,
   Calendar,
+  CalendarDays,
   FolderKanban,
   Monitor,
   ArrowRight,
@@ -29,7 +30,7 @@ import {
   Shield,
 } from 'lucide-react'
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface Mapping {
   id: string
@@ -69,7 +70,7 @@ interface DeviceTicket {
   employee: { id: string; name: string; department: string | null }
 }
 
-// ─── Animation helpers ───────────────────────────────────────────────────────
+// â”€â”€â”€ Animation helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const stagger = {
   container: { hidden: {}, visible: { transition: { staggerChildren: 0.06 } } },
@@ -91,7 +92,7 @@ const TICKET_STATUS_BADGE: Record<string, { label: string; className: string }> 
   RESOLVED: { label: 'Resolved', className: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' },
 }
 
-// ─── Dashboard Page ──────────────────────────────────────────────────────────
+// â”€â”€â”€ Dashboard Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function DashboardPage() {
   const user = useLayoutUser()
@@ -100,6 +101,7 @@ export default function DashboardPage() {
   const [leaveBalance, setLeaveBalance] = useState<LeaveBalance | null>(null)
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [pendingLeave, setPendingLeave] = useState<LeaveRequest[]>([])
+  const [upcomingTeamLeaves, setUpcomingTeamLeaves] = useState<LeaveRequest[]>([])
   const [openTickets, setOpenTickets] = useState<DeviceTicket[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -109,6 +111,7 @@ export default function DashboardPage() {
       loadEvaluations(),
       loadLeaveBalance(),
       loadProjects(),
+      loadUpcomingTeamLeaves(),
     ]
     // Role-specific data
     if (user.role === 'HR' || user.role === 'SECURITY') {
@@ -156,6 +159,14 @@ export default function DashboardPage() {
     } catch { /* silent */ }
   }
 
+  const loadUpcomingTeamLeaves = async () => {
+    try {
+      const res = await fetch('/api/leave/requests?scope=team-upcoming')
+      const data = await res.json()
+      if (data.requests) setUpcomingTeamLeaves(data.requests)
+    } catch { /* silent */ }
+  }
+
   const loadDeviceTickets = async () => {
     try {
       const res = await fetch('/api/device-tickets')
@@ -166,7 +177,7 @@ export default function DashboardPage() {
     } catch { /* silent */ }
   }
 
-  // ─── Computed stats ──────────────────────────────────────────────────────
+  // â”€â”€â”€ Computed stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const allMappings = Object.values(mappings).flat()
   const totalEvaluations = allMappings.length
@@ -251,7 +262,7 @@ export default function DashboardPage() {
         animate="visible"
         className="grid grid-cols-1 lg:grid-cols-2 gap-6"
       >
-        {/* ── Pending Leave Requests (for team leads / HR) ───────────────── */}
+        {/* â”€â”€ Pending Leave Requests (for team leads / HR) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         {pendingLeave.length > 0 && (
           <motion.div variants={stagger.item}>
             <Card className="h-full border-amber-500/20">
@@ -309,7 +320,58 @@ export default function DashboardPage() {
           </motion.div>
         )}
 
-        {/* ── Open Device Tickets (for HR / Security) ────────────────────── */}
+        {/* â”€â”€ Open Device Tickets (for HR / Security) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {upcomingTeamLeaves.length > 0 && (
+          <motion.div variants={stagger.item}>
+            <Card className="h-full border-emerald-500/20">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <CalendarDays className="h-5 w-5 text-emerald-500" />
+                    <h2 className="text-lg font-semibold text-foreground">Upcoming Team Leaves</h2>
+                    <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                      {upcomingTeamLeaves.length}
+                    </Badge>
+                  </div>
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href="/leave" className="gap-1.5">
+                      Calendar <ArrowRight className="h-3.5 w-3.5" />
+                    </Link>
+                  </Button>
+                </div>
+
+                <div className="space-y-2 max-h-[220px] overflow-y-auto">
+                  {upcomingTeamLeaves.slice(0, 6).map((req) => {
+                    const badge = LEAVE_STATUS_BADGE[req.status] || LEAVE_STATUS_BADGE.PENDING
+                    return (
+                      <Link
+                        key={req.id}
+                        href="/leave"
+                        className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-muted transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <UserAvatar name={req.employee.name} size="xs" />
+                          <div>
+                            <p className="text-sm font-medium text-foreground">{req.employee.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {req.employee.department || 'No department'} &middot;{' '}
+                              {new Date(req.startDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                              {' \u2013 '}
+                              {new Date(req.endDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                            </p>
+                          </div>
+                        </div>
+                        <Badge variant="secondary" className={badge.className}>
+                          {badge.label}
+                        </Badge>
+                      </Link>
+                    )
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
         {(isHR || isSecurity) && openTickets.length > 0 && (
           <motion.div variants={stagger.item}>
             <Card className="h-full border-sky-500/20">
@@ -365,7 +427,7 @@ export default function DashboardPage() {
           </motion.div>
         )}
 
-        {/* ── Evaluations Card ─────────────────────────────────────────── */}
+        {/* â”€â”€ Evaluations Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         <motion.div variants={stagger.item} id="evaluations">
           <Card className="h-full">
             <CardContent className="p-6">
@@ -424,7 +486,7 @@ export default function DashboardPage() {
           </Card>
         </motion.div>
 
-        {/* ── Leave Card ───────────────────────────────────────────────── */}
+        {/* â”€â”€ Leave Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         <motion.div variants={stagger.item}>
           <Card className="h-full">
             <CardContent className="p-6">
@@ -462,7 +524,7 @@ export default function DashboardPage() {
           </Card>
         </motion.div>
 
-        {/* ── Projects Card ────────────────────────────────────────────── */}
+        {/* â”€â”€ Projects Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         <motion.div variants={stagger.item}>
           <Card className="h-full">
             <CardContent className="p-6">
@@ -511,7 +573,7 @@ export default function DashboardPage() {
           </Card>
         </motion.div>
 
-        {/* ── Device Support Card ──────────────────────────────────────── */}
+        {/* â”€â”€ Device Support Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         <motion.div variants={stagger.item}>
           <Card className="h-full">
             <CardContent className="p-6">
@@ -537,3 +599,4 @@ export default function DashboardPage() {
     </div>
   )
 }
+

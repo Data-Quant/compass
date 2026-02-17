@@ -7,10 +7,13 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
+  Edit3,
+  Eye,
   Palmtree,
   Plus,
   Sun,
   Thermometer,
+  TriangleAlert,
   Users,
   X,
 } from 'lucide-react'
@@ -32,6 +35,7 @@ import {
 import { StatsCard } from '@/components/composed/StatsCard'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { Textarea } from '@/components/ui/textarea'
+import { calculateLeaveDays } from '@/lib/leave-utils'
 
 interface LeaveBalance {
   casualDays: number
@@ -56,6 +60,7 @@ interface LeaveRequest {
   transitionPlan: string
   status: string
   coverPerson?: { id: string; name: string }
+  additionalNotifyIds?: string[]
   leadApprovedBy?: string
   hrApprovedBy?: string
   rejectionReason?: string
@@ -107,7 +112,13 @@ export default function LeavePage() {
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false)
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [updating, setUpdating] = useState(false)
+  const [selectedRequest, setSelectedRequest] = useState<LeaveRequest | null>(null)
+  const [departmentFilter, setDepartmentFilter] = useState<string>('ALL')
+  const [reminderNoticeShown, setReminderNoticeShown] = useState(false)
 
   // Calendar state
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth())
@@ -119,6 +130,17 @@ export default function LeavePage() {
   // Form state
   const [formData, setFormData] = useState({
     leaveType: 'CASUAL',
+    startDate: '',
+    endDate: '',
+    reason: '',
+    transitionPlan: '',
+    coverPersonId: '',
+    additionalNotifyIds: [] as string[],
+  })
+
+  const [editFormData, setEditFormData] = useState({
+    id: '',
+    leaveType: 'CASUAL' as 'CASUAL' | 'SICK' | 'ANNUAL',
     startDate: '',
     endDate: '',
     reason: '',
@@ -170,6 +192,42 @@ export default function LeavePage() {
     }
   }
 
+  const editableStatuses = new Set(['PENDING', 'LEAD_APPROVED', 'HR_APPROVED'])
+
+  const calendarDepartments = useMemo(() => {
+    const values = new Set<string>()
+    for (const event of calendarEvents) {
+      if (event.department) values.add(event.department)
+    }
+    return Array.from(values).sort((a, b) => a.localeCompare(b))
+  }, [calendarEvents])
+
+  const filteredCalendarEvents = useMemo(() => {
+    if (departmentFilter === 'ALL') return calendarEvents
+    return calendarEvents.filter((event) => event.isCurrentUser || event.department === departmentFilter)
+  }, [calendarEvents, departmentFilter])
+
+  const transitionPlanReminderRequests = useMemo(() => {
+    const now = new Date()
+    now.setHours(0, 0, 0, 0)
+
+    return requests.filter((request) => {
+      if (!editableStatuses.has(request.status) && request.status !== 'APPROVED') return false
+      if (request.transitionPlan?.trim()) return false
+      const start = new Date(request.startDate)
+      start.setHours(0, 0, 0, 0)
+      const dayDiff = Math.ceil((start.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+      return dayDiff >= 0 && dayDiff <= 3
+    })
+  }, [requests])
+
+  useEffect(() => {
+    if (transitionPlanReminderRequests.length > 0 && !reminderNoticeShown) {
+      toast.warning('Add transition plan for upcoming leave(s) before time off starts.')
+      setReminderNoticeShown(true)
+    }
+  }, [transitionPlanReminderRequests, reminderNoticeShown])
+
   // Generate calendar days
   const calendarDays = useMemo(() => {
     const firstDay = new Date(currentYear, currentMonth, 1)
@@ -205,13 +263,19 @@ export default function LeavePage() {
   const toYMD = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   const getEventsForDate = (date: Date) => {
     const ymd = toYMD(date)
-    return calendarEvents.filter(event => {
+    return filteredCalendarEvents.filter(event => {
       const start = new Date(event.startDate)
       const end = new Date(event.endDate)
       const startYmd = toYMD(start)
       const endYmd = toYMD(end)
       return ymd >= startYmd && ymd <= endYmd
     })
+  }
+
+  const getReturnDateLabel = (endDate: string) => {
+    const value = new Date(endDate)
+    value.setDate(value.getDate() + 1)
+    return value.toLocaleDateString()
   }
 
   const handleDateClick = (date: Date) => {
@@ -257,13 +321,20 @@ export default function LeavePage() {
     setSubmitting(true)
 
     try {
+      const payload = {
+        leaveType: formData.leaveType,
+        startDate: formData.startDate,
+        endDate: formData.endDate,
+        reason: formData.reason,
+        transitionPlan: formData.transitionPlan || undefined,
+        coverPersonId: formData.coverPersonId || undefined,
+        additionalNotifyIds: formData.additionalNotifyIds,
+      }
+
       const res = await fetch('/api/leave/requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          additionalNotifyIds: formData.additionalNotifyIds,
-        }),
+        body: JSON.stringify(payload),
       })
 
       const data = await res.json()
@@ -293,6 +364,63 @@ export default function LeavePage() {
     }
   }
 
+  const openRequestDetails = (request: LeaveRequest) => {
+    setSelectedRequest(request)
+    setIsDetailsModalOpen(true)
+  }
+
+  const openEditModal = (request: LeaveRequest) => {
+    setSelectedRequest(request)
+    setEditFormData({
+      id: request.id,
+      leaveType: request.leaveType,
+      startDate: request.startDate.split('T')[0],
+      endDate: request.endDate.split('T')[0],
+      reason: request.reason || '',
+      transitionPlan: request.transitionPlan || '',
+      coverPersonId: request.coverPerson?.id || '',
+      additionalNotifyIds: Array.isArray(request.additionalNotifyIds) ? request.additionalNotifyIds : [],
+    })
+    setIsEditModalOpen(true)
+  }
+
+  const handleUpdateRequest = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setUpdating(true)
+
+    try {
+      const res = await fetch('/api/leave/requests', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editFormData.id,
+          leaveType: editFormData.leaveType,
+          startDate: editFormData.startDate,
+          endDate: editFormData.endDate,
+          reason: editFormData.reason,
+          transitionPlan: editFormData.transitionPlan || undefined,
+          coverPersonId: editFormData.coverPersonId || undefined,
+          additionalNotifyIds: editFormData.additionalNotifyIds,
+        }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        toast.success('Leave request updated')
+        setIsEditModalOpen(false)
+        setSelectedRequest(null)
+        loadData()
+        loadCalendarEvents()
+      } else {
+        toast.error(data.error || 'Failed to update leave request')
+      }
+    } catch {
+      toast.error('Failed to update leave request')
+    } finally {
+      setUpdating(false)
+    }
+  }
+
   const handleCancel = async (requestId: string) => {
     if (!confirm('Are you sure you want to cancel this request?')) return
 
@@ -318,7 +446,7 @@ export default function LeavePage() {
   const getDaysCount = (start: string, end: string) => {
     const startDate = new Date(start)
     const endDate = new Date(end)
-    return Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+    return calculateLeaveDays(startDate, endDate)
   }
 
   const clearSelection = () => {
@@ -345,9 +473,30 @@ export default function LeavePage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-display font-semibold text-foreground">Leave Management</h1>
-            <p className="text-muted-foreground">Select dates on the calendar to apply for leave</p>
+            <p className="text-muted-foreground">
+              Pick your start date and end date (last day off). Return date is the next day.
+            </p>
           </div>
         </div>
+
+        {transitionPlanReminderRequests.length > 0 && (
+          <Card className="mb-6 border-amber-500/30 bg-amber-50/60 dark:bg-amber-500/10">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <TriangleAlert className="w-5 h-5 text-amber-600 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-medium text-amber-900 dark:text-amber-300">
+                    Transition plan reminder
+                  </p>
+                  <p className="text-sm text-amber-800/90 dark:text-amber-200 mt-1">
+                    {transitionPlanReminderRequests.length} upcoming leave request(s) are missing a transition plan.
+                    Please add it before your leave starts.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Leave Balance Cards */}
         {balance && (
@@ -418,11 +567,28 @@ export default function LeavePage() {
                     </Button>
                   </div>
 
+                  <div className="px-4 py-3 border-b border-border flex items-center gap-3">
+                    <Label className="text-xs text-muted-foreground whitespace-nowrap">Department filter</Label>
+                    <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+                      <SelectTrigger className="h-8">
+                        <SelectValue placeholder="All departments" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ALL">All departments</SelectItem>
+                        {calendarDepartments.map((department) => (
+                          <SelectItem key={department} value={department}>
+                            {department}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
                   {/* Selection indicator */}
                   {selectingEnd && (
                     <div className="px-4 py-2 bg-indigo-50 dark:bg-indigo-500/10 border-b border-border flex items-center justify-between">
                       <span className="text-sm text-indigo-600 dark:text-indigo-400">
-                        Select end date for your leave
+                        Select end date (last day off). You return the next day.
                       </span>
                       <Button
                         variant="ghost"
@@ -576,6 +742,7 @@ export default function LeavePage() {
                           const statusConfig = STATUS_CONFIG[request.status] || STATUS_CONFIG.PENDING
                           const TypeIcon = typeConfig.icon
                           const days = getDaysCount(request.startDate, request.endDate)
+                          const canEdit = editableStatuses.has(request.status)
 
                           return (
                             <div key={request.id} className="p-3 hover:bg-muted/50 transition-colors">
@@ -596,17 +763,44 @@ export default function LeavePage() {
                                     {new Date(request.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                                     {' • '}{days}d
                                   </p>
+                                  <p className="text-[11px] text-muted-foreground">
+                                    Return date: {getReturnDateLabel(request.endDate)}
+                                  </p>
 
-                                  {(request.status === 'PENDING' || request.status === 'LEAD_APPROVED' || request.status === 'HR_APPROVED') && (
+                                  <div className="flex gap-3 mt-1 flex-wrap">
                                     <Button
                                       variant="ghost"
                                       size="sm"
-                                      className="text-[10px] text-red-600 hover:text-red-700 h-auto p-0 mt-1"
-                                      onClick={() => handleCancel(request.id)}
+                                      className="text-[10px] h-auto p-0 text-primary hover:text-primary/80"
+                                      onClick={() => openRequestDetails(request)}
                                     >
-                                      Cancel request
+                                      <Eye className="w-3 h-3 mr-1" />
+                                      View details
                                     </Button>
-                                  )}
+
+                                    {canEdit && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-[10px] h-auto p-0 text-amber-600 hover:text-amber-700"
+                                        onClick={() => openEditModal(request)}
+                                      >
+                                        <Edit3 className="w-3 h-3 mr-1" />
+                                        Edit
+                                      </Button>
+                                    )}
+
+                                    {canEdit && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-[10px] text-red-600 hover:text-red-700 h-auto p-0"
+                                        onClick={() => handleCancel(request.id)}
+                                      >
+                                        Cancel request
+                                      </Button>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -620,7 +814,7 @@ export default function LeavePage() {
             </motion.div>
 
             {/* Team on Leave Today */}
-            {calendarEvents.filter(e => {
+            {filteredCalendarEvents.filter(e => {
               const today = new Date()
               const start = new Date(e.startDate)
               const end = new Date(e.endDate)
@@ -641,7 +835,7 @@ export default function LeavePage() {
                       </h3>
                     </div>
                     <div className="p-3 space-y-2">
-                      {calendarEvents.filter(e => {
+                      {filteredCalendarEvents.filter(e => {
                         const today = new Date()
                         const start = new Date(e.startDate)
                         const end = new Date(e.endDate)
@@ -696,7 +890,7 @@ export default function LeavePage() {
           {/* Dates */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="startDate" className="mb-2">Start Date</Label>
+              <Label htmlFor="startDate" className="mb-2">Start Date (first day off)</Label>
               <Input
                 id="startDate"
                 type="date"
@@ -706,7 +900,7 @@ export default function LeavePage() {
               />
             </div>
             <div>
-              <Label htmlFor="endDate" className="mb-2">End Date</Label>
+              <Label htmlFor="endDate" className="mb-2">End Date (last day off)</Label>
               <Input
                 id="endDate"
                 type="date"
@@ -717,6 +911,11 @@ export default function LeavePage() {
               />
             </div>
           </div>
+          {formData.endDate && (
+            <p className="text-xs text-muted-foreground -mt-2">
+              Expected return date: {getReturnDateLabel(formData.endDate)}
+            </p>
+          )}
 
           {/* Reason */}
           <div>
@@ -735,15 +934,14 @@ export default function LeavePage() {
           <div>
             <Label htmlFor="transitionPlan" className="mb-2">
               Transition Plan
-              <span className="text-muted-foreground font-normal ml-1">(required)</span>
+              <span className="text-muted-foreground font-normal ml-1">(optional, can be added later)</span>
             </Label>
             <Textarea
               id="transitionPlan"
-              required
               rows={3}
               value={formData.transitionPlan}
               onChange={(e) => setFormData({ ...formData, transitionPlan: e.target.value })}
-              placeholder="List your current tasks and how they will be handled during your absence..."
+              placeholder="List your current tasks and handover plan (you can fill this later)."
             />
           </div>
 
@@ -753,6 +951,9 @@ export default function LeavePage() {
               Cover Person
               <span className="text-muted-foreground font-normal ml-1">(optional)</span>
             </Label>
+            <p className="text-xs text-muted-foreground mb-2">
+              If selected, the cover person will be notified by email.
+            </p>
             <Select value={formData.coverPersonId || '__none__'} onValueChange={(v) => setFormData({ ...formData, coverPersonId: v === '__none__' ? '' : v })}>
               <SelectTrigger id="coverPerson">
                 <SelectValue placeholder="Select who will cover your tasks..." />
@@ -817,6 +1018,248 @@ export default function LeavePage() {
           </div>
         </form>
       </Modal>
+
+      <Modal
+        isOpen={isDetailsModalOpen}
+        onClose={() => {
+          setIsDetailsModalOpen(false)
+          setSelectedRequest(null)
+        }}
+        title="Leave Request Details"
+        size="lg"
+      >
+        {selectedRequest && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="text-muted-foreground">Leave Type</Label>
+                <p className="text-sm font-medium text-foreground mt-1">
+                  {LEAVE_TYPE_CONFIG[selectedRequest.leaveType].label}
+                </p>
+              </div>
+              <div>
+                <Label className="text-muted-foreground">Status</Label>
+                <p className="text-sm font-medium text-foreground mt-1">
+                  {(STATUS_CONFIG[selectedRequest.status] || STATUS_CONFIG.PENDING).label}
+                </p>
+              </div>
+              <div>
+                <Label className="text-muted-foreground">Start Date (first day off)</Label>
+                <p className="text-sm font-medium text-foreground mt-1">
+                  {new Date(selectedRequest.startDate).toLocaleDateString()}
+                </p>
+              </div>
+              <div>
+                <Label className="text-muted-foreground">End Date (last day off)</Label>
+                <p className="text-sm font-medium text-foreground mt-1">
+                  {new Date(selectedRequest.endDate).toLocaleDateString()}
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-muted-foreground">Expected Return Date</Label>
+              <p className="text-sm font-medium text-foreground mt-1">
+                {getReturnDateLabel(selectedRequest.endDate)}
+              </p>
+            </div>
+
+            <div>
+              <Label className="text-muted-foreground">Reason</Label>
+              <p className="text-sm text-foreground mt-1 whitespace-pre-wrap">
+                {selectedRequest.reason || 'No reason provided'}
+              </p>
+            </div>
+
+            <div>
+              <Label className="text-muted-foreground">Transition Plan</Label>
+              <p className="text-sm text-foreground mt-1 whitespace-pre-wrap">
+                {selectedRequest.transitionPlan?.trim() || 'Not added yet'}
+              </p>
+            </div>
+
+            <div>
+              <Label className="text-muted-foreground">Cover Person</Label>
+              <p className="text-sm text-foreground mt-1">
+                {selectedRequest.coverPerson?.name || 'None selected'}
+              </p>
+            </div>
+
+            {Array.isArray(selectedRequest.additionalNotifyIds) && selectedRequest.additionalNotifyIds.length > 0 && (
+              <div>
+                <Label className="text-muted-foreground">Additional Notifications</Label>
+                <p className="text-sm text-foreground mt-1">
+                  {users
+                    .filter((u) => selectedRequest.additionalNotifyIds?.includes(u.id))
+                    .map((u) => u.name)
+                    .join(', ') || 'None'}
+                </p>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2">
+              {editableStatuses.has(selectedRequest.status) && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsDetailsModalOpen(false)
+                    openEditModal(selectedRequest)
+                  }}
+                >
+                  Edit Request
+                </Button>
+              )}
+              <Button onClick={() => setIsDetailsModalOpen(false)}>Close</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false)
+          setSelectedRequest(null)
+        }}
+        title="Edit Leave Request"
+        size="lg"
+      >
+        <form onSubmit={handleUpdateRequest} className="space-y-4">
+          <div>
+            <Label className="mb-2">Leave Type</Label>
+            <Select
+              value={editFormData.leaveType}
+              onValueChange={(value: 'CASUAL' | 'SICK' | 'ANNUAL') =>
+                setEditFormData((prev) => ({ ...prev, leaveType: value }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="CASUAL">Casual</SelectItem>
+                <SelectItem value="SICK">Sick</SelectItem>
+                <SelectItem value="ANNUAL">Annual</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="edit-start-date" className="mb-2">Start Date (first day off)</Label>
+              <Input
+                id="edit-start-date"
+                type="date"
+                required
+                value={editFormData.startDate}
+                onChange={(e) => setEditFormData((prev) => ({ ...prev, startDate: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-end-date" className="mb-2">End Date (last day off)</Label>
+              <Input
+                id="edit-end-date"
+                type="date"
+                required
+                min={editFormData.startDate}
+                value={editFormData.endDate}
+                onChange={(e) => setEditFormData((prev) => ({ ...prev, endDate: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          {editFormData.endDate && (
+            <p className="text-xs text-muted-foreground -mt-2">
+              Expected return date: {getReturnDateLabel(editFormData.endDate)}
+            </p>
+          )}
+
+          <div>
+            <Label htmlFor="edit-reason" className="mb-2">Reason</Label>
+            <Textarea
+              id="edit-reason"
+              required
+              rows={2}
+              value={editFormData.reason}
+              onChange={(e) => setEditFormData((prev) => ({ ...prev, reason: e.target.value }))}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="edit-transition-plan" className="mb-2">
+              Transition Plan
+              <span className="text-muted-foreground font-normal ml-1">(optional, can be added later)</span>
+            </Label>
+            <Textarea
+              id="edit-transition-plan"
+              rows={3}
+              value={editFormData.transitionPlan}
+              onChange={(e) => setEditFormData((prev) => ({ ...prev, transitionPlan: e.target.value }))}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="edit-cover-person" className="mb-2">
+              Cover Person
+              <span className="text-muted-foreground font-normal ml-1">(optional)</span>
+            </Label>
+            <p className="text-xs text-muted-foreground mb-2">
+              If selected, the cover person will be notified by email.
+            </p>
+            <Select
+              value={editFormData.coverPersonId || '__none__'}
+              onValueChange={(v) => setEditFormData((prev) => ({ ...prev, coverPersonId: v === '__none__' ? '' : v }))}
+            >
+              <SelectTrigger id="edit-cover-person">
+                <SelectValue placeholder="Select who will cover your tasks..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">No cover person</SelectItem>
+                {users.filter((u) => u.id !== user?.id).map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.name} {u.department ? `(${u.department})` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label className="mb-2">
+              Notify additional team members
+              <span className="text-muted-foreground font-normal ml-1">(optional)</span>
+            </Label>
+            <div className="max-h-32 overflow-y-auto border border-input rounded-md p-2 bg-muted space-y-1.5">
+              {users.filter((u) => u.id !== user?.id).map((u) => (
+                <label key={u.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted/80 rounded px-2 py-1.5">
+                  <Checkbox
+                    checked={editFormData.additionalNotifyIds.includes(u.id)}
+                    onCheckedChange={(checked) => {
+                      const ids = checked === true
+                        ? [...editFormData.additionalNotifyIds, u.id]
+                        : editFormData.additionalNotifyIds.filter((id) => id !== u.id)
+                      setEditFormData((prev) => ({ ...prev, additionalNotifyIds: ids }))
+                    }}
+                  />
+                  <span className="text-sm text-foreground">{u.name}</span>
+                  {u.department && <span className="text-xs text-muted-foreground">({u.department})</span>}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={() => setIsEditModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={updating}>
+              {updating ? 'Updating...' : 'Save Changes'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   )
 }
+
+

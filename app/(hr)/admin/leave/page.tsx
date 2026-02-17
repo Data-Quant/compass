@@ -10,6 +10,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
+import { calculateLeaveDays } from '@/lib/leave-utils'
 import {
   Select,
   SelectContent,
@@ -89,6 +90,7 @@ export default function HRLeavePage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [removingId, setRemovingId] = useState<string | null>(null)
+  const [sendingReminders, setSendingReminders] = useState(false)
   const [createForm, setCreateForm] = useState({
     employeeId: '',
     leaveType: 'SICK' as 'CASUAL' | 'SICK' | 'ANNUAL',
@@ -241,10 +243,31 @@ export default function HRLeavePage() {
     }
   }
 
+  const handleSendTransitionPlanReminders = async () => {
+    setSendingReminders(true)
+    try {
+      const res = await fetch('/api/leave/transition-plan-reminders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ daysBeforeStart: 3 }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Failed to send transition plan reminders')
+      }
+
+      toast.success(`Transition plan reminders sent: ${data.sent} (eligible: ${data.eligible})`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to send transition plan reminders')
+    } finally {
+      setSendingReminders(false)
+    }
+  }
+
   const getDaysCount = (start: string, end: string) => {
     const startDate = new Date(start)
     const endDate = new Date(end)
-    return Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+    return calculateLeaveDays(startDate, endDate)
   }
 
   // Filter counts
@@ -265,10 +288,20 @@ export default function HRLeavePage() {
             <h1 className="text-2xl font-display font-semibold text-foreground">Leave Management</h1>
             <p className="text-muted-foreground">Approve, add, or remove leave entries.</p>
           </div>
-          <Button onClick={() => setIsCreateModalOpen(true)}>
-            <Plus className="w-4 h-4" />
-            Add Leave
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={handleSendTransitionPlanReminders}
+              disabled={sendingReminders}
+            >
+              <MessageSquare className="w-4 h-4" />
+              {sendingReminders ? 'Sending...' : 'Send Reminders'}
+            </Button>
+            <Button onClick={() => setIsCreateModalOpen(true)}>
+              <Plus className="w-4 h-4" />
+              Add Leave
+            </Button>
+          </div>
         </div>
 
         {/* Stats */}

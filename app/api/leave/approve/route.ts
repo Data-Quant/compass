@@ -144,6 +144,12 @@ export async function POST(request: NextRequest) {
         const start = new Date(leaveRequest.startDate)
         const end = new Date(leaveRequest.endDate)
         const daysUsed = calculateLeaveDays(start, end)
+        if (daysUsed <= 0) {
+          return NextResponse.json(
+            { error: 'Selected leave range does not include any working days (Mon-Fri).' },
+            { status: 400 }
+          )
+        }
         const balanceYear = start.getFullYear()
         const usedField = `${leaveRequest.leaveType.toLowerCase()}Used` as 'casualUsed' | 'sickUsed' | 'annualUsed'
         const totalField = `${leaveRequest.leaveType.toLowerCase()}Days` as 'casualDays' | 'sickDays' | 'annualDays'

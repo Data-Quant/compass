@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getSession } from '@/lib/auth'
 import { sendLeaveRequestNotification } from '@/lib/email'
+import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { calculateLeaveDays, isValidLeaveDateRange } from '@/lib/leave-utils'
 import { isAdminRole } from '@/lib/permissions'
@@ -9,14 +10,41 @@ import { isAdminRole } from '@/lib/permissions'
 const LEAVE_TYPES = ['CASUAL', 'SICK', 'ANNUAL'] as const
 const LEAVE_STATUSES = ['PENDING', 'LEAD_APPROVED', 'HR_APPROVED', 'APPROVED', 'REJECTED', 'CANCELLED'] as const
 
+const optionalIdSchema = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z.string().trim().min(1).optional().nullable()
+)
+
+const optionalTransitionPlanSchema = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z.string().trim().max(6000).optional().nullable()
+)
+
 const leaveRequestCreateSchema = z.object({
   leaveType: z.enum(LEAVE_TYPES),
   startDate: z.coerce.date(),
   endDate: z.coerce.date(),
   reason: z.string().trim().min(1).max(4000),
-  transitionPlan: z.string().trim().max(6000).optional().nullable(),
-  employeeId: z.string().trim().min(1).optional().nullable(),
-  coverPersonId: z.string().trim().min(1).optional().nullable(),
+  transitionPlan: optionalTransitionPlanSchema,
+  employeeId: optionalIdSchema,
+  coverPersonId: optionalIdSchema,
+  additionalNotifyIds: z.array(z.string().trim().min(1)).max(20).optional(),
+}).refine(
+  (data) => isValidLeaveDateRange(data.startDate, data.endDate),
+  {
+    message: 'End date must be on or after start date',
+    path: ['endDate'],
+  }
+)
+
+const leaveRequestUpdateSchema = z.object({
+  id: z.string().trim().min(1),
+  leaveType: z.enum(LEAVE_TYPES),
+  startDate: z.coerce.date(),
+  endDate: z.coerce.date(),
+  reason: z.string().trim().min(1).max(4000),
+  transitionPlan: optionalTransitionPlanSchema,
+  coverPersonId: optionalIdSchema,
   additionalNotifyIds: z.array(z.string().trim().min(1)).max(20).optional(),
 }).refine(
   (data) => isValidLeaveDateRange(data.startDate, data.endDate),
@@ -41,6 +69,47 @@ export async function GET(request: NextRequest) {
     const employeeId = searchParams.get('employeeId')
     const status = searchParams.get('status')
     const forApproval = searchParams.get('forApproval') === 'true'
+    const scope = searchParams.get('scope')
+    const department = searchParams.get('department')
+
+    // Team upcoming leave feed (used on dashboard)
+    if (scope === 'team-upcoming') {
+      const leadMappings = await prisma.evaluatorMapping.findMany({
+        where: {
+          evaluatorId: user.id,
+          relationshipType: 'TEAM_LEAD',
+        },
+        select: { evaluateeId: true },
+      })
+
+      const teamMemberIds = leadMappings.map((m) => m.evaluateeId)
+      if (teamMemberIds.length === 0) {
+        return NextResponse.json({ requests: [] })
+      }
+
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+
+      const requests = await prisma.leaveRequest.findMany({
+        where: {
+          employeeId: { in: teamMemberIds },
+          status: { in: ['PENDING', 'LEAD_APPROVED', 'HR_APPROVED', 'APPROVED'] },
+          endDate: { gte: today },
+          ...(department ? { employee: { department } } : {}),
+        },
+        include: {
+          employee: {
+            select: { id: true, name: true, department: true, position: true },
+          },
+          coverPerson: {
+            select: { id: true, name: true },
+          },
+        },
+        orderBy: [{ startDate: 'asc' }, { createdAt: 'asc' }],
+      })
+
+      return NextResponse.json({ requests })
+    }
     
     // Build where clause
     const where: {
@@ -146,19 +215,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Only HR can create leave for another employee' }, { status: 403 })
     }
 
-    // Transition plan is required for self-submitted leave requests.
-    if (!isOnBehalfRequest && !transitionPlan?.trim()) {
-      return NextResponse.json({ error: 'Transition plan is required' }, { status: 400 })
+    if (coverPersonId && coverPersonId === targetEmployeeId) {
+      return NextResponse.json({ error: 'Cover person cannot be the same as the employee' }, { status: 400 })
     }
 
     // Ensure employee exists when HR enters leave on behalf.
-    if (isOnBehalfRequest) {
-      const employee = await prisma.user.findUnique({
-        where: { id: targetEmployeeId },
+    if (isOnBehalfRequest || coverPersonId) {
+      const idsToCheck = [targetEmployeeId, coverPersonId].filter(Boolean) as string[]
+      const users = await prisma.user.findMany({
+        where: { id: { in: idsToCheck } },
         select: { id: true },
       })
-      if (!employee) {
+      const found = new Set(users.map((u) => u.id))
+      if (!found.has(targetEmployeeId)) {
         return NextResponse.json({ error: 'Employee not found' }, { status: 404 })
+      }
+      if (coverPersonId && !found.has(coverPersonId)) {
+        return NextResponse.json({ error: 'Cover person not found' }, { status: 404 })
       }
     }
     
@@ -166,7 +239,13 @@ export async function POST(request: NextRequest) {
     const start = new Date(startDate)
     const end = new Date(endDate)
     const daysRequested = calculateLeaveDays(start, end)
-    
+    if (daysRequested <= 0) {
+      return NextResponse.json(
+        { error: 'Selected range does not include any working days (Mon-Fri).' },
+        { status: 400 }
+      )
+    }
+
     // Check leave balance against the leave start year.
     const currentYear = start.getFullYear()
     let balance = await prisma.leaveBalance.findUnique({
@@ -201,8 +280,10 @@ export async function POST(request: NextRequest) {
     
     // Validate additionalNotifyIds are valid user IDs (optional)
     const validNotifyIds = Array.isArray(additionalNotifyIds)
-      ? additionalNotifyIds
+      ? [...new Set(additionalNotifyIds.filter((id) => id !== targetEmployeeId))]
       : []
+
+    const safeTransitionPlan = transitionPlan?.trim() || ''
 
     // Create the leave request
     const leaveRequest = await prisma.$transaction(async (tx) => {
@@ -229,7 +310,7 @@ export async function POST(request: NextRequest) {
             startDate: start,
             endDate: end,
             reason,
-            transitionPlan: transitionPlan?.trim() || 'Entered by HR on behalf of employee',
+            transitionPlan: safeTransitionPlan || 'Entered by HR on behalf of employee',
             coverPersonId: coverPersonId || null,
             ...(validNotifyIds.length > 0 && { additionalNotifyIds: validNotifyIds }),
             status: 'APPROVED',
@@ -255,7 +336,7 @@ export async function POST(request: NextRequest) {
           startDate: start,
           endDate: end,
           reason,
-          transitionPlan: transitionPlan?.trim() || '',
+          transitionPlan: safeTransitionPlan,
           coverPersonId: coverPersonId || null,
           ...(validNotifyIds.length > 0 && { additionalNotifyIds: validNotifyIds }),
           status: 'PENDING',
@@ -285,6 +366,146 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Failed to create leave request:', error)
     return NextResponse.json({ error: 'Failed to create request' }, { status: 500 })
+  }
+}
+
+// PUT - Edit leave request (before final decision)
+export async function PUT(request: NextRequest) {
+  try {
+    const user = await getSession()
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const body = await request.json()
+    const parsed = leaveRequestUpdateSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Invalid leave request payload', details: parsed.error.errors },
+        { status: 400 }
+      )
+    }
+
+    const { id, leaveType, startDate, endDate, reason, transitionPlan, coverPersonId, additionalNotifyIds } = parsed.data
+    const isHR = isAdminRole(user.role)
+
+    const existing = await prisma.leaveRequest.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        employeeId: true,
+        status: true,
+      },
+    })
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Request not found' }, { status: 404 })
+    }
+
+    if (!isHR && existing.employeeId !== user.id) {
+      return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
+    }
+
+    if (['APPROVED', 'REJECTED', 'CANCELLED'].includes(existing.status)) {
+      return NextResponse.json({ error: 'Only pending requests can be edited' }, { status: 400 })
+    }
+
+    const targetEmployeeId = existing.employeeId
+    if (coverPersonId && coverPersonId === targetEmployeeId) {
+      return NextResponse.json({ error: 'Cover person cannot be the same as the employee' }, { status: 400 })
+    }
+
+    if (coverPersonId) {
+      const coverUser = await prisma.user.findUnique({
+        where: { id: coverPersonId },
+        select: { id: true },
+      })
+      if (!coverUser) {
+        return NextResponse.json({ error: 'Cover person not found' }, { status: 404 })
+      }
+    }
+    const start = new Date(startDate)
+    const end = new Date(endDate)
+    const daysRequested = calculateLeaveDays(start, end)
+    if (daysRequested <= 0) {
+      return NextResponse.json(
+        { error: 'Selected range does not include any working days (Mon-Fri).' },
+        { status: 400 }
+      )
+    }
+    const balanceYear = start.getFullYear()
+
+    const balance = await prisma.leaveBalance.upsert({
+      where: {
+        employeeId_year: {
+          employeeId: targetEmployeeId,
+          year: balanceYear,
+        },
+      },
+      update: {},
+      create: {
+        employeeId: targetEmployeeId,
+        year: balanceYear,
+      },
+    })
+
+    const balanceField = `${leaveType.toLowerCase()}Days` as 'casualDays' | 'sickDays' | 'annualDays'
+    const usedField = `${leaveType.toLowerCase()}Used` as 'casualUsed' | 'sickUsed' | 'annualUsed'
+    const available = balance[balanceField] - balance[usedField]
+
+    if (daysRequested > available) {
+      return NextResponse.json({
+        error: `Insufficient ${leaveType.toLowerCase()} leave balance. Available: ${available} days, Requested: ${daysRequested} days`,
+      }, { status: 400 })
+    }
+
+    const validNotifyIds = Array.isArray(additionalNotifyIds)
+      ? [...new Set(additionalNotifyIds.filter((notifyId) => notifyId !== targetEmployeeId))]
+      : []
+
+    const updated = await prisma.leaveRequest.update({
+      where: { id },
+      data: {
+        leaveType,
+        startDate: start,
+        endDate: end,
+        reason,
+        transitionPlan: transitionPlan?.trim() || '',
+        coverPersonId: coverPersonId || null,
+        additionalNotifyIds: validNotifyIds.length > 0 ? validNotifyIds : Prisma.JsonNull,
+        // Editing resets approval flow so leads/HR review latest details.
+        status: 'PENDING',
+        leadApprovedBy: null,
+        leadApprovedAt: null,
+        leadComment: null,
+        hrApprovedBy: null,
+        hrApprovedAt: null,
+        hrComment: null,
+        rejectedBy: null,
+        rejectedAt: null,
+        rejectionReason: null,
+      },
+      include: {
+        employee: {
+          select: { id: true, name: true, department: true, email: true },
+        },
+        coverPerson: {
+          select: { id: true, name: true },
+        },
+      },
+    })
+
+    try {
+      await sendLeaveRequestNotification(updated.id)
+    } catch (e) {
+      console.error('Failed to send leave update notification:', e)
+    }
+
+    return NextResponse.json({ success: true, request: updated })
+  } catch (error) {
+    console.error('Failed to update leave request:', error)
+    return NextResponse.json({ error: 'Failed to update request' }, { status: 500 })
   }
 }
 

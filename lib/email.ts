@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer'
 import { prisma } from '@/lib/db'
 import { formatReportAsHTML, generateDetailedReport } from './reports'
 import { escapeHtml } from '@/lib/sanitize'
+import { calculateLeaveDays } from '@/lib/leave-utils'
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -209,12 +210,15 @@ export async function sendLeaveRequestNotification(requestId: string) {
   }
 
   const employee = leaveRequest.employee
-  const startDate = new Date(leaveRequest.startDate).toLocaleDateString()
-  const endDate = new Date(leaveRequest.endDate).toLocaleDateString()
-  const daysCount = Math.ceil(
-    (new Date(leaveRequest.endDate).getTime() - new Date(leaveRequest.startDate).getTime()) /
-    (1000 * 60 * 60 * 24)
-  ) + 1
+  const startDateValue = new Date(leaveRequest.startDate)
+  const endDateValue = new Date(leaveRequest.endDate)
+  const returnDateValue = new Date(endDateValue)
+  returnDateValue.setDate(returnDateValue.getDate() + 1)
+
+  const startDate = startDateValue.toLocaleDateString()
+  const endDate = endDateValue.toLocaleDateString()
+  const returnDate = returnDateValue.toLocaleDateString()
+  const daysCount = calculateLeaveDays(startDateValue, endDateValue)
 
   const hrEmails = await getHrRecipientEmails()
   const fallbackRecipients = parseRecipientList(
@@ -249,11 +253,22 @@ export async function sendLeaveRequestNotification(requestId: string) {
       .map(u => u.email!)
   }
 
-  // Build recipient list: HR + configured fallback + leads + optional additional (deduplicated)
-  const recipients = [...new Set([...hrEmails, ...fallbackRecipients, ...leadEmails, ...additionalEmails])]
+  // Cover person should receive the same request notification when assigned.
+  const coverPersonEmail = leaveRequest.coverPerson?.email || null
+
+  // Build recipient list: HR + configured fallback + leads + optional additional + cover person (deduplicated)
+  const recipients = [...new Set([
+    ...hrEmails,
+    ...fallbackRecipients,
+    ...leadEmails,
+    ...additionalEmails,
+    ...(coverPersonEmail ? [coverPersonEmail] : []),
+  ])]
   if (recipients.length === 0) {
     return { success: false, message: 'No recipients configured for leave request notification' }
   }
+
+  const transitionPlan = (leaveRequest.transitionPlan || '').trim()
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -263,15 +278,25 @@ export async function sendLeaveRequestNotification(requestId: string) {
         <p><strong>Employee:</strong> ${escapeHtml(employee.name)}</p>
         <p><strong>Department:</strong> ${escapeHtml(employee.department) || 'N/A'}</p>
         <p><strong>Leave Type:</strong> ${escapeHtml(leaveRequest.leaveType)}</p>
-        <p><strong>Duration:</strong> ${startDate} to ${endDate} (${daysCount} day${daysCount > 1 ? 's' : ''})</p>
+        <p><strong>Start Date (first day off):</strong> ${startDate}</p>
+        <p><strong>End Date (last day off):</strong> ${endDate}</p>
+        <p><strong>Expected Return Date:</strong> ${returnDate}</p>
+        <p><strong>Duration (working days):</strong> ${daysCount} day${daysCount > 1 ? 's' : ''}</p>
         <p><strong>Reason:</strong> ${escapeHtml(leaveRequest.reason)}</p>
         ${leaveRequest.coverPerson ? `<p><strong>Cover Person:</strong> ${escapeHtml(leaveRequest.coverPerson.name)}</p>` : ''}
       </div>
 
-      <div style="background: #FEF3C7; padding: 15px; border-radius: 8px; margin: 20px 0;">
-        <h4 style="margin: 0 0 10px; color: #92400E;">Transition Plan:</h4>
-        <p style="margin: 0; color: #92400E;">${escapeHtml(leaveRequest.transitionPlan)}</p>
-      </div>
+      ${transitionPlan ? `
+        <div style="background: #FEF3C7; padding: 15px; border-radius: 8px; margin: 20px 0;">
+          <h4 style="margin: 0 0 10px; color: #92400E;">Transition Plan:</h4>
+          <p style="margin: 0; color: #92400E;">${escapeHtml(transitionPlan)}</p>
+        </div>
+      ` : `
+        <div style="background: #FFF7ED; padding: 15px; border-radius: 8px; margin: 20px 0;">
+          <h4 style="margin: 0 0 10px; color: #9A3412;">Transition Plan:</h4>
+          <p style="margin: 0; color: #9A3412;">Not submitted yet. A reminder will be sent before leave starts.</p>
+        </div>
+      `}
 
       <p style="color: #64748B; font-size: 14px;">
         Please review this request and take action in the HR Portal.
@@ -283,7 +308,7 @@ export async function sendLeaveRequestNotification(requestId: string) {
     const info = await transporter.sendMail({
       from: `P21 Compass <${FROM_EMAIL}>`,
       to: recipients.join(', '),
-      subject: `Leave Request: ${employee.name} - ${leaveRequest.leaveType} (${daysCount} days)`,
+      subject: `Leave Request: ${employee.name} - ${leaveRequest.leaveType} (${startDate} to ${endDate})`,
       html: htmlContent,
     })
 
@@ -313,12 +338,15 @@ export async function sendLeaveApprovalNotification(
 
   const employee = leaveRequest.employee
   const employeeEmail = employee.email as string // Already validated above
-  const startDate = new Date(leaveRequest.startDate).toLocaleDateString()
-  const endDate = new Date(leaveRequest.endDate).toLocaleDateString()
-  const daysCount = Math.ceil(
-    (new Date(leaveRequest.endDate).getTime() - new Date(leaveRequest.startDate).getTime()) /
-    (1000 * 60 * 60 * 24)
-  ) + 1
+  const startDateValue = new Date(leaveRequest.startDate)
+  const endDateValue = new Date(leaveRequest.endDate)
+  const returnDateValue = new Date(endDateValue)
+  returnDateValue.setDate(returnDateValue.getDate() + 1)
+
+  const startDate = startDateValue.toLocaleDateString()
+  const endDate = endDateValue.toLocaleDateString()
+  const returnDate = returnDateValue.toLocaleDateString()
+  const daysCount = calculateLeaveDays(startDateValue, endDateValue)
 
   const isApproved = status === 'approved'
   const statusColor = isApproved ? '#10B981' : '#EF4444'
@@ -338,7 +366,10 @@ export async function sendLeaveApprovalNotification(
       
       <div style="background: #F8FAFC; padding: 20px; border-radius: 8px; margin: 20px 0;">
         <p><strong>Leave Type:</strong> ${leaveRequest.leaveType}</p>
-        <p><strong>Duration:</strong> ${startDate} to ${endDate} (${daysCount} day${daysCount > 1 ? 's' : ''})</p>
+        <p><strong>Start Date (first day off):</strong> ${startDate}</p>
+        <p><strong>End Date (last day off):</strong> ${endDate}</p>
+        <p><strong>Expected Return Date:</strong> ${returnDate}</p>
+        <p><strong>Duration (working days):</strong> ${daysCount} day${daysCount > 1 ? 's' : ''}</p>
         <p><strong>${isApproved ? 'Approved' : 'Reviewed'} by:</strong> ${escapeHtml(approverName)}</p>
         ${comment ? `<p><strong>Comment:</strong> ${escapeHtml(comment)}</p>` : ''}
       </div>
@@ -366,6 +397,101 @@ export async function sendLeaveApprovalNotification(
     return { success: true, data: { messageId: info.messageId } }
   } catch (error: any) {
     console.error('Failed to send leave approval notification:', error)
+    return { success: false, error: error.message }
+  }
+}
+
+export async function sendTransitionPlanReminderNotification(requestId: string) {
+  const leaveRequest = await prisma.leaveRequest.findUnique({
+    where: { id: requestId },
+    include: {
+      employee: true,
+    },
+  })
+
+  if (!leaveRequest) {
+    return { success: false, message: 'Leave request not found' }
+  }
+
+  if (!['PENDING', 'LEAD_APPROVED', 'HR_APPROVED', 'APPROVED'].includes(leaveRequest.status)) {
+    return { success: false, message: 'Leave request is not active' }
+  }
+
+  if ((leaveRequest.transitionPlan || '').trim()) {
+    return { success: false, message: 'Transition plan already provided' }
+  }
+
+  if (!leaveRequest.employee.email) {
+    return { success: false, message: 'Employee email not found' }
+  }
+
+  const employee = leaveRequest.employee
+  const employeeEmail = employee.email as string
+  const startDateValue = new Date(leaveRequest.startDate)
+  const endDateValue = new Date(leaveRequest.endDate)
+  const returnDateValue = new Date(endDateValue)
+  returnDateValue.setDate(returnDateValue.getDate() + 1)
+
+  const startDate = startDateValue.toLocaleDateString()
+  const endDate = endDateValue.toLocaleDateString()
+  const returnDate = returnDateValue.toLocaleDateString()
+  const daysCount = calculateLeaveDays(startDateValue, endDateValue)
+  const msPerDay = 1000 * 60 * 60 * 24
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const leaveStart = new Date(startDateValue)
+  leaveStart.setHours(0, 0, 0, 0)
+  const daysUntilStart = Math.ceil((leaveStart.getTime() - today.getTime()) / msPerDay)
+
+  const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || '').replace(/\/$/, '')
+  const leavePageUrl = appBaseUrl ? `${appBaseUrl}/leave` : ''
+  const timelineMessage =
+    daysUntilStart <= 0
+      ? 'Your leave starts today.'
+      : daysUntilStart === 1
+        ? 'Your leave starts tomorrow.'
+        : `Your leave starts in ${daysUntilStart} days.`
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #D97706;">Transition Plan Reminder</h2>
+
+      <p>Hi ${escapeHtml(employee.name)},</p>
+      <p style="color: #92400E;"><strong>${timelineMessage}</strong></p>
+      <p>Please add your transition plan for this leave request so your team has handover details.</p>
+
+      <div style="background: #F8FAFC; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>Leave Type:</strong> ${escapeHtml(leaveRequest.leaveType)}</p>
+        <p><strong>Start Date (first day off):</strong> ${startDate}</p>
+        <p><strong>End Date (last day off):</strong> ${endDate}</p>
+        <p><strong>Expected Return Date:</strong> ${returnDate}</p>
+        <p><strong>Duration (working days):</strong> ${daysCount} day${daysCount > 1 ? 's' : ''}</p>
+        <p><strong>Reason:</strong> ${escapeHtml(leaveRequest.reason)}</p>
+      </div>
+
+      ${
+        leavePageUrl
+          ? `<p><a href="${leavePageUrl}" style="display:inline-block;background:#4F46E5;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;">Open Leave Management</a></p>`
+          : ''
+      }
+
+      <p style="color: #64748B; font-size: 14px;">
+        If your leave details have changed, please update the request in the portal.
+      </p>
+    </div>
+  `
+
+  try {
+    const info = await transporter.sendMail({
+      from: `P21 Compass <${FROM_EMAIL}>`,
+      to: employeeEmail,
+      subject: `Reminder: Add transition plan for leave (${startDate} to ${endDate})`,
+      html: htmlContent,
+    })
+
+    return { success: true, data: { messageId: info.messageId } }
+  } catch (error: any) {
+    console.error('Failed to send transition plan reminder:', error)
     return { success: false, error: error.message }
   }
 }
