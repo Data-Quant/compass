@@ -9,11 +9,21 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { 
   Calendar,
   CheckCircle2,
   XCircle,
   Filter,
+  Plus,
+  Trash2,
   Sun,
   Thermometer,
   Palmtree,
@@ -46,6 +56,12 @@ interface LeaveRequest {
   createdAt: string
 }
 
+interface TeamUser {
+  id: string
+  name: string
+  department?: string | null
+}
+
 const LEAVE_TYPE_CONFIG = {
   CASUAL: { icon: Sun, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-500/10', label: 'Casual' },
   SICK: { icon: Thermometer, color: 'text-red-500', bg: 'bg-red-50 dark:bg-red-500/10', label: 'Sick' },
@@ -63,15 +79,27 @@ const STATUS_CONFIG: Record<string, { color: string; bg: string; label: string }
 
 export default function HRLeavePage() {
   const [requests, setRequests] = useState<LeaveRequest[]>([])
+  const [users, setUsers] = useState<TeamUser[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('pending')
   const [selectedRequest, setSelectedRequest] = useState<LeaveRequest | null>(null)
   const [actionModal, setActionModal] = useState<{ open: boolean; action: 'approve' | 'reject' | null }>({ open: false, action: null })
   const [comment, setComment] = useState('')
   const [processing, setProcessing] = useState(false)
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [removingId, setRemovingId] = useState<string | null>(null)
+  const [createForm, setCreateForm] = useState({
+    employeeId: '',
+    leaveType: 'SICK' as 'CASUAL' | 'SICK' | 'ANNUAL',
+    startDate: '',
+    endDate: '',
+    reason: 'Sick leave entered by HR',
+    transitionPlan: '',
+  })
 
   useEffect(() => {
-    loadRequests()
+    Promise.all([loadRequests(), loadUsers()])
   }, [])
 
   useEffect(() => {
@@ -94,6 +122,16 @@ export default function HRLeavePage() {
       toast.error('Failed to load requests')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadUsers = async () => {
+    try {
+      const res = await fetch('/api/auth/login')
+      const data = await res.json()
+      setUsers(data.users || [])
+    } catch {
+      toast.error('Failed to load team members')
     }
   }
 
@@ -136,6 +174,73 @@ export default function HRLeavePage() {
     setComment('')
   }
 
+  const resetCreateForm = () => {
+    setCreateForm({
+      employeeId: '',
+      leaveType: 'SICK',
+      startDate: '',
+      endDate: '',
+      reason: 'Sick leave entered by HR',
+      transitionPlan: '',
+    })
+  }
+
+  const handleCreateLeave = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!createForm.employeeId || !createForm.startDate || !createForm.endDate || !createForm.reason.trim()) {
+      toast.error('Please fill employee, dates, and reason')
+      return
+    }
+
+    setCreating(true)
+    try {
+      const res = await fetch('/api/leave/requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employeeId: createForm.employeeId,
+          leaveType: createForm.leaveType,
+          startDate: createForm.startDate,
+          endDate: createForm.endDate,
+          reason: createForm.reason,
+          transitionPlan: createForm.transitionPlan || 'Entered by HR on behalf of employee',
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Failed to add leave')
+      }
+
+      toast.success('Leave added successfully')
+      setIsCreateModalOpen(false)
+      resetCreateForm()
+      await loadRequests()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to add leave')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const handleRemoveLeave = async (request: LeaveRequest) => {
+    if (!confirm(`Remove leave for ${request.employee.name}?`)) return
+
+    setRemovingId(request.id)
+    try {
+      const res = await fetch(`/api/leave/requests?id=${request.id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Failed to remove leave')
+      }
+      toast.success('Leave removed')
+      await loadRequests()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to remove leave')
+    } finally {
+      setRemovingId(null)
+    }
+  }
+
   const getDaysCount = (start: string, end: string) => {
     const startDate = new Date(start)
     const endDate = new Date(end)
@@ -155,6 +260,17 @@ export default function HRLeavePage() {
 
   return (
     <div className="p-6 sm:p-8 max-w-7xl mx-auto">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-display font-semibold text-foreground">Leave Management</h1>
+            <p className="text-muted-foreground">Approve, add, or remove leave entries.</p>
+          </div>
+          <Button onClick={() => setIsCreateModalOpen(true)}>
+            <Plus className="w-4 h-4" />
+            Add Leave
+          </Button>
+        </div>
+
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           {[
@@ -275,26 +391,38 @@ export default function HRLeavePage() {
                         </div>
                       </div>
                       
-                      {needsHRApproval && (
-                        <div className="flex gap-2 flex-shrink-0">
-                          <Button
-                            size="sm"
-                            onClick={() => openActionModal(request, 'approve')}
-                            className="bg-emerald-600 hover:bg-emerald-700"
-                          >
-                            <CheckCircle2 className="w-4 h-4" />
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => openActionModal(request, 'reject')}
-                          >
-                            <XCircle className="w-4 h-4" />
-                            Reject
-                          </Button>
-                        </div>
-                      )}
+                      <div className="flex gap-2 flex-shrink-0">
+                        {needsHRApproval && (
+                          <>
+                            <Button
+                              size="sm"
+                              onClick={() => openActionModal(request, 'approve')}
+                              className="bg-emerald-600 hover:bg-emerald-700"
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => openActionModal(request, 'reject')}
+                            >
+                              <XCircle className="w-4 h-4" />
+                              Reject
+                            </Button>
+                          </>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleRemoveLeave(request)}
+                          disabled={removingId === request.id}
+                          className="text-red-600 border-red-200 hover:bg-red-50 dark:border-red-900/40 dark:hover:bg-red-500/10"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          {removingId === request.id ? 'Removing...' : 'Remove'}
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 )
@@ -349,6 +477,127 @@ export default function HRLeavePage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={isCreateModalOpen}
+        onClose={() => {
+          setIsCreateModalOpen(false)
+          resetCreateForm()
+        }}
+        title="Add Leave (HR)"
+        size="lg"
+      >
+        <form onSubmit={handleCreateLeave} className="space-y-4">
+          <div>
+            <Label className="mb-2">Team Member</Label>
+            <Select
+              value={createForm.employeeId || '__none__'}
+              onValueChange={(v) => setCreateForm((prev) => ({ ...prev, employeeId: v === '__none__' ? '' : v }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select team member..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">Select team member...</SelectItem>
+                {users.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.name}{u.department ? ` (${u.department})` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label className="mb-2">Leave Type</Label>
+            <Select
+              value={createForm.leaveType}
+              onValueChange={(v: 'CASUAL' | 'SICK' | 'ANNUAL') => {
+                setCreateForm((prev) => ({
+                  ...prev,
+                  leaveType: v,
+                  reason: v === 'SICK' ? 'Sick leave entered by HR' : prev.reason,
+                }))
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="CASUAL">Casual</SelectItem>
+                <SelectItem value="SICK">Sick</SelectItem>
+                <SelectItem value="ANNUAL">Annual</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="hr-start-date" className="mb-2">Start Date</Label>
+              <Input
+                id="hr-start-date"
+                type="date"
+                required
+                value={createForm.startDate}
+                onChange={(e) => setCreateForm((prev) => ({ ...prev, startDate: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label htmlFor="hr-end-date" className="mb-2">End Date</Label>
+              <Input
+                id="hr-end-date"
+                type="date"
+                required
+                min={createForm.startDate}
+                value={createForm.endDate}
+                onChange={(e) => setCreateForm((prev) => ({ ...prev, endDate: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="hr-reason" className="mb-2">Reason</Label>
+            <Textarea
+              id="hr-reason"
+              required
+              rows={2}
+              value={createForm.reason}
+              onChange={(e) => setCreateForm((prev) => ({ ...prev, reason: e.target.value }))}
+              placeholder="Reason for leave"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="hr-transition-plan" className="mb-2">
+              Transition Plan
+              <span className="text-muted-foreground font-normal ml-1">(optional)</span>
+            </Label>
+            <Textarea
+              id="hr-transition-plan"
+              rows={3}
+              value={createForm.transitionPlan}
+              onChange={(e) => setCreateForm((prev) => ({ ...prev, transitionPlan: e.target.value }))}
+              placeholder="Optional handover notes"
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setIsCreateModalOpen(false)
+                resetCreateForm()
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={creating}>
+              {creating ? 'Adding...' : 'Add Leave'}
+            </Button>
+          </div>
+        </form>
       </Modal>
     </div>
   )

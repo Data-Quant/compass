@@ -14,7 +14,8 @@ const leaveRequestCreateSchema = z.object({
   startDate: z.coerce.date(),
   endDate: z.coerce.date(),
   reason: z.string().trim().min(1).max(4000),
-  transitionPlan: z.string().trim().min(1).max(6000),
+  transitionPlan: z.string().trim().max(6000).optional().nullable(),
+  employeeId: z.string().trim().min(1).optional().nullable(),
   coverPersonId: z.string().trim().min(1).optional().nullable(),
   additionalNotifyIds: z.array(z.string().trim().min(1)).max(20).optional(),
 }).refine(
@@ -134,19 +135,44 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { leaveType, startDate, endDate, reason, transitionPlan, coverPersonId, additionalNotifyIds } = parsed.data
+    const { leaveType, startDate, endDate, reason, transitionPlan, coverPersonId, additionalNotifyIds, employeeId } = parsed.data
+    const isHR = isAdminRole(user.role)
+
+    // HR can create leave on behalf of any employee; default remains self-service.
+    const targetEmployeeId = employeeId?.trim() || user.id
+    const isOnBehalfRequest = targetEmployeeId !== user.id
+
+    if (isOnBehalfRequest && !isHR) {
+      return NextResponse.json({ error: 'Only HR can create leave for another employee' }, { status: 403 })
+    }
+
+    // Transition plan is required for self-submitted leave requests.
+    if (!isOnBehalfRequest && !transitionPlan?.trim()) {
+      return NextResponse.json({ error: 'Transition plan is required' }, { status: 400 })
+    }
+
+    // Ensure employee exists when HR enters leave on behalf.
+    if (isOnBehalfRequest) {
+      const employee = await prisma.user.findUnique({
+        where: { id: targetEmployeeId },
+        select: { id: true },
+      })
+      if (!employee) {
+        return NextResponse.json({ error: 'Employee not found' }, { status: 404 })
+      }
+    }
     
     // Calculate days requested
     const start = new Date(startDate)
     const end = new Date(endDate)
     const daysRequested = calculateLeaveDays(start, end)
     
-    // Check leave balance
-    const currentYear = new Date().getFullYear()
+    // Check leave balance against the leave start year.
+    const currentYear = start.getFullYear()
     let balance = await prisma.leaveBalance.findUnique({
       where: {
         employeeId_year: {
-          employeeId: user.id,
+          employeeId: targetEmployeeId,
           year: currentYear,
         },
       },
@@ -156,7 +182,7 @@ export async function POST(request: NextRequest) {
     if (!balance) {
       balance = await prisma.leaveBalance.create({
         data: {
-          employeeId: user.id,
+          employeeId: targetEmployeeId,
           year: currentYear,
         },
       })
@@ -179,33 +205,80 @@ export async function POST(request: NextRequest) {
       : []
 
     // Create the leave request
-    const leaveRequest = await prisma.leaveRequest.create({
-      data: {
-        employeeId: user.id,
-        leaveType,
-        startDate: start,
-        endDate: end,
-        reason,
-        transitionPlan,
-        coverPersonId: coverPersonId || null,
-        ...(validNotifyIds.length > 0 && { additionalNotifyIds: validNotifyIds }),
-        status: 'PENDING',
-      },
-      include: {
-        employee: {
-          select: { id: true, name: true, department: true, email: true },
+    const leaveRequest = await prisma.$transaction(async (tx) => {
+      // HR on-behalf entries are auto-approved and immediately reflected in balances.
+      if (isOnBehalfRequest && isHR) {
+        const usedField = `${leaveType.toLowerCase()}Used` as 'casualUsed' | 'sickUsed' | 'annualUsed'
+
+        await tx.leaveBalance.update({
+          where: {
+            employeeId_year: {
+              employeeId: targetEmployeeId,
+              year: currentYear,
+            },
+          },
+          data: {
+            [usedField]: { increment: daysRequested },
+          },
+        })
+
+        return tx.leaveRequest.create({
+          data: {
+            employeeId: targetEmployeeId,
+            leaveType,
+            startDate: start,
+            endDate: end,
+            reason,
+            transitionPlan: transitionPlan?.trim() || 'Entered by HR on behalf of employee',
+            coverPersonId: coverPersonId || null,
+            ...(validNotifyIds.length > 0 && { additionalNotifyIds: validNotifyIds }),
+            status: 'APPROVED',
+            hrApprovedBy: user.id,
+            hrApprovedAt: new Date(),
+            hrComment: 'Entered by HR on behalf of employee',
+          },
+          include: {
+            employee: {
+              select: { id: true, name: true, department: true, email: true },
+            },
+            coverPerson: {
+              select: { id: true, name: true },
+            },
+          },
+        })
+      }
+
+      return tx.leaveRequest.create({
+        data: {
+          employeeId: targetEmployeeId,
+          leaveType,
+          startDate: start,
+          endDate: end,
+          reason,
+          transitionPlan: transitionPlan?.trim() || '',
+          coverPersonId: coverPersonId || null,
+          ...(validNotifyIds.length > 0 && { additionalNotifyIds: validNotifyIds }),
+          status: 'PENDING',
         },
-        coverPerson: {
-          select: { id: true, name: true },
+        include: {
+          employee: {
+            select: { id: true, name: true, department: true, email: true },
+          },
+          coverPerson: {
+            select: { id: true, name: true },
+          },
         },
-      },
+      })
     })
     
     // Send notification to HR and Lead
-    try {
-      await sendLeaveRequestNotification(leaveRequest.id)
-    } catch (e) {
-      console.error('Failed to send leave request notification:', e)
+    // HR on-behalf entries are already approved, so no approval-request mail is required.
+    if (!(isOnBehalfRequest && isHR)) {
+      try {
+        await sendLeaveRequestNotification(leaveRequest.id)
+      } catch (e) {
+        console.error('Failed to send leave request notification:', e)
+      }
     }
     
     return NextResponse.json({ success: true, request: leaveRequest })
@@ -240,17 +313,62 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Request not found' }, { status: 404 })
     }
     
-    // Only the employee can cancel their own request
+    const isHR = isAdminRole(user.role)
+
+    if (isHR) {
+      await prisma.$transaction(async (tx) => {
+        // Roll back used balance if removing an approved entry.
+        if (leaveRequest.status === 'APPROVED') {
+          const start = new Date(leaveRequest.startDate)
+          const end = new Date(leaveRequest.endDate)
+          const daysUsed = calculateLeaveDays(start, end)
+          const usedField = `${leaveRequest.leaveType.toLowerCase()}Used` as 'casualUsed' | 'sickUsed' | 'annualUsed'
+
+          const balance = await tx.leaveBalance.findUnique({
+            where: {
+              employeeId_year: {
+                employeeId: leaveRequest.employeeId,
+                year: start.getFullYear(),
+              },
+            },
+          })
+
+          if (balance) {
+            const decrementBy = Math.min(balance[usedField], daysUsed)
+            if (decrementBy > 0) {
+              await tx.leaveBalance.update({
+                where: {
+                  employeeId_year: {
+                    employeeId: leaveRequest.employeeId,
+                    year: start.getFullYear(),
+                  },
+                },
+                data: {
+                  [usedField]: { decrement: decrementBy },
+                },
+              })
+            }
+          }
+        }
+
+        await tx.leaveRequest.delete({
+          where: { id: requestId },
+        })
+      })
+
+      return NextResponse.json({ success: true })
+    }
+
+    // Non-HR users can only cancel their own request.
     if (leaveRequest.employeeId !== user.id) {
       return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
     }
-    
-    // Can only cancel pending requests
+
+    // Self-cancel is only allowed for non-approved requests.
     if (leaveRequest.status === 'APPROVED') {
       return NextResponse.json({ error: 'Cannot cancel approved request' }, { status: 400 })
     }
-    
-    // Update status to cancelled
+
     await prisma.leaveRequest.update({
       where: { id: requestId },
       data: { status: 'CANCELLED' },
