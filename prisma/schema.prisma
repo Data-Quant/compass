@@ -372,6 +372,8 @@ model DeviceTicket {
   title         String         // Short description
   description   String         // Full problem details
   deviceType    String         // e.g. "Laptop", "Monitor", "Keyboard", etc.
+  isUpgradeRequest       Boolean        @default(false)
+  managerApprovalReceived Boolean?
   priority      TicketPriority @default(MEDIUM)
   status        TicketStatus   @default(OPEN)
 

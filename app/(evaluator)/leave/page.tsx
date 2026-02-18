@@ -114,9 +114,12 @@ export default function LeavePage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [isDayEventsModalOpen, setIsDayEventsModalOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [selectedRequest, setSelectedRequest] = useState<LeaveRequest | null>(null)
+  const [selectedDayDate, setSelectedDayDate] = useState<Date | null>(null)
+  const [selectedDayEvents, setSelectedDayEvents] = useState<CalendarEvent[]>([])
   const [departmentFilter, setDepartmentFilter] = useState<string>('ALL')
   const [reminderNoticeShown, setReminderNoticeShown] = useState(false)
 
@@ -276,6 +279,16 @@ export default function LeavePage() {
     const value = new Date(endDate)
     value.setDate(value.getDate() + 1)
     return value.toLocaleDateString()
+  }
+
+  const openDayEventsModal = (date: Date, events: CalendarEvent[]) => {
+    const sortedEvents = [...events].sort((a, b) => {
+      if (a.isCurrentUser !== b.isCurrentUser) return a.isCurrentUser ? -1 : 1
+      return a.employeeName.localeCompare(b.employeeName)
+    })
+    setSelectedDayDate(new Date(date))
+    setSelectedDayEvents(sortedEvents)
+    setIsDayEventsModalOpen(true)
   }
 
   const handleDateClick = (date: Date) => {
@@ -669,7 +682,23 @@ export default function LeavePage() {
                                   </div>
                                 ))}
                                 {events.length > 2 && (
-                                  <div className="text-[10px] text-muted-foreground px-1">
+                                  <div
+                                    className="text-[10px] text-muted-foreground px-1 underline-offset-2 hover:underline cursor-pointer"
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={(e) => {
+                                      e.preventDefault()
+                                      e.stopPropagation()
+                                      openDayEventsModal(date, events)
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault()
+                                        e.stopPropagation()
+                                        openDayEventsModal(date, events)
+                                      }
+                                    }}
+                                  >
                                     +{events.length - 2} more
                                   </div>
                                 )}
@@ -1017,6 +1046,70 @@ export default function LeavePage() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={isDayEventsModalOpen}
+        onClose={() => {
+          setIsDayEventsModalOpen(false)
+          setSelectedDayDate(null)
+          setSelectedDayEvents([])
+        }}
+        title={
+          selectedDayDate
+            ? `Team on leave - ${selectedDayDate.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+              })}`
+            : 'Team on leave'
+        }
+        size="md"
+      >
+        <div className="space-y-4">
+          {selectedDayEvents.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No leave events for this date.</p>
+          ) : (
+            <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+              {selectedDayEvents.map((event) => {
+                const typeConfig = LEAVE_TYPE_CONFIG[event.leaveType]
+                const statusConfig = STATUS_CONFIG[event.status] || STATUS_CONFIG.PENDING
+                return (
+                  <div
+                    key={`${event.id}-${event.employeeId}`}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {event.isCurrentUser ? 'You' : event.employeeName}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {typeConfig.label}
+                        {event.department ? ` - ${event.department}` : ''}
+                      </p>
+                    </div>
+                    <Badge variant="secondary" className={`${statusConfig.bg} ${statusConfig.color} border-0`}>
+                      {statusConfig.label}
+                    </Badge>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsDayEventsModalOpen(false)
+                setSelectedDayDate(null)
+                setSelectedDayEvents([])
+              }}
+            >
+              Close
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       <Modal

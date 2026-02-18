@@ -71,6 +71,8 @@ export async function GET(request: NextRequest) {
           title: true,
           description: true,
           deviceType: true,
+          isUpgradeRequest: true,
+          managerApprovalReceived: true,
           priority: true,
           status: true,
           hrAssignedTo: true,
@@ -97,6 +99,8 @@ export async function GET(request: NextRequest) {
         title: true,
         description: true,
         deviceType: true,
+        isUpgradeRequest: true,
+        managerApprovalReceived: true,
         priority: true,
         status: true,
         solution: true,
@@ -129,7 +133,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { title, description, deviceType, priority } = body
+    const { title, description, deviceType, priority, isUpgradeRequest, managerApprovalReceived } = body
 
     const titleClean = typeof title === 'string' ? title.trim() : ''
     const descriptionClean = typeof description === 'string' ? description.trim() : ''
@@ -145,12 +149,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid priority' }, { status: 400 })
     }
 
+    const normalizedUpgradeRequest = Boolean(isUpgradeRequest)
+    const normalizedManagerApproval =
+      managerApprovalReceived === true ? true : managerApprovalReceived === false ? false : null
+
+    if (normalizedUpgradeRequest && normalizedManagerApproval === null) {
+      return NextResponse.json(
+        { error: 'Manager approval selection is required for upgrade requests' },
+        { status: 400 }
+      )
+    }
+
     const ticket = await prisma.deviceTicket.create({
       data: {
         employeeId: user.id,
         title: titleClean,
         description: descriptionClean,
         deviceType: deviceTypeClean,
+        isUpgradeRequest: normalizedUpgradeRequest,
+        managerApprovalReceived: normalizedUpgradeRequest ? normalizedManagerApproval : null,
         priority: (priority as (typeof VALID_PRIORITIES)[number]) || 'MEDIUM',
         status: 'OPEN',
       },

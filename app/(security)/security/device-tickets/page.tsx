@@ -44,6 +44,8 @@ interface DeviceTicket {
   title: string
   description: string
   deviceType: string
+  isUpgradeRequest: boolean
+  managerApprovalReceived: boolean | null
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
   status: 'OPEN' | 'UNDER_REVIEW' | 'SOLUTION' | 'RESOLVED'
   solution: string | null
@@ -520,6 +522,17 @@ export default function SecurityDeviceTicketsPage() {
                 >
                   {PRIORITY_CONFIG[updateModal.ticket.priority].label} Priority
                 </span>
+                {updateModal.ticket.isUpgradeRequest && (
+                  <>
+                    <span>•</span>
+                    <span>
+                      Upgrade request
+                      {updateModal.ticket.managerApprovalReceived !== null && (
+                        <> · Manager approval: {updateModal.ticket.managerApprovalReceived ? 'Yes' : 'No'}</>
+                      )}
+                    </span>
+                  </>
+                )}
                 {updateModal.ticket.expectedResolutionDate && (
                   <span>
                     Expected:{' '}

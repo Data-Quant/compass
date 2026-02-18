@@ -36,6 +36,8 @@ interface DeviceTicket {
   title: string
   description: string
   deviceType: string
+  isUpgradeRequest: boolean
+  managerApprovalReceived: boolean | null
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
   status: 'OPEN' | 'UNDER_REVIEW' | 'SOLUTION' | 'RESOLVED'
   solution: string | null
@@ -84,6 +86,8 @@ export default function DeviceSupportPage() {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [deviceType, setDeviceType] = useState('')
+  const [isUpgradeRequest, setIsUpgradeRequest] = useState(false)
+  const [managerApprovalSelection, setManagerApprovalSelection] = useState<'yes' | 'no' | ''>('')
   const [priority, setPriority] = useState('MEDIUM')
 
   useEffect(() => {
@@ -110,12 +114,25 @@ export default function DeviceSupportPage() {
       return
     }
 
+    if (isUpgradeRequest && !managerApprovalSelection) {
+      toast.error('Please select manager approval status for this upgrade request')
+      return
+    }
+
     setSubmitting(true)
     try {
       const res = await fetch('/api/device-tickets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, description, deviceType, priority }),
+        body: JSON.stringify({
+          title,
+          description,
+          deviceType,
+          priority,
+          isUpgradeRequest,
+          managerApprovalReceived:
+            isUpgradeRequest ? managerApprovalSelection === 'yes' : null,
+        }),
       })
 
       const data = await res.json()
@@ -125,6 +142,8 @@ export default function DeviceSupportPage() {
         setTitle('')
         setDescription('')
         setDeviceType('')
+        setIsUpgradeRequest(false)
+        setManagerApprovalSelection('')
         setPriority('MEDIUM')
         setShowForm(false)
         loadTickets()
@@ -231,6 +250,65 @@ export default function DeviceSupportPage() {
                         required
                       />
                     </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="upgradeRequest">Is this an upgrade request?</Label>
+                        <Select
+                          value={isUpgradeRequest ? 'yes' : 'no'}
+                          onValueChange={(value) => {
+                            const upgrade = value === 'yes'
+                            setIsUpgradeRequest(upgrade)
+                            if (!upgrade) {
+                              setManagerApprovalSelection('')
+                            }
+                          }}
+                        >
+                          <SelectTrigger id="upgradeRequest">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="no">No</SelectItem>
+                            <SelectItem value="yes">Yes</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {isUpgradeRequest && (
+                        <div className="space-y-2">
+                          <Label htmlFor="managerApproval">
+                            Manager approval received? <span className="text-red-500">*</span>
+                          </Label>
+                          <Select
+                            value={managerApprovalSelection || '__none__'}
+                            onValueChange={(value) =>
+                              setManagerApprovalSelection(
+                                value === '__none__' ? '' : (value as 'yes' | 'no')
+                              )
+                            }
+                          >
+                            <SelectTrigger id="managerApproval">
+                              <SelectValue placeholder="Select yes or no..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none__" disabled>
+                                Select yes or no...
+                              </SelectItem>
+                              <SelectItem value="yes">Yes</SelectItem>
+                              <SelectItem value="no">No</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+
+                    {isUpgradeRequest && (
+                      <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 p-3">
+                        <p className="text-xs text-amber-700 dark:text-amber-300">
+                          For upgrade requests, please share manager approval proof with HR.
+                        </p>
+                      </div>
+                    )}
 
                     <div className="space-y-2">
                       <Label>Priority</Label>
@@ -361,6 +439,22 @@ export default function DeviceSupportPage() {
                                   <p className="text-xs font-medium text-muted-foreground mb-1">Description</p>
                                   <p className="text-sm text-foreground whitespace-pre-wrap">{ticket.description}</p>
                                 </div>
+                                {ticket.isUpgradeRequest && (
+                                  <div>
+                                    <p className="text-xs font-medium text-muted-foreground mb-1">Upgrade request</p>
+                                    <p className="text-sm text-foreground">
+                                      Yes
+                                      {ticket.managerApprovalReceived !== null && (
+                                        <>
+                                          {' '}· Manager approval:{' '}
+                                          <span className={ticket.managerApprovalReceived ? 'text-emerald-400' : 'text-amber-300'}>
+                                            {ticket.managerApprovalReceived ? 'Yes' : 'No'}
+                                          </span>
+                                        </>
+                                      )}
+                                    </p>
+                                  </div>
+                                )}
                                 {ticket.hrAssignedTo && (
                                   <div>
                                     <p className="text-xs font-medium text-muted-foreground mb-1">Assigned to</p>
@@ -462,6 +556,22 @@ export default function DeviceSupportPage() {
                                   <p className="text-xs font-medium text-muted-foreground mb-1">Description</p>
                                   <p className="text-sm text-foreground whitespace-pre-wrap">{ticket.description}</p>
                                 </div>
+                                {ticket.isUpgradeRequest && (
+                                  <div>
+                                    <p className="text-xs font-medium text-muted-foreground mb-1">Upgrade request</p>
+                                    <p className="text-sm text-foreground">
+                                      Yes
+                                      {ticket.managerApprovalReceived !== null && (
+                                        <>
+                                          {' '}· Manager approval:{' '}
+                                          <span className={ticket.managerApprovalReceived ? 'text-emerald-400' : 'text-amber-300'}>
+                                            {ticket.managerApprovalReceived ? 'Yes' : 'No'}
+                                          </span>
+                                        </>
+                                      )}
+                                    </p>
+                                  </div>
+                                )}
                                 {ticket.solution && (
                                   <div className="p-3 bg-green-50 dark:bg-green-500/10 rounded-lg">
                                     <p className="text-xs font-medium text-green-700 dark:text-green-400 mb-1">Solution</p>

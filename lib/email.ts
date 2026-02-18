@@ -543,6 +543,8 @@ export async function sendNewTicketNotificationToHR(ticketId: string) {
         <p><strong>Employee:</strong> ${escapeHtml(ticket.employee.name)}</p>
         <p><strong>Department:</strong> ${escapeHtml(ticket.employee.department) || 'N/A'}</p>
         <p><strong>Device:</strong> ${escapeHtml(ticket.deviceType)}</p>
+        <p><strong>Upgrade Request:</strong> ${ticket.isUpgradeRequest ? 'Yes' : 'No'}</p>
+        ${ticket.isUpgradeRequest ? `<p><strong>Manager Approval:</strong> ${ticket.managerApprovalReceived === true ? 'Yes' : ticket.managerApprovalReceived === false ? 'No' : 'Not provided'}</p>` : ''}
         <p><strong>Priority:</strong> <span style="color: ${priorityColors[ticket.priority]}; font-weight: bold;">${ticket.priority}</span></p>
         <p><strong>Issue:</strong> ${escapeHtml(ticket.title)}</p>
       </div>
@@ -630,6 +632,8 @@ export async function sendTicketStatusNotification(
         <p><strong>Employee:</strong> ${escapeHtml(employee.name)}</p>
         <p><strong>Ticket:</strong> ${escapeHtml(ticket.title)}</p>
         <p><strong>Device:</strong> ${escapeHtml(ticket.deviceType)}</p>
+        <p><strong>Upgrade Request:</strong> ${ticket.isUpgradeRequest ? 'Yes' : 'No'}</p>
+        ${ticket.isUpgradeRequest ? `<p><strong>Manager Approval:</strong> ${ticket.managerApprovalReceived === true ? 'Yes' : ticket.managerApprovalReceived === false ? 'No' : 'Not provided'}</p>` : ''}
         <p><strong>Priority:</strong> ${ticket.priority}</p>
         ${ticket.expectedResolutionDate ? `<p><strong>Expected Resolution:</strong> ${new Date(ticket.expectedResolutionDate).toLocaleDateString()}</p>` : ''}
         ${ticket.hrAssignedTo ? `<p><strong>Handled by:</strong> ${escapeHtml(ticket.hrAssignedTo)}</p>` : ''}

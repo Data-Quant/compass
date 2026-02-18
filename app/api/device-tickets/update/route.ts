@@ -133,6 +133,8 @@ export async function PATCH(request: NextRequest) {
                     title: true,
                     description: true,
                     deviceType: true,
+                    isUpgradeRequest: true,
+                    managerApprovalReceived: true,
                     priority: true,
                     status: true,
                     hrAssignedTo: true,
