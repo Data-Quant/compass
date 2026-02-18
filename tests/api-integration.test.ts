@@ -139,6 +139,24 @@ test('GET /api/leave/balance requires auth', async () => {
   )
 })
 
+// ─── Asset APIs ────────────────────────────────────────────────────────────────
+
+test('GET /api/assets requires manager auth', async () => {
+  const { status } = await fetchJSON('/api/assets')
+  assert.ok(
+    status === 200 || status === 401 || status === 403,
+    `Unexpected status ${status}`
+  )
+})
+
+test('GET /api/assets/my requires auth', async () => {
+  const { status } = await fetchJSON('/api/assets/my')
+  assert.ok(
+    status === 200 || status === 401,
+    `Unexpected status ${status}`
+  )
+})
+
 // ─── Report APIs ─────────────────────────────────────────────────────────────
 
 test('GET /api/reports/export requires auth', async () => {

@@ -28,6 +28,7 @@ import {
   Palmtree,
   AlertCircle,
   Shield,
+  PackageSearch,
 } from 'lucide-react'
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -70,6 +71,16 @@ interface DeviceTicket {
   employee: { id: string; name: string; department: string | null }
 }
 
+interface MyEquipmentItem {
+  id: string
+  equipmentId: string
+  assetName: string
+  category: string
+  brand: string | null
+  model: string | null
+  status: string
+}
+
 // â”€â”€â”€ Animation helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const stagger = {
@@ -103,6 +114,7 @@ export default function DashboardPage() {
   const [pendingLeave, setPendingLeave] = useState<LeaveRequest[]>([])
   const [upcomingTeamLeaves, setUpcomingTeamLeaves] = useState<LeaveRequest[]>([])
   const [openTickets, setOpenTickets] = useState<DeviceTicket[]>([])
+  const [myEquipment, setMyEquipment] = useState<MyEquipmentItem[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -112,6 +124,7 @@ export default function DashboardPage() {
       loadLeaveBalance(),
       loadProjects(),
       loadUpcomingTeamLeaves(),
+      loadMyEquipment(),
     ]
     // Role-specific data
     if (user.role === 'HR' || user.role === 'SECURITY') {
@@ -175,6 +188,18 @@ export default function DashboardPage() {
         setOpenTickets(data.tickets.filter((t: DeviceTicket) => t.status === 'OPEN' || t.status === 'UNDER_REVIEW'))
       }
     } catch { /* silent */ }
+  }
+
+  const loadMyEquipment = async () => {
+    try {
+      const res = await fetch('/api/assets/my')
+      const data = await res.json()
+      if (data.items) {
+        setMyEquipment(data.items)
+      }
+    } catch {
+      // silent
+    }
   }
 
   // â”€â”€â”€ Computed stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -592,6 +617,42 @@ export default function DashboardPage() {
               <p className="text-sm text-muted-foreground">
                 Submit and track device support tickets for hardware, software, or access issues.
               </p>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* My Equipment */}
+        <motion.div variants={stagger.item}>
+          <Card className="h-full">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <PackageSearch className="h-5 w-5 text-cyan-500" />
+                  <h2 className="text-lg font-semibold text-foreground">My Equipment</h2>
+                </div>
+                <Badge variant="secondary">{myEquipment.length}</Badge>
+              </div>
+
+              {myEquipment.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No equipment currently assigned to you.</p>
+              ) : (
+                <div className="space-y-2 max-h-[220px] overflow-y-auto">
+                  {myEquipment.slice(0, 6).map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/40"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{item.assetName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {item.equipmentId} · {[item.category, item.brand, item.model].filter(Boolean).join(' · ')}
+                        </p>
+                      </div>
+                      <Badge variant="outline">{item.status.replace(/_/g, ' ')}</Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </motion.div>

@@ -31,6 +31,7 @@ import {
   Shield,
   Eye,
   CheckSquare,
+  PackageSearch,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -102,6 +103,7 @@ export const ADMIN_SIDEBAR: SidebarConfig = {
       items: [
         { label: 'Leave', href: '/admin/leave', icon: Calendar },
         { label: 'Device Tickets', href: '/admin/device-tickets', icon: Monitor },
+        { label: 'Assets', href: '/admin/assets', icon: PackageSearch },
         { label: 'Payroll', href: '/admin/payroll', icon: Wallet },
       ],
     },

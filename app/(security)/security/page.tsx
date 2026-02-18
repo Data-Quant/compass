@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   ArrowRight,
   AlertCircle,
+  PackageSearch,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -241,6 +242,41 @@ export default function SecurityDashboardPage() {
                     className="inline-flex items-center gap-2"
                   >
                     Open Queue
+                    <ArrowRight className="w-4 h-4" />
+                  </Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.18 }}
+        >
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center">
+                    <PackageSearch className="w-6 h-6 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-semibold text-foreground font-display">
+                      Equipment Registry
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      Track all equipment assignments, ownership, costs, and warranty windows.
+                    </p>
+                  </div>
+                </div>
+                <Button asChild>
+                  <Link
+                    href="/security/assets"
+                    className="inline-flex items-center gap-2"
+                  >
+                    Open Assets
                     <ArrowRight className="w-4 h-4" />
                   </Link>
                 </Button>

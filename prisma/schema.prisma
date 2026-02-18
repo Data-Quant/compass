@@ -67,6 +67,22 @@ enum TicketPriority {
   URGENT
 }
 
+enum AssetStatus {
+  IN_STOCK
+  ASSIGNED
+  IN_REPAIR
+  RETIRED
+  LOST
+  DISPOSED
+}
+
+enum AssetCondition {
+  NEW
+  GOOD
+  FAIR
+  DAMAGED
+}
+
 enum PayrollPeriodStatus {
   DRAFT
   CALCULATED
@@ -138,6 +154,11 @@ model User {
   // Device management relations
   deviceTickets       DeviceTicket[]     @relation("DeviceTicketEmployee")
   leaveBalances       LeaveBalance[]
+  assignedEquipment   EquipmentAsset[]       @relation("AssetCurrentAssignee")
+  equipmentAssignments EquipmentAssignment[] @relation("EquipmentAssignmentEmployee")
+  equipmentAssignedBy EquipmentAssignment[]  @relation("EquipmentAssignedBy")
+  equipmentUnassignedBy EquipmentAssignment[] @relation("EquipmentUnassignedBy")
+  equipmentEventsActed EquipmentEvent[]      @relation("EquipmentEventActor")
 
   // Payroll management relations
   payrollCreatedPeriods   PayrollPeriod[]         @relation("PayrollCreatedBy")
@@ -368,6 +389,80 @@ model DeviceTicket {
 
   @@index([employeeId])
   @@index([status])
+}
+
+model EquipmentAsset {
+  id                String         @id @default(cuid())
+  equipmentId       String         @unique
+  assetName         String
+  category          String
+  brand             String?
+  model             String?
+  serialNumber      String?        @unique
+  specsJson         Json?
+  purchaseCost      Float?
+  purchaseCurrency  String         @default("PKR")
+  purchaseDate      DateTime?
+  warrantyStartDate DateTime?
+  warrantyEndDate   DateTime?
+  vendor            String?
+  status            AssetStatus    @default(IN_STOCK)
+  condition         AssetCondition @default(GOOD)
+  location          String?
+  notes             String?
+  currentAssigneeId String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  currentAssignee   User?                @relation("AssetCurrentAssignee", fields: [currentAssigneeId], references: [id], onDelete: SetNull)
+  assignments       EquipmentAssignment[]
+  events            EquipmentEvent[]
+
+  @@index([equipmentId])
+  @@index([serialNumber])
+  @@index([status])
+  @@index([currentAssigneeId])
+  @@index([warrantyEndDate])
+}
+
+model EquipmentAssignment {
+  id              String    @id @default(cuid())
+  assetId         String
+  employeeId      String
+  assignedById    String
+  assignedAt      DateTime  @default(now())
+  unassignedAt    DateTime?
+  unassignedById  String?
+  assignmentNote  String?
+  returnNote      String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  asset           EquipmentAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  employee        User           @relation("EquipmentAssignmentEmployee", fields: [employeeId], references: [id], onDelete: Restrict)
+  assignedBy      User           @relation("EquipmentAssignedBy", fields: [assignedById], references: [id], onDelete: Restrict)
+  unassignedBy    User?          @relation("EquipmentUnassignedBy", fields: [unassignedById], references: [id], onDelete: SetNull)
+
+  @@index([assetId])
+  @@index([employeeId])
+  @@index([assignedAt])
+  @@index([unassignedAt])
+}
+
+model EquipmentEvent {
+  id         String    @id @default(cuid())
+  assetId    String
+  actorId    String?
+  eventType  String
+  payloadJson Json?
+  createdAt  DateTime  @default(now())
+
+  asset      EquipmentAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  actor      User?          @relation("EquipmentEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([assetId])
+  @@index([eventType])
+  @@index([createdAt])
 }
 
 model PayrollPeriod {

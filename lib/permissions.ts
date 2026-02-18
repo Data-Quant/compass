@@ -13,3 +13,7 @@ export function canManagePayroll(role: string | null | undefined): boolean {
 export function canManageSupport(role: string | null | undefined): boolean {
   return role === 'HR' || role === 'SECURITY'
 }
+
+export function canManageAssets(role: string | null | undefined): boolean {
+  return role === 'HR' || role === 'SECURITY'
+}
