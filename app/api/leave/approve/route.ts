@@ -43,6 +43,16 @@ export async function POST(request: NextRequest) {
     if (!leaveRequest) {
       return NextResponse.json({ error: 'Leave request not found' }, { status: 404 })
     }
+
+    // Some senior members (for example team leads / junior partners) do not have
+    // an upstream TEAM_LEAD mapping. Those requests should be HR-only approvals.
+    const superiorLeadCount = await prisma.evaluatorMapping.count({
+      where: {
+        evaluateeId: leaveRequest.employeeId,
+        relationshipType: 'TEAM_LEAD',
+      },
+    })
+    const requiresLeadApproval = superiorLeadCount > 0
     
     const isHR = isAdminRole(user.role)
     
@@ -118,7 +128,7 @@ export async function POST(request: NextRequest) {
         if (leaveRequest.status === 'LEAD_APPROVED' || leaveRequest.leadApprovedBy) {
           newStatus = 'APPROVED'
         } else {
-          newStatus = 'HR_APPROVED'
+          newStatus = requiresLeadApproval ? 'HR_APPROVED' : 'APPROVED'
         }
       } else if (isLead) {
         if (leaveRequest.status === 'LEAD_APPROVED' && leaveRequest.leadApprovedBy) {
