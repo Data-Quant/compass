@@ -32,11 +32,6 @@ export const THEME = {
   accent: '#8b5cf6', // Purple
 }
 
-// Feature flags
-export const FEATURE_MY_TASKS_V2 = ['1', 'true', 'yes'].includes(
-  (process.env.NEXT_PUBLIC_FEATURE_MY_TASKS_V2 || '').toLowerCase()
-)
-
 /**
  * Evaluator Configuration
  * 
