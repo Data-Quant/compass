@@ -633,6 +633,7 @@ export default function LeavePage() {
                         const isSelected = isInSelectedRange(date)
                         const isWeekend = date.getDay() === 0 || date.getDay() === 6
                         const isPast = date < new Date(new Date().setHours(0, 0, 0, 0))
+                        const canApplyOnDate = !isPast && isCurrentMonth
 
                         return (
                           <Button
@@ -645,8 +646,11 @@ export default function LeavePage() {
                               ${isSelected ? 'bg-indigo-100 dark:bg-indigo-500/20 ring-2 ring-indigo-500' : ''}
                               ${isToday && !isSelected ? 'bg-muted ring-1 ring-indigo-300' : ''}
                             `}
-                            onClick={() => !isPast && isCurrentMonth && handleDateClick(date)}
-                            disabled={isPast || !isCurrentMonth}
+                            onClick={() => {
+                              if (canApplyOnDate) {
+                                handleDateClick(date)
+                              }
+                            }}
                           >
                             <span
                               className={`
