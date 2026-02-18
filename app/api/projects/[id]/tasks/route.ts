@@ -19,7 +19,7 @@ export async function POST(
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id: projectId } = await params
-    const { title, description, assigneeId, priority, dueDate, sectionId, labelIds } = await request.json()
+    const { title, description, assigneeId, priority, startDate, dueDate, sectionId, labelIds } = await request.json()
 
     if (!title?.trim()) {
       return NextResponse.json({ error: 'Task title is required' }, { status: 400 })
@@ -39,6 +39,7 @@ export async function POST(
         description: description?.trim() || null,
         assigneeId: assigneeId || null,
         priority: priority || 'MEDIUM',
+        startDate: startDate ? new Date(startDate) : null,
         dueDate: dueDate ? new Date(dueDate) : null,
         orderIndex: (lastTask?.orderIndex || 0) + 1,
         ...(labelIds?.length > 0 && {
@@ -63,7 +64,7 @@ export async function PUT(request: NextRequest) {
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { taskId, title, description, status, priority, assigneeId, dueDate, sectionId, labelIds, orderIndex } = await request.json()
+    const { taskId, title, description, status, priority, assigneeId, startDate, dueDate, sectionId, labelIds, orderIndex } = await request.json()
 
     if (!taskId) {
       return NextResponse.json({ error: 'taskId is required' }, { status: 400 })
@@ -79,6 +80,7 @@ export async function PUT(request: NextRequest) {
     }
     if (priority !== undefined) updateData.priority = priority
     if (assigneeId !== undefined) updateData.assigneeId = assigneeId || null
+    if (startDate !== undefined) updateData.startDate = startDate ? new Date(startDate) : null
     if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null
     if (sectionId !== undefined) updateData.sectionId = sectionId || null
     if (orderIndex !== undefined) updateData.orderIndex = orderIndex

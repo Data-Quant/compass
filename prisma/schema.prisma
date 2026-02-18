@@ -172,6 +172,7 @@ model User {
   // Project management relations
   ownedProjects           Project[]               @relation("ProjectOwner")
   projectMemberships      ProjectMember[]
+  projectReferencesCreated ProjectReference[]     @relation("ProjectReferenceCreatedBy")
   assignedTasks           Task[]                  @relation("TaskAssignee")
   taskComments            TaskComment[]           @relation("TaskCommentAuthor")
 
@@ -725,6 +726,7 @@ model Project {
   tasks       Task[]
   sections    TaskSection[]
   labels      TaskLabel[]
+  references  ProjectReference[]
 
   @@index([ownerId])
   @@index([status])
@@ -754,6 +756,7 @@ model Task {
   status      TaskStatus   @default(TODO)
   priority    TaskPriority @default(MEDIUM)
   assigneeId  String?
+  startDate   DateTime?
   dueDate     DateTime?
   completedAt DateTime?
   orderIndex  Int          @default(0)
@@ -769,6 +772,7 @@ model Task {
   @@index([projectId])
   @@index([sectionId])
   @@index([assigneeId])
+  @@index([assigneeId, dueDate])
   @@index([status])
 }
 
@@ -810,6 +814,24 @@ model TaskLabel {
 
   @@unique([projectId, name])
   @@index([projectId])
+}
+
+model ProjectReference {
+  id          String   @id @default(cuid())
+  projectId   String
+  title       String
+  url         String?
+  note        String?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy   User     @relation("ProjectReferenceCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([createdById])
+  @@index([updatedAt])
 }
 
 model TaskLabelAssignment {

@@ -75,6 +75,8 @@ export default function ProjectsPage() {
   const [allUsers, setAllUsers] = useState<AllUser[]>([])
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([])
   const [memberSearch, setMemberSearch] = useState('')
+  const [usersLoading, setUsersLoading] = useState(false)
+  const [usersError, setUsersError] = useState<string | null>(null)
 
   useEffect(() => { loadProjects() }, [])
 
@@ -91,11 +93,27 @@ export default function ProjectsPage() {
   }
 
   const fetchUsers = async () => {
+    setUsersLoading(true)
+    setUsersError(null)
     try {
       const res = await fetch('/api/users')
       const data = await res.json()
+      if (!res.ok) {
+        const message = data?.error || 'Failed to load users'
+        setAllUsers([])
+        setUsersError(message)
+        toast.error(message)
+        return
+      }
       setAllUsers(data.users || [])
-    } catch { /* ignore */ }
+    } catch {
+      const message = 'Failed to load users'
+      setAllUsers([])
+      setUsersError(message)
+      toast.error(message)
+    } finally {
+      setUsersLoading(false)
+    }
   }
 
   const openCreateModal = () => {
@@ -105,6 +123,7 @@ export default function ProjectsPage() {
     setNewColor(null)
     setSelectedMemberIds([])
     setMemberSearch('')
+    setUsersError(null)
     fetchUsers()
   }
 
@@ -378,7 +397,11 @@ export default function ProjectsPage() {
                 />
               </div>
               <div className="max-h-40 overflow-y-auto p-1">
-                {filteredUsers.map((u) => {
+                {usersLoading ? (
+                  <p className="text-xs text-muted-foreground text-center py-3">Loading people...</p>
+                ) : usersError ? (
+                  <p className="text-xs text-red-400/90 text-center py-3">{usersError}</p>
+                ) : filteredUsers.map((u) => {
                   const selected = selectedMemberIds.includes(u.id)
                   return (
                     <button
@@ -395,7 +418,7 @@ export default function ProjectsPage() {
                     </button>
                   )
                 })}
-                {filteredUsers.length === 0 && (
+                {!usersLoading && !usersError && filteredUsers.length === 0 && (
                   <p className="text-xs text-muted-foreground/50 text-center py-3">No users found</p>
                 )}
               </div>

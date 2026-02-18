@@ -121,6 +121,38 @@ test('POST /api/projects requires auth', async () => {
   )
 })
 
+test('GET /api/my-tasks requires auth', async () => {
+  const { status } = await fetchJSON('/api/my-tasks')
+  assert.ok(
+    status === 200 || status === 401,
+    `Unexpected status ${status}`
+  )
+})
+
+test('GET /api/my-tasks/calendar requires auth', async () => {
+  const { status } = await fetchJSON('/api/my-tasks/calendar?view=month&start=2026-02-01&end=2026-02-28')
+  assert.ok(
+    status === 200 || status === 401 || status === 400,
+    `Unexpected status ${status}`
+  )
+})
+
+test('GET /api/my-tasks/dashboard requires auth', async () => {
+  const { status } = await fetchJSON('/api/my-tasks/dashboard?window=30d')
+  assert.ok(
+    status === 200 || status === 401,
+    `Unexpected status ${status}`
+  )
+})
+
+test('GET /api/projects/references requires auth', async () => {
+  const { status } = await fetchJSON('/api/projects/references')
+  assert.ok(
+    status === 200 || status === 401 || status === 403,
+    `Unexpected status ${status}`
+  )
+})
+
 // ─── Leave APIs ──────────────────────────────────────────────────────────────
 
 test('GET /api/leave/requests requires auth', async () => {

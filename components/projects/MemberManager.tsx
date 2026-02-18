@@ -27,6 +27,7 @@ export function MemberManager({
   const [allUsers, setAllUsers] = useState<AllUser[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
+  const [usersError, setUsersError] = useState<string | null>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -38,12 +39,26 @@ export function MemberManager({
 
   const fetchUsers = async () => {
     setLoading(true)
+    setUsersError(null)
     try {
       const res = await fetch('/api/users')
       const data = await res.json()
+      if (!res.ok) {
+        const message = data?.error || 'Failed to load users'
+        setAllUsers([])
+        setUsersError(message)
+        toast.error(message)
+        return
+      }
       setAllUsers(data.users || [])
-    } catch { /* ignore */ }
-    setLoading(false)
+    } catch {
+      const message = 'Failed to load users'
+      setAllUsers([])
+      setUsersError(message)
+      toast.error(message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const addMember = async (userId: string) => {
@@ -163,6 +178,10 @@ export function MemberManager({
                   <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
                   Loading...
                 </div>
+              ) : usersError ? (
+                <p className="text-sm text-red-400/90 text-center py-4">
+                  {usersError}
+                </p>
               ) : filteredNonMembers.length === 0 ? (
                 <p className="text-sm text-muted-foreground/50 text-center py-4">
                   {search ? 'No users found' : 'All users are members'}

@@ -50,6 +50,7 @@ export interface PanelTask {
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
   assigneeId: string | null
   assignee: TaskUser | null
+  startDate: string | null
   dueDate: string | null
   sectionId: string | null
   section: Section | null
