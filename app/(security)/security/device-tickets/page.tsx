@@ -13,6 +13,7 @@ import {
   User,
   Shield,
   Clock,
+  Eye,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
@@ -130,6 +131,10 @@ export default function SecurityDeviceTicketsPage() {
     open: boolean
     ticket: DeviceTicket | null
   }>({ open: false, ticket: null })
+  const [detailsModal, setDetailsModal] = useState<{
+    open: boolean
+    ticket: DeviceTicket | null
+  }>({ open: false, ticket: null })
   const [newStatus, setNewStatus] = useState('')
   const [solution, setSolution] = useState('')
   const [expectedResolutionDate, setExpectedResolutionDate] = useState('')
@@ -193,6 +198,10 @@ export default function SecurityDeviceTicketsPage() {
         ? new Date(ticket.expectedResolutionDate).toISOString().split('T')[0]
         : ''
     )
+  }
+
+  const openDetailsModal = (ticket: DeviceTicket) => {
+    setDetailsModal({ open: true, ticket })
   }
 
   const handleUpdate = async () => {
@@ -479,9 +488,14 @@ export default function SecurityDeviceTicketsPage() {
                                 Update
                               </Button>
                             ) : (
-                              <span className="text-xs text-green-600 dark:text-green-400 font-medium">
-                                Done
-                              </span>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openDetailsModal(ticket)}
+                              >
+                                <Eye className="w-3.5 h-3.5 mr-1" />
+                                View
+                              </Button>
                             )}
                           </TableCell>
                         </TableRow>
@@ -603,6 +617,80 @@ export default function SecurityDeviceTicketsPage() {
               </Button>
               <Button onClick={handleUpdate} disabled={processing}>
                 {processing ? 'Updating...' : 'Update Ticket'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Resolved Ticket Details Modal */}
+      <Modal
+        isOpen={detailsModal.open}
+        onClose={() => setDetailsModal({ open: false, ticket: null })}
+        title="Ticket Details"
+        size="md"
+      >
+        {detailsModal.ticket && (
+          <div className="space-y-4">
+            <div className="p-3 bg-muted rounded-lg">
+              <div className="flex items-center gap-2 mb-1">
+                <User className="w-4 h-4 text-muted-foreground" />
+                <span className="font-medium text-foreground text-sm">
+                  {detailsModal.ticket.employee.name}
+                </span>
+              </div>
+              <p className="font-medium text-foreground">{detailsModal.ticket.title}</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                {detailsModal.ticket.description}
+              </p>
+              <div className="grid grid-cols-2 gap-2 mt-2 text-xs text-muted-foreground">
+                <span>Device: {detailsModal.ticket.deviceType}</span>
+                <span>Priority: {PRIORITY_CONFIG[detailsModal.ticket.priority].label}</span>
+                <span>Status: {STATUS_CONFIG[detailsModal.ticket.status].label}</span>
+                <span>
+                  Expected:{' '}
+                  {detailsModal.ticket.expectedResolutionDate
+                    ? new Date(detailsModal.ticket.expectedResolutionDate).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })
+                    : 'Not set'}
+                </span>
+                <span>
+                  Created:{' '}
+                  {new Date(detailsModal.ticket.createdAt).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })}
+                </span>
+                <span>
+                  Resolved:{' '}
+                  {detailsModal.ticket.resolvedAt
+                    ? new Date(detailsModal.ticket.resolvedAt).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })
+                    : 'Not set'}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Solution / Response</Label>
+              <div className="rounded-md border border-border bg-muted/30 p-3 text-sm text-foreground">
+                {detailsModal.ticket.solution?.trim() || 'No solution recorded yet.'}
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setDetailsModal({ open: false, ticket: null })}
+              >
+                Close
               </Button>
             </div>
           </div>
