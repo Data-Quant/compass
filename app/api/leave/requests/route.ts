@@ -219,6 +219,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Cover person cannot be the same as the employee' }, { status: 400 })
     }
 
+    // If a TEAM_LEAD mapping exists for this employee, lead approval is required.
+    // Senior members without upstream TEAM_LEAD relationships remain HR-only.
+    const superiorLeadCount = await prisma.evaluatorMapping.count({
+      where: {
+        evaluateeId: targetEmployeeId,
+        relationshipType: 'TEAM_LEAD',
+      },
+    })
+    const requiresLeadApproval = superiorLeadCount > 0
+
     // Ensure employee exists when HR enters leave on behalf.
     if (isOnBehalfRequest || coverPersonId) {
       const idsToCheck = [targetEmployeeId, coverPersonId].filter(Boolean) as string[]
@@ -287,8 +297,37 @@ export async function POST(request: NextRequest) {
 
     // Create the leave request
     const leaveRequest = await prisma.$transaction(async (tx) => {
-      // HR on-behalf entries are auto-approved and immediately reflected in balances.
+      // HR on-behalf entries:
+      // - if lead approval is required => mark HR-approved and wait for lead
+      // - otherwise => fully approve immediately
       if (isOnBehalfRequest && isHR) {
+        if (requiresLeadApproval) {
+          return tx.leaveRequest.create({
+            data: {
+              employeeId: targetEmployeeId,
+              leaveType,
+              startDate: start,
+              endDate: end,
+              reason,
+              transitionPlan: safeTransitionPlan || 'Entered by HR on behalf of employee',
+              coverPersonId: coverPersonId || null,
+              ...(validNotifyIds.length > 0 && { additionalNotifyIds: validNotifyIds }),
+              status: 'HR_APPROVED',
+              hrApprovedBy: user.id,
+              hrApprovedAt: new Date(),
+              hrComment: 'Entered by HR on behalf of employee',
+            },
+            include: {
+              employee: {
+                select: { id: true, name: true, department: true, email: true },
+              },
+              coverPerson: {
+                select: { id: true, name: true },
+              },
+            },
+          })
+        }
+
         const usedField = `${leaveType.toLowerCase()}Used` as 'casualUsed' | 'sickUsed' | 'annualUsed'
 
         await tx.leaveBalance.update({
@@ -352,9 +391,8 @@ export async function POST(request: NextRequest) {
       })
     })
     
-    // Send notification to HR and Lead
-    // HR on-behalf entries are already approved, so no approval-request mail is required.
-    if (!(isOnBehalfRequest && isHR)) {
+    // Send approval request notifications unless this entry is already fully approved.
+    if (!(isOnBehalfRequest && isHR && !requiresLeadApproval)) {
       try {
         await sendLeaveRequestNotification(leaveRequest.id)
       } catch (e) {

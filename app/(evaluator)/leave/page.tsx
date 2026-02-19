@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import {
   Calendar,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Edit3,
@@ -16,6 +17,7 @@ import {
   TriangleAlert,
   Users,
   X,
+  XCircle,
 } from 'lucide-react'
 import { useLayoutUser } from '@/components/layout/SidebarLayout'
 import { Badge } from '@/components/ui/badge'
@@ -67,6 +69,15 @@ interface LeaveRequest {
   createdAt: string
 }
 
+interface ApprovalRequest extends LeaveRequest {
+  employee: {
+    id: string
+    name: string
+    department: string | null
+    position: string | null
+  }
+}
+
 interface CalendarEvent {
   id: string
   employeeId: string
@@ -108,6 +119,8 @@ export default function LeavePage() {
   const [user, setUser] = useState<any>(null)
   const [balance, setBalance] = useState<LeaveBalance | null>(null)
   const [requests, setRequests] = useState<LeaveRequest[]>([])
+  const [approvalQueue, setApprovalQueue] = useState<ApprovalRequest[]>([])
+  const [approvalProcessingId, setApprovalProcessingId] = useState<string | null>(null)
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
@@ -165,23 +178,48 @@ export default function LeavePage() {
 
   const loadData = async () => {
     try {
-      const [balanceRes, requestsRes, usersRes] = await Promise.all([
+      const [balanceRes, requestsRes, usersRes, approvalsRes] = await Promise.all([
         fetch('/api/leave/balance'),
         fetch('/api/leave/requests?employeeId=me'),
         fetch('/api/auth/login'),
+        fetch('/api/leave/requests?forApproval=true'),
       ])
 
       const balanceData = await balanceRes.json()
       const requestsData = await requestsRes.json()
       const usersData = await usersRes.json()
+      const approvalsData = await approvalsRes.json()
 
       setBalance(balanceData.balance)
       setRequests(requestsData.requests || [])
       setUsers(usersData.users || [])
+      setApprovalQueue(approvalsData.requests || [])
     } catch (error) {
       toast.error('Failed to load data')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleApprovalDecision = async (requestId: string, action: 'approve' | 'reject') => {
+    setApprovalProcessingId(requestId)
+    try {
+      const res = await fetch('/api/leave/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId, action }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to process request')
+      }
+
+      toast.success(action === 'approve' ? 'Leave approved' : 'Leave rejected')
+      await Promise.all([loadData(), loadCalendarEvents()])
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to process request')
+    } finally {
+      setApprovalProcessingId(null)
     }
   }
 
@@ -845,6 +883,80 @@ export default function LeavePage() {
                 </CardContent>
               </Card>
             </motion.div>
+
+            {/* Team Approval Queue */}
+            {approvalQueue.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15 }}
+                className="glass rounded-card border border-border overflow-hidden mt-4"
+              >
+                <Card>
+                  <CardContent className="p-0">
+                    <div className="p-4 border-b border-border">
+                      <h3 className="font-display font-semibold text-foreground">Team Approval Queue</h3>
+                      <p className="text-xs text-muted-foreground mt-1">Requests waiting for your lead approval</p>
+                    </div>
+                    <div className="divide-y divide-border">
+                      {approvalQueue.map((request) => {
+                        const typeConfig = LEAVE_TYPE_CONFIG[request.leaveType]
+                        const statusConfig = STATUS_CONFIG[request.status] || STATUS_CONFIG.PENDING
+                        const TypeIcon = typeConfig.icon
+                        const days = getDaysCount(request.startDate, request.endDate)
+                        const processing = approvalProcessingId === request.id
+
+                        return (
+                          <div key={request.id} className="p-3">
+                            <div className="flex items-start gap-3">
+                              <div className={`w-8 h-8 rounded-lg ${typeConfig.bgLight} flex items-center justify-center flex-shrink-0`}>
+                                <TypeIcon className={`w-4 h-4 ${typeConfig.color}`} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-0.5">
+                                  <span className="text-sm font-medium text-foreground">{request.employee.name}</span>
+                                  <Badge variant="secondary" className={`${statusConfig.bg} ${statusConfig.color} border-0`}>
+                                    {statusConfig.label}
+                                  </Badge>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  {typeConfig.label} • {new Date(request.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                  {' - '}
+                                  {new Date(request.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                  {' • '}{days}d
+                                </p>
+                                <p className="text-[11px] text-muted-foreground truncate">{request.reason}</p>
+                                <div className="flex items-center gap-2 mt-2">
+                                  <Button
+                                    size="sm"
+                                    className="h-7 px-2.5 text-xs bg-emerald-600 hover:bg-emerald-700"
+                                    disabled={processing}
+                                    onClick={() => handleApprovalDecision(request.id, 'approve')}
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    className="h-7 px-2.5 text-xs"
+                                    disabled={processing}
+                                    onClick={() => handleApprovalDecision(request.id, 'reject')}
+                                  >
+                                    <XCircle className="w-3.5 h-3.5 mr-1" />
+                                    Reject
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
 
             {/* Team on Leave Today */}
             {filteredCalendarEvents.filter(e => {

@@ -364,6 +364,7 @@ export default function HRLeavePage() {
                 const TypeIcon = typeConfig.icon
                 const days = getDaysCount(request.startDate, request.endDate)
                 const needsHRApproval = request.status === 'PENDING' || request.status === 'LEAD_APPROVED'
+                const leadNotRequired = !request.leadApprovedBy && request.status === 'APPROVED' && !!request.hrApprovedBy
                 
                 return (
                   <div key={request.id} className="p-4 hover:bg-muted/50 transition-colors">
@@ -409,10 +410,10 @@ export default function HRLeavePage() {
                           {/* Approval status */}
                           <div className="flex gap-4 mt-2 text-xs">
                             <span className={request.leadApprovedBy ? 'text-emerald-600' : 'text-muted-foreground'}>
-                              {request.leadApprovedBy ? '✓ Lead approved' : '○ Lead pending'}
+                              {request.leadApprovedBy ? 'Lead approved' : leadNotRequired ? 'Lead not required' : 'Lead pending'}
                             </span>
                             <span className={request.hrApprovedBy ? 'text-emerald-600' : 'text-muted-foreground'}>
-                              {request.hrApprovedBy ? '✓ HR approved' : '○ HR pending'}
+                              {request.hrApprovedBy ? 'HR approved' : 'HR pending'}
                             </span>
                           </div>
                           
@@ -635,4 +636,5 @@ export default function HRLeavePage() {
     </div>
   )
 }
+
 
