@@ -374,7 +374,11 @@ export default function UsersPage() {
     }
   }
 
-  const departments = [...new Set(users.map(u => u.department).filter(Boolean))]
+  const departments = [...new Set(
+    users
+      .map((u) => u.department)
+      .filter((department): department is string => Boolean(department && department.trim()))
+  )].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
   const filteredUsers = users.filter(u => {
     const matchSearch = u.name.toLowerCase().includes(searchTerm.toLowerCase()) || u.email?.toLowerCase().includes(searchTerm.toLowerCase())
     const matchRole = !filterRole || u.role === filterRole
