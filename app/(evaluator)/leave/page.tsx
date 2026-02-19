@@ -114,6 +114,17 @@ const STATUS_CONFIG: Record<string, { color: string; bg: string; label: string }
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
+const formatDateForInput = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+
+const parseInputDateAsLocal = (value: string) => {
+  const [year, month, day] = value.split('-').map(Number)
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return null
+  }
+  return new Date(year, month - 1, day)
+}
+
 export default function LeavePage() {
   const layoutUser = useLayoutUser()
   const [user, setUser] = useState<any>(null)
@@ -314,7 +325,9 @@ export default function LeavePage() {
   }
 
   const getReturnDateLabel = (endDate: string) => {
-    const value = new Date(endDate)
+    const parsed = parseInputDateAsLocal(endDate)
+    if (!parsed) return ''
+    const value = new Date(parsed)
     value.setDate(value.getDate() + 1)
     return value.toLocaleDateString()
   }
@@ -336,7 +349,7 @@ export default function LeavePage() {
       setSelectingEnd(true)
       setFormData({
         ...formData,
-        startDate: date.toISOString().split('T')[0],
+        startDate: formatDateForInput(date),
         endDate: '',
       })
     } else {
@@ -345,7 +358,7 @@ export default function LeavePage() {
         setSelectedRange({ ...selectedRange, end: date })
         setFormData({
           ...formData,
-          endDate: date.toISOString().split('T')[0],
+          endDate: formatDateForInput(date),
         })
         setSelectingEnd(false)
         setIsModalOpen(true)
@@ -354,7 +367,7 @@ export default function LeavePage() {
         setSelectedRange({ start: date, end: null })
         setFormData({
           ...formData,
-          startDate: date.toISOString().split('T')[0],
+          startDate: formatDateForInput(date),
           endDate: '',
         })
       }
