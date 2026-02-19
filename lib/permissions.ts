@@ -10,6 +10,11 @@ export function canManagePayroll(role: string | null | undefined): boolean {
   return role === 'HR' || role === 'OA'
 }
 
+export function canEditPayrollMaster(role: string | null | undefined): boolean {
+  // Master data (rates/slabs/profile edits) remains HR-only.
+  return role === 'HR'
+}
+
 export function canManageSupport(role: string | null | undefined): boolean {
   return role === 'HR' || role === 'SECURITY'
 }

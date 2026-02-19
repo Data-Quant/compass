@@ -112,13 +112,19 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     }
 
     const { updates, expenses, replaceExpenses } = parsed.data
+    const salaryHeads = await prisma.payrollSalaryHead.findMany({
+      where: { isActive: true },
+      select: { code: true },
+    })
+    const validKeys = new Set([
+      ...VALID_COMPONENT_KEYS,
+      ...salaryHeads.map((head) => head.code.toUpperCase()),
+    ])
+
     for (const update of updates) {
       const componentKey = update.componentKey.toUpperCase()
-      if (!VALID_COMPONENT_KEYS.has(componentKey as (typeof PAYROLL_COMPONENT_KEYS)[number])) {
-        return NextResponse.json(
-          { error: `Invalid componentKey: ${update.componentKey}` },
-          { status: 400 }
-        )
+      if (!validKeys.has(componentKey)) {
+        return NextResponse.json({ error: `Invalid componentKey: ${update.componentKey}` }, { status: 400 })
       }
     }
 
@@ -130,6 +136,20 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         const mapping = await tx.payrollIdentityMapping.findUnique({
           where: { normalizedPayrollName: normalized },
           select: { userId: true },
+        })
+
+        const previous = await tx.payrollInputValue.findUnique({
+          where: {
+            periodId_payrollName_componentKey: {
+              periodId,
+              payrollName,
+              componentKey,
+            },
+          },
+          select: {
+            amount: true,
+            userId: true,
+          },
         })
 
         await tx.payrollInputValue.upsert({
@@ -166,6 +186,19 @@ export async function PUT(request: NextRequest, context: RouteContext) {
               createdAt: new Date().toISOString(),
               createType: 'MANUAL_INPUT',
             },
+          },
+        })
+
+        await tx.payrollInputAuditEvent.create({
+          data: {
+            periodId,
+            userId: update.userId || mapping?.userId || previous?.userId || null,
+            payrollName,
+            componentKey,
+            previousAmount: previous?.amount ?? null,
+            newAmount: update.amount,
+            reason: update.note || 'Manual payroll input update',
+            actorId: user.id,
           },
         })
       }

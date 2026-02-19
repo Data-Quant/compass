@@ -1,6 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { canManageAssets, canManagePayroll, canManageSupport, isAdminRole } from '../lib/permissions'
+import {
+  canEditPayrollMaster,
+  canManageAssets,
+  canManagePayroll,
+  canManageSupport,
+  isAdminRole,
+} from '../lib/permissions'
 
 test('isAdminRole grants HR only', () => {
   assert.equal(isAdminRole('HR'), true)
@@ -14,6 +20,13 @@ test('payroll management follows admin-role matrix', () => {
   assert.equal(canManagePayroll('OA'), true)
   assert.equal(canManagePayroll('SECURITY'), false)
   assert.equal(canManagePayroll('EMPLOYEE'), false)
+})
+
+test('payroll master editing is HR-only', () => {
+  assert.equal(canEditPayrollMaster('HR'), true)
+  assert.equal(canEditPayrollMaster('OA'), false)
+  assert.equal(canEditPayrollMaster('SECURITY'), false)
+  assert.equal(canEditPayrollMaster('EMPLOYEE'), false)
 })
 
 test('support management allows HR and SECURITY only', () => {

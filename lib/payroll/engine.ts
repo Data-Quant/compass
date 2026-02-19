@@ -1,7 +1,8 @@
 import { prisma } from '@/lib/db'
 import { estimateIncomeTaxFromSlabs, FIX_IDS, FORMULA_VERSION } from '@/lib/payroll/formula-registry'
 import { PayrollReconciliationMismatch, reconcileNetVsPaid } from '@/lib/payroll/reconciliation'
-import { toPeriodKey } from '@/lib/payroll/normalizers'
+import { toPeriodKey, normalizePayrollName } from '@/lib/payroll/normalizers'
+import { calculateAnnualProgressiveTax, calculatePresentDays, calculateWorkingDays, resolveTravelTier } from '@/lib/payroll/settings'
 import type { Prisma } from '@prisma/client'
 
 type InputBucket = Record<string, number>
@@ -19,6 +20,21 @@ function getNumber(bucket: InputBucket, key: string): number {
   return Number.isFinite(value) ? value : 0
 }
 
+const KNOWN_EARNING_KEYS = new Set([
+  'BASIC_SALARY',
+  'MEDICAL_TAX_EXEMPTION',
+  'BONUS',
+  'MEDICAL_ALLOWANCE',
+  'TRAVEL_REIMBURSEMENT',
+  'UTILITY_REIMBURSEMENT',
+  'MEALS_REIMBURSEMENT',
+  'MOBILE_REIMBURSEMENT',
+  'EXPENSE_REIMBURSEMENT',
+  'ADVANCE_LOAN',
+])
+
+const KNOWN_DEDUCTION_KEYS = new Set(['INCOME_TAX', 'ADJUSTMENT', 'LOAN_REPAYMENT', 'PAID'])
+
 export interface RecalculateResult {
   periodId: string
   periodKey: string
@@ -35,6 +51,7 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
     select: {
       id: true,
       periodStart: true,
+      periodEnd: true,
       status: true,
     },
   })
@@ -44,10 +61,49 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
   }
 
   const periodKey = toPeriodKey(period.periodStart)
-  const inputs = await prisma.payrollInputValue.findMany({
-    where: { periodId },
-    orderBy: [{ payrollName: 'asc' }, { componentKey: 'asc' }],
-  })
+  const [inputs, activeFinancialYear, salaryHeads, holidays, travelTiers] = await Promise.all([
+    prisma.payrollInputValue.findMany({
+      where: { periodId },
+      orderBy: [{ payrollName: 'asc' }, { componentKey: 'asc' }],
+    }),
+    prisma.payrollFinancialYear.findFirst({
+      where: {
+        startDate: { lte: period.periodStart },
+        endDate: { gte: period.periodStart },
+      },
+      include: {
+        taxBrackets: {
+          orderBy: { orderIndex: 'asc' },
+        },
+      },
+      orderBy: { isActive: 'desc' },
+    }),
+    prisma.payrollSalaryHead.findMany({
+      where: { isActive: true },
+      select: {
+        code: true,
+        type: true,
+        isTaxable: true,
+      },
+    }),
+    prisma.payrollPublicHoliday.findMany({
+      where: {
+        holidayDate: {
+          gte: period.periodStart,
+          lte: period.periodEnd,
+        },
+      },
+      select: { holidayDate: true },
+    }),
+    prisma.payrollTravelAllowanceTier.findMany({
+      where: {
+        isActive: true,
+        effectiveFrom: { lte: period.periodEnd },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gte: period.periodStart } }],
+      },
+      orderBy: [{ transportMode: 'asc' }, { minKm: 'asc' }],
+    }),
+  ])
 
   const previousPeriod = await prisma.payrollPeriod.findFirst({
     where: { periodStart: { lt: period.periodStart } },
@@ -71,6 +127,101 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
     rowsByPayroll.set(row.payrollName, existing)
   }
 
+  const payrollNames = [...rowsByPayroll.keys()]
+  const normalizedByPayroll = new Map(payrollNames.map((name) => [name, normalizePayrollName(name)]))
+  const normalizedNames = [...new Set([...normalizedByPayroll.values()])]
+
+  const identityMappings = await prisma.payrollIdentityMapping.findMany({
+    where: { normalizedPayrollName: { in: normalizedNames } },
+    select: { normalizedPayrollName: true, userId: true },
+  })
+  const userIdByNormalized = new Map(identityMappings.map((row) => [row.normalizedPayrollName, row.userId]))
+
+  const userIds = new Set<string>()
+  for (const [payrollName, rows] of rowsByPayroll.entries()) {
+    const rowUserId = rows.find((r) => Boolean(r.userId))?.userId || null
+    const mappedUserId = rowUserId || userIdByNormalized.get(normalizedByPayroll.get(payrollName) || '') || null
+    if (mappedUserId) userIds.add(mappedUserId)
+  }
+
+  const [profiles, attendanceEntries, salaryRevisions] = await Promise.all([
+    prisma.payrollEmployeeProfile.findMany({
+      where: { userId: { in: [...userIds] } },
+      select: {
+        id: true,
+        userId: true,
+        distanceKm: true,
+        transportMode: true,
+      },
+    }),
+    prisma.payrollAttendanceEntry.findMany({
+      where: {
+        periodId,
+        userId: { in: [...userIds] },
+      },
+      select: {
+        userId: true,
+        attendanceDate: true,
+        status: true,
+      },
+    }),
+    prisma.payrollSalaryRevision.findMany({
+      where: {
+        employeeProfile: {
+          userId: {
+            in: [...userIds],
+          },
+        },
+        effectiveFrom: {
+          lte: period.periodStart,
+        },
+      },
+      orderBy: [{ employeeProfileId: 'asc' }, { effectiveFrom: 'desc' }],
+      include: {
+        employeeProfile: {
+          select: { userId: true },
+        },
+        lines: {
+          include: {
+            salaryHead: {
+              select: { code: true },
+            },
+          },
+        },
+      },
+    }),
+  ])
+
+  const profileByUserId = new Map(profiles.map((row) => [row.userId, row]))
+  const latestRevisionByUserId = new Map<string, (typeof salaryRevisions)[number]>()
+  for (const revision of salaryRevisions) {
+    const key = revision.employeeProfile.userId
+    if (!latestRevisionByUserId.has(key)) {
+      latestRevisionByUserId.set(key, revision)
+    }
+  }
+  const attendanceByUserId = new Map<string, typeof attendanceEntries>()
+  for (const entry of attendanceEntries) {
+    const list = attendanceByUserId.get(entry.userId) || []
+    list.push(entry)
+    attendanceByUserId.set(entry.userId, list)
+  }
+
+  const salaryHeadByCode = new Map(
+    salaryHeads.map((head) => [head.code.toUpperCase(), head] as const)
+  )
+  const workingDays = calculateWorkingDays({
+    periodStart: period.periodStart,
+    periodEnd: period.periodEnd,
+    holidays: holidays.map((h) => h.holidayDate),
+  })
+  const travelAutoUpserts: Array<{
+    periodId: string
+    payrollName: string
+    userId: string
+    amount: number
+  }> = []
+
   const mismatches: PayrollReconciliationMismatch[] = []
   const computedInserts: Array<{
     periodId: string
@@ -93,7 +244,47 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
 
   for (const [payrollName, rows] of rowsByPayroll.entries()) {
     const bucket = bucketInputs(rows)
-    const userId = rows.find((r) => r.userId)?.userId || null
+    const normalized = normalizedByPayroll.get(payrollName) || normalizePayrollName(payrollName)
+    const userId = rows.find((r) => r.userId)?.userId || userIdByNormalized.get(normalized) || null
+
+    if (userId) {
+      const revision = latestRevisionByUserId.get(userId)
+      if (revision) {
+        for (const line of revision.lines) {
+          const code = line.salaryHead.code.toUpperCase()
+          const hasManualOverride = rows.some(
+            (row) => row.componentKey.toUpperCase() === code && row.isOverride
+          )
+          if (!hasManualOverride && bucket[code] === undefined) {
+            bucket[code] = line.amount
+          }
+        }
+      }
+    }
+
+    const additionalEarnings = Object.entries(bucket).reduce((sum, [componentKey, amount]) => {
+      const code = componentKey.toUpperCase()
+      if (KNOWN_EARNING_KEYS.has(code)) return sum
+      const head = salaryHeadByCode.get(code)
+      if (!head || head.type !== 'EARNING') return sum
+      return sum + amount
+    }, 0)
+
+    const additionalDeductions = Object.entries(bucket).reduce((sum, [componentKey, amount]) => {
+      const code = componentKey.toUpperCase()
+      if (KNOWN_DEDUCTION_KEYS.has(code)) return sum
+      const head = salaryHeadByCode.get(code)
+      if (!head || head.type !== 'DEDUCTION') return sum
+      return sum + amount
+    }, 0)
+
+    const additionalTaxableEarnings = Object.entries(bucket).reduce((sum, [componentKey, amount]) => {
+      const code = componentKey.toUpperCase()
+      const head = salaryHeadByCode.get(code)
+      if (!head || head.type !== 'EARNING' || !head.isTaxable) return sum
+      return sum + amount
+    }, 0)
+    const additionalNonTaxableEarnings = additionalEarnings - additionalTaxableEarnings
 
     const basicSalary = getNumber(bucket, 'BASIC_SALARY')
     const medicalAllowance = getNumber(bucket, 'MEDICAL_ALLOWANCE')
@@ -103,27 +294,62 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
         : -medicalAllowance
     const bonus = getNumber(bucket, 'BONUS')
 
-    const totalTaxableSalary = basicSalary + medicalTaxExemption + bonus
+    const totalTaxableSalary = basicSalary + medicalTaxExemption + bonus + additionalTaxableEarnings
     // WHT Calculations in the workbook compute tax on (salary + bonus) only,
     // without the medical exemption adjustment. Use that same base for the
     // slab-based fallback so carry-forward / manual periods match the workbook.
-    const incomeTax =
-      bucket.INCOME_TAX !== undefined
-        ? getNumber(bucket, 'INCOME_TAX')
-        : estimateIncomeTaxFromSlabs(periodKey, basicSalary + bonus)
+    const incomeTax = (() => {
+      if (bucket.INCOME_TAX !== undefined) return getNumber(bucket, 'INCOME_TAX')
+      if (activeFinancialYear && activeFinancialYear.taxBrackets.length > 0) {
+        const annual = calculateAnnualProgressiveTax(
+          Math.max(0, basicSalary + bonus + additionalTaxableEarnings) * 12,
+          activeFinancialYear.taxBrackets
+        )
+        return annual / 12
+      }
+      return estimateIncomeTaxFromSlabs(periodKey, basicSalary + bonus)
+    })()
+
+    const travelOverride = rows.find((r) => r.componentKey === 'TRAVEL_REIMBURSEMENT' && r.isOverride)
+    let travelReimbursement = getNumber(bucket, 'TRAVEL_REIMBURSEMENT')
+    if (!travelOverride && userId) {
+      const profile = profileByUserId.get(userId)
+      const tier = resolveTravelTier(
+        travelTiers,
+        profile?.transportMode,
+        profile?.distanceKm ?? null,
+        period.periodStart
+      )
+      if (tier && workingDays > 0) {
+        const userAttendance = attendanceByUserId.get(userId) || []
+        const presentDays =
+          userAttendance.length > 0
+            ? calculatePresentDays(userAttendance, period.periodStart, period.periodEnd)
+            : workingDays
+        const payable = Math.max(0, (tier.monthlyRate * presentDays) / workingDays)
+        travelReimbursement = Number(payable.toFixed(2))
+        travelAutoUpserts.push({
+          periodId,
+          payrollName,
+          userId,
+          amount: travelReimbursement,
+        })
+      }
+    }
 
     const totalEarnings =
       totalTaxableSalary +
       medicalAllowance +
-      getNumber(bucket, 'TRAVEL_REIMBURSEMENT') +
+      travelReimbursement +
       getNumber(bucket, 'UTILITY_REIMBURSEMENT') +
       getNumber(bucket, 'MEALS_REIMBURSEMENT') +
       getNumber(bucket, 'MOBILE_REIMBURSEMENT') +
       getNumber(bucket, 'EXPENSE_REIMBURSEMENT') +
-      getNumber(bucket, 'ADVANCE_LOAN')
+      getNumber(bucket, 'ADVANCE_LOAN') +
+      additionalNonTaxableEarnings
 
     const totalDeductions =
-      incomeTax + getNumber(bucket, 'ADJUSTMENT') + getNumber(bucket, 'LOAN_REPAYMENT')
+      incomeTax + getNumber(bucket, 'ADJUSTMENT') + getNumber(bucket, 'LOAN_REPAYMENT') + additionalDeductions
     const netSalary = totalEarnings - totalDeductions
     const paid = getNumber(bucket, 'PAID')
     const previousBalance = previousBalanceMap.get(payrollName) || 0
@@ -148,6 +374,8 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
         formulaVersion: FORMULA_VERSION,
         lineageJson: {
           periodKey,
+          taxFinancialYearId: activeFinancialYear?.id || null,
+          workingDays,
           fixes: [
             FIX_IDS.TRAVEL_SUMIF_RANGE,
             FIX_IDS.GROSS_MEDICAL_ALIGNMENT,
@@ -173,18 +401,20 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
           medicalTaxExemption,
           bonus,
           medicalAllowance,
-          travelReimbursement: getNumber(bucket, 'TRAVEL_REIMBURSEMENT'),
+          travelReimbursement,
           utilityReimbursement: getNumber(bucket, 'UTILITY_REIMBURSEMENT'),
           mealsReimbursement: getNumber(bucket, 'MEALS_REIMBURSEMENT'),
           mobileReimbursement: getNumber(bucket, 'MOBILE_REIMBURSEMENT'),
           expenseReimbursement: getNumber(bucket, 'EXPENSE_REIMBURSEMENT'),
           advanceLoan: getNumber(bucket, 'ADVANCE_LOAN'),
+          additionalEarnings,
           totalEarnings,
         },
         deductions: {
           incomeTax,
           adjustment: getNumber(bucket, 'ADJUSTMENT'),
           loanRepayment: getNumber(bucket, 'LOAN_REPAYMENT'),
+          additionalDeductions,
           totalDeductions,
         },
         net: {
@@ -200,6 +430,43 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
   }
 
   await prisma.$transaction(async (tx) => {
+    if (travelAutoUpserts.length > 0) {
+      for (const row of travelAutoUpserts) {
+        await tx.payrollInputValue.upsert({
+          where: {
+            periodId_payrollName_componentKey: {
+              periodId: row.periodId,
+              payrollName: row.payrollName,
+              componentKey: 'TRAVEL_REIMBURSEMENT',
+            },
+          },
+          update: {
+            userId: row.userId,
+            amount: row.amount,
+            sourceMethod: 'MANUAL',
+            isOverride: false,
+            provenanceJson: {
+              generatedBy: 'ATTENDANCE_TRAVEL',
+              generatedAt: new Date().toISOString(),
+            },
+          },
+          create: {
+            periodId: row.periodId,
+            payrollName: row.payrollName,
+            userId: row.userId,
+            componentKey: 'TRAVEL_REIMBURSEMENT',
+            amount: row.amount,
+            sourceMethod: 'MANUAL',
+            isOverride: false,
+            provenanceJson: {
+              generatedBy: 'ATTENDANCE_TRAVEL',
+              generatedAt: new Date().toISOString(),
+            },
+          },
+        })
+      }
+    }
+
     await tx.payrollComputedValue.deleteMany({ where: { periodId } })
     if (computedInserts.length > 0) {
       await tx.payrollComputedValue.createMany({

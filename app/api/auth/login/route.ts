@@ -46,6 +46,10 @@ export async function POST(request: NextRequest) {
     // Use exact match instead of fuzzy contains
     const user = await prisma.user.findFirst({
       where: {
+        OR: [
+          { payrollProfile: { is: null } },
+          { payrollProfile: { is: { isPayrollActive: true } } },
+        ],
         name: {
           equals: name.trim(),
           mode: 'insensitive',
@@ -134,6 +138,12 @@ export async function GET() {
     }
 
     const users = await prisma.user.findMany({
+      where: {
+        OR: [
+          { payrollProfile: { is: null } },
+          { payrollProfile: { is: { isPayrollActive: true } } },
+        ],
+      },
       select: {
         id: true,
         name: true,

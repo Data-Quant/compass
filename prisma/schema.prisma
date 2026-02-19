@@ -83,6 +83,29 @@ enum AssetCondition {
   DAMAGED
 }
 
+enum TransportMode {
+  CAR
+  BIKE
+  PUBLIC_TRANSPORT
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  PUBLIC_HOLIDAY
+}
+
+enum AttendanceSource {
+  MANUAL
+  IMPORT
+  SYSTEM
+}
+
+enum SalaryHeadType {
+  EARNING
+  DEDUCTION
+}
+
 enum PayrollPeriodStatus {
   DRAFT
   CALCULATED
@@ -168,6 +191,11 @@ model User {
   payrollExpenseEntries   PayrollExpenseEntry[]   @relation("PayrollExpenseEnteredBy")
   payrollApprovalEvents   PayrollApprovalEvent[]  @relation("PayrollApprovalActor")
   payrollReceipts         PayrollReceipt[]        @relation("PayrollReceiptUser")
+  payrollProfile          PayrollEmployeeProfile?
+  payrollSalaryRevisionsCreated PayrollSalaryRevision[] @relation("PayrollSalaryRevisionCreatedBy")
+  payrollAttendanceEntries PayrollAttendanceEntry[]
+  payrollAttendanceUpdated PayrollAttendanceEntry[] @relation("PayrollAttendanceUpdatedBy")
+  payrollInputAuditEventsActed PayrollInputAuditEvent[] @relation("PayrollInputAuditActor")
 
   // Project management relations
   ownedProjects           Project[]               @relation("ProjectOwner")
@@ -468,6 +496,208 @@ model EquipmentEvent {
   @@index([createdAt])
 }
 
+model PayrollDepartment {
+  id               String                 @id @default(cuid())
+  name             String                 @unique
+  isActive         Boolean                @default(true)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  employeeProfiles PayrollEmployeeProfile[]
+}
+
+model PayrollEmploymentType {
+  id               String                 @id @default(cuid())
+  name             String                 @unique
+  isActive         Boolean                @default(true)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  employeeProfiles PayrollEmployeeProfile[]
+}
+
+model PayrollEmployeeProfile {
+  id               String                 @id @default(cuid())
+  userId           String                 @unique
+  departmentId     String?
+  designation      String?
+  officialEmail    String?
+  cnicNumber       String?
+  employmentTypeId String?
+  joiningDate      DateTime?
+  exitDate         DateTime?
+  isPayrollActive  Boolean                @default(true)
+  distanceKm       Float?
+  transportMode    TransportMode?
+  bankName         String?
+  accountTitle     String?
+  accountNumber    String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  user             User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department       PayrollDepartment?     @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  employmentType   PayrollEmploymentType? @relation(fields: [employmentTypeId], references: [id], onDelete: SetNull)
+  salaryRevisions  PayrollSalaryRevision[]
+
+  @@index([isPayrollActive])
+  @@index([departmentId])
+  @@index([employmentTypeId])
+}
+
+model PayrollSalaryHead {
+  id               String                @id @default(cuid())
+  code             String                @unique
+  name             String
+  type             SalaryHeadType
+  isTaxable        Boolean               @default(false)
+  isSystem         Boolean               @default(false)
+  isActive         Boolean               @default(true)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  revisionLines    PayrollSalaryRevisionLine[]
+
+  @@index([isActive])
+  @@index([type])
+}
+
+model PayrollSalaryRevision {
+  id               String                     @id @default(cuid())
+  employeeProfileId String
+  effectiveFrom    DateTime
+  note             String?
+  createdById      String
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+
+  employeeProfile  PayrollEmployeeProfile     @relation(fields: [employeeProfileId], references: [id], onDelete: Cascade)
+  createdBy        User                       @relation("PayrollSalaryRevisionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  lines            PayrollSalaryRevisionLine[]
+
+  @@index([employeeProfileId, effectiveFrom])
+  @@index([createdById])
+}
+
+model PayrollSalaryRevisionLine {
+  id               String                @id @default(cuid())
+  revisionId       String
+  salaryHeadId     String
+  amount           Float
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  revision         PayrollSalaryRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  salaryHead       PayrollSalaryHead     @relation(fields: [salaryHeadId], references: [id], onDelete: Restrict)
+
+  @@unique([revisionId, salaryHeadId])
+  @@index([salaryHeadId])
+}
+
+model PayrollTravelAllowanceTier {
+  id               String         @id @default(cuid())
+  transportMode    TransportMode
+  minKm            Float
+  maxKm            Float?
+  monthlyRate      Float
+  effectiveFrom    DateTime
+  effectiveTo      DateTime?
+  isActive         Boolean        @default(true)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([transportMode, minKm, maxKm])
+  @@index([effectiveFrom, effectiveTo])
+  @@index([isActive])
+}
+
+model PayrollFinancialYear {
+  id               String             @id @default(cuid())
+  label            String             @unique
+  startDate        DateTime
+  endDate          DateTime
+  isActive         Boolean            @default(false)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  taxBrackets      PayrollTaxBracket[]
+  publicHolidays   PayrollPublicHoliday[]
+
+  @@index([isActive])
+  @@index([startDate, endDate])
+}
+
+model PayrollTaxBracket {
+  id               String             @id @default(cuid())
+  financialYearId  String
+  incomeFrom       Float
+  incomeTo         Float?
+  fixedTax         Float
+  taxRate          Float
+  orderIndex       Int
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  financialYear    PayrollFinancialYear @relation(fields: [financialYearId], references: [id], onDelete: Cascade)
+
+  @@unique([financialYearId, orderIndex])
+  @@index([financialYearId, incomeFrom, incomeTo])
+}
+
+model PayrollPublicHoliday {
+  id               String             @id @default(cuid())
+  holidayDate      DateTime           @unique
+  name             String
+  financialYearId  String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  financialYear    PayrollFinancialYear? @relation(fields: [financialYearId], references: [id], onDelete: SetNull)
+
+  @@index([holidayDate])
+  @@index([financialYearId])
+}
+
+model PayrollAttendanceEntry {
+  id               String            @id @default(cuid())
+  periodId         String
+  userId           String
+  attendanceDate   DateTime
+  status           AttendanceStatus
+  source           AttendanceSource @default(MANUAL)
+  note             String?
+  updatedById      String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  period           PayrollPeriod     @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  updatedBy        User?             @relation("PayrollAttendanceUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([userId, attendanceDate])
+  @@index([periodId, userId])
+}
+
+model PayrollInputAuditEvent {
+  id               String        @id @default(cuid())
+  periodId         String
+  userId           String?
+  payrollName      String
+  componentKey     String
+  previousAmount   Float?
+  newAmount        Float
+  reason           String?
+  actorId          String
+  createdAt        DateTime      @default(now())
+
+  period           PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  actor            User          @relation("PayrollInputAuditActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([periodId])
+  @@index([userId])
+  @@index([payrollName, componentKey])
+}
+
 model PayrollPeriod {
   id            String              @id @default(cuid())
   label         String
@@ -493,6 +723,8 @@ model PayrollPeriod {
   expenseEntries PayrollExpenseEntry[]
   receipts      PayrollReceipt[]
   approvalEvents PayrollApprovalEvent[]
+  attendanceEntries PayrollAttendanceEntry[]
+  inputAuditEvents PayrollInputAuditEvent[]
 
   @@index([status])
   @@index([periodStart, periodEnd])

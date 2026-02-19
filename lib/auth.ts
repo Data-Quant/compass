@@ -38,6 +38,11 @@ export async function getSession(): Promise<SafeUser | null> {
       chartX: true,
       chartY: true,
       passwordVersion: true,
+      payrollProfile: {
+        select: {
+          isPayrollActive: true,
+        },
+      },
     },
   })
 
@@ -51,8 +56,14 @@ export async function getSession(): Promise<SafeUser | null> {
     return null
   }
 
+  // Deactivated users cannot keep active sessions.
+  if (user.payrollProfile && user.payrollProfile.isPayrollActive === false) {
+    session.destroy()
+    return null
+  }
+
   // Return user without passwordVersion
-  const { passwordVersion, ...safeUser } = user
+  const { passwordVersion, payrollProfile, ...safeUser } = user
   return safeUser
 }
 

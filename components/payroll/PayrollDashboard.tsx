@@ -8,10 +8,13 @@ import { toast } from 'sonner'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { PayrollStatusBadge } from '@/components/payroll/PayrollStatusBadge'
 import { PayrollImportDialog } from '@/components/payroll/PayrollImportDialog'
+import { PayrollAttendancePanel } from '@/components/payroll/PayrollAttendancePanel'
+import { PayrollSettingsPanel } from '@/components/payroll/PayrollSettingsPanel'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
   Select,
@@ -66,6 +69,7 @@ interface DashboardPayload {
 }
 
 type SourceMode = 'WORKBOOK' | 'MANUAL' | 'CARRY_FORWARD'
+type PayrollViewTab = 'runs' | 'attendance' | 'settings'
 
 function canAccessPayrollWorkspace(role: string | null | undefined, appBasePath: WorkspaceProps['appBasePath']) {
   if (appBasePath === '/admin') return role === 'HR'
@@ -93,6 +97,7 @@ export function PayrollDashboard({
   })
   const [importOpen, setImportOpen] = useState(false)
   const [showCreateForm, setShowCreateForm] = useState(false)
+  const [activeTab, setActiveTab] = useState<PayrollViewTab>('runs')
 
   // Create period form
   const [label, setLabel] = useState('')
@@ -174,6 +179,7 @@ export function PayrollDashboard({
   const pendingApprovals = dashboard.statusCounts.CALCULATED || 0
   const totalPeriods = periods.length
   const latestPeriods = useMemo(() => periods.slice(0, 10), [periods])
+  const canEditMaster = appBasePath === '/admin'
 
   // Compute total net from the most recent period
   const latestPeriod = periods[0]
@@ -257,8 +263,21 @@ export function PayrollDashboard({
           </Card>
         </motion.section>
 
-        {/* Create Period Form (collapsible) */}
-        {showCreateForm && (
+        <motion.section
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.06 }}
+        >
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as PayrollViewTab)}>
+            <TabsList className="grid grid-cols-3 w-full max-w-lg">
+              <TabsTrigger value="runs">Period Runs</TabsTrigger>
+              <TabsTrigger value="attendance">Attendance</TabsTrigger>
+              <TabsTrigger value="settings">Settings</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </motion.section>
+
+        {activeTab === 'runs' && showCreateForm && (
           <motion.section
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
@@ -335,65 +354,69 @@ export function PayrollDashboard({
           </motion.section>
         )}
 
-        {/* Periods Table */}
-        <motion.section
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.08 }}
-        >
-          <Card>
-            <CardContent className="p-0">
-              <div className="p-4 border-b border-border flex items-center justify-between">
-                <h2 className="text-lg font-semibold font-display">Recent Payroll Periods</h2>
-                <Button variant="ghost" size="sm" asChild>
-                  <Link href="/admin/mappings">Identity Mappings</Link>
-                </Button>
-              </div>
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/50">
-                    <TableHead>Period</TableHead>
-                    <TableHead>Date Range</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Source</TableHead>
-                    <TableHead className="text-right">Inputs</TableHead>
-                    <TableHead className="text-right">Receipts</TableHead>
-                    <TableHead></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {latestPeriods.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
-                        No payroll periods yet. Click "Run Payroll" to start.
-                      </TableCell>
+        {activeTab === 'runs' && (
+          <motion.section
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.08 }}
+          >
+            <Card>
+              <CardContent className="p-0">
+                <div className="p-4 border-b border-border flex items-center justify-between">
+                  <h2 className="text-lg font-semibold font-display">Recent Payroll Periods</h2>
+                  <Button variant="ghost" size="sm" asChild>
+                    <Link href="/admin/mappings">Identity Mappings</Link>
+                  </Button>
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead>Period</TableHead>
+                      <TableHead>Date Range</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Source</TableHead>
+                      <TableHead className="text-right">Inputs</TableHead>
+                      <TableHead className="text-right">Receipts</TableHead>
+                      <TableHead></TableHead>
                     </TableRow>
-                  )}
-                  {latestPeriods.map((period) => (
-                    <TableRow key={period.id} className="group">
-                      <TableCell className="font-medium">{period.label}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {new Date(period.periodStart).toLocaleDateString()} - {new Date(period.periodEnd).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell><PayrollStatusBadge status={period.status} /></TableCell>
-                      <TableCell className="text-sm">{period.sourceType}</TableCell>
-                      <TableCell className="text-right text-sm">{period._count.inputValues}</TableCell>
-                      <TableCell className="text-right text-sm">{period._count.receipts}</TableCell>
-                      <TableCell>
-                        <Button size="sm" asChild>
-                          <Link href={`${appBasePath}/payroll/${period.id}`}>
-                            Open
-                            <ArrowRight className="w-3.5 h-3.5" />
-                          </Link>
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </motion.section>
+                  </TableHeader>
+                  <TableBody>
+                    {latestPeriods.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                          No payroll periods yet. Click "Run Payroll" to start.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {latestPeriods.map((period) => (
+                      <TableRow key={period.id} className="group">
+                        <TableCell className="font-medium">{period.label}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {new Date(period.periodStart).toLocaleDateString()} - {new Date(period.periodEnd).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell><PayrollStatusBadge status={period.status} /></TableCell>
+                        <TableCell className="text-sm">{period.sourceType}</TableCell>
+                        <TableCell className="text-right text-sm">{period._count.inputValues}</TableCell>
+                        <TableCell className="text-right text-sm">{period._count.receipts}</TableCell>
+                        <TableCell>
+                          <Button size="sm" asChild>
+                            <Link href={`${appBasePath}/payroll/${period.id}`}>
+                              Open
+                              <ArrowRight className="w-3.5 h-3.5" />
+                            </Link>
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </motion.section>
+        )}
+
+        {activeTab === 'attendance' && <PayrollAttendancePanel periods={periods} />}
+        {activeTab === 'settings' && <PayrollSettingsPanel canEdit={canEditMaster} />}
 
       {/* Import Dialog */}
       <PayrollImportDialog

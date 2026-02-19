@@ -4,6 +4,7 @@ import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { canManagePayroll } from '@/lib/permissions'
 import { recalculatePayrollPeriod } from '@/lib/payroll/engine'
+import { ensurePayrollMasterDefaults } from '@/lib/payroll/settings'
 
 const recalculateSchema = z.object({
   tolerance: z.coerce.number().positive().optional(),
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     const tolerance = parsed.data.tolerance ?? 1
+    await ensurePayrollMasterDefaults()
     const result = await recalculatePayrollPeriod(periodId, tolerance)
     return NextResponse.json({ success: true, result })
   } catch (error) {

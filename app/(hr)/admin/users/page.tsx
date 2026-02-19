@@ -27,7 +27,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import Papa from 'papaparse'
-import { Users, Plus, Search, Upload, Edit2, Trash2, UserCheck, Shield, Key, Eye, EyeOff } from 'lucide-react'
+import { Users, Plus, Search, Upload, Edit2, Trash2, UserCheck, Shield, Key, Eye, EyeOff, RotateCcw } from 'lucide-react'
 
 const MotionTableRow = motion(TableRow)
 
@@ -39,6 +39,57 @@ interface User {
   position: string | null
   role: 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA'
   createdAt: string
+  payrollProfile?: {
+    id: string
+    officialEmail: string | null
+    cnicNumber: string | null
+    designation: string | null
+    joiningDate: string | null
+    exitDate: string | null
+    isPayrollActive: boolean
+    distanceKm: number | null
+    transportMode: 'CAR' | 'BIKE' | 'PUBLIC_TRANSPORT' | null
+    bankName: string | null
+    accountTitle: string | null
+    accountNumber: string | null
+    departmentId: string | null
+    employmentTypeId: string | null
+    salaryRevisions: Array<{
+      id: string
+      effectiveFrom: string
+      note: string | null
+      createdBy: { id: string; name: string } | null
+      lines: Array<{
+        id: string
+        amount: number
+        salaryHead: {
+          id: string
+          code: string
+          name: string
+          type: 'EARNING' | 'DEDUCTION'
+          isTaxable: boolean
+        }
+      }>
+    }>
+  } | null
+}
+
+interface PayrollMeta {
+  departments: Array<{ id: string; name: string }>
+  employmentTypes: Array<{ id: string; name: string }>
+  salaryHeads: Array<{
+    id: string
+    code: string
+    name: string
+    type: 'EARNING' | 'DEDUCTION'
+    isTaxable: boolean
+    isSystem: boolean
+  }>
+}
+
+interface SalaryLineDraft {
+  salaryHeadCode: string
+  amount: string
 }
 
 export default function UsersPage() {
@@ -51,10 +102,34 @@ export default function UsersPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isReactivateDialogOpen, setIsReactivateDialogOpen] = useState(false)
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [userToDelete, setUserToDelete] = useState<User | null>(null)
+  const [userToReactivate, setUserToReactivate] = useState<User | null>(null)
   
   const [formData, setFormData] = useState({ name: '', email: '', department: '', position: '', role: 'EMPLOYEE' })
+  const [payrollMeta, setPayrollMeta] = useState<PayrollMeta>({
+    departments: [],
+    employmentTypes: [],
+    salaryHeads: [],
+  })
+  const [payrollForm, setPayrollForm] = useState({
+    payrollDepartmentId: '',
+    designation: '',
+    officialEmail: '',
+    cnicNumber: '',
+    employmentTypeId: '',
+    joiningDate: '',
+    exitDate: '',
+    distanceKm: '',
+    transportMode: '',
+    bankName: '',
+    accountTitle: '',
+    accountNumber: '',
+    salaryRevisionEffectiveFrom: '',
+    salaryRevisionNote: '',
+  })
+  const [salaryLineDrafts, setSalaryLineDrafts] = useState<SalaryLineDraft[]>([])
   const [saving, setSaving] = useState(false)
   const [importData, setImportData] = useState<any[]>([])
   const [importPreview, setImportPreview] = useState<any[]>([])
@@ -74,6 +149,13 @@ export default function UsersPage() {
       const res = await fetch('/api/admin/users')
       const data = await res.json()
       setUsers(data.users || [])
+      if (data.payrollMeta) {
+        setPayrollMeta({
+          departments: data.payrollMeta.departments || [],
+          employmentTypes: data.payrollMeta.employmentTypes || [],
+          salaryHeads: data.payrollMeta.salaryHeads || [],
+        })
+      }
     } catch (error) { toast.error('Failed to load users') }
     finally { setLoading(false) }
   }
@@ -82,11 +164,63 @@ export default function UsersPage() {
     if (user) {
       setSelectedUser(user)
       setFormData({ name: user.name, email: user.email || '', department: user.department || '', position: user.position || '', role: user.role })
+      setPayrollForm({
+        payrollDepartmentId: user.payrollProfile?.departmentId || '',
+        designation: user.payrollProfile?.designation || '',
+        officialEmail: user.payrollProfile?.officialEmail || '',
+        cnicNumber: user.payrollProfile?.cnicNumber || '',
+        employmentTypeId: user.payrollProfile?.employmentTypeId || '',
+        joiningDate: user.payrollProfile?.joiningDate ? new Date(user.payrollProfile.joiningDate).toISOString().slice(0, 10) : '',
+        exitDate: user.payrollProfile?.exitDate ? new Date(user.payrollProfile.exitDate).toISOString().slice(0, 10) : '',
+        distanceKm: user.payrollProfile?.distanceKm != null ? String(user.payrollProfile.distanceKm) : '',
+        transportMode: user.payrollProfile?.transportMode || '',
+        bankName: user.payrollProfile?.bankName || '',
+        accountTitle: user.payrollProfile?.accountTitle || '',
+        accountNumber: user.payrollProfile?.accountNumber || '',
+        salaryRevisionEffectiveFrom: '',
+        salaryRevisionNote: '',
+      })
     } else {
       setSelectedUser(null)
       setFormData({ name: '', email: '', department: '', position: '', role: 'EMPLOYEE' })
+      setPayrollForm({
+        payrollDepartmentId: '',
+        designation: '',
+        officialEmail: '',
+        cnicNumber: '',
+        employmentTypeId: '',
+        joiningDate: '',
+        exitDate: '',
+        distanceKm: '',
+        transportMode: '',
+        bankName: '',
+        accountTitle: '',
+        accountNumber: '',
+        salaryRevisionEffectiveFrom: '',
+        salaryRevisionNote: '',
+      })
     }
+    setSalaryLineDrafts([])
     setIsModalOpen(true)
+  }
+
+  const addSalaryLine = () => {
+    const defaultHead = payrollMeta.salaryHeads.find((head) => !head.isSystem) || payrollMeta.salaryHeads[0]
+    if (!defaultHead) {
+      toast.error('No salary heads configured')
+      return
+    }
+    setSalaryLineDrafts((prev) => [...prev, { salaryHeadCode: defaultHead.code, amount: '' }])
+  }
+
+  const updateSalaryLine = (index: number, patch: Partial<SalaryLineDraft>) => {
+    setSalaryLineDrafts((prev) =>
+      prev.map((line, i) => (i === index ? { ...line, ...patch } : line))
+    )
+  }
+
+  const removeSalaryLine = (index: number) => {
+    setSalaryLineDrafts((prev) => prev.filter((_, i) => i !== index))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -96,7 +230,39 @@ export default function UsersPage() {
     try {
       const url = '/api/admin/users'
       const method = selectedUser ? 'PUT' : 'POST'
-      const body = selectedUser ? { ...formData, id: selectedUser.id } : formData
+      const revisionLines = salaryLineDrafts
+        .map((line) => ({
+          salaryHeadCode: line.salaryHeadCode.trim().toUpperCase(),
+          amount: Number(line.amount),
+        }))
+        .filter((line) => line.salaryHeadCode && Number.isFinite(line.amount))
+
+      const payrollProfile = {
+        payrollDepartmentId: payrollForm.payrollDepartmentId || null,
+        designation: payrollForm.designation || null,
+        officialEmail: payrollForm.officialEmail || null,
+        cnicNumber: payrollForm.cnicNumber || null,
+        employmentTypeId: payrollForm.employmentTypeId || null,
+        joiningDate: payrollForm.joiningDate || null,
+        exitDate: payrollForm.exitDate || null,
+        distanceKm: payrollForm.distanceKm ? Number(payrollForm.distanceKm) : null,
+        transportMode: payrollForm.transportMode || null,
+        bankName: payrollForm.bankName || null,
+        accountTitle: payrollForm.accountTitle || null,
+        accountNumber: payrollForm.accountNumber || null,
+        salaryRevision:
+          payrollForm.salaryRevisionEffectiveFrom && revisionLines.length > 0
+            ? {
+                effectiveFrom: payrollForm.salaryRevisionEffectiveFrom,
+                note: payrollForm.salaryRevisionNote || null,
+                lines: revisionLines,
+              }
+            : undefined,
+      }
+
+      const body = selectedUser
+        ? { ...formData, id: selectedUser.id, payrollProfile }
+        : { ...formData, payrollProfile }
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const data = await res.json()
       if (data.error) { toast.error(data.error) } 
@@ -111,9 +277,24 @@ export default function UsersPage() {
       const res = await fetch('/api/admin/users', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: userToDelete.id }) })
       const data = await res.json()
       if (data.error) { toast.error(data.error) } 
-      else { toast.success('User deleted'); loadUsers() }
-    } catch (error) { toast.error('Failed to delete user') }
+      else { toast.success('User deactivated'); loadUsers() }
+    } catch (error) { toast.error('Failed to deactivate user') }
     finally { setIsDeleteDialogOpen(false); setUserToDelete(null) }
+  }
+
+  const handleReactivate = async () => {
+    if (!userToReactivate) return
+    try {
+      const res = await fetch('/api/admin/users/reactivate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: userToReactivate.id }),
+      })
+      const data = await res.json()
+      if (data.error) { toast.error(data.error) }
+      else { toast.success('User reactivated'); loadUsers() }
+    } catch (error) { toast.error('Failed to reactivate user') }
+    finally { setIsReactivateDialogOpen(false); setUserToReactivate(null) }
   }
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -290,7 +471,14 @@ export default function UsersPage() {
                           {user.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                         </div>
                         <div>
-                          <div className="font-medium text-foreground">{user.name}</div>
+                          <div className="font-medium text-foreground flex items-center gap-2">
+                            <span>{user.name}</span>
+                            {user.payrollProfile?.isPayrollActive === false ? (
+                              <Badge variant="secondary" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-0">
+                                Inactive
+                              </Badge>
+                            ) : null}
+                          </div>
                           {user.position && <div className="text-xs text-muted-foreground">{user.position}</div>}
                         </div>
                       </div>
@@ -322,7 +510,25 @@ export default function UsersPage() {
                         <Button variant="ghost" size="icon" onClick={() => handleOpenModal(user)} title="Edit User" className="text-muted-foreground hover:text-foreground hover:bg-muted">
                           <Edit2 className="w-4 h-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => { setUserToDelete(user); setIsDeleteDialogOpen(true) }} title="Delete User" className="text-muted-foreground hover:text-red-500 hover:bg-red-500/10">
+                        {user.payrollProfile?.isPayrollActive === false ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => { setUserToReactivate(user); setIsReactivateDialogOpen(true) }}
+                            title="Reactivate User"
+                            className="text-muted-foreground hover:text-emerald-500 hover:bg-emerald-500/10"
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                          </Button>
+                        ) : null}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => { setUserToDelete(user); setIsDeleteDialogOpen(true) }}
+                          title={user.payrollProfile?.isPayrollActive === false ? 'Already deactivated' : 'Deactivate User'}
+                          className="text-muted-foreground hover:text-red-500 hover:bg-red-500/10 disabled:opacity-40"
+                          disabled={user.payrollProfile?.isPayrollActive === false}
+                        >
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
@@ -342,7 +548,7 @@ export default function UsersPage() {
 
       {/* Add/Edit Modal */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={selectedUser ? 'Edit User' : 'Add User'}>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 max-h-[72vh] overflow-y-auto pr-1">
           <div>
             <Label htmlFor="name" className="mb-1">Name *</Label>
             <Input id="name" type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
@@ -374,6 +580,207 @@ export default function UsersPage() {
                 <SelectItem value="OA">O&amp;A</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="pt-2 border-t border-border">
+            <p className="text-sm font-semibold mb-3">Payroll Profile</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="mb-1">Payroll Department</Label>
+                <Select
+                  value={payrollForm.payrollDepartmentId || '__none__'}
+                  onValueChange={(v) => setPayrollForm({ ...payrollForm, payrollDepartmentId: v === '__none__' ? '' : v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select payroll department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">None</SelectItem>
+                    {payrollMeta.departments.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="mb-1">Designation</Label>
+                <Input
+                  value={payrollForm.designation}
+                  onChange={(e) => setPayrollForm({ ...payrollForm, designation: e.target.value })}
+                  placeholder="Role/Designation"
+                />
+              </div>
+              <div>
+                <Label className="mb-1">Official Email</Label>
+                <Input
+                  type="email"
+                  value={payrollForm.officialEmail}
+                  onChange={(e) => setPayrollForm({ ...payrollForm, officialEmail: e.target.value })}
+                  placeholder="official@company.com"
+                />
+              </div>
+              <div>
+                <Label className="mb-1">CNIC Number</Label>
+                <Input
+                  value={payrollForm.cnicNumber}
+                  onChange={(e) => setPayrollForm({ ...payrollForm, cnicNumber: e.target.value })}
+                  placeholder="xxxxx-xxxxxxx-x"
+                />
+              </div>
+              <div>
+                <Label className="mb-1">Employment Type</Label>
+                <Select
+                  value={payrollForm.employmentTypeId || '__none__'}
+                  onValueChange={(v) => setPayrollForm({ ...payrollForm, employmentTypeId: v === '__none__' ? '' : v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select employment type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">None</SelectItem>
+                    {payrollMeta.employmentTypes.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="mb-1">Joining Date</Label>
+                <Input
+                  type="date"
+                  value={payrollForm.joiningDate}
+                  onChange={(e) => setPayrollForm({ ...payrollForm, joiningDate: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label className="mb-1">Exit Date</Label>
+                <Input
+                  type="date"
+                  value={payrollForm.exitDate}
+                  onChange={(e) => setPayrollForm({ ...payrollForm, exitDate: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label className="mb-1">Distance from Office (KM)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={payrollForm.distanceKm}
+                  onChange={(e) => setPayrollForm({ ...payrollForm, distanceKm: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label className="mb-1">Transport Mode</Label>
+                <Select
+                  value={payrollForm.transportMode || '__none__'}
+                  onValueChange={(v) => setPayrollForm({ ...payrollForm, transportMode: v === '__none__' ? '' : v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select transport mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">None</SelectItem>
+                    <SelectItem value="CAR">Car</SelectItem>
+                    <SelectItem value="BIKE">Bike</SelectItem>
+                    <SelectItem value="PUBLIC_TRANSPORT">Public Transport</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="mb-1">Bank Name</Label>
+                <Input value={payrollForm.bankName} onChange={(e) => setPayrollForm({ ...payrollForm, bankName: e.target.value })} />
+              </div>
+              <div>
+                <Label className="mb-1">Account Title</Label>
+                <Input value={payrollForm.accountTitle} onChange={(e) => setPayrollForm({ ...payrollForm, accountTitle: e.target.value })} />
+              </div>
+              <div className="col-span-2">
+                <Label className="mb-1">Account Number</Label>
+                <Input value={payrollForm.accountNumber} onChange={(e) => setPayrollForm({ ...payrollForm, accountNumber: e.target.value })} />
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-2 border-t border-border">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-semibold">Salary Revision (Optional)</p>
+              <Button type="button" variant="outline" size="sm" onClick={addSalaryLine}>
+                <Plus className="w-3.5 h-3.5" /> Add Line
+              </Button>
+            </div>
+            <div className="grid grid-cols-2 gap-4 mb-3">
+              <div>
+                <Label className="mb-1">Effective From</Label>
+                <Input
+                  type="date"
+                  value={payrollForm.salaryRevisionEffectiveFrom}
+                  onChange={(e) => setPayrollForm({ ...payrollForm, salaryRevisionEffectiveFrom: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label className="mb-1">Revision Note</Label>
+                <Input
+                  value={payrollForm.salaryRevisionNote}
+                  onChange={(e) => setPayrollForm({ ...payrollForm, salaryRevisionNote: e.target.value })}
+                  placeholder="Reason for change"
+                />
+              </div>
+            </div>
+            {salaryLineDrafts.length > 0 && (
+              <div className="space-y-2">
+                {salaryLineDrafts.map((line, index) => (
+                  <div key={`${line.salaryHeadCode}-${index}`} className="grid grid-cols-12 gap-2">
+                    <div className="col-span-7">
+                      <Select
+                        value={line.salaryHeadCode}
+                        onValueChange={(v) => updateSalaryLine(index, { salaryHeadCode: v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {payrollMeta.salaryHeads.map((head) => (
+                            <SelectItem key={head.id} value={head.code}>
+                              {head.name} ({head.code})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="col-span-4">
+                      <Input
+                        type="number"
+                        value={line.amount}
+                        onChange={(e) => updateSalaryLine(index, { amount: e.target.value })}
+                        placeholder="Amount"
+                      />
+                    </div>
+                    <div className="col-span-1">
+                      <Button type="button" variant="ghost" size="icon" onClick={() => removeSalaryLine(index)}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {selectedUser?.payrollProfile?.salaryRevisions?.length ? (
+              <div className="mt-4 rounded-lg border border-border p-3 space-y-2">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Recent Salary History</p>
+                {selectedUser.payrollProfile.salaryRevisions.slice(0, 3).map((revision) => (
+                  <div key={revision.id} className="rounded-md bg-muted/40 px-3 py-2">
+                    <p className="text-xs text-muted-foreground">
+                      Effective {new Date(revision.effectiveFrom).toLocaleDateString()} {revision.createdBy ? `· by ${revision.createdBy.name}` : ''}
+                    </p>
+                    <p className="text-xs">{revision.note || 'No note'}</p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
           <div className="flex justify-end gap-3 pt-4">
             <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>Cancel</Button>
@@ -420,7 +827,8 @@ export default function UsersPage() {
         </div>
       </Modal>
 
-      <ConfirmDialog isOpen={isDeleteDialogOpen} onClose={() => setIsDeleteDialogOpen(false)} onConfirm={handleDelete} title="Delete User" message={`Are you sure you want to delete ${userToDelete?.name}?`} confirmText="Delete" variant="danger" />
+      <ConfirmDialog isOpen={isDeleteDialogOpen} onClose={() => setIsDeleteDialogOpen(false)} onConfirm={handleDelete} title="Deactivate User" message={`Deactivate ${userToDelete?.name}? This preserves history and prevents login.`} confirmText="Deactivate" variant="danger" />
+      <ConfirmDialog isOpen={isReactivateDialogOpen} onClose={() => setIsReactivateDialogOpen(false)} onConfirm={handleReactivate} title="Reactivate User" message={`Reactivate ${userToReactivate?.name}? This will restore login access.`} confirmText="Reactivate" />
 
       {/* Password Modal */}
       <Modal isOpen={isPasswordModalOpen} onClose={() => setIsPasswordModalOpen(false)} title="Set Password">

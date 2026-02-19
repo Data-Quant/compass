@@ -9,17 +9,28 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const q = searchParams.get('q')?.trim()
+    const activeFilter = {
+      OR: [
+        { payrollProfile: { is: null } },
+        { payrollProfile: { is: { isPayrollActive: true } } },
+      ],
+    }
 
     const users = await prisma.user.findMany({
       where: q
         ? {
-            OR: [
-              { name: { contains: q, mode: 'insensitive' } },
-              { department: { contains: q, mode: 'insensitive' } },
-              { position: { contains: q, mode: 'insensitive' } },
+            AND: [
+              activeFilter,
+              {
+                OR: [
+                  { name: { contains: q, mode: 'insensitive' } },
+                  { department: { contains: q, mode: 'insensitive' } },
+                  { position: { contains: q, mode: 'insensitive' } },
+                ],
+              },
             ],
           }
-        : undefined,
+        : activeFilter,
       select: {
         id: true,
         name: true,
