@@ -6,6 +6,7 @@ import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { calculateLeaveDays, isValidLeaveDateRange } from '@/lib/leave-utils'
 import { isAdminRole } from '@/lib/permissions'
+import { removeLeaveCalendarEvent, syncLeaveCalendarEvent } from '@/lib/google-calendar'
 
 const LEAVE_TYPES = ['CASUAL', 'SICK', 'ANNUAL'] as const
 const LEAVE_STATUSES = ['PENDING', 'LEAD_APPROVED', 'HR_APPROVED', 'APPROVED', 'REJECTED', 'CANCELLED'] as const
@@ -399,6 +400,12 @@ export async function POST(request: NextRequest) {
         console.error('Failed to send leave request notification:', e)
       }
     }
+
+    try {
+      await syncLeaveCalendarEvent(leaveRequest.id)
+    } catch (e) {
+      console.error('Failed to sync leave request with Google Calendar:', e)
+    }
     
     return NextResponse.json({ success: true, request: leaveRequest })
   } catch (error) {
@@ -540,6 +547,12 @@ export async function PUT(request: NextRequest) {
       console.error('Failed to send leave update notification:', e)
     }
 
+    try {
+      await syncLeaveCalendarEvent(updated.id)
+    } catch (e) {
+      console.error('Failed to sync updated leave request with Google Calendar:', e)
+    }
+
     return NextResponse.json({ success: true, request: updated })
   } catch (error) {
     console.error('Failed to update leave request:', error)
@@ -615,6 +628,12 @@ export async function DELETE(request: NextRequest) {
         })
       })
 
+      try {
+        await removeLeaveCalendarEvent(requestId)
+      } catch (e) {
+        console.error('Failed to remove leave event from Google Calendar:', e)
+      }
+
       return NextResponse.json({ success: true })
     }
 
@@ -632,6 +651,12 @@ export async function DELETE(request: NextRequest) {
       where: { id: requestId },
       data: { status: 'CANCELLED' },
     })
+
+    try {
+      await removeLeaveCalendarEvent(requestId)
+    } catch (e) {
+      console.error('Failed to remove cancelled leave event from Google Calendar:', e)
+    }
     
     return NextResponse.json({ success: true })
   } catch (error) {

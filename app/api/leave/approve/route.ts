@@ -6,6 +6,7 @@ import { LeaveStatus, Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { calculateLeaveDays } from '@/lib/leave-utils'
 import { isAdminRole } from '@/lib/permissions'
+import { removeLeaveCalendarEvent, syncLeaveCalendarEvent } from '@/lib/google-calendar'
 
 const leaveApprovalSchema = z.object({
   requestId: z.string().trim().min(1),
@@ -80,6 +81,11 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: `Cannot reject a ${leaveRequest.status.toLowerCase()} request` }, { status: 400 })
       }
       if (leaveRequest.status === 'REJECTED') {
+        try {
+          await removeLeaveCalendarEvent(requestId)
+        } catch (e) {
+          console.error('Failed to remove already-rejected leave from Google Calendar:', e)
+        }
         return NextResponse.json({ success: true, status: 'REJECTED' })
       }
 
@@ -92,6 +98,12 @@ export async function POST(request: NextRequest) {
           rejectionReason: comment || null,
         },
       })
+
+      try {
+        await removeLeaveCalendarEvent(requestId)
+      } catch (e) {
+        console.error('Failed to remove rejected leave from Google Calendar:', e)
+      }
       
       // Send notification
       try {
@@ -106,6 +118,11 @@ export async function POST(request: NextRequest) {
     // Handle approval
     if (action === 'approve') {
       if (leaveRequest.status === 'APPROVED') {
+        try {
+          await syncLeaveCalendarEvent(requestId)
+        } catch (e) {
+          console.error('Failed to sync already-approved leave to Google Calendar:', e)
+        }
         return NextResponse.json({ success: true, status: 'APPROVED' })
       }
       if (leaveRequest.status === 'REJECTED' || leaveRequest.status === 'CANCELLED') {
@@ -229,6 +246,12 @@ export async function POST(request: NextRequest) {
           },
           data: updateData,
         })
+      }
+
+      try {
+        await syncLeaveCalendarEvent(requestId)
+      } catch (e) {
+        console.error('Failed to sync approved leave to Google Calendar:', e)
       }
       
       return NextResponse.json({ success: true, status: newStatus })
