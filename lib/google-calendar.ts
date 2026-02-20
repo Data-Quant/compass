@@ -19,12 +19,8 @@ type GoogleCalendarEventPayload = {
   }
 }
 
-const ACTIVE_LEAVE_STATUSES = new Set<LeaveStatus>([
-  'PENDING',
-  'LEAD_APPROVED',
-  'HR_APPROVED',
-  'APPROVED',
-])
+// Calendar invites are only sent for fully approved leave.
+const ACTIVE_LEAVE_STATUSES = new Set<LeaveStatus>(['APPROVED'])
 
 const LEAVE_STATUS_LABELS: Record<LeaveStatus, string> = {
   PENDING: 'Pending',
