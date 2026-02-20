@@ -125,6 +125,22 @@ const parseInputDateAsLocal = (value: string) => {
   return new Date(year, month - 1, day)
 }
 
+const toDateKey = (value: string) => {
+  const match = value.match(/^(\d{4}-\d{2}-\d{2})/)
+  if (match) return match[1]
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return `${parsed.getUTCFullYear()}-${String(parsed.getUTCMonth() + 1).padStart(2, '0')}-${String(parsed.getUTCDate()).padStart(2, '0')}`
+}
+
+const formatApiDate = (value: string, options?: Intl.DateTimeFormatOptions) => {
+  const key = toDateKey(value)
+  const parsed = key ? parseInputDateAsLocal(key) : null
+  if (!parsed) return value
+  return parsed.toLocaleDateString('en-US', options)
+}
+
 export default function LeavePage() {
   const layoutUser = useLayoutUser()
   const [user, setUser] = useState<any>(null)
@@ -266,7 +282,8 @@ export default function LeavePage() {
     return requests.filter((request) => {
       if (!editableStatuses.has(request.status) && request.status !== 'APPROVED') return false
       if (request.transitionPlan?.trim()) return false
-      const start = new Date(request.startDate)
+      const start = parseInputDateAsLocal(toDateKey(request.startDate))
+      if (!start) return false
       start.setHours(0, 0, 0, 0)
       const dayDiff = Math.ceil((start.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
       return dayDiff >= 0 && dayDiff <= 3
@@ -316,16 +333,15 @@ export default function LeavePage() {
   const getEventsForDate = (date: Date) => {
     const ymd = toYMD(date)
     return filteredCalendarEvents.filter(event => {
-      const start = new Date(event.startDate)
-      const end = new Date(event.endDate)
-      const startYmd = toYMD(start)
-      const endYmd = toYMD(end)
+      const startYmd = toDateKey(event.startDate)
+      const endYmd = toDateKey(event.endDate)
+      if (!startYmd || !endYmd) return false
       return ymd >= startYmd && ymd <= endYmd
     })
   }
 
   const getReturnDateLabel = (endDate: string) => {
-    const parsed = parseInputDateAsLocal(endDate)
+    const parsed = parseInputDateAsLocal(toDateKey(endDate))
     if (!parsed) return ''
     const value = new Date(parsed)
     value.setDate(value.getDate() + 1)
@@ -438,8 +454,8 @@ export default function LeavePage() {
     setEditFormData({
       id: request.id,
       leaveType: request.leaveType,
-      startDate: request.startDate.split('T')[0],
-      endDate: request.endDate.split('T')[0],
+      startDate: toDateKey(request.startDate),
+      endDate: toDateKey(request.endDate),
       reason: request.reason || '',
       transitionPlan: request.transitionPlan || '',
       coverPersonId: request.coverPerson?.id || '',
@@ -842,9 +858,9 @@ export default function LeavePage() {
                                     </Badge>
                                   </div>
                                   <p className="text-xs text-muted-foreground">
-                                    {new Date(request.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                    {formatApiDate(request.startDate, { month: 'short', day: 'numeric' })}
                                     {' - '}
-                                    {new Date(request.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                    {formatApiDate(request.endDate, { month: 'short', day: 'numeric' })}
                                     {' • '}{days}d
                                   </p>
                                   <p className="text-[11px] text-muted-foreground">
@@ -933,9 +949,9 @@ export default function LeavePage() {
                                   </Badge>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                  {typeConfig.label} • {new Date(request.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                  {typeConfig.label} • {formatApiDate(request.startDate, { month: 'short', day: 'numeric' })}
                                   {' - '}
-                                  {new Date(request.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                  {formatApiDate(request.endDate, { month: 'short', day: 'numeric' })}
                                   {' • '}{days}d
                                 </p>
                                 <p className="text-[11px] text-muted-foreground truncate">{request.reason}</p>
@@ -973,10 +989,11 @@ export default function LeavePage() {
 
             {/* Team on Leave Today */}
             {filteredCalendarEvents.filter(e => {
-              const today = new Date()
-              const start = new Date(e.startDate)
-              const end = new Date(e.endDate)
-              return today >= new Date(start.toDateString()) && today <= new Date(end.toDateString()) && !e.isCurrentUser && e.status === 'APPROVED'
+              const todayYmd = formatDateForInput(new Date())
+              const startYmd = toDateKey(e.startDate)
+              const endYmd = toDateKey(e.endDate)
+              if (!startYmd || !endYmd) return false
+              return todayYmd >= startYmd && todayYmd <= endYmd && !e.isCurrentUser && e.status === 'APPROVED'
             }).length > 0 && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
@@ -994,10 +1011,11 @@ export default function LeavePage() {
                     </div>
                     <div className="p-3 space-y-2">
                       {filteredCalendarEvents.filter(e => {
-                        const today = new Date()
-                        const start = new Date(e.startDate)
-                        const end = new Date(e.endDate)
-                        return today >= new Date(start.toDateString()) && today <= new Date(end.toDateString()) && !e.isCurrentUser && e.status === 'APPROVED'
+                        const todayYmd = formatDateForInput(new Date())
+                        const startYmd = toDateKey(e.startDate)
+                        const endYmd = toDateKey(e.endDate)
+                        if (!startYmd || !endYmd) return false
+                        return todayYmd >= startYmd && todayYmd <= endYmd && !e.isCurrentUser && e.status === 'APPROVED'
                       }).map(event => (
                         <div key={event.id} className="flex items-center gap-2 text-sm">
                           <div className={`w-2 h-2 rounded-full ${LEAVE_TYPE_CONFIG[event.leaveType].bg}`} />
@@ -1268,13 +1286,13 @@ export default function LeavePage() {
               <div>
                 <Label className="text-muted-foreground">Start Date (first day off)</Label>
                 <p className="text-sm font-medium text-foreground mt-1">
-                  {new Date(selectedRequest.startDate).toLocaleDateString()}
+                  {formatApiDate(selectedRequest.startDate)}
                 </p>
               </div>
               <div>
                 <Label className="text-muted-foreground">End Date (last day off)</Label>
                 <p className="text-sm font-medium text-foreground mt-1">
-                  {new Date(selectedRequest.endDate).toLocaleDateString()}
+                  {formatApiDate(selectedRequest.endDate)}
                 </p>
               </div>
             </div>
