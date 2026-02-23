@@ -11,8 +11,8 @@ type GoogleCalendarConfig = {
 type GoogleCalendarEventPayload = {
   summary: string
   description: string
-  start: { date: string }
-  end: { date: string }
+  start: { date: string } | { dateTime: string; timeZone: string }
+  end: { date: string } | { dateTime: string; timeZone: string }
   attendees?: Array<{ email: string }>
   extendedProperties: {
     private: Record<string, string>
@@ -30,6 +30,8 @@ const LEAVE_STATUS_LABELS: Record<LeaveStatus, string> = {
   REJECTED: 'Rejected',
   CANCELLED: 'Cancelled',
 }
+
+const LEAVE_CALENDAR_TIMEZONE = process.env.LEAVE_CALENDAR_TIMEZONE || 'Asia/Karachi'
 
 function getCalendarConfig(): GoogleCalendarConfig | null {
   const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID?.trim()
@@ -282,25 +284,62 @@ function buildLeaveEventPayload({
   const returnDate = plusUtcDays(endDate, 1)
   const statusLabel = LEAVE_STATUS_LABELS[leaveRequest.status]
 
-  const summary = `${leaveRequest.employee.name} • ${leaveRequest.leaveType} Leave (${statusLabel})`
+  const halfDaySessionLabel =
+    leaveRequest.halfDaySession === 'FIRST_HALF'
+      ? 'First half'
+      : leaveRequest.halfDaySession === 'SECOND_HALF'
+        ? 'Second half'
+        : null
+  const unavailableHours =
+    leaveRequest.unavailableStartTime && leaveRequest.unavailableEndTime
+      ? `${leaveRequest.unavailableStartTime}-${leaveRequest.unavailableEndTime}`
+      : null
+
+  const summary = `${leaveRequest.employee.name} - ${leaveRequest.leaveType}${leaveRequest.isHalfDay ? ' Half-Day' : ''} Leave (${statusLabel})`
   const descriptionLines = [
     `Employee: ${leaveRequest.employee.name}`,
     `Department: ${leaveRequest.employee.department || 'N/A'}`,
     `Leave Type: ${leaveRequest.leaveType}`,
+    ...(leaveRequest.isHalfDay
+      ? [
+          `Half-day session: ${halfDaySessionLabel || 'Not specified'}`,
+          `Unavailable hours: ${unavailableHours || 'Not specified'}`,
+        ]
+      : []),
     `Status: ${statusLabel}`,
     `Start Date (first day off): ${formatUtcDateOnly(startDate)}`,
     `End Date (last day off): ${formatUtcDateOnly(endDate)}`,
-    `Expected Return Date: ${formatUtcDateOnly(returnDate)}`,
+    `Expected Return Date: ${leaveRequest.isHalfDay ? formatUtcDateOnly(startDate) : formatUtcDateOnly(returnDate)}`,
     `Reason: ${leaveRequest.reason}`,
     `Transition Plan: ${leaveRequest.transitionPlan?.trim() || 'Not provided yet'}`,
   ]
 
+  const hasHalfDayTimes =
+    leaveRequest.isHalfDay &&
+    Boolean(leaveRequest.unavailableStartTime && leaveRequest.unavailableEndTime)
+
+  const start = hasHalfDayTimes
+    ? {
+        dateTime: `${formatUtcDateOnly(startDate)}T${leaveRequest.unavailableStartTime}:00`,
+        timeZone: LEAVE_CALENDAR_TIMEZONE,
+      }
+    : { date: formatUtcDateOnly(startDate) }
+
+  const end = hasHalfDayTimes
+    ? {
+        dateTime: `${formatUtcDateOnly(startDate)}T${leaveRequest.unavailableEndTime}:00`,
+        timeZone: LEAVE_CALENDAR_TIMEZONE,
+      }
+    : {
+        // Google all-day events use exclusive end date.
+        date: formatUtcDateOnly(returnDate),
+      }
+
   return {
     summary,
     description: descriptionLines.join('\n'),
-    start: { date: formatUtcDateOnly(startDate) },
-    // Google all-day events use exclusive end date.
-    end: { date: formatUtcDateOnly(returnDate) },
+    start,
+    end,
     ...(attendeeEmails.length > 0
       ? {
           attendees: attendeeEmails.map((email) => ({ email })),
@@ -314,7 +353,6 @@ function buildLeaveEventPayload({
     },
   }
 }
-
 export async function removeLeaveCalendarEvent(leaveRequestId: string) {
   const config = getCalendarConfig()
   if (!config) {

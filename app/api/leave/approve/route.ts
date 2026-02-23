@@ -4,7 +4,7 @@ import { getSession } from '@/lib/auth'
 import { sendLeaveApprovalNotification } from '@/lib/email'
 import { LeaveStatus, Prisma } from '@prisma/client'
 import { z } from 'zod'
-import { calculateLeaveDays } from '@/lib/leave-utils'
+import { calculateLeaveDuration } from '@/lib/leave-utils'
 import { isAdminRole } from '@/lib/permissions'
 import { removeLeaveCalendarEvent, syncLeaveCalendarEvent } from '@/lib/google-calendar'
 
@@ -170,10 +170,10 @@ export async function POST(request: NextRequest) {
       if (newStatus === 'APPROVED') {
         const start = new Date(leaveRequest.startDate)
         const end = new Date(leaveRequest.endDate)
-        const daysUsed = calculateLeaveDays(start, end)
+        const daysUsed = calculateLeaveDuration(start, end, leaveRequest.isHalfDay)
         if (daysUsed <= 0) {
           return NextResponse.json(
-            { error: 'Selected leave range does not include any working days (Mon-Fri).' },
+            { error: 'Selected leave range does not include any working leave duration (Mon-Fri).' },
             { status: 400 }
           )
         }

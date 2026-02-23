@@ -2,7 +2,7 @@ import nodemailer from 'nodemailer'
 import { prisma } from '@/lib/db'
 import { formatReportAsHTML, generateDetailedReport } from './reports'
 import { escapeHtml } from '@/lib/sanitize'
-import { calculateLeaveDays } from '@/lib/leave-utils'
+import { calculateLeaveDuration } from '@/lib/leave-utils'
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -24,6 +24,30 @@ function parseRecipientList(raw: string | undefined | null) {
     .split(',')
     .map((email) => email.trim())
     .filter(Boolean)
+}
+
+function getLeaveDurationLabel(days: number) {
+  if (days === 0.5) return '0.5 day'
+  return `${days} day${days > 1 ? 's' : ''}`
+}
+
+function getHalfDayDetailsHtml(leaveRequest: {
+  isHalfDay: boolean
+  halfDaySession: 'FIRST_HALF' | 'SECOND_HALF' | null
+  unavailableStartTime: string | null
+  unavailableEndTime: string | null
+}) {
+  if (!leaveRequest.isHalfDay) return ''
+  const sessionLabel = leaveRequest.halfDaySession === 'FIRST_HALF' ? 'First half' : 'Second half'
+  const unavailableHours =
+    leaveRequest.unavailableStartTime && leaveRequest.unavailableEndTime
+      ? `${leaveRequest.unavailableStartTime} - ${leaveRequest.unavailableEndTime}`
+      : 'Not provided'
+
+  return `
+    <p><strong>Half-day Session:</strong> ${sessionLabel}</p>
+    <p><strong>Unavailable Hours:</strong> ${escapeHtml(unavailableHours)}</p>
+  `
 }
 
 async function getHrRecipientEmails() {
@@ -218,7 +242,8 @@ export async function sendLeaveRequestNotification(requestId: string) {
   const startDate = startDateValue.toLocaleDateString()
   const endDate = endDateValue.toLocaleDateString()
   const returnDate = returnDateValue.toLocaleDateString()
-  const daysCount = calculateLeaveDays(startDateValue, endDateValue)
+  const daysCount = calculateLeaveDuration(startDateValue, endDateValue, leaveRequest.isHalfDay)
+  const durationLabel = getLeaveDurationLabel(daysCount)
 
   const hrEmails = await getHrRecipientEmails()
   const fallbackRecipients = parseRecipientList(
@@ -280,8 +305,9 @@ export async function sendLeaveRequestNotification(requestId: string) {
         <p><strong>Leave Type:</strong> ${escapeHtml(leaveRequest.leaveType)}</p>
         <p><strong>Start Date (first day off):</strong> ${startDate}</p>
         <p><strong>End Date (last day off):</strong> ${endDate}</p>
-        <p><strong>Expected Return Date:</strong> ${returnDate}</p>
-        <p><strong>Duration (working days):</strong> ${daysCount} day${daysCount > 1 ? 's' : ''}</p>
+        <p><strong>Expected Return Date:</strong> ${leaveRequest.isHalfDay ? 'Same day' : returnDate}</p>
+        <p><strong>Duration (working days):</strong> ${durationLabel}</p>
+        ${getHalfDayDetailsHtml(leaveRequest)}
         <p><strong>Reason:</strong> ${escapeHtml(leaveRequest.reason)}</p>
         ${leaveRequest.coverPerson ? `<p><strong>Cover Person:</strong> ${escapeHtml(leaveRequest.coverPerson.name)}</p>` : ''}
       </div>
@@ -346,7 +372,8 @@ export async function sendLeaveApprovalNotification(
   const startDate = startDateValue.toLocaleDateString()
   const endDate = endDateValue.toLocaleDateString()
   const returnDate = returnDateValue.toLocaleDateString()
-  const daysCount = calculateLeaveDays(startDateValue, endDateValue)
+  const daysCount = calculateLeaveDuration(startDateValue, endDateValue, leaveRequest.isHalfDay)
+  const durationLabel = getLeaveDurationLabel(daysCount)
 
   const isApproved = status === 'approved'
   const statusColor = isApproved ? '#10B981' : '#EF4444'
@@ -368,8 +395,9 @@ export async function sendLeaveApprovalNotification(
         <p><strong>Leave Type:</strong> ${leaveRequest.leaveType}</p>
         <p><strong>Start Date (first day off):</strong> ${startDate}</p>
         <p><strong>End Date (last day off):</strong> ${endDate}</p>
-        <p><strong>Expected Return Date:</strong> ${returnDate}</p>
-        <p><strong>Duration (working days):</strong> ${daysCount} day${daysCount > 1 ? 's' : ''}</p>
+        <p><strong>Expected Return Date:</strong> ${leaveRequest.isHalfDay ? 'Same day' : returnDate}</p>
+        <p><strong>Duration (working days):</strong> ${durationLabel}</p>
+        ${getHalfDayDetailsHtml(leaveRequest)}
         <p><strong>${isApproved ? 'Approved' : 'Reviewed'} by:</strong> ${escapeHtml(approverName)}</p>
         ${comment ? `<p><strong>Comment:</strong> ${escapeHtml(comment)}</p>` : ''}
       </div>
@@ -435,7 +463,8 @@ export async function sendTransitionPlanReminderNotification(requestId: string) 
   const startDate = startDateValue.toLocaleDateString()
   const endDate = endDateValue.toLocaleDateString()
   const returnDate = returnDateValue.toLocaleDateString()
-  const daysCount = calculateLeaveDays(startDateValue, endDateValue)
+  const daysCount = calculateLeaveDuration(startDateValue, endDateValue, leaveRequest.isHalfDay)
+  const durationLabel = getLeaveDurationLabel(daysCount)
   const msPerDay = 1000 * 60 * 60 * 24
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -464,8 +493,9 @@ export async function sendTransitionPlanReminderNotification(requestId: string) 
         <p><strong>Leave Type:</strong> ${escapeHtml(leaveRequest.leaveType)}</p>
         <p><strong>Start Date (first day off):</strong> ${startDate}</p>
         <p><strong>End Date (last day off):</strong> ${endDate}</p>
-        <p><strong>Expected Return Date:</strong> ${returnDate}</p>
-        <p><strong>Duration (working days):</strong> ${daysCount} day${daysCount > 1 ? 's' : ''}</p>
+        <p><strong>Expected Return Date:</strong> ${leaveRequest.isHalfDay ? 'Same day' : returnDate}</p>
+        <p><strong>Duration (working days):</strong> ${durationLabel}</p>
+        ${getHalfDayDetailsHtml(leaveRequest)}
         <p><strong>Reason:</strong> ${escapeHtml(leaveRequest.reason)}</p>
       </div>
 

@@ -4,12 +4,13 @@ import { getSession } from '@/lib/auth'
 import { sendLeaveRequestNotification } from '@/lib/email'
 import { Prisma } from '@prisma/client'
 import { z } from 'zod'
-import { calculateLeaveDays, isValidLeaveDateRange } from '@/lib/leave-utils'
+import { calculateLeaveDuration, isValidLeaveDateRange } from '@/lib/leave-utils'
 import { isAdminRole } from '@/lib/permissions'
 import { removeLeaveCalendarEvent, syncLeaveCalendarEvent } from '@/lib/google-calendar'
 
 const LEAVE_TYPES = ['CASUAL', 'SICK', 'ANNUAL'] as const
 const LEAVE_STATUSES = ['PENDING', 'LEAD_APPROVED', 'HR_APPROVED', 'APPROVED', 'REJECTED', 'CANCELLED'] as const
+const HALF_DAY_SESSIONS = ['FIRST_HALF', 'SECOND_HALF'] as const
 
 const optionalIdSchema = z.preprocess(
   (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
@@ -21,39 +22,94 @@ const optionalTransitionPlanSchema = z.preprocess(
   z.string().trim().max(6000).optional().nullable()
 )
 
-const leaveRequestCreateSchema = z.object({
+const optionalTimeSchema = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Time must be in HH:mm format').optional().nullable()
+)
+
+const isSameUtcDay = (a: Date, b: Date) =>
+  a.getUTCFullYear() === b.getUTCFullYear() &&
+  a.getUTCMonth() === b.getUTCMonth() &&
+  a.getUTCDate() === b.getUTCDate()
+
+const leaveRequestPayloadBaseSchema = z.object({
   leaveType: z.enum(LEAVE_TYPES),
+  isHalfDay: z.boolean().optional().default(false),
+  halfDaySession: z.enum(HALF_DAY_SESSIONS).optional(),
+  unavailableStartTime: optionalTimeSchema,
+  unavailableEndTime: optionalTimeSchema,
   startDate: z.coerce.date(),
   endDate: z.coerce.date(),
   reason: z.string().trim().min(1).max(4000),
   transitionPlan: optionalTransitionPlanSchema,
+})
+
+function applyLeavePayloadValidations<T extends z.ZodTypeAny>(schema: T) {
+  return schema
+    .refine(
+      (data: any) => isValidLeaveDateRange(data.startDate, data.endDate),
+      {
+        message: 'End date must be on or after start date',
+        path: ['endDate'],
+      }
+    )
+    .superRefine((data: any, ctx) => {
+      if (!data.isHalfDay) return
+
+      if (data.leaveType === 'ANNUAL') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Half-day leave is only supported for Casual and Sick leave',
+          path: ['leaveType'],
+        })
+      }
+
+      if (!isSameUtcDay(data.startDate, data.endDate)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Half-day leave must start and end on the same day',
+          path: ['endDate'],
+        })
+      }
+
+      if (!data.halfDaySession) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Half-day session is required',
+          path: ['halfDaySession'],
+        })
+      }
+
+      if (!data.unavailableStartTime || !data.unavailableEndTime) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Unavailable start and end time are required for half-day leave',
+          path: ['unavailableStartTime'],
+        })
+        return
+      }
+
+      if (data.unavailableStartTime >= data.unavailableEndTime) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Unavailable end time must be after start time',
+          path: ['unavailableEndTime'],
+        })
+      }
+    })
+}
+
+const leaveRequestCreateSchema = applyLeavePayloadValidations(leaveRequestPayloadBaseSchema.extend({
   employeeId: optionalIdSchema,
   coverPersonId: optionalIdSchema,
   additionalNotifyIds: z.array(z.string().trim().min(1)).max(20).optional(),
-}).refine(
-  (data) => isValidLeaveDateRange(data.startDate, data.endDate),
-  {
-    message: 'End date must be on or after start date',
-    path: ['endDate'],
-  }
-)
+}))
 
-const leaveRequestUpdateSchema = z.object({
+const leaveRequestUpdateSchema = applyLeavePayloadValidations(leaveRequestPayloadBaseSchema.extend({
   id: z.string().trim().min(1),
-  leaveType: z.enum(LEAVE_TYPES),
-  startDate: z.coerce.date(),
-  endDate: z.coerce.date(),
-  reason: z.string().trim().min(1).max(4000),
-  transitionPlan: optionalTransitionPlanSchema,
   coverPersonId: optionalIdSchema,
   additionalNotifyIds: z.array(z.string().trim().min(1)).max(20).optional(),
-}).refine(
-  (data) => isValidLeaveDateRange(data.startDate, data.endDate),
-  {
-    message: 'End date must be on or after start date',
-    path: ['endDate'],
-  }
-)
+}))
 
 const leaveStatusSchema = z.enum(LEAVE_STATUSES)
 
@@ -205,7 +261,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { leaveType, startDate, endDate, reason, transitionPlan, coverPersonId, additionalNotifyIds, employeeId } = parsed.data
+    const {
+      leaveType,
+      isHalfDay,
+      halfDaySession,
+      unavailableStartTime,
+      unavailableEndTime,
+      startDate,
+      endDate,
+      reason,
+      transitionPlan,
+      coverPersonId,
+      additionalNotifyIds,
+      employeeId,
+    } = parsed.data
     const isHR = isAdminRole(user.role)
 
     // HR can create leave on behalf of any employee; default remains self-service.
@@ -249,10 +318,10 @@ export async function POST(request: NextRequest) {
     // Calculate days requested
     const start = new Date(startDate)
     const end = new Date(endDate)
-    const daysRequested = calculateLeaveDays(start, end)
+    const daysRequested = calculateLeaveDuration(start, end, isHalfDay)
     if (daysRequested <= 0) {
       return NextResponse.json(
-        { error: 'Selected range does not include any working days (Mon-Fri).' },
+        { error: 'Selected range does not include any working leave duration (Mon-Fri).' },
         { status: 400 }
       )
     }
@@ -307,6 +376,10 @@ export async function POST(request: NextRequest) {
             data: {
               employeeId: targetEmployeeId,
               leaveType,
+              isHalfDay,
+              halfDaySession: isHalfDay ? (halfDaySession ?? null) : null,
+              unavailableStartTime: isHalfDay ? (unavailableStartTime ?? null) : null,
+              unavailableEndTime: isHalfDay ? (unavailableEndTime ?? null) : null,
               startDate: start,
               endDate: end,
               reason,
@@ -347,6 +420,10 @@ export async function POST(request: NextRequest) {
           data: {
             employeeId: targetEmployeeId,
             leaveType,
+            isHalfDay,
+            halfDaySession: isHalfDay ? (halfDaySession ?? null) : null,
+            unavailableStartTime: isHalfDay ? (unavailableStartTime ?? null) : null,
+            unavailableEndTime: isHalfDay ? (unavailableEndTime ?? null) : null,
             startDate: start,
             endDate: end,
             reason,
@@ -373,6 +450,10 @@ export async function POST(request: NextRequest) {
         data: {
           employeeId: targetEmployeeId,
           leaveType,
+          isHalfDay,
+          halfDaySession: isHalfDay ? (halfDaySession ?? null) : null,
+          unavailableStartTime: isHalfDay ? (unavailableStartTime ?? null) : null,
+          unavailableEndTime: isHalfDay ? (unavailableEndTime ?? null) : null,
           startDate: start,
           endDate: end,
           reason,
@@ -432,7 +513,20 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    const { id, leaveType, startDate, endDate, reason, transitionPlan, coverPersonId, additionalNotifyIds } = parsed.data
+    const {
+      id,
+      leaveType,
+      isHalfDay,
+      halfDaySession,
+      unavailableStartTime,
+      unavailableEndTime,
+      startDate,
+      endDate,
+      reason,
+      transitionPlan,
+      coverPersonId,
+      additionalNotifyIds,
+    } = parsed.data
     const isHR = isAdminRole(user.role)
 
     const existing = await prisma.leaveRequest.findUnique({
@@ -472,10 +566,10 @@ export async function PUT(request: NextRequest) {
     }
     const start = new Date(startDate)
     const end = new Date(endDate)
-    const daysRequested = calculateLeaveDays(start, end)
+    const daysRequested = calculateLeaveDuration(start, end, isHalfDay)
     if (daysRequested <= 0) {
       return NextResponse.json(
-        { error: 'Selected range does not include any working days (Mon-Fri).' },
+        { error: 'Selected range does not include any working leave duration (Mon-Fri).' },
         { status: 400 }
       )
     }
@@ -513,6 +607,10 @@ export async function PUT(request: NextRequest) {
       where: { id },
       data: {
         leaveType,
+        isHalfDay,
+        halfDaySession: isHalfDay ? (halfDaySession ?? null) : null,
+        unavailableStartTime: isHalfDay ? (unavailableStartTime ?? null) : null,
+        unavailableEndTime: isHalfDay ? (unavailableEndTime ?? null) : null,
         startDate: start,
         endDate: end,
         reason,
@@ -593,7 +691,7 @@ export async function DELETE(request: NextRequest) {
         if (leaveRequest.status === 'APPROVED') {
           const start = new Date(leaveRequest.startDate)
           const end = new Date(leaveRequest.endDate)
-          const daysUsed = calculateLeaveDays(start, end)
+          const daysUsed = calculateLeaveDuration(start, end, leaveRequest.isHalfDay)
           const usedField = `${leaveRequest.leaveType.toLowerCase()}Used` as 'casualUsed' | 'sickUsed' | 'annualUsed'
 
           const balance = await tx.leaveBalance.findUnique({

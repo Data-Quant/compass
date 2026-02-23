@@ -53,6 +53,11 @@ enum LeaveStatus {
   CANCELLED         // Employee cancelled
 }
 
+enum HalfDaySession {
+  FIRST_HALF
+  SECOND_HALF
+}
+
 enum TicketStatus {
   OPEN             // Employee just submitted
   UNDER_REVIEW     // HR is looking at it
@@ -334,6 +339,10 @@ model LeaveRequest {
   id              String      @id @default(cuid())
   employeeId      String
   leaveType       LeaveType
+  isHalfDay       Boolean     @default(false)
+  halfDaySession  HalfDaySession?
+  unavailableStartTime String?  // HH:mm
+  unavailableEndTime   String?  // HH:mm
   startDate       DateTime
   endDate         DateTime
   reason          String

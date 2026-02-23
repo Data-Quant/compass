@@ -37,7 +37,7 @@ import {
 import { StatsCard } from '@/components/composed/StatsCard'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { Textarea } from '@/components/ui/textarea'
-import { calculateLeaveDays } from '@/lib/leave-utils'
+import { calculateLeaveDuration } from '@/lib/leave-utils'
 
 interface LeaveBalance {
   casualDays: number
@@ -56,6 +56,10 @@ interface LeaveBalance {
 interface LeaveRequest {
   id: string
   leaveType: 'CASUAL' | 'SICK' | 'ANNUAL'
+  isHalfDay: boolean
+  halfDaySession?: 'FIRST_HALF' | 'SECOND_HALF' | null
+  unavailableStartTime?: string | null
+  unavailableEndTime?: string | null
   startDate: string
   endDate: string
   reason: string
@@ -84,6 +88,10 @@ interface CalendarEvent {
   employeeName: string
   department: string | null
   leaveType: 'CASUAL' | 'SICK' | 'ANNUAL'
+  isHalfDay: boolean
+  halfDaySession?: 'FIRST_HALF' | 'SECOND_HALF' | null
+  unavailableStartTime?: string | null
+  unavailableEndTime?: string | null
   startDate: string
   endDate: string
   status: string
@@ -113,6 +121,26 @@ const STATUS_CONFIG: Record<string, { color: string; bg: string; label: string }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+const HALF_DAY_SESSION_OPTIONS = [
+  { value: 'FIRST_HALF', label: 'First Half' },
+  { value: 'SECOND_HALF', label: 'Second Half' },
+] as const
+
+const isHalfDayEligibleLeaveType = (leaveType: 'CASUAL' | 'SICK' | 'ANNUAL') =>
+  leaveType === 'CASUAL' || leaveType === 'SICK'
+
+const getHalfDaySessionLabel = (session?: 'FIRST_HALF' | 'SECOND_HALF' | null) => {
+  if (session === 'FIRST_HALF') return 'First half'
+  if (session === 'SECOND_HALF') return 'Second half'
+  return 'Half day'
+}
+
+const getHalfDayWindowLabel = (start?: string | null, end?: string | null) => {
+  if (!start || !end) return 'Unavailable hours not provided'
+  return `${start} - ${end}`
+}
+
+const getDurationLabel = (days: number) => (days === 0.5 ? '0.5d' : `${days}d`)
 
 const formatDateForInput = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -173,6 +201,10 @@ export default function LeavePage() {
   // Form state
   const [formData, setFormData] = useState({
     leaveType: 'CASUAL',
+    isHalfDay: false,
+    halfDaySession: '' as '' | 'FIRST_HALF' | 'SECOND_HALF',
+    unavailableStartTime: '',
+    unavailableEndTime: '',
     startDate: '',
     endDate: '',
     reason: '',
@@ -184,6 +216,10 @@ export default function LeavePage() {
   const [editFormData, setEditFormData] = useState({
     id: '',
     leaveType: 'CASUAL' as 'CASUAL' | 'SICK' | 'ANNUAL',
+    isHalfDay: false,
+    halfDaySession: '' as '' | 'FIRST_HALF' | 'SECOND_HALF',
+    unavailableStartTime: '',
+    unavailableEndTime: '',
     startDate: '',
     endDate: '',
     reason: '',
@@ -340,7 +376,10 @@ export default function LeavePage() {
     })
   }
 
-  const getReturnDateLabel = (endDate: string) => {
+  const getReturnDateLabel = (startDate: string, endDate: string, isHalfDay = false) => {
+    if (isHalfDay) {
+      return formatApiDate(startDate)
+    }
     const parsed = parseInputDateAsLocal(toDateKey(endDate))
     if (!parsed) return ''
     const value = new Date(parsed)
@@ -401,10 +440,32 @@ export default function LeavePage() {
     setSubmitting(true)
 
     try {
+      const isHalfDay = formData.isHalfDay && isHalfDayEligibleLeaveType(formData.leaveType as 'CASUAL' | 'SICK' | 'ANNUAL')
+      const endDate = isHalfDay ? formData.startDate : formData.endDate
+
+      if (isHalfDay) {
+        if (!formData.halfDaySession) {
+          toast.error('Select first half or second half')
+          return
+        }
+        if (!formData.unavailableStartTime || !formData.unavailableEndTime) {
+          toast.error('Enter unavailable start and end time for half-day leave')
+          return
+        }
+        if (formData.unavailableStartTime >= formData.unavailableEndTime) {
+          toast.error('Unavailable end time must be after start time')
+          return
+        }
+      }
+
       const payload = {
         leaveType: formData.leaveType,
         startDate: formData.startDate,
-        endDate: formData.endDate,
+        endDate,
+        isHalfDay,
+        halfDaySession: isHalfDay ? formData.halfDaySession : undefined,
+        unavailableStartTime: isHalfDay ? formData.unavailableStartTime : undefined,
+        unavailableEndTime: isHalfDay ? formData.unavailableEndTime : undefined,
         reason: formData.reason,
         transitionPlan: formData.transitionPlan || undefined,
         coverPersonId: formData.coverPersonId || undefined,
@@ -425,6 +486,10 @@ export default function LeavePage() {
         setSelectedRange({ start: null, end: null })
         setFormData({
           leaveType: 'CASUAL',
+          isHalfDay: false,
+          halfDaySession: '',
+          unavailableStartTime: '',
+          unavailableEndTime: '',
           startDate: '',
           endDate: '',
           reason: '',
@@ -454,6 +519,10 @@ export default function LeavePage() {
     setEditFormData({
       id: request.id,
       leaveType: request.leaveType,
+      isHalfDay: request.isHalfDay,
+      halfDaySession: request.halfDaySession || '',
+      unavailableStartTime: request.unavailableStartTime || '',
+      unavailableEndTime: request.unavailableEndTime || '',
       startDate: toDateKey(request.startDate),
       endDate: toDateKey(request.endDate),
       reason: request.reason || '',
@@ -469,14 +538,36 @@ export default function LeavePage() {
     setUpdating(true)
 
     try {
+      const isHalfDay = editFormData.isHalfDay && isHalfDayEligibleLeaveType(editFormData.leaveType)
+      const endDate = isHalfDay ? editFormData.startDate : editFormData.endDate
+
+      if (isHalfDay) {
+        if (!editFormData.halfDaySession) {
+          toast.error('Select first half or second half')
+          return
+        }
+        if (!editFormData.unavailableStartTime || !editFormData.unavailableEndTime) {
+          toast.error('Enter unavailable start and end time for half-day leave')
+          return
+        }
+        if (editFormData.unavailableStartTime >= editFormData.unavailableEndTime) {
+          toast.error('Unavailable end time must be after start time')
+          return
+        }
+      }
+
       const res = await fetch('/api/leave/requests', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: editFormData.id,
           leaveType: editFormData.leaveType,
+          isHalfDay,
+          halfDaySession: isHalfDay ? editFormData.halfDaySession : undefined,
+          unavailableStartTime: isHalfDay ? editFormData.unavailableStartTime : undefined,
+          unavailableEndTime: isHalfDay ? editFormData.unavailableEndTime : undefined,
           startDate: editFormData.startDate,
-          endDate: editFormData.endDate,
+          endDate,
           reason: editFormData.reason,
           transitionPlan: editFormData.transitionPlan || undefined,
           coverPersonId: editFormData.coverPersonId || undefined,
@@ -523,10 +614,10 @@ export default function LeavePage() {
     }
   }
 
-  const getDaysCount = (start: string, end: string) => {
+  const getDaysCount = (start: string, end: string, isHalfDay = false) => {
     const startDate = new Date(start)
     const endDate = new Date(end)
-    return calculateLeaveDays(startDate, endDate)
+    return calculateLeaveDuration(startDate, endDate, isHalfDay)
   }
 
   const clearSelection = () => {
@@ -747,9 +838,9 @@ export default function LeavePage() {
                                         : ''
                                       }
                                     `}
-                                    title={`${event.employeeName} - ${LEAVE_TYPE_CONFIG[event.leaveType].label}`}
+                                    title={`${event.employeeName} - ${LEAVE_TYPE_CONFIG[event.leaveType].label}${event.isHalfDay ? ` (${getHalfDaySessionLabel(event.halfDaySession)})` : ''}`}
                                   >
-                                    {event.isCurrentUser ? 'You' : event.employeeName.split(' ')[0]}
+                                    {(event.isCurrentUser ? 'You' : event.employeeName.split(' ')[0]) + (event.isHalfDay ? ' 1/2' : '')}
                                   </div>
                                 ))}
                                 {events.length > 2 && (
@@ -841,7 +932,7 @@ export default function LeavePage() {
                           const typeConfig = LEAVE_TYPE_CONFIG[request.leaveType]
                           const statusConfig = STATUS_CONFIG[request.status] || STATUS_CONFIG.PENDING
                           const TypeIcon = typeConfig.icon
-                          const days = getDaysCount(request.startDate, request.endDate)
+                          const days = getDaysCount(request.startDate, request.endDate, request.isHalfDay)
                           const canEdit = editableStatuses.has(request.status)
 
                           return (
@@ -861,11 +952,16 @@ export default function LeavePage() {
                                     {formatApiDate(request.startDate, { month: 'short', day: 'numeric' })}
                                     {' - '}
                                     {formatApiDate(request.endDate, { month: 'short', day: 'numeric' })}
-                                    {' • '}{days}d
+                                    {' - '}{getDurationLabel(days)}
                                   </p>
                                   <p className="text-[11px] text-muted-foreground">
-                                    Return date: {getReturnDateLabel(request.endDate)}
+                                    Return date: {getReturnDateLabel(request.startDate, request.endDate, request.isHalfDay)}
                                   </p>
+                                  {request.isHalfDay && (
+                                    <p className="text-[11px] text-muted-foreground">
+                                      {getHalfDaySessionLabel(request.halfDaySession)} - {getHalfDayWindowLabel(request.unavailableStartTime, request.unavailableEndTime)}
+                                    </p>
+                                  )}
 
                                   <div className="flex gap-3 mt-1 flex-wrap">
                                     <Button
@@ -932,7 +1028,7 @@ export default function LeavePage() {
                         const typeConfig = LEAVE_TYPE_CONFIG[request.leaveType]
                         const statusConfig = STATUS_CONFIG[request.status] || STATUS_CONFIG.PENDING
                         const TypeIcon = typeConfig.icon
-                        const days = getDaysCount(request.startDate, request.endDate)
+                        const days = getDaysCount(request.startDate, request.endDate, request.isHalfDay)
                         const processing = approvalProcessingId === request.id
 
                         return (
@@ -949,11 +1045,16 @@ export default function LeavePage() {
                                   </Badge>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                  {typeConfig.label} • {formatApiDate(request.startDate, { month: 'short', day: 'numeric' })}
+                                  {typeConfig.label} - {formatApiDate(request.startDate, { month: 'short', day: 'numeric' })}
                                   {' - '}
                                   {formatApiDate(request.endDate, { month: 'short', day: 'numeric' })}
-                                  {' • '}{days}d
+                                  {' - '}{getDurationLabel(days)}
                                 </p>
+                                {request.isHalfDay && (
+                                  <p className="text-[11px] text-muted-foreground">
+                                    {getHalfDaySessionLabel(request.halfDaySession)} - {getHalfDayWindowLabel(request.unavailableStartTime, request.unavailableEndTime)}
+                                  </p>
+                                )}
                                 <p className="text-[11px] text-muted-foreground truncate">{request.reason}</p>
                                 <div className="flex items-center gap-2 mt-2">
                                   <Button
@@ -1020,7 +1121,9 @@ export default function LeavePage() {
                         <div key={event.id} className="flex items-center gap-2 text-sm">
                           <div className={`w-2 h-2 rounded-full ${LEAVE_TYPE_CONFIG[event.leaveType].bg}`} />
                           <span className="text-foreground">{event.employeeName}</span>
-                          <span className="text-muted-foreground text-xs">({LEAVE_TYPE_CONFIG[event.leaveType].label})</span>
+                          <span className="text-muted-foreground text-xs">
+                            ({LEAVE_TYPE_CONFIG[event.leaveType].label}{event.isHalfDay ? `, ${getHalfDaySessionLabel(event.halfDaySession)}` : ''})
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -1052,7 +1155,20 @@ export default function LeavePage() {
                         ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10'
                         : ''
                     }`}
-                    onClick={() => setFormData({ ...formData, leaveType: type })}
+                    onClick={() =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        leaveType: type,
+                        ...(type === 'ANNUAL'
+                          ? {
+                              isHalfDay: false,
+                              halfDaySession: '',
+                              unavailableStartTime: '',
+                              unavailableEndTime: '',
+                            }
+                          : {}),
+                      }))
+                    }
                   >
                     <Icon className={`w-5 h-5 ${config.color} mx-auto`} />
                     <span className="text-sm font-medium text-foreground">{config.label}</span>
@@ -1061,6 +1177,86 @@ export default function LeavePage() {
                 )
               })}
             </div>
+          </div>
+
+          <div className="rounded-lg border border-border p-3 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <Label className="mb-1">Half-Day Leave</Label>
+                <p className="text-xs text-muted-foreground">
+                  Available for Casual and Sick only. Half-day leave counts as 0.5 day.
+                </p>
+              </div>
+              <Checkbox
+                checked={formData.isHalfDay}
+                disabled={!isHalfDayEligibleLeaveType(formData.leaveType as 'CASUAL' | 'SICK' | 'ANNUAL')}
+                onCheckedChange={(checked) => {
+                  const nextChecked = checked === true
+                  setFormData((prev) => ({
+                    ...prev,
+                    isHalfDay: nextChecked,
+                    endDate: nextChecked && prev.startDate ? prev.startDate : prev.endDate,
+                    halfDaySession: nextChecked ? prev.halfDaySession : '',
+                    unavailableStartTime: nextChecked ? prev.unavailableStartTime : '',
+                    unavailableEndTime: nextChecked ? prev.unavailableEndTime : '',
+                  }))
+                }}
+              />
+            </div>
+
+            {formData.isHalfDay && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <Label className="mb-2">Session</Label>
+                  <Select
+                    value={formData.halfDaySession}
+                    onValueChange={(value: 'FIRST_HALF' | 'SECOND_HALF') =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        halfDaySession: value,
+                        unavailableStartTime:
+                          prev.unavailableStartTime ||
+                          (value === 'FIRST_HALF' ? '09:00' : '14:00'),
+                        unavailableEndTime:
+                          prev.unavailableEndTime ||
+                          (value === 'FIRST_HALF' ? '13:00' : '18:00'),
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select session" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {HALF_DAY_SESSION_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="unavailableStartTime" className="mb-2">Unavailable From</Label>
+                  <Input
+                    id="unavailableStartTime"
+                    type="time"
+                    required={formData.isHalfDay}
+                    value={formData.unavailableStartTime}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, unavailableStartTime: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="unavailableEndTime" className="mb-2">Unavailable To</Label>
+                  <Input
+                    id="unavailableEndTime"
+                    type="time"
+                    required={formData.isHalfDay}
+                    value={formData.unavailableEndTime}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, unavailableEndTime: e.target.value }))}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Dates */}
@@ -1072,7 +1268,13 @@ export default function LeavePage() {
                 type="date"
                 required
                 value={formData.startDate}
-                onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    startDate: e.target.value,
+                    ...(prev.isHalfDay ? { endDate: e.target.value } : {}),
+                  }))
+                }
               />
             </div>
             <div>
@@ -1081,15 +1283,16 @@ export default function LeavePage() {
                 id="endDate"
                 type="date"
                 required
-                value={formData.endDate}
+                value={formData.isHalfDay ? formData.startDate : formData.endDate}
                 min={formData.startDate}
+                disabled={formData.isHalfDay}
                 onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
               />
             </div>
           </div>
-          {formData.endDate && (
+          {(formData.endDate || (formData.isHalfDay && formData.startDate)) && (
             <p className="text-xs text-muted-foreground -mt-2">
-              Expected return date: {getReturnDateLabel(formData.endDate)}
+              Expected return date: {getReturnDateLabel(formData.startDate, formData.endDate || formData.startDate, formData.isHalfDay)}
             </p>
           )}
 
@@ -1233,7 +1436,13 @@ export default function LeavePage() {
                       <p className="text-xs text-muted-foreground truncate">
                         {typeConfig.label}
                         {event.department ? ` - ${event.department}` : ''}
+                        {event.isHalfDay ? ` - ${getHalfDaySessionLabel(event.halfDaySession)}` : ''}
                       </p>
+                      {event.isHalfDay && (
+                        <p className="text-[11px] text-muted-foreground truncate">
+                          {getHalfDayWindowLabel(event.unavailableStartTime, event.unavailableEndTime)}
+                        </p>
+                      )}
                     </div>
                     <Badge variant="secondary" className={`${statusConfig.bg} ${statusConfig.color} border-0`}>
                       {statusConfig.label}
@@ -1297,12 +1506,28 @@ export default function LeavePage() {
               </div>
             </div>
 
-            <div>
-              <Label className="text-muted-foreground">Expected Return Date</Label>
-              <p className="text-sm font-medium text-foreground mt-1">
-                {getReturnDateLabel(selectedRequest.endDate)}
-              </p>
-            </div>
+              <div>
+                <Label className="text-muted-foreground">Expected Return Date</Label>
+                <p className="text-sm font-medium text-foreground mt-1">
+                  {getReturnDateLabel(selectedRequest.startDate, selectedRequest.endDate, selectedRequest.isHalfDay)}
+                </p>
+              </div>
+
+              <div>
+                <Label className="text-muted-foreground">Duration</Label>
+                <p className="text-sm font-medium text-foreground mt-1">
+                  {getDurationLabel(getDaysCount(selectedRequest.startDate, selectedRequest.endDate, selectedRequest.isHalfDay))}
+                </p>
+              </div>
+
+              {selectedRequest.isHalfDay && (
+                <div>
+                  <Label className="text-muted-foreground">Half-Day Details</Label>
+                  <p className="text-sm text-foreground mt-1">
+                    {getHalfDaySessionLabel(selectedRequest.halfDaySession)} - {getHalfDayWindowLabel(selectedRequest.unavailableStartTime, selectedRequest.unavailableEndTime)}
+                  </p>
+                </div>
+              )}
 
             <div>
               <Label className="text-muted-foreground">Reason</Label>
@@ -1370,7 +1595,18 @@ export default function LeavePage() {
             <Select
               value={editFormData.leaveType}
               onValueChange={(value: 'CASUAL' | 'SICK' | 'ANNUAL') =>
-                setEditFormData((prev) => ({ ...prev, leaveType: value }))
+                setEditFormData((prev) => ({
+                  ...prev,
+                  leaveType: value,
+                  ...(value === 'ANNUAL'
+                    ? {
+                        isHalfDay: false,
+                        halfDaySession: '',
+                        unavailableStartTime: '',
+                        unavailableEndTime: '',
+                      }
+                    : {}),
+                }))
               }
             >
               <SelectTrigger>
@@ -1384,6 +1620,90 @@ export default function LeavePage() {
             </Select>
           </div>
 
+          <div className="rounded-lg border border-border p-3 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <Label className="mb-1">Half-Day Leave</Label>
+                <p className="text-xs text-muted-foreground">
+                  Available for Casual and Sick only. Half-day leave counts as 0.5 day.
+                </p>
+              </div>
+              <Checkbox
+                checked={editFormData.isHalfDay}
+                disabled={!isHalfDayEligibleLeaveType(editFormData.leaveType)}
+                onCheckedChange={(checked) => {
+                  const nextChecked = checked === true
+                  setEditFormData((prev) => ({
+                    ...prev,
+                    isHalfDay: nextChecked,
+                    endDate: nextChecked && prev.startDate ? prev.startDate : prev.endDate,
+                    halfDaySession: nextChecked ? prev.halfDaySession : '',
+                    unavailableStartTime: nextChecked ? prev.unavailableStartTime : '',
+                    unavailableEndTime: nextChecked ? prev.unavailableEndTime : '',
+                  }))
+                }}
+              />
+            </div>
+
+            {editFormData.isHalfDay && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <Label className="mb-2">Session</Label>
+                  <Select
+                    value={editFormData.halfDaySession}
+                    onValueChange={(value: 'FIRST_HALF' | 'SECOND_HALF') =>
+                      setEditFormData((prev) => ({
+                        ...prev,
+                        halfDaySession: value,
+                        unavailableStartTime:
+                          prev.unavailableStartTime ||
+                          (value === 'FIRST_HALF' ? '09:00' : '14:00'),
+                        unavailableEndTime:
+                          prev.unavailableEndTime ||
+                          (value === 'FIRST_HALF' ? '13:00' : '18:00'),
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select session" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {HALF_DAY_SESSION_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="edit-unavailable-start-time" className="mb-2">Unavailable From</Label>
+                  <Input
+                    id="edit-unavailable-start-time"
+                    type="time"
+                    required={editFormData.isHalfDay}
+                    value={editFormData.unavailableStartTime}
+                    onChange={(e) =>
+                      setEditFormData((prev) => ({ ...prev, unavailableStartTime: e.target.value }))
+                    }
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-unavailable-end-time" className="mb-2">Unavailable To</Label>
+                  <Input
+                    id="edit-unavailable-end-time"
+                    type="time"
+                    required={editFormData.isHalfDay}
+                    value={editFormData.unavailableEndTime}
+                    onChange={(e) =>
+                      setEditFormData((prev) => ({ ...prev, unavailableEndTime: e.target.value }))
+                    }
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="edit-start-date" className="mb-2">Start Date (first day off)</Label>
@@ -1392,7 +1712,13 @@ export default function LeavePage() {
                 type="date"
                 required
                 value={editFormData.startDate}
-                onChange={(e) => setEditFormData((prev) => ({ ...prev, startDate: e.target.value }))}
+                onChange={(e) =>
+                  setEditFormData((prev) => ({
+                    ...prev,
+                    startDate: e.target.value,
+                    ...(prev.isHalfDay ? { endDate: e.target.value } : {}),
+                  }))
+                }
               />
             </div>
             <div>
@@ -1402,15 +1728,16 @@ export default function LeavePage() {
                 type="date"
                 required
                 min={editFormData.startDate}
-                value={editFormData.endDate}
+                value={editFormData.isHalfDay ? editFormData.startDate : editFormData.endDate}
+                disabled={editFormData.isHalfDay}
                 onChange={(e) => setEditFormData((prev) => ({ ...prev, endDate: e.target.value }))}
               />
             </div>
           </div>
 
-          {editFormData.endDate && (
+          {(editFormData.endDate || (editFormData.isHalfDay && editFormData.startDate)) && (
             <p className="text-xs text-muted-foreground -mt-2">
-              Expected return date: {getReturnDateLabel(editFormData.endDate)}
+              Expected return date: {getReturnDateLabel(editFormData.startDate, editFormData.endDate || editFormData.startDate, editFormData.isHalfDay)}
             </p>
           )}
 
@@ -1501,5 +1828,8 @@ export default function LeavePage() {
     </div>
   )
 }
+
+
+
 
 

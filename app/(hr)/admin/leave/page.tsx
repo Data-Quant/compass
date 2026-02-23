@@ -10,7 +10,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
-import { calculateLeaveDays } from '@/lib/leave-utils'
+import { Checkbox } from '@/components/ui/checkbox'
+import { calculateLeaveDuration } from '@/lib/leave-utils'
 import {
   Select,
   SelectContent,
@@ -36,6 +37,10 @@ import {
 interface LeaveRequest {
   id: string
   leaveType: 'CASUAL' | 'SICK' | 'ANNUAL'
+  isHalfDay: boolean
+  halfDaySession?: 'FIRST_HALF' | 'SECOND_HALF' | null
+  unavailableStartTime?: string | null
+  unavailableEndTime?: string | null
   startDate: string
   endDate: string
   reason: string
@@ -78,6 +83,50 @@ const STATUS_CONFIG: Record<string, { color: string; bg: string; label: string }
   CANCELLED: { color: 'text-gray-600', bg: 'bg-gray-100 dark:bg-gray-500/20', label: 'Cancelled' },
 }
 
+const HALF_DAY_SESSION_OPTIONS = [
+  { value: 'FIRST_HALF', label: 'First Half' },
+  { value: 'SECOND_HALF', label: 'Second Half' },
+] as const
+
+const isHalfDayEligibleLeaveType = (leaveType: 'CASUAL' | 'SICK' | 'ANNUAL') =>
+  leaveType === 'CASUAL' || leaveType === 'SICK'
+
+const getHalfDaySessionLabel = (session?: 'FIRST_HALF' | 'SECOND_HALF' | null) => {
+  if (session === 'FIRST_HALF') return 'First half'
+  if (session === 'SECOND_HALF') return 'Second half'
+  return 'Half day'
+}
+
+const getHalfDayWindowLabel = (start?: string | null, end?: string | null) => {
+  if (!start || !end) return 'Unavailable hours not provided'
+  return `${start} - ${end}`
+}
+
+const getDurationLabel = (days: number) => (days === 0.5 ? '0.5 day' : `${days} days`)
+
+const toDateKey = (value: string) => {
+  const match = value.match(/^(\d{4}-\d{2}-\d{2})/)
+  if (match) return match[1]
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return `${parsed.getUTCFullYear()}-${String(parsed.getUTCMonth() + 1).padStart(2, '0')}-${String(parsed.getUTCDate()).padStart(2, '0')}`
+}
+
+const parseInputDateAsLocal = (value: string) => {
+  const [year, month, day] = value.split('-').map(Number)
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return null
+  }
+  return new Date(year, month - 1, day)
+}
+
+const formatApiDate = (value: string, options?: Intl.DateTimeFormatOptions) => {
+  const key = toDateKey(value)
+  const parsed = key ? parseInputDateAsLocal(key) : null
+  if (!parsed) return value
+  return parsed.toLocaleDateString('en-US', options)
+}
+
 export default function HRLeavePage() {
   const [requests, setRequests] = useState<LeaveRequest[]>([])
   const [users, setUsers] = useState<TeamUser[]>([])
@@ -94,6 +143,10 @@ export default function HRLeavePage() {
   const [createForm, setCreateForm] = useState({
     employeeId: '',
     leaveType: 'SICK' as 'CASUAL' | 'SICK' | 'ANNUAL',
+    isHalfDay: false,
+    halfDaySession: '' as '' | 'FIRST_HALF' | 'SECOND_HALF',
+    unavailableStartTime: '',
+    unavailableEndTime: '',
     startDate: '',
     endDate: '',
     reason: 'Sick leave entered by HR',
@@ -180,6 +233,10 @@ export default function HRLeavePage() {
     setCreateForm({
       employeeId: '',
       leaveType: 'SICK',
+      isHalfDay: false,
+      halfDaySession: '',
+      unavailableStartTime: '',
+      unavailableEndTime: '',
       startDate: '',
       endDate: '',
       reason: 'Sick leave entered by HR',
@@ -189,9 +246,27 @@ export default function HRLeavePage() {
 
   const handleCreateLeave = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!createForm.employeeId || !createForm.startDate || !createForm.endDate || !createForm.reason.trim()) {
+    const isHalfDay = createForm.isHalfDay && isHalfDayEligibleLeaveType(createForm.leaveType)
+    const endDate = isHalfDay ? createForm.startDate : createForm.endDate
+
+    if (!createForm.employeeId || !createForm.startDate || !endDate || !createForm.reason.trim()) {
       toast.error('Please fill employee, dates, and reason')
       return
+    }
+
+    if (isHalfDay) {
+      if (!createForm.halfDaySession) {
+        toast.error('Select first half or second half')
+        return
+      }
+      if (!createForm.unavailableStartTime || !createForm.unavailableEndTime) {
+        toast.error('Enter unavailable start and end time for half-day leave')
+        return
+      }
+      if (createForm.unavailableStartTime >= createForm.unavailableEndTime) {
+        toast.error('Unavailable end time must be after start time')
+        return
+      }
     }
 
     setCreating(true)
@@ -202,8 +277,12 @@ export default function HRLeavePage() {
         body: JSON.stringify({
           employeeId: createForm.employeeId,
           leaveType: createForm.leaveType,
+          isHalfDay,
+          halfDaySession: isHalfDay ? createForm.halfDaySession : undefined,
+          unavailableStartTime: isHalfDay ? createForm.unavailableStartTime : undefined,
+          unavailableEndTime: isHalfDay ? createForm.unavailableEndTime : undefined,
           startDate: createForm.startDate,
-          endDate: createForm.endDate,
+          endDate,
           reason: createForm.reason,
           transitionPlan: createForm.transitionPlan || 'Entered by HR on behalf of employee',
         }),
@@ -264,10 +343,10 @@ export default function HRLeavePage() {
     }
   }
 
-  const getDaysCount = (start: string, end: string) => {
+  const getDaysCount = (start: string, end: string, isHalfDay = false) => {
     const startDate = new Date(start)
     const endDate = new Date(end)
-    return calculateLeaveDays(startDate, endDate)
+    return calculateLeaveDuration(startDate, endDate, isHalfDay)
   }
 
   // Filter counts
@@ -362,7 +441,7 @@ export default function HRLeavePage() {
                 const typeConfig = LEAVE_TYPE_CONFIG[request.leaveType]
                 const statusConfig = STATUS_CONFIG[request.status] || STATUS_CONFIG.PENDING
                 const TypeIcon = typeConfig.icon
-                const days = getDaysCount(request.startDate, request.endDate)
+                const days = getDaysCount(request.startDate, request.endDate, request.isHalfDay)
                 const needsHRApproval = request.status === 'PENDING' || request.status === 'LEAD_APPROVED'
                 const leadNotRequired = !request.leadApprovedBy && request.status === 'APPROVED' && !!request.hrApprovedBy
                 
@@ -376,7 +455,7 @@ export default function HRLeavePage() {
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             <span className="font-medium text-foreground">{request.employee.name}</span>
-                            <span className="text-muted-foreground text-sm">•</span>
+                            <span className="text-muted-foreground text-sm">-</span>
                             <span className="text-sm text-muted-foreground">{request.employee.department || 'No dept'}</span>
                             <Badge variant="outline" className={`${statusConfig.bg} ${statusConfig.color} border-0`}>
                               {statusConfig.label}
@@ -384,11 +463,16 @@ export default function HRLeavePage() {
                           </div>
                           <p className="text-sm text-foreground">
                             <span className="font-medium">{typeConfig.label} Leave</span>
-                            <span className="mx-2">•</span>
-                            {new Date(request.startDate).toLocaleDateString()} - {new Date(request.endDate).toLocaleDateString()}
-                            <span className="mx-2">•</span>
-                            <span className="font-medium">{days} day{days > 1 ? 's' : ''}</span>
+                            <span className="mx-2">-</span>
+                            {formatApiDate(request.startDate)} - {formatApiDate(request.endDate)}
+                            <span className="mx-2">-</span>
+                            <span className="font-medium">{getDurationLabel(days)}</span>
                           </p>
+                          {request.isHalfDay && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {getHalfDaySessionLabel(request.halfDaySession)} - {getHalfDayWindowLabel(request.unavailableStartTime, request.unavailableEndTime)}
+                            </p>
+                          )}
                           <p className="text-sm text-muted-foreground mt-1">{request.reason}</p>
                           
                           {/* Transition Plan */}
@@ -478,8 +562,8 @@ export default function HRLeavePage() {
               <CardContent className="p-3">
                 <p className="font-medium text-foreground">{selectedRequest.employee.name}</p>
                 <p className="text-sm text-muted-foreground">
-                  {LEAVE_TYPE_CONFIG[selectedRequest.leaveType].label} Leave • 
-                  {getDaysCount(selectedRequest.startDate, selectedRequest.endDate)} days
+                  {LEAVE_TYPE_CONFIG[selectedRequest.leaveType].label} Leave - 
+                  {getDurationLabel(getDaysCount(selectedRequest.startDate, selectedRequest.endDate, selectedRequest.isHalfDay))}
                 </p>
               </CardContent>
             </Card>
@@ -552,6 +636,14 @@ export default function HRLeavePage() {
                   ...prev,
                   leaveType: v,
                   reason: v === 'SICK' ? 'Sick leave entered by HR' : prev.reason,
+                  ...(v === 'ANNUAL'
+                    ? {
+                        isHalfDay: false,
+                        halfDaySession: '',
+                        unavailableStartTime: '',
+                        unavailableEndTime: '',
+                      }
+                    : {}),
                 }))
               }}
             >
@@ -566,6 +658,86 @@ export default function HRLeavePage() {
             </Select>
           </div>
 
+          <div className="rounded-lg border border-border p-3 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <Label className="mb-1">Half-Day Leave</Label>
+                <p className="text-xs text-muted-foreground">
+                  Available for Casual and Sick only. Half-day leave counts as 0.5 day.
+                </p>
+              </div>
+              <Checkbox
+                checked={createForm.isHalfDay}
+                disabled={!isHalfDayEligibleLeaveType(createForm.leaveType)}
+                onCheckedChange={(checked) => {
+                  const nextChecked = checked === true
+                  setCreateForm((prev) => ({
+                    ...prev,
+                    isHalfDay: nextChecked,
+                    endDate: nextChecked && prev.startDate ? prev.startDate : prev.endDate,
+                    halfDaySession: nextChecked ? prev.halfDaySession : '',
+                    unavailableStartTime: nextChecked ? prev.unavailableStartTime : '',
+                    unavailableEndTime: nextChecked ? prev.unavailableEndTime : '',
+                  }))
+                }}
+              />
+            </div>
+
+            {createForm.isHalfDay && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <Label className="mb-2">Session</Label>
+                  <Select
+                    value={createForm.halfDaySession}
+                    onValueChange={(value: 'FIRST_HALF' | 'SECOND_HALF') =>
+                      setCreateForm((prev) => ({
+                        ...prev,
+                        halfDaySession: value,
+                        unavailableStartTime:
+                          prev.unavailableStartTime ||
+                          (value === 'FIRST_HALF' ? '09:00' : '14:00'),
+                        unavailableEndTime:
+                          prev.unavailableEndTime ||
+                          (value === 'FIRST_HALF' ? '13:00' : '18:00'),
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select session" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {HALF_DAY_SESSION_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="hr-unavailable-start-time" className="mb-2">Unavailable From</Label>
+                  <Input
+                    id="hr-unavailable-start-time"
+                    type="time"
+                    required={createForm.isHalfDay}
+                    value={createForm.unavailableStartTime}
+                    onChange={(e) => setCreateForm((prev) => ({ ...prev, unavailableStartTime: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="hr-unavailable-end-time" className="mb-2">Unavailable To</Label>
+                  <Input
+                    id="hr-unavailable-end-time"
+                    type="time"
+                    required={createForm.isHalfDay}
+                    value={createForm.unavailableEndTime}
+                    onChange={(e) => setCreateForm((prev) => ({ ...prev, unavailableEndTime: e.target.value }))}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="hr-start-date" className="mb-2">Start Date</Label>
@@ -574,7 +746,13 @@ export default function HRLeavePage() {
                 type="date"
                 required
                 value={createForm.startDate}
-                onChange={(e) => setCreateForm((prev) => ({ ...prev, startDate: e.target.value }))}
+                onChange={(e) =>
+                  setCreateForm((prev) => ({
+                    ...prev,
+                    startDate: e.target.value,
+                    ...(prev.isHalfDay ? { endDate: e.target.value } : {}),
+                  }))
+                }
               />
             </div>
             <div>
@@ -584,7 +762,8 @@ export default function HRLeavePage() {
                 type="date"
                 required
                 min={createForm.startDate}
-                value={createForm.endDate}
+                value={createForm.isHalfDay ? createForm.startDate : createForm.endDate}
+                disabled={createForm.isHalfDay}
                 onChange={(e) => setCreateForm((prev) => ({ ...prev, endDate: e.target.value }))}
               />
             </div>
@@ -636,5 +815,7 @@ export default function HRLeavePage() {
     </div>
   )
 }
+
+
 
 
