@@ -141,6 +141,7 @@ const getHalfDayWindowLabel = (start?: string | null, end?: string | null) => {
 }
 
 const getDurationLabel = (days: number) => (days === 0.5 ? '0.5d' : `${days}d`)
+const getLeaveDecimalPlaces = (value: number) => (Number.isInteger(value) ? 0 : 1)
 
 const formatDateForInput = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -677,6 +678,7 @@ export default function LeavePage() {
               const Icon = config.icon
               const remaining = balance.remaining[type.toLowerCase() as 'casual' | 'sick' | 'annual']
               const total = balance[`${type.toLowerCase()}Days` as 'casualDays' | 'sickDays' | 'annualDays']
+              const decimalPlaces = getLeaveDecimalPlaces(remaining)
 
               return (
                 <motion.div key={type} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
@@ -684,6 +686,7 @@ export default function LeavePage() {
                     title={config.label}
                     value={remaining}
                     suffix={`/ ${total} days`}
+                    decimalPlaces={decimalPlaces}
                     icon={<Icon className={`w-4 h-4 ${config.color}`} />}
                     className={`${config.bgLight} border-border`}
                   />

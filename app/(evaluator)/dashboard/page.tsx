@@ -103,6 +103,9 @@ const TICKET_STATUS_BADGE: Record<string, { label: string; className: string }> 
   RESOLVED: { label: 'Resolved', className: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' },
 }
 
+const getLeaveDecimalPlaces = (value: number) => (Number.isInteger(value) ? 0 : 1)
+const formatLeaveValue = (value: number) => (Number.isInteger(value) ? String(value) : value.toFixed(1))
+
 // â”€â”€â”€ Dashboard Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function DashboardPage() {
@@ -257,9 +260,10 @@ export default function DashboardPage() {
         </motion.div>
         <motion.div variants={stagger.item}>
           <StatsCard
-            title="Leave Remaining"
+            title="Leaves Remaining"
             value={totalLeaveRemaining}
             suffix=" days"
+            decimalPlaces={getLeaveDecimalPlaces(totalLeaveRemaining)}
             icon={<Calendar className="w-5 h-5" />}
           />
         </motion.div>
@@ -536,9 +540,9 @@ export default function DashboardPage() {
                   ].map((item) => (
                     <div key={item.label} className="text-center p-3 rounded-lg bg-muted/50">
                       <item.icon className={`h-5 w-5 mx-auto mb-1.5 ${item.color}`} />
-                      <p className="text-xl font-semibold text-foreground">{item.total - item.used}</p>
+                      <p className="text-xl font-semibold text-foreground">{formatLeaveValue(item.total - item.used)}</p>
                       <p className="text-xs text-muted-foreground">{item.label}</p>
-                      <p className="text-[10px] text-muted-foreground/60">{item.used}/{item.total} used</p>
+                      <p className="text-[10px] text-muted-foreground/60">{formatLeaveValue(item.used)}/{formatLeaveValue(item.total)} used</p>
                     </div>
                   ))}
                 </div>
