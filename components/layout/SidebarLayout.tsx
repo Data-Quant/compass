@@ -17,6 +17,9 @@ interface LayoutUser {
   id: string
   name: string
   role: string
+  isTeamLead: boolean
+  onboardingCompleted: boolean
+  benefitCategoryId?: string | null
   email?: string | null
   discordId?: string | null
   department?: string
@@ -29,10 +32,16 @@ export const useLayoutUser = () => useContext(LayoutUserContext)
 interface SidebarLayoutProps {
   children: React.ReactNode
   sidebarConfig: SidebarConfig
+  onboardingSidebarConfig?: SidebarConfig
   requiredRole?: string | string[]
 }
 
-export function SidebarLayout({ children, sidebarConfig, requiredRole }: SidebarLayoutProps) {
+export function SidebarLayout({
+  children,
+  sidebarConfig,
+  onboardingSidebarConfig,
+  requiredRole,
+}: SidebarLayoutProps) {
   const router = useRouter()
   const pathname = usePathname()
   const [user, setUser] = useState<LayoutUser | null>(null)
@@ -74,6 +83,16 @@ export function SidebarLayout({ children, sidebarConfig, requiredRole }: Sidebar
       .catch(() => router.push('/login'))
   }, [])
 
+  useEffect(() => {
+    if (!user || loading) return
+    if (user.onboardingCompleted !== false) return
+
+    const allowedOnboardingPath = pathname.startsWith('/onboarding') || pathname.startsWith('/profile')
+    if (!allowedOnboardingPath) {
+      router.push('/onboarding')
+    }
+  }, [loading, pathname, router, user])
+
   const toggleCollapsed = () => {
     setCollapsed((prev) => {
       const next = !prev
@@ -86,13 +105,18 @@ export function SidebarLayout({ children, sidebarConfig, requiredRole }: Sidebar
     return <LoadingScreen message="Loading..." />
   }
 
+  const effectiveSidebarConfig =
+    user?.onboardingCompleted === false && onboardingSidebarConfig
+      ? onboardingSidebarConfig
+      : sidebarConfig
+
   return (
     <LayoutUserContext.Provider value={user}>
       <div className="flex h-screen overflow-hidden bg-background">
         {/* Desktop sidebar */}
         <div className="hidden lg:block shrink-0">
           <AppSidebar
-            config={sidebarConfig}
+            config={effectiveSidebarConfig}
             collapsed={collapsed}
             onToggle={toggleCollapsed}
             userRole={user?.role}
@@ -104,7 +128,7 @@ export function SidebarLayout({ children, sidebarConfig, requiredRole }: Sidebar
           <SheetContent side="left" className="w-[240px] p-0 [&>button:first-child]:hidden">
             <SheetTitle className="sr-only">Navigation</SheetTitle>
             <AppSidebar
-              config={sidebarConfig}
+              config={effectiveSidebarConfig}
               collapsed={false}
               onToggle={() => setMobileOpen(false)}
               userRole={user?.role}

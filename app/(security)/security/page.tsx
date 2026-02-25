@@ -33,6 +33,14 @@ interface DeviceTicket {
   employee: { id: string; name: string; department: string | null }
 }
 
+interface PendingChecklistItem {
+  id: string
+  name: string
+  title: string
+  department: string | null
+  onboardingDate: string
+}
+
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
   OPEN: { label: 'Open', className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400' },
   UNDER_REVIEW: { label: 'Under Review', className: 'bg-blue-500/10 text-blue-600 dark:text-blue-400' },
@@ -49,10 +57,12 @@ const PRIORITY_DOT: Record<string, string> = {
 
 export default function SecurityDashboardPage() {
   const [tickets, setTickets] = useState<DeviceTicket[]>([])
+  const [pendingChecklists, setPendingChecklists] = useState<PendingChecklistItem[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     loadTickets()
+    loadPendingChecklists()
   }, [])
 
   const loadTickets = async () => {
@@ -67,6 +77,19 @@ export default function SecurityDashboardPage() {
       toast.error('Failed to load device support queue')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadPendingChecklists = async () => {
+    try {
+      const res = await fetch('/api/onboarding/security-checklists/pending')
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to load onboarding checklists')
+      }
+      setPendingChecklists(data.pending || [])
+    } catch (error) {
+      toast.error('Failed to load onboarding checklists')
     }
   }
 
@@ -145,6 +168,47 @@ export default function SecurityDashboardPage() {
           transition={{ delay: 0.1 }}
           className="mb-6"
         >
+          <Card className={pendingChecklists.length > 0 ? 'border-emerald-500/20 mb-6' : 'mb-6'}>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Shield className="h-5 w-5 text-emerald-500" />
+                  <h2 className="text-lg font-semibold text-foreground font-display">
+                    Pending Onboarding Checklists
+                  </h2>
+                  {pendingChecklists.length > 0 && (
+                    <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                      {pendingChecklists.length}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+
+              {pendingChecklists.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2">No onboarding checklists pending.</p>
+              ) : (
+                <div className="space-y-2 max-h-[260px] overflow-y-auto">
+                  {pendingChecklists.slice(0, 8).map((item) => (
+                    <Link
+                      key={item.id}
+                      href={`/security/onboarding/${item.id}`}
+                      className="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-muted transition-colors"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{item.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {item.title}
+                          {item.department ? ` · ${item.department}` : ''}
+                        </p>
+                      </div>
+                      <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card className={actionableTickets.length > 0 ? 'border-amber-500/20' : ''}>
             <CardContent className="p-6">
               <div className="flex items-center justify-between mb-4">

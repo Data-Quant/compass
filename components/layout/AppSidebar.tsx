@@ -70,6 +70,25 @@ export const EMPLOYEE_SIDEBAR: SidebarConfig = {
   groups: [],
 }
 
+export const ONBOARDING_SIDEBAR: SidebarConfig = {
+  items: [
+    { label: 'Onboarding', href: '/onboarding', icon: ClipboardCheck },
+    { label: 'Profile', href: '/profile', icon: User },
+  ],
+  groups: [],
+}
+
+export const SECURITY_SIDEBAR: SidebarConfig = {
+  items: [
+    { label: 'Home', href: '/security', icon: Home },
+    { label: 'Device Tickets', href: '/security/device-tickets', icon: Monitor },
+    { label: 'Assets', href: '/security/assets', icon: PackageSearch },
+    { label: 'Onboarding', href: '/security/onboarding', icon: ClipboardCheck },
+    { label: 'Profile', href: '/profile', icon: User },
+  ],
+  groups: [],
+}
+
 // ─── Admin sidebar config ────────────────────────────────────────────────────
 
 export const ADMIN_SIDEBAR: SidebarConfig = {
@@ -108,6 +127,19 @@ export const ADMIN_SIDEBAR: SidebarConfig = {
       ],
     },
     {
+      label: 'Onboarding',
+      defaultOpen: false,
+      items: [
+        { label: 'Dashboard', href: '/admin/onboarding', icon: Home },
+        { label: 'Positions', href: '/admin/onboarding/positions', icon: Users },
+        { label: 'New Hires', href: '/admin/onboarding/new-hires', icon: User },
+        { label: 'Modules', href: '/admin/onboarding/modules', icon: ClipboardCheck },
+        { label: 'Quiz', href: '/admin/onboarding/quiz', icon: HelpCircle },
+        { label: 'Benefits', href: '/admin/onboarding/benefits', icon: Wallet },
+        { label: 'Settings', href: '/admin/onboarding/config', icon: Settings },
+      ],
+    },
+    {
       label: 'Insights',
       defaultOpen: false,
       items: [
@@ -133,6 +165,8 @@ function SidebarNavItem({
       ? pathname === '/admin'
       : item.href === '/dashboard'
         ? pathname === '/dashboard'
+        : item.href === '/security'
+          ? pathname === '/security'
         : pathname.startsWith(item.href)
 
   const Icon = item.icon

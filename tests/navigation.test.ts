@@ -14,6 +14,7 @@ import assert from 'node:assert/strict'
 
 const EMPLOYEE_NAV_ITEMS = [
   { label: 'Home', href: '/dashboard' },
+  { label: 'My Tasks', href: '/my-tasks' },
   { label: 'Evaluations', href: '/evaluations' },
   { label: 'Leave', href: '/leave' },
   { label: 'Projects', href: '/projects' },
@@ -59,6 +60,18 @@ const ADMIN_NAV_GROUPS = [
       { label: 'Analytics', href: '/admin/analytics' },
     ],
   },
+  {
+    label: 'Onboarding',
+    items: [
+      { label: 'Dashboard', href: '/admin/onboarding' },
+      { label: 'Positions', href: '/admin/onboarding/positions' },
+      { label: 'New Hires', href: '/admin/onboarding/new-hires' },
+      { label: 'Modules', href: '/admin/onboarding/modules' },
+      { label: 'Quiz', href: '/admin/onboarding/quiz' },
+      { label: 'Benefits', href: '/admin/onboarding/benefits' },
+      { label: 'Settings', href: '/admin/onboarding/config' },
+    ],
+  },
 ]
 
 // ─── Employee Nav Tests ──────────────────────────────────────────────────────
@@ -88,6 +101,7 @@ test('employee nav has Home as first item', () => {
 
 test('employee nav includes all required sections', () => {
   const labels = EMPLOYEE_NAV_ITEMS.map((i) => i.label)
+  assert.ok(labels.includes('My Tasks'), 'Missing My Tasks')
   assert.ok(labels.includes('Evaluations'), 'Missing Evaluations')
   assert.ok(labels.includes('Leave'), 'Missing Leave')
   assert.ok(labels.includes('Projects'), 'Missing Projects')
@@ -153,4 +167,17 @@ test('admin nav Operations group includes Leave, Assets, and Payroll', () => {
   assert.ok(labels.includes('Leave'), 'Missing Leave')
   assert.ok(labels.includes('Assets'), 'Missing Assets')
   assert.ok(labels.includes('Payroll'), 'Missing Payroll')
+})
+
+test('admin nav Onboarding group includes all onboarding routes', () => {
+  const onboardingGroup = ADMIN_NAV_GROUPS.find((g) => g.label === 'Onboarding')
+  assert.ok(onboardingGroup, 'Onboarding group not found')
+  const labels = onboardingGroup!.items.map((i) => i.label)
+  assert.ok(labels.includes('Dashboard'), 'Missing onboarding dashboard')
+  assert.ok(labels.includes('Positions'), 'Missing onboarding positions')
+  assert.ok(labels.includes('New Hires'), 'Missing onboarding new hires')
+  assert.ok(labels.includes('Modules'), 'Missing onboarding modules')
+  assert.ok(labels.includes('Quiz'), 'Missing onboarding quiz')
+  assert.ok(labels.includes('Benefits'), 'Missing onboarding benefits')
+  assert.ok(labels.includes('Settings'), 'Missing onboarding settings')
 })

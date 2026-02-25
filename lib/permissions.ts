@@ -22,3 +22,11 @@ export function canManageSupport(role: string | null | undefined): boolean {
 export function canManageAssets(role: string | null | undefined): boolean {
   return role === 'HR' || role === 'SECURITY'
 }
+
+export function canManageOnboarding(role: string | null | undefined): boolean {
+  return role === 'HR'
+}
+
+export function canCompleteSecurityChecklist(role: string | null | undefined): boolean {
+  return role === 'HR' || role === 'SECURITY'
+}

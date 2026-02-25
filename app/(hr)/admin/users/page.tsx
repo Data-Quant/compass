@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import {
   Select,
   SelectContent,
@@ -39,6 +40,22 @@ interface User {
   department: string | null
   position: string | null
   role: 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA'
+  isTeamLead: boolean
+  onboardingCompleted: boolean
+  benefitCategoryId: string | null
+  benefitCategory?: {
+    id: string
+    name: string
+    region: string
+    employeeType: string
+    isActive: boolean
+  } | null
+  newHireRecord?: {
+    id: string
+    name: string
+    email: string
+    status: 'PENDING' | 'ONBOARDING' | 'COMPLETED'
+  } | null
   createdAt: string
   payrollProfile?: {
     id: string
@@ -93,6 +110,23 @@ interface SalaryLineDraft {
   amount: string
 }
 
+interface BenefitCategoryOption {
+  id: string
+  name: string
+  region: string
+  employeeType: string
+  isActive: boolean
+}
+
+interface AvailableNewHire {
+  id: string
+  name: string
+  email: string
+  title: string
+  department: string | null
+  status: 'PENDING' | 'ONBOARDING' | 'COMPLETED'
+}
+
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
@@ -108,12 +142,25 @@ export default function UsersPage() {
   const [userToDelete, setUserToDelete] = useState<User | null>(null)
   const [userToReactivate, setUserToReactivate] = useState<User | null>(null)
   
-  const [formData, setFormData] = useState({ name: '', email: '', discordId: '', department: '', position: '', role: 'EMPLOYEE' })
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    discordId: '',
+    department: '',
+    position: '',
+    role: 'EMPLOYEE',
+    isTeamLead: false,
+    benefitCategoryId: '',
+    isNewHire: false,
+    newHireId: '',
+  })
   const [payrollMeta, setPayrollMeta] = useState<PayrollMeta>({
     departments: [],
     employmentTypes: [],
     salaryHeads: [],
   })
+  const [benefitCategories, setBenefitCategories] = useState<BenefitCategoryOption[]>([])
+  const [availableNewHires, setAvailableNewHires] = useState<AvailableNewHire[]>([])
   const [payrollForm, setPayrollForm] = useState({
     payrollDepartmentId: '',
     designation: '',
@@ -157,6 +204,10 @@ export default function UsersPage() {
           salaryHeads: data.payrollMeta.salaryHeads || [],
         })
       }
+      if (data.onboardingMeta) {
+        setBenefitCategories(data.onboardingMeta.benefitCategories || [])
+        setAvailableNewHires(data.onboardingMeta.availableNewHires || [])
+      }
     } catch (error) { toast.error('Failed to load users') }
     finally { setLoading(false) }
   }
@@ -171,6 +222,10 @@ export default function UsersPage() {
         department: user.department || '',
         position: user.position || '',
         role: user.role,
+        isTeamLead: Boolean(user.isTeamLead),
+        benefitCategoryId: user.benefitCategoryId || '',
+        isNewHire: false,
+        newHireId: user.newHireRecord?.id || '',
       })
       setPayrollForm({
         payrollDepartmentId: user.payrollProfile?.departmentId || '',
@@ -190,7 +245,18 @@ export default function UsersPage() {
       })
     } else {
       setSelectedUser(null)
-      setFormData({ name: '', email: '', discordId: '', department: '', position: '', role: 'EMPLOYEE' })
+      setFormData({
+        name: '',
+        email: '',
+        discordId: '',
+        department: '',
+        position: '',
+        role: 'EMPLOYEE',
+        isTeamLead: false,
+        benefitCategoryId: '',
+        isNewHire: false,
+        newHireId: '',
+      })
       setPayrollForm({
         payrollDepartmentId: '',
         designation: '',
@@ -210,6 +276,30 @@ export default function UsersPage() {
     }
     setSalaryLineDrafts([])
     setIsModalOpen(true)
+  }
+
+  const handleSelectNewHire = (newHireId: string) => {
+    if (!newHireId || newHireId === '__none__') {
+      setFormData((prev) => ({
+        ...prev,
+        newHireId: '',
+      }))
+      return
+    }
+
+    const selectedNewHire = availableNewHires.find((hire) => hire.id === newHireId)
+    setFormData((prev) => ({
+      ...prev,
+      newHireId,
+      ...(selectedNewHire
+        ? {
+            name: selectedNewHire.name,
+            email: selectedNewHire.email,
+            position: selectedNewHire.title,
+            department: selectedNewHire.department || prev.department,
+          }
+        : {}),
+    }))
   }
 
   const addSalaryLine = () => {
@@ -234,6 +324,14 @@ export default function UsersPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.name.trim()) { toast.error('Name is required'); return }
+    if (!selectedUser && formData.isNewHire && !formData.newHireId) {
+      toast.error('Please select a new hire record')
+      return
+    }
+    if (!selectedUser && formData.isNewHire && !formData.email.trim()) {
+      toast.error('Email is required for new hire onboarding')
+      return
+    }
     setSaving(true)
     try {
       const url = '/api/admin/users'
@@ -269,8 +367,31 @@ export default function UsersPage() {
       }
 
       const body = selectedUser
-        ? { ...formData, id: selectedUser.id, payrollProfile }
-        : { ...formData, payrollProfile }
+        ? {
+            id: selectedUser.id,
+            name: formData.name,
+            email: formData.email,
+            discordId: formData.discordId,
+            department: formData.department,
+            position: formData.position,
+            role: formData.role,
+            isTeamLead: formData.isTeamLead,
+            benefitCategoryId: formData.benefitCategoryId || null,
+            payrollProfile,
+          }
+        : {
+            name: formData.name,
+            email: formData.email,
+            discordId: formData.discordId,
+            department: formData.department,
+            position: formData.position,
+            role: formData.role,
+            isTeamLead: formData.isTeamLead,
+            benefitCategoryId: formData.benefitCategoryId || null,
+            isNewHire: formData.isNewHire,
+            newHireId: formData.isNewHire ? formData.newHireId || null : null,
+            payrollProfile,
+          }
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const data = await res.json()
       if (data.error) { toast.error(data.error) } 
@@ -494,6 +615,16 @@ export default function UsersPage() {
                                 Inactive
                               </Badge>
                             ) : null}
+                            {user.isTeamLead ? (
+                              <Badge variant="secondary" className="bg-blue-500/10 text-blue-600 dark:text-blue-400 border-0">
+                                Team Lead
+                              </Badge>
+                            ) : null}
+                            {user.onboardingCompleted === false ? (
+                              <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-0">
+                                Onboarding
+                              </Badge>
+                            ) : null}
                           </div>
                           {user.position && <div className="text-xs text-muted-foreground">{user.position}</div>}
                         </div>
@@ -608,6 +739,85 @@ export default function UsersPage() {
               </SelectContent>
             </Select>
           </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label className="mb-1">Benefit Category</Label>
+              <Select
+                value={formData.benefitCategoryId || '__none__'}
+                onValueChange={(v) => setFormData({ ...formData, benefitCategoryId: v === '__none__' ? '' : v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select benefit category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  {benefitCategories.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="rounded-lg border border-border px-3 py-2.5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Team Lead</p>
+                  <p className="text-xs text-muted-foreground">Enable lead-specific onboarding tasks</p>
+                </div>
+                <Switch
+                  checked={formData.isTeamLead}
+                  onCheckedChange={(checked) => setFormData({ ...formData, isTeamLead: checked })}
+                />
+              </div>
+            </div>
+          </div>
+
+          {!selectedUser && (
+            <div className="rounded-lg border border-border p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-foreground">New hire (requires onboarding)</p>
+                  <p className="text-xs text-muted-foreground">
+                    Locks the user to onboarding until quiz pass
+                  </p>
+                </div>
+                <Switch
+                  checked={formData.isNewHire}
+                  onCheckedChange={(checked) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      isNewHire: checked,
+                      newHireId: checked ? prev.newHireId : '',
+                    }))
+                  }
+                />
+              </div>
+
+              {formData.isNewHire && (
+                <div>
+                  <Label className="mb-1">Linked New Hire Record *</Label>
+                  <Select
+                    value={formData.newHireId || '__none__'}
+                    onValueChange={handleSelectNewHire}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select new hire record" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Select...</SelectItem>
+                      {availableNewHires.map((hire) => (
+                        <SelectItem key={hire.id} value={hire.id}>
+                          {hire.name} - {hire.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="pt-2 border-t border-border">
             <p className="text-sm font-semibold mb-3">Payroll Profile</p>

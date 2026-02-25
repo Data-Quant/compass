@@ -701,6 +701,83 @@ async function main() {
     },
   })
 
+  // Onboarding defaults
+  const onboardingModules = [
+    { slug: 'company-intro', title: 'Company Introduction' },
+    { slug: 'team-intro', title: 'Team Introduction' },
+    { slug: 'culture', title: 'Culture & Values' },
+    { slug: 'policies', title: 'Policies' },
+    { slug: 'benefits', title: 'Benefits Overview' },
+    { slug: 'tools', title: 'Tools & Access' },
+    { slug: 'important-calls', title: 'Important Calls' },
+    { slug: 'discord-training', title: 'Discord Training' },
+    { slug: 'compass-training', title: 'Compass Training' },
+    { slug: 'buddy-intro', title: 'Buddy Introduction' },
+    { slug: 'ending-note', title: 'Final Note' },
+  ]
+
+  for (const [index, moduleData] of onboardingModules.entries()) {
+    await prisma.onboardingModule.upsert({
+      where: { slug: moduleData.slug },
+      update: {
+        title: moduleData.title,
+        orderIndex: index + 1,
+        isActive: true,
+      },
+      create: {
+        slug: moduleData.slug,
+        title: moduleData.title,
+        orderIndex: index + 1,
+        content: '',
+        isActive: true,
+      },
+    })
+  }
+
+  const benefitCategories = [
+    { region: 'Pakistan', employeeType: 'Plutus21 Employee' },
+    { region: 'Pakistan', employeeType: 'Plutus21 IC' },
+    { region: 'Morocco', employeeType: 'Plutus21 Employee' },
+    { region: 'Morocco', employeeType: 'Plutus21 IC' },
+    { region: 'Colombia', employeeType: 'Plutus21 Employee' },
+    { region: 'Colombia', employeeType: 'Plutus21 IC' },
+    { region: 'Indonesia', employeeType: 'Plutus21 Employee' },
+    { region: 'Indonesia', employeeType: 'Plutus21 IC' },
+  ]
+
+  for (const category of benefitCategories) {
+    const name = `${category.region} - ${category.employeeType}`
+    await prisma.benefitCategory.upsert({
+      where: { name },
+      update: {
+        region: category.region,
+        employeeType: category.employeeType,
+        isActive: true,
+      },
+      create: {
+        name,
+        region: category.region,
+        employeeType: category.employeeType,
+        isActive: true,
+      },
+    })
+  }
+
+  await prisma.onboardingConfig.upsert({
+    where: { id: 'singleton' },
+    update: {},
+    create: {
+      id: 'singleton',
+      quizPassPercent: 80,
+      maxQuizAttempts: 3,
+      welcomeMessage: 'Welcome to Compass onboarding.',
+    },
+  })
+
+  await prisma.user.updateMany({
+    data: { onboardingCompleted: true },
+  })
+
   console.log('Seeding completed!')
   console.log(`Created ${await prisma.user.count()} users`)
   console.log(`Created ${await prisma.evaluatorMapping.count()} evaluator mappings`)

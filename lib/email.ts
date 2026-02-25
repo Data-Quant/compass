@@ -704,3 +704,200 @@ export async function sendTicketStatusNotification(
     return { success: false, error: error.message }
   }
 }
+
+async function getSecurityRecipientEmails() {
+  const securityUsers = await prisma.user.findMany({
+    where: {
+      role: 'SECURITY',
+      email: { not: null },
+    },
+    select: { email: true },
+  })
+  return [...new Set(securityUsers.map((u) => u.email).filter(Boolean) as string[])]
+}
+
+export async function sendPositionClosedNotification(positionId: string) {
+  const position = await prisma.position.findUnique({
+    where: { id: positionId },
+    include: {
+      teamLead: {
+        select: { name: true, email: true },
+      },
+    },
+  })
+
+  if (!position) {
+    return { success: false, message: 'Position not found' }
+  }
+
+  const securityRecipients = await getSecurityRecipientEmails()
+  const recipients = [...new Set([position.teamLead?.email, ...securityRecipients].filter(Boolean) as string[])]
+  if (recipients.length === 0) {
+    return { success: false, message: 'No recipients configured for position closed notification' }
+  }
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #0D9488;">Position Closed</h2>
+      <div style="background: #F8FAFC; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>Title:</strong> ${escapeHtml(position.title)}</p>
+        <p><strong>Department:</strong> ${escapeHtml(position.department || 'N/A')}</p>
+        <p><strong>Team Lead:</strong> ${escapeHtml(position.teamLead?.name || 'N/A')}</p>
+      </div>
+      <p style="color: #64748B; font-size: 14px;">
+        A new hire record can now be created from this closed position.
+      </p>
+    </div>
+  `
+
+  try {
+    const info = await transporter.sendMail({
+      from: `P21 Compass <${FROM_EMAIL}>`,
+      to: recipients.join(', '),
+      subject: `Position Closed: ${position.title}`,
+      html: htmlContent,
+    })
+    return { success: true, data: { messageId: info.messageId } }
+  } catch (error: any) {
+    console.error('Failed to send position closed notification:', error)
+    return { success: false, error: error.message }
+  }
+}
+
+export async function sendTeamLeadFormSubmittedNotification(newHireId: string) {
+  const newHire = await prisma.newHire.findUnique({
+    where: { id: newHireId },
+    include: {
+      teamLead: { select: { name: true } },
+    },
+  })
+
+  if (!newHire) {
+    return { success: false, message: 'New hire not found' }
+  }
+
+  const recipients = await getHrRecipientEmails()
+  if (recipients.length === 0) {
+    return { success: false, message: 'No HR recipients configured' }
+  }
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #0D9488;">Team Lead Form Submitted</h2>
+      <div style="background: #F8FAFC; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>New Hire:</strong> ${escapeHtml(newHire.name)}</p>
+        <p><strong>Title:</strong> ${escapeHtml(newHire.title)}</p>
+        <p><strong>Department:</strong> ${escapeHtml(newHire.department || 'N/A')}</p>
+        <p><strong>Submitted By:</strong> ${escapeHtml(newHire.teamLead?.name || 'Team Lead')}</p>
+      </div>
+    </div>
+  `
+
+  try {
+    const info = await transporter.sendMail({
+      from: `P21 Compass <${FROM_EMAIL}>`,
+      to: recipients.join(', '),
+      subject: `Team Lead Form Submitted: ${newHire.name}`,
+      html: htmlContent,
+    })
+    return { success: true, data: { messageId: info.messageId } }
+  } catch (error: any) {
+    console.error('Failed to send team lead form submitted notification:', error)
+    return { success: false, error: error.message }
+  }
+}
+
+export async function sendSecurityChecklistCompleteNotification(newHireId: string) {
+  const newHire = await prisma.newHire.findUnique({
+    where: { id: newHireId },
+  })
+
+  if (!newHire) {
+    return { success: false, message: 'New hire not found' }
+  }
+
+  const recipients = await getHrRecipientEmails()
+  if (recipients.length === 0) {
+    return { success: false, message: 'No HR recipients configured' }
+  }
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #0D9488;">Security Checklist Completed</h2>
+      <div style="background: #F8FAFC; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>New Hire:</strong> ${escapeHtml(newHire.name)}</p>
+        <p><strong>Title:</strong> ${escapeHtml(newHire.title)}</p>
+        <p><strong>Department:</strong> ${escapeHtml(newHire.department || 'N/A')}</p>
+      </div>
+    </div>
+  `
+
+  try {
+    const info = await transporter.sendMail({
+      from: `P21 Compass <${FROM_EMAIL}>`,
+      to: recipients.join(', '),
+      subject: `Security Checklist Complete: ${newHire.name}`,
+      html: htmlContent,
+    })
+    return { success: true, data: { messageId: info.messageId } }
+  } catch (error: any) {
+    console.error('Failed to send security checklist completion notification:', error)
+    return { success: false, error: error.message }
+  }
+}
+
+export async function sendOnboardingCompletedNotification(userId: string) {
+  const onboardingUser = await prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      newHireRecord: {
+        include: {
+          teamLead: {
+            select: { email: true, name: true },
+          },
+        },
+      },
+    },
+  })
+
+  if (!onboardingUser) {
+    return { success: false, message: 'User not found' }
+  }
+
+  const hrRecipients = await getHrRecipientEmails()
+  const recipients = [
+    ...new Set([
+      ...hrRecipients,
+      onboardingUser.newHireRecord?.teamLead?.email,
+    ].filter(Boolean) as string[]),
+  ]
+
+  if (recipients.length === 0) {
+    return { success: false, message: 'No recipients configured for onboarding completion notification' }
+  }
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #0D9488;">Onboarding Completed</h2>
+      <div style="background: #F8FAFC; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>User:</strong> ${escapeHtml(onboardingUser.name)}</p>
+        <p><strong>Email:</strong> ${escapeHtml(onboardingUser.email || 'N/A')}</p>
+        <p><strong>Department:</strong> ${escapeHtml(onboardingUser.department || 'N/A')}</p>
+        <p><strong>Team Lead:</strong> ${escapeHtml(onboardingUser.newHireRecord?.teamLead?.name || 'N/A')}</p>
+      </div>
+    </div>
+  `
+
+  try {
+    const info = await transporter.sendMail({
+      from: `P21 Compass <${FROM_EMAIL}>`,
+      to: recipients.join(', '),
+      subject: `Onboarding Completed: ${onboardingUser.name}`,
+      html: htmlContent,
+    })
+    return { success: true, data: { messageId: info.messageId } }
+  } catch (error: any) {
+    console.error('Failed to send onboarding completed notification:', error)
+    return { success: false, error: error.message }
+  }
+}

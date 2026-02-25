@@ -93,6 +93,14 @@ interface TeamMember {
   position: string | null
 }
 
+interface PendingTeamLeadFormItem {
+  id: string
+  name: string
+  title: string
+  department: string | null
+  onboardingDate: string
+}
+
 // â”€â”€â”€ Animation helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const stagger = {
@@ -131,6 +139,7 @@ export default function DashboardPage() {
   const [openTickets, setOpenTickets] = useState<DeviceTicket[]>([])
   const [myEquipment, setMyEquipment] = useState<MyEquipmentItem[]>([])
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
+  const [pendingTeamLeadForms, setPendingTeamLeadForms] = useState<PendingTeamLeadFormItem[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -149,6 +158,9 @@ export default function DashboardPage() {
     }
     if (user.role === 'HR') {
       tasks.push(loadPendingLeave())
+    }
+    if (user.isTeamLead) {
+      tasks.push(loadPendingTeamLeadForms())
     }
     // Team leads (any role) may have leave requests to review
     if (user.role !== 'HR') {
@@ -225,6 +237,18 @@ export default function DashboardPage() {
       const data = await res.json()
       if (data.teamMembers) {
         setTeamMembers(data.teamMembers)
+      }
+    } catch {
+      // silent
+    }
+  }
+
+  const loadPendingTeamLeadForms = async () => {
+    try {
+      const res = await fetch('/api/onboarding/team-lead-forms/pending')
+      const data = await res.json()
+      if (data.pending) {
+        setPendingTeamLeadForms(data.pending)
       }
     } catch {
       // silent
@@ -317,6 +341,43 @@ export default function DashboardPage() {
         animate="visible"
         className="grid grid-cols-1 lg:grid-cols-2 gap-6"
       >
+        {pendingTeamLeadForms.length > 0 && (
+          <motion.div variants={stagger.item}>
+            <Card className="h-full border-blue-500/20">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Users className="h-5 w-5 text-blue-500" />
+                    <h2 className="text-lg font-semibold text-foreground">Pending Onboarding Forms</h2>
+                    <Badge variant="secondary" className="bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                      {pendingTeamLeadForms.length}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="space-y-2 max-h-[220px] overflow-y-auto">
+                  {pendingTeamLeadForms.slice(0, 6).map((item) => (
+                    <Link
+                      key={item.id}
+                      href={`/team-lead-form/${item.id}`}
+                      className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-muted transition-colors"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{item.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {item.title}
+                          {item.department ? ` · ${item.department}` : ''}
+                        </p>
+                      </div>
+                      <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Link>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
         {/* â”€â”€ Pending Leave Requests (for team leads / HR) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         {pendingLeave.length > 0 && (
           <motion.div variants={stagger.item}>

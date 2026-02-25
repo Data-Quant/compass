@@ -1,8 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  canCompleteSecurityChecklist,
   canEditPayrollMaster,
   canManageAssets,
+  canManageOnboarding,
   canManagePayroll,
   canManageSupport,
   isAdminRole,
@@ -41,4 +43,18 @@ test('asset management allows HR and SECURITY only', () => {
   assert.equal(canManageAssets('SECURITY'), true)
   assert.equal(canManageAssets('OA'), false)
   assert.equal(canManageAssets('EMPLOYEE'), false)
+})
+
+test('onboarding management is HR-only', () => {
+  assert.equal(canManageOnboarding('HR'), true)
+  assert.equal(canManageOnboarding('SECURITY'), false)
+  assert.equal(canManageOnboarding('OA'), false)
+  assert.equal(canManageOnboarding('EMPLOYEE'), false)
+})
+
+test('security checklist completion allows HR and SECURITY', () => {
+  assert.equal(canCompleteSecurityChecklist('HR'), true)
+  assert.equal(canCompleteSecurityChecklist('SECURITY'), true)
+  assert.equal(canCompleteSecurityChecklist('OA'), false)
+  assert.equal(canCompleteSecurityChecklist('EMPLOYEE'), false)
 })

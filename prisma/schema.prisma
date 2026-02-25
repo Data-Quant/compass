@@ -151,6 +151,30 @@ enum PayrollImportStatus {
   FAILED
 }
 
+enum PositionStatus {
+  OPEN
+  CLOSED
+  CANCELLED
+}
+
+enum PositionPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum NewHireStatus {
+  PENDING
+  ONBOARDING
+  COMPLETED
+}
+
+enum OnboardingModuleStatus {
+  LOCKED
+  IN_PROGRESS
+  COMPLETED
+}
+
 model User {
   id           String   @id @default(cuid())
   name         String
@@ -161,6 +185,9 @@ model User {
   department      String?
   position     String?
   role         UserRole @default(EMPLOYEE)
+  isTeamLead   Boolean @default(false)
+  onboardingCompleted Boolean @default(true)
+  benefitCategoryId String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   
@@ -209,9 +236,17 @@ model User {
   projectReferencesCreated ProjectReference[]     @relation("ProjectReferenceCreatedBy")
   assignedTasks           Task[]                  @relation("TaskAssignee")
   taskComments            TaskComment[]           @relation("TaskCommentAuthor")
+  teamLeadPositions       Position[]              @relation("PositionTeamLead")
+  newHiresAsTeamLead      NewHire[]               @relation("NewHireTeamLead")
+  newHiresAsBuddy         NewHire[]               @relation("NewHireBuddy")
+  newHireRecord           NewHire?                @relation("NewHireUser")
+  onboardingProgress      OnboardingProgress[]
+  quizAttempts            QuizAttempt[]
+  benefitCategory         BenefitCategory?        @relation(fields: [benefitCategoryId], references: [id], onDelete: SetNull)
 
   @@index([name])
   @@index([email])
+  @@index([benefitCategoryId])
 }
 
 model EvaluatorMapping {
@@ -930,6 +965,183 @@ model PayrollConfig {
   active            Boolean  @default(true) @unique
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+}
+
+model Position {
+  id                 String           @id @default(cuid())
+  title              String
+  location           String?
+  department         String?
+  teamLeadId         String?
+  priority           PositionPriority @default(MEDIUM)
+  estimatedCloseDate DateTime?
+  status             PositionStatus   @default(OPEN)
+  closedAt           DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  teamLead           User?            @relation("PositionTeamLead", fields: [teamLeadId], references: [id], onDelete: SetNull)
+  newHire            NewHire?
+
+  @@index([status])
+  @@index([teamLeadId])
+  @@index([department])
+}
+
+model NewHire {
+  id                String         @id @default(cuid())
+  positionId        String         @unique
+  name              String
+  title             String
+  company           String?
+  department        String?
+  teamLeadId        String?
+  email             String
+  onboardingDate    DateTime
+  buddyId           String?
+  status            NewHireStatus  @default(PENDING)
+  userId            String?        @unique
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  position          Position       @relation(fields: [positionId], references: [id], onDelete: Restrict)
+  teamLead          User?          @relation("NewHireTeamLead", fields: [teamLeadId], references: [id], onDelete: SetNull)
+  buddy             User?          @relation("NewHireBuddy", fields: [buddyId], references: [id], onDelete: SetNull)
+  user              User?          @relation("NewHireUser", fields: [userId], references: [id], onDelete: SetNull)
+  teamLeadForm      TeamLeadForm?
+  securityChecklist SecurityChecklist?
+
+  @@index([status])
+  @@index([teamLeadId])
+  @@index([buddyId])
+}
+
+model TeamLeadForm {
+  id              String    @id @default(cuid())
+  newHireId       String    @unique
+  emailGroups     String?
+  discordChannels String?
+  tools           String?
+  earlyKpis       String?
+  availableOnDate String?
+  resources       String?
+  submittedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  newHire         NewHire   @relation(fields: [newHireId], references: [id], onDelete: Cascade)
+}
+
+model SecurityChecklist {
+  id                 String    @id @default(cuid())
+  newHireId          String    @unique
+  equipmentReady     Boolean   @default(false)
+  equipmentReceived  Boolean   @default(false)
+  securityOnboarding Boolean   @default(false)
+  addedToEmailGroups Boolean   @default(false)
+  discordSetup       Boolean   @default(false)
+  completedAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  newHire            NewHire   @relation(fields: [newHireId], references: [id], onDelete: Cascade)
+}
+
+model OnboardingModule {
+  id         String               @id @default(cuid())
+  slug       String               @unique
+  title      String
+  orderIndex Int                  @unique
+  content    String               @default("")
+  isActive   Boolean              @default(true)
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
+
+  progress   OnboardingProgress[]
+}
+
+model OnboardingProgress {
+  id          String                 @id @default(cuid())
+  userId      String
+  moduleId    String
+  status      OnboardingModuleStatus @default(LOCKED)
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  user        User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  module      OnboardingModule       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, moduleId])
+  @@index([userId, status])
+}
+
+model OnboardingQuizQuestion {
+  id            String   @id @default(cuid())
+  questionText  String
+  optionsJson   Json
+  correctAnswer String
+  orderIndex    Int
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([orderIndex])
+}
+
+model QuizAttempt {
+  id             String   @id @default(cuid())
+  userId         String
+  score          Int
+  totalQuestions Int
+  passed         Boolean
+  answersJson    Json
+  createdAt      DateTime @default(now())
+
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model OnboardingConfig {
+  id              String   @id @default("singleton")
+  quizPassPercent Int      @default(80)
+  maxQuizAttempts Int      @default(3)
+  welcomeMessage  String   @default("Welcome to Compass onboarding.")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model BenefitCategory {
+  id           String    @id @default(cuid())
+  name         String    @unique
+  region       String
+  employeeType String
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  users        User[]
+  benefits     Benefit[]
+
+  @@index([isActive])
+}
+
+model Benefit {
+  id          String          @id @default(cuid())
+  categoryId  String
+  title       String
+  description String
+  orderIndex  Int             @default(0)
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  category    BenefitCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@index([categoryId, orderIndex])
+  @@index([isActive])
 }
 
 // ─── Project Management ──────────────────────────────────────────────────────

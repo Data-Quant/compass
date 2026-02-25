@@ -4,6 +4,7 @@ import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { isAdminRole } from '@/lib/permissions'
 import { ensurePayrollMasterDefaults } from '@/lib/payroll/settings'
+import { isPlutusEmail } from '@/lib/onboarding'
 
 const VALID_USER_ROLES = ['EMPLOYEE', 'HR', 'SECURITY', 'OA'] as const
 
@@ -142,7 +143,27 @@ export async function GET(_request: NextRequest) {
         department: true,
         position: true,
         role: true,
+        isTeamLead: true,
+        onboardingCompleted: true,
+        benefitCategoryId: true,
         createdAt: true,
+        benefitCategory: {
+          select: {
+            id: true,
+            name: true,
+            region: true,
+            employeeType: true,
+            isActive: true,
+          },
+        },
+        newHireRecord: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            status: true,
+          },
+        },
         _count: {
           select: {
             evaluatorMappings: true,
@@ -175,10 +196,26 @@ export async function GET(_request: NextRequest) {
       orderBy: { name: 'asc' },
     })
 
-    const [payrollDepartments, employmentTypes, salaryHeads] = await Promise.all([
+    const [payrollDepartments, employmentTypes, salaryHeads, benefitCategories, availableNewHires] = await Promise.all([
       prisma.payrollDepartment.findMany({ where: { isActive: true }, orderBy: { name: 'asc' } }),
       prisma.payrollEmploymentType.findMany({ where: { isActive: true }, orderBy: { name: 'asc' } }),
       prisma.payrollSalaryHead.findMany({ where: { isActive: true }, orderBy: [{ isSystem: 'desc' }, { code: 'asc' }] }),
+      prisma.benefitCategory.findMany({
+        where: { isActive: true },
+        orderBy: [{ region: 'asc' }, { employeeType: 'asc' }],
+      }),
+      prisma.newHire.findMany({
+        where: { userId: null },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          title: true,
+          department: true,
+          status: true,
+        },
+        orderBy: [{ status: 'asc' }, { onboardingDate: 'asc' }],
+      }),
     ])
 
     return NextResponse.json({
@@ -187,6 +224,10 @@ export async function GET(_request: NextRequest) {
         departments: payrollDepartments,
         employmentTypes,
         salaryHeads,
+      },
+      onboardingMeta: {
+        benefitCategories,
+        availableNewHires,
       },
     })
   } catch (error) {
@@ -211,6 +252,10 @@ export async function POST(request: NextRequest) {
       position,
       role,
       password,
+      isNewHire,
+      newHireId,
+      benefitCategoryId,
+      isTeamLead,
       payrollProfile,
     } = (await request.json()) as {
       name?: string
@@ -220,6 +265,10 @@ export async function POST(request: NextRequest) {
       position?: string | null
       role?: string
       password?: string
+      isNewHire?: boolean
+      newHireId?: string | null
+      benefitCategoryId?: string | null
+      isTeamLead?: boolean
       payrollProfile?: PayrollProfilePayload
     }
 
@@ -233,6 +282,51 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
     }
 
+    const normalizedEmail = normalizeOptionalString(email)
+    const normalizedBenefitCategoryId = normalizeOptionalString(benefitCategoryId)
+    const normalizedNewHireId = normalizeOptionalString(newHireId)
+    const shouldCreateAsNewHire = isNewHire === true
+
+    if (normalizedBenefitCategoryId) {
+      const category = await prisma.benefitCategory.findUnique({
+        where: { id: normalizedBenefitCategoryId },
+        select: { id: true },
+      })
+      if (!category) {
+        return NextResponse.json({ error: 'Invalid benefit category' }, { status: 400 })
+      }
+    }
+
+    let linkedNewHire: { id: string; email: string; userId: string | null } | null = null
+    if (shouldCreateAsNewHire) {
+      if (!normalizedNewHireId) {
+        return NextResponse.json({ error: 'newHireId is required for new hires' }, { status: 400 })
+      }
+      if (!normalizedEmail) {
+        return NextResponse.json({ error: 'Email is required for new hires' }, { status: 400 })
+      }
+      if (!isPlutusEmail(normalizedEmail)) {
+        return NextResponse.json({ error: 'New hire email must be a plutus21.com address' }, { status: 400 })
+      }
+
+      linkedNewHire = await prisma.newHire.findUnique({
+        where: { id: normalizedNewHireId },
+        select: { id: true, email: true, userId: true },
+      })
+      if (!linkedNewHire) {
+        return NextResponse.json({ error: 'Linked new hire record not found' }, { status: 404 })
+      }
+      if (linkedNewHire.userId) {
+        return NextResponse.json({ error: 'This new hire is already linked to a user account' }, { status: 400 })
+      }
+      if (linkedNewHire.email.trim().toLowerCase() !== normalizedEmail.toLowerCase()) {
+        return NextResponse.json(
+          { error: 'User email must match the linked new hire email' },
+          { status: 400 }
+        )
+      }
+    }
+
     let passwordHash = null
     if (password) {
       if (typeof password !== 'string' || password.length < 6) {
@@ -241,16 +335,52 @@ export async function POST(request: NextRequest) {
       passwordHash = await bcrypt.hash(password, 10)
     }
 
-    const newUser = await prisma.user.create({
-      data: {
-        name: normalizedName,
-        email: email || null,
-        discordId: normalizeOptionalString(discordId),
-        department: department || null,
-        position: position || null,
-        role: normalizedRole as (typeof VALID_USER_ROLES)[number],
-        passwordHash,
-      },
+    const newUser = await prisma.$transaction(async (tx) => {
+      const createdUser = await tx.user.create({
+        data: {
+          name: normalizedName,
+          email: normalizedEmail,
+          discordId: normalizeOptionalString(discordId),
+          department: department || null,
+          position: position || null,
+          role: normalizedRole as (typeof VALID_USER_ROLES)[number],
+          passwordHash,
+          isTeamLead: isTeamLead === true,
+          benefitCategoryId: normalizedBenefitCategoryId || null,
+          onboardingCompleted: shouldCreateAsNewHire ? false : true,
+        },
+      })
+
+      if (shouldCreateAsNewHire && linkedNewHire) {
+        await tx.newHire.update({
+          where: { id: linkedNewHire.id },
+          data: {
+            userId: createdUser.id,
+            status: 'ONBOARDING',
+          },
+        })
+
+        const modules = await tx.onboardingModule.findMany({
+          where: { isActive: true },
+          orderBy: { orderIndex: 'asc' },
+          select: { id: true },
+        })
+
+        if (modules.length > 0) {
+          const now = new Date()
+          await tx.onboardingProgress.createMany({
+            data: modules.map((module, index) => ({
+              userId: createdUser.id,
+              moduleId: module.id,
+              status: index === 0 ? 'IN_PROGRESS' : 'LOCKED',
+              startedAt: index === 0 ? now : null,
+              completedAt: null,
+            })),
+          })
+        }
+      }
+
+      return createdUser
     })
 
     if (payrollProfile) {
@@ -287,6 +417,8 @@ export async function PUT(request: NextRequest) {
       department,
       position,
       role,
+      benefitCategoryId,
+      isTeamLead,
       payrollProfile,
     } = (await request.json()) as {
       id?: string
@@ -296,6 +428,8 @@ export async function PUT(request: NextRequest) {
       department?: string | null
       position?: string | null
       role?: string
+      benefitCategoryId?: string | null
+      isTeamLead?: boolean
       payrollProfile?: PayrollProfilePayload
     }
 
@@ -308,15 +442,29 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
     }
 
+    const normalizedBenefitCategoryId =
+      benefitCategoryId === null ? null : normalizeOptionalString(benefitCategoryId)
+    if (normalizedBenefitCategoryId) {
+      const category = await prisma.benefitCategory.findUnique({
+        where: { id: normalizedBenefitCategoryId },
+        select: { id: true },
+      })
+      if (!category) {
+        return NextResponse.json({ error: 'Invalid benefit category' }, { status: 400 })
+      }
+    }
+
     const updatedUser = await prisma.user.update({
       where: { id },
       data: {
         name,
-        email: email || null,
+        email: normalizeOptionalString(email),
         discordId: normalizeOptionalString(discordId),
         department: department || null,
         position: position || null,
         role: normalizedRole as (typeof VALID_USER_ROLES)[number],
+        ...(benefitCategoryId !== undefined ? { benefitCategoryId: normalizedBenefitCategoryId } : {}),
+        ...(isTeamLead !== undefined ? { isTeamLead: Boolean(isTeamLead) } : {}),
       },
     })
 
