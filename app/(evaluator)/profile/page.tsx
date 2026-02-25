@@ -14,6 +14,7 @@ import {
   User,
   Building2,
   Briefcase,
+  MessageCircle,
   Lock,
   Eye,
   EyeOff,
@@ -89,7 +90,7 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
                 <Building2 className="h-4 w-4 text-muted-foreground" />
                 <div>
@@ -102,6 +103,13 @@ export default function ProfilePage() {
                 <div>
                   <p className="text-xs text-muted-foreground">Position</p>
                   <p className="text-sm font-medium text-foreground">{user?.position || 'Not set'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                <MessageCircle className="h-4 w-4 text-muted-foreground" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Discord ID</p>
+                  <p className="text-sm font-medium text-foreground font-mono">{user?.discordId || 'Not set'}</p>
                 </div>
               </div>
             </div>

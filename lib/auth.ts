@@ -7,6 +7,7 @@ export type SafeUser = {
   id: string
   name: string
   email: string | null
+  discordId: string | null
   department: string | null
   position: string | null
   role: 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA'
@@ -30,6 +31,7 @@ export async function getSession(): Promise<SafeUser | null> {
       id: true,
       name: true,
       email: true,
+      discordId: true,
       department: true,
       position: true,
       role: true,

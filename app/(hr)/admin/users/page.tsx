@@ -35,6 +35,7 @@ interface User {
   id: string
   name: string
   email: string | null
+  discordId: string | null
   department: string | null
   position: string | null
   role: 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA'
@@ -107,7 +108,7 @@ export default function UsersPage() {
   const [userToDelete, setUserToDelete] = useState<User | null>(null)
   const [userToReactivate, setUserToReactivate] = useState<User | null>(null)
   
-  const [formData, setFormData] = useState({ name: '', email: '', department: '', position: '', role: 'EMPLOYEE' })
+  const [formData, setFormData] = useState({ name: '', email: '', discordId: '', department: '', position: '', role: 'EMPLOYEE' })
   const [payrollMeta, setPayrollMeta] = useState<PayrollMeta>({
     departments: [],
     employmentTypes: [],
@@ -163,7 +164,14 @@ export default function UsersPage() {
   const handleOpenModal = (user?: User) => {
     if (user) {
       setSelectedUser(user)
-      setFormData({ name: user.name, email: user.email || '', department: user.department || '', position: user.position || '', role: user.role })
+      setFormData({
+        name: user.name,
+        email: user.email || '',
+        discordId: user.discordId || '',
+        department: user.department || '',
+        position: user.position || '',
+        role: user.role,
+      })
       setPayrollForm({
         payrollDepartmentId: user.payrollProfile?.departmentId || '',
         designation: user.payrollProfile?.designation || '',
@@ -182,7 +190,7 @@ export default function UsersPage() {
       })
     } else {
       setSelectedUser(null)
-      setFormData({ name: '', email: '', department: '', position: '', role: 'EMPLOYEE' })
+      setFormData({ name: '', email: '', discordId: '', department: '', position: '', role: 'EMPLOYEE' })
       setPayrollForm({
         payrollDepartmentId: '',
         designation: '',
@@ -380,7 +388,10 @@ export default function UsersPage() {
       .filter((department): department is string => Boolean(department && department.trim()))
   )].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
   const filteredUsers = users.filter(u => {
-    const matchSearch = u.name.toLowerCase().includes(searchTerm.toLowerCase()) || u.email?.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchSearch =
+      u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      u.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      u.discordId?.toLowerCase().includes(searchTerm.toLowerCase())
     const matchRole = !filterRole || u.role === filterRole
     const matchDept = !filterDepartment || u.department === filterDepartment
     return matchSearch && matchRole && matchDept
@@ -461,6 +472,7 @@ export default function UsersPage() {
                 <TableRow className="bg-muted/50 hover:bg-muted/50">
                   <TableHead className="px-6 py-4">User</TableHead>
                   <TableHead className="px-6 py-4">Email</TableHead>
+                  <TableHead className="px-6 py-4">Discord ID</TableHead>
                   <TableHead className="px-6 py-4">Department</TableHead>
                   <TableHead className="px-6 py-4">Role</TableHead>
                   <TableHead className="px-6 py-4">Actions</TableHead>
@@ -488,6 +500,7 @@ export default function UsersPage() {
                       </div>
                     </TableCell>
                     <TableCell className="px-6 py-4 text-sm text-muted-foreground">{user.email || '—'}</TableCell>
+                    <TableCell className="px-6 py-4 text-sm text-muted-foreground font-mono">{user.discordId || '—'}</TableCell>
                     <TableCell className="px-6 py-4 text-sm text-muted-foreground">{user.department || '—'}</TableCell>
                     <TableCell className="px-6 py-4">
                       <Badge
@@ -560,6 +573,16 @@ export default function UsersPage() {
           <div>
             <Label htmlFor="email" className="mb-1">Email</Label>
             <Input id="email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
+          </div>
+          <div>
+            <Label htmlFor="discordId" className="mb-1">Discord ID</Label>
+            <Input
+              id="discordId"
+              type="text"
+              value={formData.discordId}
+              onChange={(e) => setFormData({ ...formData, discordId: e.target.value })}
+              placeholder="e.g. 123456789012345678"
+            />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -801,7 +824,7 @@ export default function UsersPage() {
             <Label htmlFor="csv-upload" className="cursor-pointer block">
               <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2 block" />
               <p className="text-foreground font-medium">Click to upload CSV</p>
-              <p className="text-sm text-muted-foreground mt-1">Columns: name, email, department, position, role</p>
+              <p className="text-sm text-muted-foreground mt-1">Columns: name, email, discordId, department, position, role</p>
             </Label>
           </div>
           {importPreview.length > 0 && (
@@ -815,6 +838,7 @@ export default function UsersPage() {
                         <TableRow key={i}>
                           <TableCell className="py-1 text-muted-foreground">{row.name}</TableCell>
                           <TableCell className="py-1 text-muted-foreground">{row.email}</TableCell>
+                          <TableCell className="py-1 text-muted-foreground">{row.discordId}</TableCell>
                           <TableCell className="py-1 text-muted-foreground">{row.department}</TableCell>
                         </TableRow>
                       ))}

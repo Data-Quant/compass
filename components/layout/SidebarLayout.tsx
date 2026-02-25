@@ -17,6 +17,8 @@ interface LayoutUser {
   id: string
   name: string
   role: string
+  email?: string | null
+  discordId?: string | null
   department?: string
   position?: string
 }

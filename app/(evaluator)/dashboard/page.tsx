@@ -29,6 +29,9 @@ import {
   AlertCircle,
   Shield,
   PackageSearch,
+  Users,
+  Mail,
+  MessageCircle,
 } from 'lucide-react'
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -81,6 +84,15 @@ interface MyEquipmentItem {
   status: string
 }
 
+interface TeamMember {
+  id: string
+  name: string
+  email: string | null
+  discordId: string | null
+  department: string | null
+  position: string | null
+}
+
 // â”€â”€â”€ Animation helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const stagger = {
@@ -118,6 +130,7 @@ export default function DashboardPage() {
   const [upcomingTeamLeaves, setUpcomingTeamLeaves] = useState<LeaveRequest[]>([])
   const [openTickets, setOpenTickets] = useState<DeviceTicket[]>([])
   const [myEquipment, setMyEquipment] = useState<MyEquipmentItem[]>([])
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -128,6 +141,7 @@ export default function DashboardPage() {
       loadProjects(),
       loadUpcomingTeamLeaves(),
       loadMyEquipment(),
+      loadTeamMembers(),
     ]
     // Role-specific data
     if (user.role === 'HR' || user.role === 'SECURITY') {
@@ -199,6 +213,18 @@ export default function DashboardPage() {
       const data = await res.json()
       if (data.items) {
         setMyEquipment(data.items)
+      }
+    } catch {
+      // silent
+    }
+  }
+
+  const loadTeamMembers = async () => {
+    try {
+      const res = await fetch('/api/users/team')
+      const data = await res.json()
+      if (data.teamMembers) {
+        setTeamMembers(data.teamMembers)
       }
     } catch {
       // silent
@@ -596,6 +622,59 @@ export default function DashboardPage() {
                       </Link>
                     )
                   })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Team Directory */}
+        <motion.div variants={stagger.item}>
+          <Card className="h-full">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-indigo-500" />
+                  <h2 className="text-lg font-semibold text-foreground">Team Directory</h2>
+                </div>
+                <Badge variant="secondary">{teamMembers.length}</Badge>
+              </div>
+
+              {teamMembers.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No team members found yet.</p>
+              ) : (
+                <div className="space-y-2 max-h-[260px] overflow-y-auto">
+                  {teamMembers.slice(0, 10).map((member) => (
+                    <div key={member.id} className="rounded-lg bg-muted/40 px-3 py-2.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate">{member.name}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {member.position || member.department || 'Team member'}
+                          </p>
+                        </div>
+                        <UserAvatar name={member.name} size="xs" />
+                      </div>
+                      <div className="mt-2 space-y-1">
+                        <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                          <Mail className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{member.email || 'Email not set'}</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                          <MessageCircle className="h-3 w-3 shrink-0" />
+                          <span className="font-mono text-[11px] text-foreground/90">
+                            {member.discordId || 'Discord ID not set'}
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+
+                  {teamMembers.length > 10 && (
+                    <p className="text-xs text-muted-foreground text-center">
+                      +{teamMembers.length - 10} more team members
+                    </p>
+                  )}
                 </div>
               )}
             </CardContent>

@@ -38,6 +38,12 @@ function parseDate(value: string | null | undefined): Date | null {
   return date
 }
 
+function normalizeOptionalString(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
 async function upsertPayrollProfileAndRevision(args: {
   userId: string
   actorId: string
@@ -132,6 +138,7 @@ export async function GET(_request: NextRequest) {
         id: true,
         name: true,
         email: true,
+        discordId: true,
         department: true,
         position: true,
         role: true,
@@ -199,6 +206,7 @@ export async function POST(request: NextRequest) {
     const {
       name,
       email,
+      discordId,
       department,
       position,
       role,
@@ -207,6 +215,7 @@ export async function POST(request: NextRequest) {
     } = (await request.json()) as {
       name?: string
       email?: string | null
+      discordId?: string | null
       department?: string | null
       position?: string | null
       role?: string
@@ -236,6 +245,7 @@ export async function POST(request: NextRequest) {
       data: {
         name: normalizedName,
         email: email || null,
+        discordId: normalizeOptionalString(discordId),
         department: department || null,
         position: position || null,
         role: normalizedRole as (typeof VALID_USER_ROLES)[number],
@@ -273,6 +283,7 @@ export async function PUT(request: NextRequest) {
       id,
       name,
       email,
+      discordId,
       department,
       position,
       role,
@@ -281,6 +292,7 @@ export async function PUT(request: NextRequest) {
       id?: string
       name?: string
       email?: string | null
+      discordId?: string | null
       department?: string | null
       position?: string | null
       role?: string
@@ -301,6 +313,7 @@ export async function PUT(request: NextRequest) {
       data: {
         name,
         email: email || null,
+        discordId: normalizeOptionalString(discordId),
         department: department || null,
         position: position || null,
         role: normalizedRole as (typeof VALID_USER_ROLES)[number],

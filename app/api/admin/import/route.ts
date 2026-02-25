@@ -51,6 +51,17 @@ async function importUsers(data: any[]) {
     try {
       const name = row.name || row.Name || row.NAME
       const email = row.email || row.Email || row.EMAIL
+      const discordId =
+        row.discordId ||
+        row.discord_id ||
+        row.DiscordId ||
+        row.DiscordID ||
+        row.DISCORD_ID ||
+        row.discord ||
+        row.Discord ||
+        row.DISCORD
+      const normalizedDiscordId =
+        typeof discordId === 'string' && discordId.trim().length > 0 ? discordId.trim() : null
       const department = row.department || row.Department || row.DEPARTMENT
       const position = row.position || row.Position || row.POSITION || row.title || row.Title
       const role = (row.role || row.Role || row.ROLE || 'EMPLOYEE').toUpperCase()
@@ -74,6 +85,7 @@ async function importUsers(data: any[]) {
             where: { id: existingByEmail.id },
             data: {
               name,
+              discordId: normalizedDiscordId,
               department: department || null,
               position: position || null,
               role: normalizedRole as 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA',
@@ -95,6 +107,7 @@ async function importUsers(data: any[]) {
           where: { id: existingByName.id },
           data: {
             email: email || existingByName.email,
+            discordId: normalizedDiscordId || existingByName.discordId,
             department: department || existingByName.department,
             position: position || existingByName.position,
             role: normalizedRole as 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA',
@@ -109,6 +122,7 @@ async function importUsers(data: any[]) {
         data: {
           name,
           email: email || null,
+          discordId: normalizedDiscordId,
           department: department || null,
           position: position || null,
           role: normalizedRole as 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA',
