@@ -143,7 +143,6 @@ export async function GET(_request: NextRequest) {
         department: true,
         position: true,
         role: true,
-        isTeamLead: true,
         onboardingCompleted: true,
         benefitCategoryId: true,
         createdAt: true,
@@ -255,7 +254,6 @@ export async function POST(request: NextRequest) {
       isNewHire,
       newHireId,
       benefitCategoryId,
-      isTeamLead,
       payrollProfile,
     } = (await request.json()) as {
       name?: string
@@ -268,7 +266,6 @@ export async function POST(request: NextRequest) {
       isNewHire?: boolean
       newHireId?: string | null
       benefitCategoryId?: string | null
-      isTeamLead?: boolean
       payrollProfile?: PayrollProfilePayload
     }
 
@@ -345,7 +342,6 @@ export async function POST(request: NextRequest) {
           position: position || null,
           role: normalizedRole as (typeof VALID_USER_ROLES)[number],
           passwordHash,
-          isTeamLead: isTeamLead === true,
           benefitCategoryId: normalizedBenefitCategoryId || null,
           onboardingCompleted: shouldCreateAsNewHire ? false : true,
         },
@@ -418,7 +414,6 @@ export async function PUT(request: NextRequest) {
       position,
       role,
       benefitCategoryId,
-      isTeamLead,
       payrollProfile,
     } = (await request.json()) as {
       id?: string
@@ -429,7 +424,6 @@ export async function PUT(request: NextRequest) {
       position?: string | null
       role?: string
       benefitCategoryId?: string | null
-      isTeamLead?: boolean
       payrollProfile?: PayrollProfilePayload
     }
 
@@ -464,7 +458,6 @@ export async function PUT(request: NextRequest) {
         position: position || null,
         role: normalizedRole as (typeof VALID_USER_ROLES)[number],
         ...(benefitCategoryId !== undefined ? { benefitCategoryId: normalizedBenefitCategoryId } : {}),
-        ...(isTeamLead !== undefined ? { isTeamLead: Boolean(isTeamLead) } : {}),
       },
     })
 

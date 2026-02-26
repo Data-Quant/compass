@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { canManageOnboarding } from '@/lib/permissions'
+import { validateTeamLeadEligibility } from '@/lib/onboarding'
 
 function parseOptionalDate(value: unknown): Date | null {
   if (!value || typeof value !== 'string') return null
@@ -59,12 +60,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (teamLeadId) {
-      const teamLead = await prisma.user.findUnique({
-        where: { id: teamLeadId },
-        select: { id: true },
-      })
-      if (!teamLead) {
-        return NextResponse.json({ error: 'Invalid team lead' }, { status: 400 })
+      const teamLeadValidation = await validateTeamLeadEligibility(teamLeadId)
+      if (!teamLeadValidation.valid) {
+        return NextResponse.json({ error: teamLeadValidation.error }, { status: 400 })
       }
     }
 

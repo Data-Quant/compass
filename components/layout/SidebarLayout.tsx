@@ -17,7 +17,6 @@ interface LayoutUser {
   id: string
   name: string
   role: string
-  isTeamLead: boolean
   onboardingCompleted: boolean
   benefitCategoryId?: string | null
   email?: string | null

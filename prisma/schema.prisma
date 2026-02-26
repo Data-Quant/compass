@@ -185,7 +185,6 @@ model User {
   department      String?
   position     String?
   role         UserRole @default(EMPLOYEE)
-  isTeamLead   Boolean @default(false)
   onboardingCompleted Boolean @default(true)
   benefitCategoryId String?
   createdAt    DateTime @default(now())

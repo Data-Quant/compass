@@ -11,7 +11,6 @@ export type SafeUser = {
   department: string | null
   position: string | null
   role: 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA'
-  isTeamLead: boolean
   onboardingCompleted: boolean
   benefitCategoryId: string | null
   createdAt: Date
@@ -38,7 +37,6 @@ export async function getSession(): Promise<SafeUser | null> {
       department: true,
       position: true,
       role: true,
-      isTeamLead: true,
       onboardingCompleted: true,
       benefitCategoryId: true,
       createdAt: true,

@@ -40,7 +40,6 @@ interface User {
   department: string | null
   position: string | null
   role: 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA'
-  isTeamLead: boolean
   onboardingCompleted: boolean
   benefitCategoryId: string | null
   benefitCategory?: {
@@ -149,7 +148,6 @@ export default function UsersPage() {
     department: '',
     position: '',
     role: 'EMPLOYEE',
-    isTeamLead: false,
     benefitCategoryId: '',
     isNewHire: false,
     newHireId: '',
@@ -222,7 +220,6 @@ export default function UsersPage() {
         department: user.department || '',
         position: user.position || '',
         role: user.role,
-        isTeamLead: Boolean(user.isTeamLead),
         benefitCategoryId: user.benefitCategoryId || '',
         isNewHire: false,
         newHireId: user.newHireRecord?.id || '',
@@ -252,7 +249,6 @@ export default function UsersPage() {
         department: '',
         position: '',
         role: 'EMPLOYEE',
-        isTeamLead: false,
         benefitCategoryId: '',
         isNewHire: false,
         newHireId: '',
@@ -375,7 +371,6 @@ export default function UsersPage() {
             department: formData.department,
             position: formData.position,
             role: formData.role,
-            isTeamLead: formData.isTeamLead,
             benefitCategoryId: formData.benefitCategoryId || null,
             payrollProfile,
           }
@@ -386,7 +381,6 @@ export default function UsersPage() {
             department: formData.department,
             position: formData.position,
             role: formData.role,
-            isTeamLead: formData.isTeamLead,
             benefitCategoryId: formData.benefitCategoryId || null,
             isNewHire: formData.isNewHire,
             newHireId: formData.isNewHire ? formData.newHireId || null : null,
@@ -615,11 +609,6 @@ export default function UsersPage() {
                                 Inactive
                               </Badge>
                             ) : null}
-                            {user.isTeamLead ? (
-                              <Badge variant="secondary" className="bg-blue-500/10 text-blue-600 dark:text-blue-400 border-0">
-                                Team Lead
-                              </Badge>
-                            ) : null}
                             {user.onboardingCompleted === false ? (
                               <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-0">
                                 Onboarding
@@ -740,38 +729,24 @@ export default function UsersPage() {
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label className="mb-1">Benefit Category</Label>
-              <Select
-                value={formData.benefitCategoryId || '__none__'}
-                onValueChange={(v) => setFormData({ ...formData, benefitCategoryId: v === '__none__' ? '' : v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select benefit category" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">None</SelectItem>
-                  {benefitCategories.map((category) => (
-                    <SelectItem key={category.id} value={category.id}>
-                      {category.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="rounded-lg border border-border px-3 py-2.5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-foreground">Team Lead</p>
-                  <p className="text-xs text-muted-foreground">Enable lead-specific onboarding tasks</p>
-                </div>
-                <Switch
-                  checked={formData.isTeamLead}
-                  onCheckedChange={(checked) => setFormData({ ...formData, isTeamLead: checked })}
-                />
-              </div>
-            </div>
+          <div>
+            <Label className="mb-1">Benefit Category</Label>
+            <Select
+              value={formData.benefitCategoryId || '__none__'}
+              onValueChange={(v) => setFormData({ ...formData, benefitCategoryId: v === '__none__' ? '' : v })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select benefit category" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">None</SelectItem>
+                {benefitCategories.map((category) => (
+                  <SelectItem key={category.id} value={category.id}>
+                    {category.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {!selectedUser && (

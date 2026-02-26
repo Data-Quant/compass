@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { canManageOnboarding } from '@/lib/permissions'
 import { sendTeamLeadFormRequestNotification } from '@/lib/email'
+import { validateTeamLeadEligibility } from '@/lib/onboarding'
 
 function parseRequiredDate(value: unknown): Date | null {
   if (typeof value !== 'string') return null
@@ -86,10 +87,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (teamLeadId) {
-      const lead = await prisma.user.findUnique({ where: { id: teamLeadId }, select: { id: true } })
-      if (!lead) {
-        return NextResponse.json({ error: 'Invalid team lead' }, { status: 400 })
+    const resolvedTeamLeadId = teamLeadId || position.teamLeadId || null
+    if (resolvedTeamLeadId) {
+      const leadValidation = await validateTeamLeadEligibility(resolvedTeamLeadId)
+      if (!leadValidation.valid) {
+        return NextResponse.json({ error: leadValidation.error }, { status: 400 })
       }
     }
     if (buddyId) {
@@ -107,7 +109,7 @@ export async function POST(request: NextRequest) {
           title,
           company: company || null,
           department: department || null,
-          teamLeadId: teamLeadId || position.teamLeadId || null,
+          teamLeadId: resolvedTeamLeadId,
           email,
           onboardingDate,
           buddyId,

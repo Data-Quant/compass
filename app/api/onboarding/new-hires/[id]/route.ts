@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { canManageOnboarding } from '@/lib/permissions'
 import { sendTeamLeadFormRequestNotification } from '@/lib/email'
+import { validateTeamLeadEligibility } from '@/lib/onboarding'
 
 interface RouteContext {
   params: Promise<{ id: string }>
@@ -79,9 +80,9 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     }
 
     if (teamLeadId) {
-      const lead = await prisma.user.findUnique({ where: { id: teamLeadId }, select: { id: true } })
-      if (!lead) {
-        return NextResponse.json({ error: 'Invalid team lead' }, { status: 400 })
+      const leadValidation = await validateTeamLeadEligibility(teamLeadId)
+      if (!leadValidation.valid) {
+        return NextResponse.json({ error: leadValidation.error }, { status: 400 })
       }
     }
 
