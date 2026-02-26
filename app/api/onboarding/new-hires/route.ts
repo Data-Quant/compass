@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { canManageOnboarding } from '@/lib/permissions'
+import { sendTeamLeadFormRequestNotification } from '@/lib/email'
 
 function parseRequiredDate(value: unknown): Date | null {
   if (typeof value !== 'string') return null
@@ -137,6 +138,14 @@ export async function POST(request: NextRequest) {
         },
       })
     })
+
+    if (created?.id) {
+      try {
+        await sendTeamLeadFormRequestNotification(created.id)
+      } catch (emailError) {
+        console.error('Failed to send team lead form request notification:', emailError)
+      }
+    }
 
     return NextResponse.json({ success: true, newHire: created })
   } catch (error) {

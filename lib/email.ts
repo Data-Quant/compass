@@ -807,6 +807,60 @@ export async function sendTeamLeadFormSubmittedNotification(newHireId: string) {
   }
 }
 
+export async function sendTeamLeadFormRequestNotification(newHireId: string) {
+  const newHire = await prisma.newHire.findUnique({
+    where: { id: newHireId },
+    include: {
+      teamLead: { select: { name: true, email: true } },
+    },
+  })
+
+  if (!newHire) {
+    return { success: false, message: 'New hire not found' }
+  }
+
+  const teamLeadEmail = newHire.teamLead?.email
+  if (!teamLeadEmail) {
+    return { success: false, message: 'No team lead email configured' }
+  }
+
+  const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || '').replace(/\/$/, '')
+  const formUrl = appBaseUrl ? `${appBaseUrl}/team-lead-form/${newHire.id}` : '/team-lead-form'
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #0D9488;">Onboarding Team Lead Form Required</h2>
+      <div style="background: #F8FAFC; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>New Hire:</strong> ${escapeHtml(newHire.name)}</p>
+        <p><strong>Title:</strong> ${escapeHtml(newHire.title)}</p>
+        <p><strong>Department:</strong> ${escapeHtml(newHire.department || 'N/A')}</p>
+        <p><strong>Onboarding Date:</strong> ${newHire.onboardingDate.toLocaleDateString()}</p>
+      </div>
+      <p style="color: #475569; margin: 0 0 14px;">
+        Please complete the team lead onboarding form so security and HR can proceed.
+      </p>
+      ${
+        appBaseUrl
+          ? `<p><a href="${formUrl}" style="display:inline-block;background:#0D9488;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;">Open Team Lead Form</a></p>`
+          : ''
+      }
+    </div>
+  `
+
+  try {
+    const info = await transporter.sendMail({
+      from: `P21 Compass <${FROM_EMAIL}>`,
+      to: teamLeadEmail,
+      subject: `Action Required: Team Lead Form for ${newHire.name}`,
+      html: htmlContent,
+    })
+    return { success: true, data: { messageId: info.messageId } }
+  } catch (error: any) {
+    console.error('Failed to send team lead form request notification:', error)
+    return { success: false, error: error.message }
+  }
+}
+
 export async function sendSecurityChecklistCompleteNotification(newHireId: string) {
   const newHire = await prisma.newHire.findUnique({
     where: { id: newHireId },

@@ -159,9 +159,7 @@ export default function DashboardPage() {
     if (user.role === 'HR') {
       tasks.push(loadPendingLeave())
     }
-    if (user.isTeamLead) {
-      tasks.push(loadPendingTeamLeadForms())
-    }
+    tasks.push(loadPendingTeamLeadForms())
     // Team leads (any role) may have leave requests to review
     if (user.role !== 'HR') {
       tasks.push(loadPendingLeave())

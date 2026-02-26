@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { canManageOnboarding } from '@/lib/permissions'
+import { sendTeamLeadFormRequestNotification } from '@/lib/email'
 
 interface RouteContext {
   params: Promise<{ id: string }>
@@ -56,7 +57,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
 
     const existing = await prisma.newHire.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, teamLeadId: true },
     })
     if (!existing) {
       return NextResponse.json({ error: 'New hire not found' }, { status: 404 })
@@ -113,6 +114,14 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         securityChecklist: true,
       },
     })
+
+    if (teamLeadId !== undefined && teamLeadId !== null && teamLeadId !== existing.teamLeadId) {
+      try {
+        await sendTeamLeadFormRequestNotification(id)
+      } catch (emailError) {
+        console.error('Failed to send team lead form request notification:', emailError)
+      }
+    }
 
     return NextResponse.json({ success: true, newHire: updated })
   } catch (error) {

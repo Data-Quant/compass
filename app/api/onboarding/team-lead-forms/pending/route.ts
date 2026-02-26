@@ -9,10 +9,6 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    if (!user.isTeamLead) {
-      return NextResponse.json({ pending: [] })
-    }
-
     const pending = await prisma.newHire.findMany({
       where: {
         teamLeadId: user.id,
