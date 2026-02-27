@@ -12,7 +12,17 @@ const corsOrigins = CORS_ORIGIN.split(',').map((o) => o.trim())
 
 const app = express()
 
-app.use(cors({ origin: corsOrigins }))
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (health checks, server-to-server)
+    if (!origin) return callback(null, true)
+    // Allow any Vercel preview URL for this project
+    if (origin.endsWith('.vercel.app')) return callback(null, true)
+    // Allow explicitly listed origins (localhost, production domain)
+    if (corsOrigins.includes(origin)) return callback(null, true)
+    callback(new Error('Not allowed by CORS'))
+  },
+}))
 app.use(express.json())
 
 // Health check
