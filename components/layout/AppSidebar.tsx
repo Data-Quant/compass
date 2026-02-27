@@ -32,6 +32,7 @@ import {
   Eye,
   CheckSquare,
   PackageSearch,
+  Building2,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -65,6 +66,7 @@ export const EMPLOYEE_SIDEBAR: SidebarConfig = {
     { label: 'Leave', href: '/leave', icon: Calendar },
     { label: 'Projects', href: '/projects', icon: FolderKanban },
     { label: 'Device Support', href: '/device-support', icon: Monitor },
+    { label: 'Office', href: '/office', icon: Building2 },
     { label: 'Profile', href: '/profile', icon: User },
   ],
   groups: [],
@@ -84,6 +86,7 @@ export const SECURITY_SIDEBAR: SidebarConfig = {
     { label: 'Device Tickets', href: '/security/device-tickets', icon: Monitor },
     { label: 'Assets', href: '/security/assets', icon: PackageSearch },
     { label: 'Onboarding', href: '/security/onboarding', icon: ClipboardCheck },
+    { label: 'Office', href: '/office', icon: Building2 },
     { label: 'Profile', href: '/profile', icon: User },
   ],
   groups: [],
@@ -124,6 +127,7 @@ export const ADMIN_SIDEBAR: SidebarConfig = {
         { label: 'Device Tickets', href: '/admin/device-tickets', icon: Monitor },
         { label: 'Assets', href: '/admin/assets', icon: PackageSearch },
         { label: 'Payroll', href: '/admin/payroll', icon: Wallet },
+        { label: 'Office', href: '/office', icon: Building2 },
       ],
     },
     {
