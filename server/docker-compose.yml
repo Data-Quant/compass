@@ -1,0 +1,8 @@
+services:
+  office-server:
+    build: .
+    ports:
+      - "2567:2567"
+    env_file:
+      - .env
+    restart: unless-stopped

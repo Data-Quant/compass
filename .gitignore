@@ -43,3 +43,8 @@ next-env.d.ts
 *.db-journal
 dev.db
 dev.db-journal
+
+# colyseus server
+/server/node_modules
+/server/dist
+/server/.env
