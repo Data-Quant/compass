@@ -8,6 +8,11 @@ export interface OfficeTokenPayload {
   department: string | null
   position: string | null
   role: string
+  avatarBodyType: string | null
+  avatarHairStyle: number | null
+  avatarHairColor: string | null
+  avatarSkinTone: string | null
+  avatarShirtColor: string | null
 }
 
 export function verifyOfficeToken(token: string): OfficeTokenPayload {

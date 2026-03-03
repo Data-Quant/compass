@@ -8,6 +8,11 @@ export interface OfficeTokenPayload {
   department: string | null
   position: string | null
   role: string
+  avatarBodyType: string | null
+  avatarHairStyle: number | null
+  avatarHairColor: string | null
+  avatarSkinTone: string | null
+  avatarShirtColor: string | null
 }
 
 export function generateOfficeToken(user: {
@@ -16,6 +21,11 @@ export function generateOfficeToken(user: {
   department?: string | null
   position?: string | null
   role: string
+  avatarBodyType?: string | null
+  avatarHairStyle?: number | null
+  avatarHairColor?: string | null
+  avatarSkinTone?: string | null
+  avatarShirtColor?: string | null
 }): string {
   const payload: OfficeTokenPayload = {
     userId: user.id,
@@ -23,6 +33,11 @@ export function generateOfficeToken(user: {
     department: user.department ?? null,
     position: user.position ?? null,
     role: user.role,
+    avatarBodyType: user.avatarBodyType ?? null,
+    avatarHairStyle: user.avatarHairStyle ?? null,
+    avatarHairColor: user.avatarHairColor ?? null,
+    avatarSkinTone: user.avatarSkinTone ?? null,
+    avatarShirtColor: user.avatarShirtColor ?? null,
   }
 
   return jwt.sign(payload, OFFICE_JWT_SECRET, { expiresIn: '60s' })

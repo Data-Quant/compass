@@ -23,6 +23,11 @@ interface LayoutUser {
   discordId?: string | null
   department?: string
   position?: string
+  avatarBodyType?: string | null
+  avatarHairStyle?: number | null
+  avatarHairColor?: string | null
+  avatarSkinTone?: string | null
+  avatarShirtColor?: string | null
 }
 
 const LayoutUserContext = createContext<LayoutUser | null>(null)

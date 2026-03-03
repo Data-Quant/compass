@@ -26,6 +26,11 @@ interface PlayerData {
   isMoving: boolean
   status: string
   avatarSeed: string
+  avatarBodyType: string | null
+  avatarHairStyle: number | null
+  avatarHairColor: string | null
+  avatarSkinTone: string | null
+  avatarShirtColor: string | null
   lastMoveAt: number
 }
 
@@ -328,6 +333,11 @@ export class OfficeRoom extends Room {
       isMoving: false,
       status: 'ONLINE',
       avatarSeed: auth.userId,
+      avatarBodyType: auth.avatarBodyType ?? null,
+      avatarHairStyle: auth.avatarHairStyle ?? null,
+      avatarHairColor: auth.avatarHairColor ?? null,
+      avatarSkinTone: auth.avatarSkinTone ?? null,
+      avatarShirtColor: auth.avatarShirtColor ?? null,
       lastMoveAt: 0,
     }
 
@@ -347,6 +357,11 @@ export class OfficeRoom extends Room {
       isMoving: p.isMoving,
       status: p.status,
       avatarSeed: p.avatarSeed,
+      avatarBodyType: p.avatarBodyType,
+      avatarHairStyle: p.avatarHairStyle,
+      avatarHairColor: p.avatarHairColor,
+      avatarSkinTone: p.avatarSkinTone,
+      avatarShirtColor: p.avatarShirtColor,
     }))
 
     client.send('fullState', {

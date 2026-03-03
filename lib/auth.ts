@@ -17,6 +17,11 @@ export type SafeUser = {
   updatedAt: Date
   chartX: number | null
   chartY: number | null
+  avatarBodyType: string | null
+  avatarHairStyle: number | null
+  avatarHairColor: string | null
+  avatarSkinTone: string | null
+  avatarShirtColor: string | null
 }
 
 export async function getSession(): Promise<SafeUser | null> {
@@ -43,6 +48,11 @@ export async function getSession(): Promise<SafeUser | null> {
       updatedAt: true,
       chartX: true,
       chartY: true,
+      avatarBodyType: true,
+      avatarHairStyle: true,
+      avatarHairColor: true,
+      avatarSkinTone: true,
+      avatarShirtColor: true,
       passwordVersion: true,
       payrollProfile: {
         select: {

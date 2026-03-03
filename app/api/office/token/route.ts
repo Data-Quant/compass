@@ -15,6 +15,11 @@ export async function POST() {
       department: user.department,
       position: user.position,
       role: user.role,
+      avatarBodyType: user.avatarBodyType,
+      avatarHairStyle: user.avatarHairStyle,
+      avatarHairColor: user.avatarHairColor,
+      avatarSkinTone: user.avatarSkinTone,
+      avatarShirtColor: user.avatarShirtColor,
     })
 
     const serverUrl = process.env.NEXT_PUBLIC_OFFICE_SERVER_URL || 'ws://localhost:2567'
