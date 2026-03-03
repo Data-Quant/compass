@@ -43,8 +43,10 @@ export interface AssetAssignment {
   unassignedAt: string | null
   assignmentNote: string | null
   returnNote: string | null
-  employee: AssetAssignee
-  assignedBy: { id: string; name: string; role: string }
+  employee: AssetAssignee | null
+  employeeName: string | null
+  assignedBy: { id: string; name: string; role: string } | null
+  assignedByName: string | null
   unassignedBy: { id: string; name: string; role: string } | null
 }
 

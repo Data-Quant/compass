@@ -33,11 +33,11 @@ export function AssetHistoryTimeline({ assignments, events }: AssetHistoryTimeli
               {assignments.map((entry) => (
                 <div key={entry.id} className="border border-border rounded-lg p-3">
                   <div className="flex items-center justify-between gap-2 mb-1">
-                    <p className="font-medium text-foreground">{entry.employee.name}</p>
+                    <p className="font-medium text-foreground">{entry.employee?.name ?? entry.employeeName ?? 'Unknown'}</p>
                     <Badge variant="outline">{entry.unassignedAt ? 'Returned' : 'Active'}</Badge>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Assigned {formatDate(entry.assignedAt)} by {entry.assignedBy.name}
+                    Assigned {formatDate(entry.assignedAt)} by {entry.assignedBy?.name ?? entry.assignedByName ?? 'Unknown'}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Unassigned {formatDate(entry.unassignedAt)}

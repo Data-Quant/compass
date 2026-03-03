@@ -493,7 +493,7 @@ export function PayrollRunWizard({
                       <TableBody>
                         {(period.approvalEvents || []).map((event: any) => (
                           <TableRow key={event.id}>
-                            <TableCell className="text-sm">{event.actor?.name || 'Unknown'}</TableCell>
+                            <TableCell className="text-sm">{event.actor?.name || event.actorName || 'Unknown'}</TableCell>
                             <TableCell className="text-sm">
                               {event.fromStatus || '-'} &rarr; {event.toStatus}
                             </TableCell>

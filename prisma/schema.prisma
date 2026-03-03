@@ -510,8 +510,10 @@ model EquipmentAsset {
 model EquipmentAssignment {
   id              String    @id @default(cuid())
   assetId         String
-  employeeId      String
-  assignedById    String
+  employeeId      String?
+  employeeName    String?
+  assignedById    String?
+  assignedByName  String?
   assignedAt      DateTime  @default(now())
   unassignedAt    DateTime?
   unassignedById  String?
@@ -521,8 +523,8 @@ model EquipmentAssignment {
   updatedAt       DateTime  @updatedAt
 
   asset           EquipmentAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  employee        User           @relation("EquipmentAssignmentEmployee", fields: [employeeId], references: [id], onDelete: Restrict)
-  assignedBy      User           @relation("EquipmentAssignedBy", fields: [assignedById], references: [id], onDelete: Restrict)
+  employee        User?          @relation("EquipmentAssignmentEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
+  assignedBy      User?          @relation("EquipmentAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
   unassignedBy    User?          @relation("EquipmentUnassignedBy", fields: [unassignedById], references: [id], onDelete: SetNull)
 
   @@index([assetId])
@@ -618,12 +620,13 @@ model PayrollSalaryRevision {
   employeeProfileId String
   effectiveFrom    DateTime
   note             String?
-  createdById      String
+  createdById      String?
+  createdByName    String?
   createdAt        DateTime                   @default(now())
   updatedAt        DateTime                   @updatedAt
 
   employeeProfile  PayrollEmployeeProfile     @relation(fields: [employeeProfileId], references: [id], onDelete: Cascade)
-  createdBy        User                       @relation("PayrollSalaryRevisionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdBy        User?                      @relation("PayrollSalaryRevisionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   lines            PayrollSalaryRevisionLine[]
 
   @@index([employeeProfileId, effectiveFrom])
@@ -738,11 +741,12 @@ model PayrollInputAuditEvent {
   previousAmount   Float?
   newAmount        Float
   reason           String?
-  actorId          String
+  actorId          String?
+  actorName        String?
   createdAt        DateTime      @default(now())
 
   period           PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
-  actor            User          @relation("PayrollInputAuditActor", fields: [actorId], references: [id], onDelete: Restrict)
+  actor            User?         @relation("PayrollInputAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([periodId])
   @@index([userId])
@@ -758,7 +762,8 @@ model PayrollPeriod {
   sourceType    PayrollSourceType   @default(CARRY_FORWARD)
   currency      String              @default("PKR")
   timezone      String              @default("Asia/Karachi")
-  createdById   String
+  createdById   String?
+  createdByName String?
   approvedById  String?
   approvedAt    DateTime?
   lockedAt      DateTime?
@@ -766,7 +771,7 @@ model PayrollPeriod {
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
 
-  createdBy     User                @relation("PayrollCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdBy     User?               @relation("PayrollCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   approvedBy    User?               @relation("PayrollApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   importBatches PayrollImportBatch[]
   inputValues   PayrollInputValue[]
@@ -803,7 +808,8 @@ model PayrollImportBatch {
   id          String             @id @default(cuid())
   sourceType  PayrollSourceType
   fileName    String?
-  importedById String
+  importedById  String?
+  importedByName String?
   periodId    String?
   status      PayrollImportStatus @default(PENDING)
   summaryJson Json?
@@ -811,7 +817,7 @@ model PayrollImportBatch {
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 
-  importedBy  User               @relation("PayrollImportedBy", fields: [importedById], references: [id], onDelete: Restrict)
+  importedBy  User?              @relation("PayrollImportedBy", fields: [importedById], references: [id], onDelete: SetNull)
   period      PayrollPeriod?     @relation(fields: [periodId], references: [id], onDelete: SetNull)
   rows        PayrollImportRow[]
 
@@ -894,12 +900,13 @@ model PayrollExpenseEntry {
   amount       Float
   sheetName    String?
   rowRef       String?
-  enteredById  String
+  enteredById    String?
+  enteredByName  String?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
   period       PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
-  enteredBy    User          @relation("PayrollExpenseEnteredBy", fields: [enteredById], references: [id], onDelete: Restrict)
+  enteredBy    User?         @relation("PayrollExpenseEnteredBy", fields: [enteredById], references: [id], onDelete: SetNull)
 
   @@index([periodId])
   @@index([enteredById])
@@ -951,14 +958,15 @@ model PayrollDocuSignEnvelope {
 model PayrollApprovalEvent {
   id          String              @id @default(cuid())
   periodId    String
-  actorId     String
+  actorId     String?
+  actorName   String?
   fromStatus  PayrollPeriodStatus?
   toStatus    PayrollPeriodStatus
   comment     String?
   createdAt   DateTime            @default(now())
 
   period      PayrollPeriod       @relation(fields: [periodId], references: [id], onDelete: Cascade)
-  actor       User                @relation("PayrollApprovalActor", fields: [actorId], references: [id], onDelete: Restrict)
+  actor       User?               @relation("PayrollApprovalActor", fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([periodId])
   @@index([actorId])

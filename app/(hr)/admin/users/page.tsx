@@ -28,7 +28,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import Papa from 'papaparse'
-import { Users, Plus, Search, Upload, Edit2, Trash2, UserCheck, Shield, Key, Eye, EyeOff, RotateCcw } from 'lucide-react'
+import { Users, Plus, Search, Upload, Edit2, Trash2, UserCheck, Shield, Key, Eye, EyeOff, RotateCcw, XCircle } from 'lucide-react'
 
 const MotionTableRow = motion(TableRow)
 
@@ -76,6 +76,7 @@ interface User {
       effectiveFrom: string
       note: string | null
       createdBy: { id: string; name: string } | null
+      createdByName: string | null
       lines: Array<{
         id: string
         amount: number
@@ -140,7 +141,11 @@ export default function UsersPage() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [userToDelete, setUserToDelete] = useState<User | null>(null)
   const [userToReactivate, setUserToReactivate] = useState<User | null>(null)
-  
+  const [isPermanentDeleteOpen, setIsPermanentDeleteOpen] = useState(false)
+  const [userToPermanentDelete, setUserToPermanentDelete] = useState<User | null>(null)
+  const [permanentDeleteConfirmName, setPermanentDeleteConfirmName] = useState('')
+  const [permanentDeleting, setPermanentDeleting] = useState(false)
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -420,6 +425,34 @@ export default function UsersPage() {
     finally { setIsReactivateDialogOpen(false); setUserToReactivate(null) }
   }
 
+  const handlePermanentDelete = async () => {
+    if (!userToPermanentDelete) return
+    if (permanentDeleteConfirmName !== userToPermanentDelete.name) {
+      toast.error('Name does not match')
+      return
+    }
+    setPermanentDeleting(true)
+    try {
+      const res = await fetch('/api/admin/users/permanently-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: userToPermanentDelete.id,
+          confirmName: permanentDeleteConfirmName,
+        }),
+      })
+      const data = await res.json()
+      if (data.error) toast.error(data.error)
+      else { toast.success('User permanently deleted'); loadUsers() }
+    } catch { toast.error('Failed to delete user') }
+    finally {
+      setPermanentDeleting(false)
+      setIsPermanentDeleteOpen(false)
+      setUserToPermanentDelete(null)
+      setPermanentDeleteConfirmName('')
+    }
+  }
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -648,15 +681,26 @@ export default function UsersPage() {
                           <Edit2 className="w-4 h-4" />
                         </Button>
                         {user.payrollProfile?.isPayrollActive === false ? (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => { setUserToReactivate(user); setIsReactivateDialogOpen(true) }}
-                            title="Reactivate User"
-                            className="text-muted-foreground hover:text-emerald-500 hover:bg-emerald-500/10"
-                          >
-                            <RotateCcw className="w-4 h-4" />
-                          </Button>
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => { setUserToReactivate(user); setIsReactivateDialogOpen(true) }}
+                              title="Reactivate User"
+                              className="text-muted-foreground hover:text-emerald-500 hover:bg-emerald-500/10"
+                            >
+                              <RotateCcw className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => { setUserToPermanentDelete(user); setIsPermanentDeleteOpen(true) }}
+                              title="Permanently Delete User"
+                              className="text-muted-foreground hover:text-red-600 hover:bg-red-600/10"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </Button>
+                          </>
                         ) : null}
                         <Button
                           variant="ghost"
@@ -986,7 +1030,7 @@ export default function UsersPage() {
                 {selectedUser.payrollProfile.salaryRevisions.slice(0, 3).map((revision) => (
                   <div key={revision.id} className="rounded-md bg-muted/40 px-3 py-2">
                     <p className="text-xs text-muted-foreground">
-                      Effective {new Date(revision.effectiveFrom).toLocaleDateString()} {revision.createdBy ? `· by ${revision.createdBy.name}` : ''}
+                      Effective {new Date(revision.effectiveFrom).toLocaleDateString()} {(revision.createdBy?.name || revision.createdByName) ? `· by ${revision.createdBy?.name ?? revision.createdByName}` : ''}
                     </p>
                     <p className="text-xs">{revision.note || 'No note'}</p>
                   </div>
@@ -1042,6 +1086,42 @@ export default function UsersPage() {
 
       <ConfirmDialog isOpen={isDeleteDialogOpen} onClose={() => setIsDeleteDialogOpen(false)} onConfirm={handleDelete} title="Deactivate User" message={`Deactivate ${userToDelete?.name}? This preserves history and prevents login.`} confirmText="Deactivate" variant="danger" />
       <ConfirmDialog isOpen={isReactivateDialogOpen} onClose={() => setIsReactivateDialogOpen(false)} onConfirm={handleReactivate} title="Reactivate User" message={`Reactivate ${userToReactivate?.name}? This will restore login access.`} confirmText="Reactivate" />
+
+      {/* Permanent Delete Modal */}
+      <Modal
+        isOpen={isPermanentDeleteOpen}
+        onClose={() => { setIsPermanentDeleteOpen(false); setUserToPermanentDelete(null); setPermanentDeleteConfirmName('') }}
+        title="Permanently Delete User"
+      >
+        {userToPermanentDelete && (
+          <div className="space-y-4">
+            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-400">
+              This will permanently delete <strong>{userToPermanentDelete.name}</strong> and all their data. This action cannot be undone.
+            </div>
+            <div>
+              <Label htmlFor="confirm-name" className="mb-1">Type the user&apos;s full name to confirm</Label>
+              <Input
+                id="confirm-name"
+                value={permanentDeleteConfirmName}
+                onChange={(e) => setPermanentDeleteConfirmName(e.target.value)}
+                placeholder={userToPermanentDelete.name}
+              />
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => { setIsPermanentDeleteOpen(false); setUserToPermanentDelete(null); setPermanentDeleteConfirmName('') }}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handlePermanentDelete}
+                disabled={permanentDeleting || permanentDeleteConfirmName !== userToPermanentDelete.name}
+              >
+                {permanentDeleting ? 'Deleting...' : 'Permanently Delete'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Password Modal */}
       <Modal isOpen={isPasswordModalOpen} onClose={() => setIsPasswordModalOpen(false)} title="Set Password">
