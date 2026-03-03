@@ -1,297 +1,441 @@
 import * as Phaser from 'phaser'
-import { TILE_SIZE, T, PALETTE } from '@/lib/office-config'
+import { TILE_SIZE, T, PALETTE, type BodyType } from '@/lib/office-config'
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// COLOR HELPERS
+// ═══════════════════════════════════════════════════════════════════════════════
 
-function hex(color: string): number {
-  return Phaser.Display.Color.HexStringToColor(color).color
+function parseHex(hex: string): [number, number, number] {
+  const c = hex.replace('#', '')
+  return [
+    parseInt(c.substring(0, 2), 16),
+    parseInt(c.substring(2, 4), 16),
+    parseInt(c.substring(4, 6), 16),
+  ]
 }
 
-function drawPixel(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, color: string, alpha = 1) {
-  g.fillStyle(hex(color), alpha)
-  g.fillRect(x, y, w, h)
+function toHex(r: number, g: number, b: number): string {
+  const cl = (v: number) => Math.max(0, Math.min(255, Math.round(v)))
+  return '#' + [r, g, b].map(v => cl(v).toString(16).padStart(2, '0')).join('')
 }
 
-// ─── Generate all tile textures ─────────────────────────────────────────────
+function lighten(c: string, n: number): string {
+  const [r, g, b] = parseHex(c)
+  return toHex(r + n, g + n, b + n)
+}
 
-export function generateTileTextures(scene: Phaser.Scene) {
+function darken(c: string, n: number): string {
+  const [r, g, b] = parseHex(c)
+  return toHex(r - n, g - n, b - n)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NOISE & DITHERING (kept for wall shadow, glass)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const BAYER = [
+  [0, 8, 2, 10], [12, 4, 14, 6],
+  [3, 11, 1, 9], [15, 7, 13, 5],
+]
+
+function orderedDither(x: number, y: number, value: number): boolean {
+  return value > BAYER[y & 3][x & 3] / 16
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CANVAS TEXTURE HELPER
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function canvasTex(scene: Phaser.Scene, key: string, w: number, h: number, draw: (ctx: CanvasRenderingContext2D) => void) {
+  const c = document.createElement('canvas')
+  c.width = w; c.height = h
+  const ctx = c.getContext('2d')!
+  ctx.imageSmoothingEnabled = false
+  draw(ctx)
+  scene.textures.addCanvas(key, c)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FLOOR TEXTURE GENERATION — Clean RPG-style floors (no noise/dithering)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function generateFloorTextures(scene: Phaser.Scene) {
   const S = TILE_SIZE
 
-  // ── Floor (wood planks) ───────────────────────────────────────
-  generateTexture(scene, 'tile_floor', S, S, (g) => {
-    g.fillStyle(hex(PALETTE.floorWood1))
-    g.fillRect(0, 0, S, S)
-    // Plank lines
-    g.fillStyle(hex(PALETTE.floorWood2), 0.4)
-    g.fillRect(0, 7, S, 1)
-    g.fillRect(0, 15, S, 1)
-    g.fillRect(0, 23, S, 1)
-    // Subtle grain
-    g.fillStyle(hex(PALETTE.floorWood3), 0.15)
-    g.fillRect(4, 2, 2, 1); g.fillRect(20, 10, 3, 1); g.fillRect(12, 18, 2, 1)
-    g.fillRect(28, 5, 2, 1); g.fillRect(8, 26, 3, 1)
-  })
-
-  // ── Carpet floor ──────────────────────────────────────────────
-  generateTexture(scene, 'tile_carpet', S, S, (g) => {
-    g.fillStyle(hex(PALETTE.floorCarpet1))
-    g.fillRect(0, 0, S, S)
-    // Carpet texture dots
-    g.fillStyle(hex(PALETTE.floorCarpet2), 0.3)
-    for (let i = 0; i < 12; i++) {
-      const px = (i * 7 + 3) % S
-      const py = (i * 11 + 5) % S
-      g.fillRect(px, py, 1, 1)
+  // ─── FLOOR (warm wood planks) ───────────────────────────────────
+  canvasTex(scene, 'tile_floor', S, S, (ctx) => {
+    ctx.fillStyle = PALETTE.floorWood1
+    ctx.fillRect(0, 0, S, S)
+    const plankH = [7, 9, 8, 8]
+    let py = 0
+    for (let i = 0; i < 4; i++) {
+      const h = plankH[i]
+      ctx.fillStyle = i % 2 === 0 ? PALETTE.floorWood1 : PALETTE.floorWood3
+      ctx.fillRect(0, py, S, h)
+      // Joint line between planks
+      if (py > 0) {
+        ctx.fillStyle = darken(PALETTE.floorWood3, 18)
+        ctx.fillRect(0, py, S, 1)
+      }
+      // Staggered vertical joint
+      const jx = i % 2 === 0 ? 18 : 10
+      ctx.fillStyle = darken(PALETTE.floorWood1, 20)
+      ctx.fillRect(jx, py + 1, 1, h - 1)
+      py += h
     }
   })
 
-  // ── Meeting room floor ────────────────────────────────────────
-  generateTexture(scene, 'tile_meeting', S, S, (g) => {
-    g.fillStyle(hex(PALETTE.meetingFloor))
-    g.fillRect(0, 0, S, S)
-    g.fillStyle(hex('#938880'), 0.2)
-    g.fillRect(0, 0, S, 1)
-    g.fillRect(0, 0, 1, S)
-  })
-
-  // ── Lounge floor ──────────────────────────────────────────────
-  generateTexture(scene, 'tile_lounge', S, S, (g) => {
-    g.fillStyle(hex(PALETTE.loungeFloor))
-    g.fillRect(0, 0, S, S)
-    g.fillStyle(hex('#a89888'), 0.15)
-    g.fillRect(0, 15, S, 1)
-  })
-
-  // ── Wall (3D depth effect) ────────────────────────────────────
-  generateTexture(scene, 'tile_wall', S, S, (g) => {
-    // Top face (dark)
-    g.fillStyle(hex(PALETTE.wallTop))
-    g.fillRect(0, 0, S, 10)
-    // Front face (lighter)
-    g.fillStyle(hex(PALETTE.wallFace))
-    g.fillRect(0, 10, S, S - 10)
-    // Edge highlight
-    g.fillStyle(hex('#786e64'), 0.5)
-    g.fillRect(0, 10, S, 1)
-    // Shadow at bottom
-    g.fillStyle(hex(PALETTE.wallDark), 0.4)
-    g.fillRect(0, S - 2, S, 2)
-  })
-
-  // ── Glass wall ────────────────────────────────────────────────
-  generateTexture(scene, 'tile_glass', S, S, (g) => {
-    g.fillStyle(hex(PALETTE.floorWood1))
-    g.fillRect(0, 0, S, S)
-    // Glass pane
-    g.fillStyle(hex('#89b4fa'), 0.15)
-    g.fillRect(2, 0, S - 4, S)
-    // Frame
-    g.fillStyle(hex('#888888'), 0.6)
-    g.fillRect(1, 0, 1, S)
-    g.fillRect(S - 2, 0, 1, S)
-    // Reflection
-    g.fillStyle(hex('#ffffff'), 0.1)
-    g.fillRect(6, 2, 2, S - 4)
-  })
-
-  // ── Desk (horizontal, with monitor) ───────────────────────────
-  generateTexture(scene, 'tile_desk_h', S, S, (g) => {
-    // Floor underneath
-    g.fillStyle(hex(PALETTE.floorWood1))
-    g.fillRect(0, 0, S, S)
-    // Desk surface
-    g.fillStyle(hex(PALETTE.deskTop))
-    g.fillRect(1, 4, S - 2, S - 8)
-    // Desk edge (depth)
-    g.fillStyle(hex(PALETTE.deskLeg))
-    g.fillRect(1, S - 5, S - 2, 2)
-    // Monitor
-    g.fillStyle(hex(PALETTE.monitorFrame))
-    g.fillRect(10, 6, 12, 10)
-    // Screen
-    g.fillStyle(hex(PALETTE.monitorScreen))
-    g.fillRect(11, 7, 10, 7)
-    // Monitor stand
-    g.fillStyle(hex(PALETTE.monitorFrame))
-    g.fillRect(14, 16, 4, 2)
-    g.fillRect(12, 18, 8, 1)
-    // Keyboard
-    g.fillStyle(hex('#484848'))
-    g.fillRect(9, 20, 14, 3)
-    g.fillStyle(hex('#585858'))
-    g.fillRect(10, 21, 12, 1)
-  })
-
-  // ── Desk vertical (small table) ───────────────────────────────
-  generateTexture(scene, 'tile_desk_v', S, S, (g) => {
-    g.fillStyle(hex(PALETTE.floorWood1))
-    g.fillRect(0, 0, S, S)
-    g.fillStyle(hex(PALETTE.deskTop))
-    g.fillRect(6, 6, S - 12, S - 12)
-    g.fillStyle(hex(PALETTE.deskLeg))
-    g.fillRect(6, S - 8, S - 12, 2)
-  })
-
-  // ── Chair ─────────────────────────────────────────────────────
-  generateTexture(scene, 'tile_chair', S, S, (g) => {
-    g.fillStyle(hex(PALETTE.floorWood1))
-    g.fillRect(0, 0, S, S)
-    // Chair seat
-    g.fillStyle(hex(PALETTE.chairSeat))
-    g.fillRect(8, 10, 16, 14)
-    // Chair back
-    g.fillStyle(hex(PALETTE.chairBack))
-    g.fillRect(10, 6, 12, 6)
-    // Armrests
-    g.fillStyle(hex('#505060'))
-    g.fillRect(7, 12, 2, 8)
-    g.fillRect(23, 12, 2, 8)
-  })
-
-  // ── Plant ─────────────────────────────────────────────────────
-  generateTexture(scene, 'tile_plant', S, S, (g) => {
-    g.fillStyle(hex(PALETTE.floorWood1))
-    g.fillRect(0, 0, S, S)
-    // Pot
-    g.fillStyle(hex(PALETTE.plantPot))
-    g.fillRect(10, 20, 12, 8)
-    g.fillStyle(hex('#907058'))
-    g.fillRect(11, 19, 10, 2)
-    // Leaves (3 clusters)
-    g.fillStyle(hex(PALETTE.plantGreen1))
-    g.fillCircle(16, 14, 7)
-    g.fillStyle(hex(PALETTE.plantGreen2))
-    g.fillCircle(12, 12, 5)
-    g.fillCircle(20, 11, 5)
-    // Highlights
-    g.fillStyle(hex('#80d88c'), 0.5)
-    g.fillCircle(14, 10, 3)
-  })
-
-  // ── Sofa ──────────────────────────────────────────────────────
-  generateTexture(scene, 'tile_sofa', S, S, (g) => {
-    g.fillStyle(hex(PALETTE.loungeFloor))
-    g.fillRect(0, 0, S, S)
-    // Sofa body
-    g.fillStyle(hex(PALETTE.sofaBody))
-    g.fillRect(2, 8, S - 4, S - 12)
-    // Cushion
-    g.fillStyle(hex(PALETTE.sofaCushion))
-    g.fillRect(4, 10, S - 8, S - 16)
-    // Armrest shadows
-    g.fillStyle(hex('#685898'), 0.4)
-    g.fillRect(2, 8, 3, S - 12)
-    g.fillRect(S - 5, 8, 3, S - 12)
-    // Back
-    g.fillStyle(hex('#685898'))
-    g.fillRect(2, 6, S - 4, 4)
-  })
-
-  // ── Bookshelf ─────────────────────────────────────────────────
-  generateTexture(scene, 'tile_bookshelf', S, S, (g) => {
-    g.fillStyle(hex(PALETTE.floorWood1))
-    g.fillRect(0, 0, S, S)
-    // Shelf frame
-    g.fillStyle(hex(PALETTE.bookshelf))
-    g.fillRect(2, 0, S - 4, S)
-    // Shelves
-    g.fillStyle(hex('#906850'))
-    g.fillRect(2, 10, S - 4, 2)
-    g.fillRect(2, 20, S - 4, 2)
-    // Books on shelves
-    const colors = PALETTE.bookColors
-    for (let shelf = 0; shelf < 3; shelf++) {
-      const sy = shelf * 10 + 1
-      let bx = 4
-      for (let b = 0; b < 4; b++) {
-        const w = 4 + (b % 2)
-        g.fillStyle(hex(colors[(shelf * 4 + b) % colors.length]))
-        g.fillRect(bx, sy, w, 8)
-        bx += w + 1
+  // ─── CARPET ─────────────────────────────────────────────────────
+  canvasTex(scene, 'tile_carpet', S, S, (ctx) => {
+    ctx.fillStyle = PALETTE.floorCarpet1
+    ctx.fillRect(0, 0, S, S)
+    // 2px checkerboard weave
+    for (let py = 0; py < S; py += 2) {
+      for (let px = 0; px < S; px += 2) {
+        const isH = (Math.floor(py / 2) + Math.floor(px / 2)) % 2 === 0
+        ctx.fillStyle = isH ? PALETTE.floorCarpet2 : PALETTE.floorCarpet1
+        ctx.fillRect(px, py, 2, 2)
       }
     }
   })
 
-  // ── Coffee machine ────────────────────────────────────────────
-  generateTexture(scene, 'tile_coffee', S, S, (g) => {
-    g.fillStyle(hex(PALETTE.floorCarpet1))
-    g.fillRect(0, 0, S, S)
-    // Machine body
-    g.fillStyle(hex(PALETTE.coffeeMachine))
-    g.fillRect(6, 2, 20, 26)
-    // Front panel
-    g.fillStyle(hex('#686060'))
-    g.fillRect(8, 4, 16, 10)
-    // Display
-    g.fillStyle(hex('#a6e3a1'))
-    g.fillRect(10, 6, 12, 3)
-    // Buttons
-    g.fillStyle(hex('#f38ba8'))
-    g.fillCircle(12, 18, 2)
-    g.fillStyle(hex('#89b4fa'))
-    g.fillCircle(20, 18, 2)
-    // Drip tray
-    g.fillStyle(hex('#484040'))
-    g.fillRect(10, 22, 12, 4)
+  // ─── MEETING (cool blue-grey tile grid) ─────────────────────────
+  canvasTex(scene, 'tile_meeting', S, S, (ctx) => {
+    ctx.fillStyle = PALETTE.meetingFloor
+    ctx.fillRect(0, 0, S, S)
+    const grout = darken(PALETTE.meetingFloor, 15)
+    const sheen = lighten(PALETTE.meetingFloor, 8)
+    // 2x2 tile grid
+    for (let ty = 0; ty < 2; ty++) {
+      for (let tx = 0; tx < 2; tx++) {
+        const ox = tx * 16, oy = ty * 16
+        // Grout lines
+        ctx.fillStyle = grout
+        ctx.fillRect(ox, oy, 16, 1)
+        ctx.fillRect(ox, oy, 1, 16)
+        // Tile fill — alternate subtle shade
+        ctx.fillStyle = (tx + ty) % 2 === 0 ? PALETTE.meetingFloor : lighten(PALETTE.meetingFloor, 3)
+        ctx.fillRect(ox + 1, oy + 1, 15, 15)
+        // Light sheen on alternating tiles
+        if ((tx + ty) % 2 === 0) {
+          ctx.fillStyle = sheen
+          ctx.globalAlpha = 0.20
+          ctx.fillRect(ox + 2, oy + 2, 5, 1)
+          ctx.fillRect(ox + 2, oy + 3, 1, 3)
+          ctx.globalAlpha = 1
+        }
+      }
+    }
   })
 
-  // ── Whiteboard ────────────────────────────────────────────────
-  generateTexture(scene, 'tile_whiteboard', S, S, (g) => {
-    g.fillStyle(hex(PALETTE.meetingFloor))
-    g.fillRect(0, 0, S, S)
-    // Frame
-    g.fillStyle(hex(PALETTE.whiteboardFrame))
-    g.fillRect(2, 2, S - 4, S - 8)
-    // Board surface
-    g.fillStyle(hex(PALETTE.whiteboardBg))
-    g.fillRect(4, 4, S - 8, S - 12)
-    // Scribbles
-    g.fillStyle(hex('#4060c0'), 0.4)
-    g.fillRect(6, 8, 14, 1); g.fillRect(6, 12, 10, 1)
-    g.fillStyle(hex('#c04040'), 0.4)
-    g.fillRect(6, 16, 16, 1); g.fillRect(6, 20, 8, 1)
+  // ─── LOUNGE (warm polished concrete) ────────────────────────────
+  canvasTex(scene, 'tile_lounge', S, S, (ctx) => {
+    ctx.fillStyle = PALETTE.loungeFloor
+    ctx.fillRect(0, 0, S, S)
+    // Subtle horizontal bands every 4px
+    for (let y = 0; y < S; y++) {
+      if (y % 4 === 0) {
+        ctx.fillStyle = darken(PALETTE.loungeFloor, 4)
+        ctx.fillRect(0, y, S, 1)
+      }
+    }
+    // Small highlight patch
+    ctx.globalAlpha = 0.15
+    ctx.fillStyle = lighten(PALETTE.loungeFloor, 20)
+    ctx.fillRect(8, 12, 6, 3)
+    ctx.globalAlpha = 1
   })
 
-  // ── Rug ───────────────────────────────────────────────────────
-  generateTexture(scene, 'tile_rug', S, S, (g) => {
-    g.fillStyle(hex(PALETTE.rug1))
-    g.fillRect(0, 0, S, S)
-    // Border pattern
-    g.fillStyle(hex(PALETTE.rug2), 0.6)
-    g.fillRect(0, 0, S, 2); g.fillRect(0, S - 2, S, 2)
-    g.fillRect(0, 0, 2, S); g.fillRect(S - 2, 0, 2, S)
-    // Center diamond
-    g.fillStyle(hex('#d8a880'), 0.3)
-    g.fillRect(12, 12, 8, 8)
+  // ─── RUG ────────────────────────────────────────────────────────
+  canvasTex(scene, 'tile_rug', S, S, (ctx) => {
+    ctx.fillStyle = PALETTE.rug1
+    ctx.fillRect(0, 0, S, S)
+    // Border (3px)
+    ctx.fillStyle = PALETTE.rug2
+    ctx.fillRect(0, 0, S, 3)
+    ctx.fillRect(0, S - 3, S, 3)
+    ctx.fillRect(0, 0, 3, S)
+    ctx.fillRect(S - 3, 0, 3, S)
+    // Center diamond motif
+    ctx.fillStyle = '#d8a880'
+    ctx.globalAlpha = 0.35
+    const mid = S / 2
+    for (let dy = -4; dy <= 4; dy++) {
+      const w = 4 - Math.abs(dy)
+      ctx.fillRect(mid - w, mid + dy, w * 2, 1)
+    }
+    ctx.globalAlpha = 1
+  })
+
+  // ─── WALL SHADOW (overlay for tiles below walls) ────────────────
+  canvasTex(scene, 'tile_wall_shadow', S, 12, (ctx) => {
+    const img = ctx.createImageData(S, 12)
+    const d = img.data
+    for (let y = 0; y < 12; y++) {
+      const intensity = 0.55 * (1 - y / 12)
+      for (let x = 0; x < S; x++) {
+        if (orderedDither(x, y, intensity)) {
+          const i = (y * S + x) * 4
+          d[i] = 24; d[i + 1] = 20; d[i + 2] = 28; d[i + 3] = 130
+        }
+      }
+    }
+    ctx.putImageData(img, 0, 0)
   })
 }
 
-// ─── Generate character sprite sheet ────────────────────────────────────────
-// Creates a 4-direction * 3-frame sprite sheet (idle + 2 walk frames)
-// Layout: 12 frames total, 4 rows (down, left, right, up) x 3 cols (idle, walk1, walk2)
+// ═══════════════════════════════════════════════════════════════════════════════
+// OBJECT TEXTURE GENERATION — Procedural objects on transparent backgrounds
+// (Tiles replaced by PNG sprites are NOT generated here)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function generateObjectTextures(scene: Phaser.Scene) {
+  const S = TILE_SIZE
+
+  // ─── WALL (opaque — walls have no floor underneath) ─────────────
+  canvasTex(scene, 'tile_wall', S, S, (ctx) => {
+    // Top face
+    ctx.fillStyle = PALETTE.wallTop
+    ctx.fillRect(0, 0, S, 10)
+    // Crisp mortar lines
+    ctx.fillStyle = darken(PALETTE.wallTop, 8)
+    ctx.fillRect(0, 3, S, 1)
+    ctx.fillRect(0, 7, S, 1)
+    ctx.fillStyle = lighten(PALETTE.wallTop, 6)
+    ctx.fillRect(8, 1, 12, 1)
+    ctx.fillRect(22, 5, 8, 1)
+    // Edge highlight
+    ctx.fillStyle = PALETTE.wallHighlight
+    ctx.fillRect(0, 10, S, 1)
+    // Front face
+    ctx.fillStyle = PALETTE.wallFace
+    ctx.fillRect(0, 11, S, S - 11)
+    // Mortar lines
+    ctx.fillStyle = darken(PALETTE.wallFace, 10)
+    ctx.fillRect(0, 17, S, 1)
+    ctx.fillRect(0, 24, S, 1)
+    ctx.fillRect(10, 11, 1, 6)
+    ctx.fillRect(22, 11, 1, 6)
+    ctx.fillRect(5, 18, 1, 6)
+    ctx.fillRect(16, 18, 1, 6)
+    ctx.fillRect(28, 18, 1, 6)
+    // Bottom shadow
+    ctx.fillStyle = PALETTE.wallDark
+    ctx.globalAlpha = 0.5
+    ctx.fillRect(0, S - 2, S, 2)
+    ctx.globalAlpha = 1
+  })
+
+  // ─── GLASS WALL (transparent bg — floor shows through) ──────────
+  canvasTex(scene, 'tile_glass', S, S, (ctx) => {
+    // Transparent base — start with blue-tinted glass area
+    const img = ctx.createImageData(S, S)
+    const d = img.data
+    const [br, bg, bb] = parseHex('#89b4fa')
+    for (let y = 0; y < S; y++) {
+      for (let x = 2; x < S - 2; x++) {
+        if (orderedDither(x, y, 0.3)) {
+          const i = (y * S + x) * 4
+          d[i] = br; d[i + 1] = bg; d[i + 2] = bb; d[i + 3] = 60
+        }
+      }
+    }
+    ctx.putImageData(img, 0, 0)
+    // Metal frame
+    ctx.fillStyle = '#a0a0a0'
+    ctx.fillRect(0, 0, 1, S)
+    ctx.fillRect(S - 2, 0, 1, S)
+    ctx.fillStyle = '#686868'
+    ctx.fillRect(1, 0, 1, S)
+    ctx.fillRect(S - 1, 0, 1, S)
+    // Crossbar
+    ctx.fillStyle = '#888888'
+    ctx.fillRect(2, 15, S - 4, 2)
+    ctx.fillStyle = '#a0a0a0'
+    ctx.fillRect(2, 15, S - 4, 1)
+    // Reflections
+    ctx.fillStyle = '#ffffff'
+    ctx.globalAlpha = 0.12
+    ctx.fillRect(6, 2, 2, 12)
+    ctx.fillRect(7, 18, 2, 10)
+    ctx.globalAlpha = 0.06
+    ctx.fillRect(22, 4, 1, 8)
+    ctx.globalAlpha = 1
+  })
+
+  // ─── SOFA (transparent bg — brighter colors) ────────────────────
+  canvasTex(scene, 'tile_sofa', S, S, (ctx) => {
+    // Shadow
+    ctx.fillStyle = 'rgba(24, 20, 28, 0.2)'
+    ctx.fillRect(3, S - 3, S - 6, 2)
+    // Body
+    const bodyColor = lighten(PALETTE.sofaBody, 10)
+    const cushionColor = lighten(PALETTE.sofaCushion, 10)
+    ctx.fillStyle = bodyColor
+    ctx.fillRect(2, 8, S - 4, S - 12)
+    // Backrest
+    ctx.fillStyle = darken(bodyColor, 8)
+    ctx.fillRect(2, 6, S - 4, 5)
+    ctx.fillStyle = darken(bodyColor, 4)
+    ctx.fillRect(3, 5, S - 6, 1)
+    // Tufting buttons
+    ctx.fillStyle = darken(bodyColor, 18)
+    ctx.fillRect(10, 8, 1, 1)
+    ctx.fillRect(16, 8, 1, 1)
+    ctx.fillRect(22, 8, 1, 1)
+    // Two cushions
+    ctx.fillStyle = cushionColor
+    ctx.fillRect(4, 11, 11, S - 17)
+    ctx.fillRect(17, 11, 11, S - 17)
+    ctx.fillStyle = lighten(cushionColor, 10)
+    ctx.fillRect(5, 12, 9, 1)
+    ctx.fillRect(18, 12, 9, 1)
+    ctx.fillStyle = darken(cushionColor, 10)
+    ctx.fillRect(4, S - 7, 11, 1)
+    ctx.fillRect(17, S - 7, 11, 1)
+    ctx.fillStyle = darken(cushionColor, 6)
+    ctx.fillRect(15, 11, 2, S - 17)
+    // Armrests
+    ctx.fillStyle = darken(bodyColor, 5)
+    ctx.fillRect(2, 8, 3, S - 12)
+    ctx.fillRect(S - 5, 8, 3, S - 12)
+    ctx.fillStyle = lighten(bodyColor, 8)
+    ctx.fillRect(2, 8, 1, S - 12)
+    ctx.fillRect(S - 3, 8, 1, S - 12)
+  })
+
+  // ─── WHITEBOARD (transparent bg) ────────────────────────────────
+  canvasTex(scene, 'tile_whiteboard', S, S, (ctx) => {
+    // Frame
+    ctx.fillStyle = PALETTE.whiteboardFrame
+    ctx.fillRect(2, 2, S - 4, S - 8)
+    ctx.fillStyle = lighten(PALETTE.whiteboardFrame, 10)
+    ctx.fillRect(2, 2, S - 4, 1)
+    ctx.fillRect(2, 2, 1, S - 8)
+    ctx.fillStyle = darken(PALETTE.whiteboardFrame, 10)
+    ctx.fillRect(2, S - 7, S - 4, 1)
+    ctx.fillRect(S - 3, 2, 1, S - 8)
+    // Board surface
+    ctx.fillStyle = PALETTE.whiteboardBg
+    ctx.fillRect(4, 4, S - 8, S - 12)
+    // Reflection
+    ctx.fillStyle = '#ffffff'
+    ctx.globalAlpha = 0.06
+    ctx.fillRect(6, 5, 2, S - 14)
+    ctx.globalAlpha = 1
+    // Marker text
+    ctx.fillStyle = '#4060c0'
+    ctx.globalAlpha = 0.5
+    ctx.fillRect(7, 7, 12, 1)
+    ctx.fillRect(8, 8, 10, 1)
+    ctx.fillRect(7, 11, 8, 1)
+    ctx.globalAlpha = 1
+    ctx.fillStyle = '#c04040'
+    ctx.globalAlpha = 0.5
+    ctx.fillRect(7, 15, 14, 1)
+    ctx.fillRect(8, 16, 12, 1)
+    ctx.fillRect(7, 19, 6, 1)
+    ctx.globalAlpha = 1
+    // Bullet points
+    ctx.fillStyle = '#404040'
+    ctx.globalAlpha = 0.4
+    ctx.fillRect(5, 7, 1, 1)
+    ctx.fillRect(5, 11, 1, 1)
+    ctx.fillRect(5, 15, 1, 1)
+    ctx.fillRect(5, 19, 1, 1)
+    ctx.globalAlpha = 1
+    // Marker tray
+    ctx.fillStyle = darken(PALETTE.whiteboardFrame, 5)
+    ctx.fillRect(4, S - 7, S - 8, 3)
+    ctx.fillStyle = '#4060c0'
+    ctx.fillRect(8, S - 7, 4, 2)
+    ctx.fillStyle = '#c04040'
+    ctx.fillRect(14, S - 7, 4, 2)
+    ctx.fillStyle = '#40a040'
+    ctx.fillRect(20, S - 7, 4, 2)
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FLOOR / OBJECT LOOKUP FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** Maps floor tile type → texture key */
+export function getFloorTextureKey(floorType: number): string {
+  switch (floorType) {
+    case T.MEETING:  return 'tile_meeting'
+    case T.LOUNGE:   return 'tile_lounge'
+    case T.CARPET:   return 'tile_carpet'
+    case T.RUG:      return 'tile_rug'
+    case T.WALL:     return 'tile_wall'
+    default:         return 'tile_floor'
+  }
+}
+
+/** Maps tile type → sprite key (for PNGs) or procedural key, or null if floor-only */
+export function getObjectTextureKey(tileType: number): string | null {
+  switch (tileType) {
+    case T.WALL:       return 'tile_wall'
+    case T.DESK_H:     return 'sprite_desk_h'
+    case T.DESK_V:     return 'sprite_desk_v'
+    case T.CHAIR:      return 'sprite_chair'
+    case T.PLANT:      return 'sprite_plant'
+    case T.BOOKSHELF:  return 'sprite_bookshelf'
+    case T.COFFEE:     return 'sprite_coffee'
+    case T.SOFA:       return 'tile_sofa'
+    case T.WHITEBOARD: return 'tile_whiteboard'
+    case T.GLASS_WALL: return 'tile_glass'
+    default:           return null
+  }
+}
+
+/** Whether a tile type uses a loaded PNG sprite (vs procedural or floor) */
+export function isSpriteAsset(tileType: number): boolean {
+  switch (tileType) {
+    case T.DESK_H:
+    case T.DESK_V:
+    case T.CHAIR:
+    case T.PLANT:
+    case T.BOOKSHELF:
+    case T.COFFEE:
+      return true
+    default:
+      return false
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CHARACTER SPRITE GENERATION
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export function generateCharacterTexture(
   scene: Phaser.Scene,
   key: string,
   shirtColor: string,
   skinColor: string,
+  hairColor?: string,
+  hairStyle?: number,
+  bodyType?: BodyType,
 ) {
-  const W = 16  // character pixel width
-  const H = 22  // character pixel height
-  const SCALE = 2  // scale up for crispness
+  const W = 20
+  const H = 28
+  const SCALE = 2
   const SW = W * SCALE
   const SH = H * SCALE
 
   const canvas = document.createElement('canvas')
-  canvas.width = SW * 3  // 3 frames
-  canvas.height = SH * 4 // 4 directions
+  canvas.width = SW * 3
+  canvas.height = SH * 4
   const ctx = canvas.getContext('2d')!
   ctx.imageSmoothingEnabled = false
 
-  const directions = ['down', 'left', 'right', 'up']
-  const hairColor = darken(shirtColor, 40)
+  const directions = ['down', 'left', 'right', 'up'] as const
+  const hColor = hairColor || darken(shirtColor, 40)
+  const hStyle = hairStyle ?? 0
+  const body = bodyType || 'male'
   const shoeColor = '#383838'
   const pantsColor = '#484858'
+  const beltColor = '#3a3a3a'
 
   directions.forEach((dir, row) => {
     for (let frame = 0; frame < 3; frame++) {
@@ -302,67 +446,116 @@ export function generateCharacterTexture(
         ctx.fillRect(ox + x * SCALE, oy + y * SCALE, w * SCALE, h * SCALE)
       }
 
-      // Walk bob offset
       const bob = frame === 1 ? -1 : frame === 2 ? 1 : 0
 
-      // ── Hair (top of head) ────────────────────────────
-      p(5, 1, 6, 3, hairColor)
+      // ── Hair ──────────────────────────────────────────
+      drawHair(p, dir, hStyle, hColor)
 
       // ── Head ──────────────────────────────────────────
-      p(5, 3, 6, 5, skinColor)
+      p(7, 4, 6, 5, skinColor)
+      // Ear bumps on side views
+      if (dir === 'left') p(6, 5, 1, 3, skinColor)
+      if (dir === 'right') p(13, 5, 1, 3, skinColor)
+
+      // ── Eyebrows ──────────────────────────────────────
+      if (dir === 'down') {
+        p(7, 5, 2, 1, darken(hColor, 10))
+        p(11, 5, 2, 1, darken(hColor, 10))
+      } else if (dir === 'left') {
+        p(7, 5, 2, 1, darken(hColor, 10))
+      } else if (dir === 'right') {
+        p(11, 5, 2, 1, darken(hColor, 10))
+      }
 
       // ── Eyes ──────────────────────────────────────────
       if (dir === 'down') {
-        p(6, 5, 2, 2, '#282828'); p(10, 5, 2, 2, '#282828') // eyes
-        p(7, 5, 1, 1, '#ffffff'); p(11, 5, 1, 1, '#ffffff')  // highlights
-      } else if (dir === 'up') {
-        // No eyes visible from back
-        p(5, 2, 6, 2, hairColor) // extra hair
+        p(8, 6, 2, 2, '#282828')
+        p(11, 6, 2, 2, '#282828')
+        p(8, 6, 1, 1, '#ffffff')
+        p(12, 6, 1, 1, '#ffffff')
       } else if (dir === 'left') {
-        p(5, 5, 2, 2, '#282828')
-        p(5, 5, 1, 1, '#ffffff')
+        p(7, 6, 2, 2, '#282828')
+        p(7, 6, 1, 1, '#ffffff')
+      } else if (dir === 'right') {
+        p(11, 6, 2, 2, '#282828')
+        p(12, 6, 1, 1, '#ffffff')
       } else {
-        p(10, 5, 2, 2, '#282828')
-        p(11, 5, 1, 1, '#ffffff')
+        // Back view: extra hair
+        p(7, 3, 6, 2, hColor)
       }
+
+      // ── Neck ──────────────────────────────────────────
+      p(9, 9, 2, 1, skinColor)
 
       // ── Body / Shirt ──────────────────────────────────
-      p(4, 8, 8, 7, shirtColor)
+      const bodyW = body === 'female' ? 8 : 10
+      const bodyX = body === 'female' ? 6 : 5
+      p(bodyX, 10, bodyW, 7, shirtColor)
       // Shirt shadow
-      p(4, 13, 8, 2, darken(shirtColor, 20))
-
+      p(bodyX, 15, bodyW, 2, darken(shirtColor, 18))
+      // Collar
+      if (dir === 'down') {
+        p(8, 10, 4, 1, darken(shirtColor, 10))
+        p(9, 10, 2, 1, lighten(shirtColor, 8))
+      }
+      // Pocket (front view only)
+      if (dir === 'down' && body === 'male') {
+        p(11, 12, 2, 2, darken(shirtColor, 8))
+      }
+      // Side shadow
+      if (dir === 'left') p(bodyX + bodyW - 1, 10, 1, 7, darken(shirtColor, 12))
+      if (dir === 'right') p(bodyX, 10, 1, 7, darken(shirtColor, 12))
       // ── Arms ──────────────────────────────────────────
+      const armY = 11 + bob
       if (dir === 'left') {
-        p(3, 9 + bob, 2, 5, skinColor)
+        p(4, armY, 2, 5, skinColor)
+        p(bodyX + bodyW, 11, 1, 5, darken(shirtColor, 5))
       } else if (dir === 'right') {
-        p(11, 9 + bob, 2, 5, skinColor)
+        p(bodyX + bodyW, armY, 2, 5, skinColor)
+        p(bodyX - 1, 11, 1, 5, darken(shirtColor, 5))
       } else {
-        p(3, 9, 2, 5, skinColor)
-        p(11, 9, 2, 5, skinColor)
+        p(bodyX - 2, 11, 2, 5, skinColor)
+        p(bodyX + bodyW, 11, 2, 5, skinColor)
       }
 
-      // ── Pants ─────────────────────────────────────────
-      p(4, 15, 8, 3, pantsColor)
+      // ── Belt ──────────────────────────────────────────
+      p(bodyX, 17, bodyW, 1, beltColor)
 
-      // ── Legs / Shoes (with walk animation) ────────────
+      // ── Pants ─────────────────────────────────────────
+      const pantsX = body === 'female' ? 6 : 5
+      const pantsW = body === 'female' ? 8 : 10
+      p(pantsX, 18, pantsW, 4, pantsColor)
+      // Center seam
+      p(9, 18, 2, 4, darken(pantsColor, 5))
+
+      // ── Legs / Shoes ──────────────────────────────────
       if (frame === 0) {
-        // Idle: both feet together
-        p(5, 18, 3, 2, shoeColor)
-        p(9, 18, 3, 2, shoeColor)
+        p(pantsX + 1, 22, 3, 2, pantsColor)
+        p(pantsX + pantsW - 4, 22, 3, 2, pantsColor)
+        p(pantsX + 1, 24, 3, 2, shoeColor)
+        p(pantsX + pantsW - 4, 24, 3, 2, shoeColor)
+        // Shoe highlight
+        p(pantsX + 1, 24, 3, 1, lighten(shoeColor, 15))
+        p(pantsX + pantsW - 4, 24, 3, 1, lighten(shoeColor, 15))
       } else if (frame === 1) {
-        // Walk frame 1: left foot forward
-        p(4, 18, 3, 2, shoeColor)
-        p(10, 17, 3, 2, shoeColor)
+        p(pantsX, 22, 3, 2, pantsColor)
+        p(pantsX + pantsW - 3, 21, 3, 2, pantsColor)
+        p(pantsX, 24, 3, 2, shoeColor)
+        p(pantsX + pantsW - 3, 23, 3, 2, shoeColor)
+        p(pantsX, 24, 3, 1, lighten(shoeColor, 15))
+        p(pantsX + pantsW - 3, 23, 3, 1, lighten(shoeColor, 15))
       } else {
-        // Walk frame 2: right foot forward
-        p(5, 17, 3, 2, shoeColor)
-        p(10, 18, 3, 2, shoeColor)
+        p(pantsX + 1, 21, 3, 2, pantsColor)
+        p(pantsX + pantsW - 4, 22, 3, 2, pantsColor)
+        p(pantsX + 1, 23, 3, 2, shoeColor)
+        p(pantsX + pantsW - 4, 24, 3, 2, shoeColor)
+        p(pantsX + 1, 23, 3, 1, lighten(shoeColor, 15))
+        p(pantsX + pantsW - 4, 24, 3, 1, lighten(shoeColor, 15))
       }
     }
   })
 
   const texture = scene.textures.addCanvas(key, canvas)
-  // Add individual frames: 4 rows (directions) × 3 cols (idle, walk1, walk2)
   if (texture) {
     for (let row = 0; row < 4; row++) {
       for (let col = 0; col < 3; col++) {
@@ -372,7 +565,75 @@ export function generateCharacterTexture(
   }
 }
 
-// ─── Ambient light overlay texture ──────────────────────────────────────────
+// ─── Hair style drawing ─────────────────────────────────────────────────────
+
+type PixelFn = (x: number, y: number, w: number, h: number, color: string) => void
+
+function drawHair(
+  p: PixelFn,
+  dir: 'down' | 'left' | 'right' | 'up',
+  style: number,
+  color: string,
+) {
+  const hi = lighten(color, 15)
+  const lo = darken(color, 10)
+
+  switch (style) {
+    case 0: // Short flat
+      p(7, 1, 6, 3, color)
+      p(8, 0, 4, 1, color)
+      p(7, 1, 6, 1, hi)
+      if (dir === 'left') p(6, 2, 1, 2, color)
+      if (dir === 'right') p(13, 2, 1, 2, color)
+      if (dir === 'up') { p(7, 1, 6, 4, color); p(8, 0, 4, 1, color) }
+      break
+    case 1: // Spiky
+      p(7, 2, 6, 2, color)
+      p(8, 0, 1, 2, color)
+      p(10, -1, 1, 3, color)
+      p(12, 0, 1, 2, color)
+      p(7, 2, 6, 1, hi)
+      if (dir === 'up') { p(7, 1, 6, 4, color); p(8, 0, 1, 1, color); p(10, -1, 1, 1, color); p(12, 0, 1, 1, color) }
+      break
+    case 2: // Side-part
+      p(6, 1, 7, 3, color)
+      p(6, 0, 5, 1, color)
+      p(6, 1, 2, 1, hi)
+      if (dir === 'left') { p(5, 2, 1, 3, color); p(6, 1, 1, 3, color) }
+      if (dir === 'right') p(13, 2, 1, 2, color)
+      if (dir === 'up') { p(6, 1, 7, 4, color); p(6, 0, 5, 1, color) }
+      break
+    case 3: // Long
+      p(6, 1, 8, 3, color)
+      p(7, 0, 6, 1, color)
+      p(7, 0, 4, 1, hi)
+      // Side hair hangs down
+      if (dir === 'down' || dir === 'up') {
+        p(6, 4, 1, 6, color)
+        p(13, 4, 1, 6, color)
+      }
+      if (dir === 'left') { p(5, 2, 2, 8, color); p(5, 2, 1, 1, hi) }
+      if (dir === 'right') { p(13, 2, 2, 8, color); p(14, 2, 1, 1, hi) }
+      if (dir === 'up') { p(6, 1, 8, 5, color); p(7, 0, 6, 1, color); p(6, 4, 1, 6, color); p(13, 4, 1, 6, color) }
+      break
+    case 4: // Curly/poofy
+      p(6, 0, 8, 4, color)
+      p(5, 1, 1, 3, color)
+      p(14, 1, 1, 3, color)
+      p(7, 0, 6, 1, hi)
+      // Texture dots for curly look
+      p(7, 1, 1, 1, hi)
+      p(11, 2, 1, 1, hi)
+      p(9, 0, 1, 1, lo)
+      p(13, 1, 1, 1, lo)
+      if (dir === 'up') { p(6, 0, 8, 5, color); p(5, 1, 1, 4, color); p(14, 1, 1, 4, color) }
+      break
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AMBIENT LIGHT TEXTURE
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export function generateAmbientTexture(scene: Phaser.Scene, width: number, height: number) {
   const canvas = document.createElement('canvas')
@@ -380,76 +641,90 @@ export function generateAmbientTexture(scene: Phaser.Scene, width: number, heigh
   canvas.height = height
   const ctx = canvas.getContext('2d')!
 
-  // Warm ambient gradient overlay
-  const grad = ctx.createRadialGradient(width / 2, height / 2, 100, width / 2, height / 2, Math.max(width, height) * 0.6)
-  grad.addColorStop(0, 'rgba(249, 226, 175, 0.03)')
-  grad.addColorStop(0.5, 'rgba(249, 226, 175, 0.06)')
-  grad.addColorStop(1, 'rgba(24, 20, 28, 0.12)')
+  // Warm ambient gradient
+  const grad = ctx.createRadialGradient(
+    width / 2, height / 2, 100,
+    width / 2, height / 2, Math.max(width, height) * 0.6,
+  )
+  grad.addColorStop(0, 'rgba(249, 226, 175, 0.08)')
+  grad.addColorStop(0.5, 'rgba(249, 226, 175, 0.15)')
+  grad.addColorStop(1, 'rgba(24, 20, 28, 0.30)')
   ctx.fillStyle = grad
   ctx.fillRect(0, 0, width, height)
 
   scene.textures.addCanvas('ambient_light', canvas)
 }
 
-// ─── Shadow texture for characters ──────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// VIGNETTE TEXTURE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function generateVignetteTexture(scene: Phaser.Scene, width: number, height: number) {
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')!
+
+  const grad = ctx.createRadialGradient(
+    width / 2, height / 2, Math.min(width, height) * 0.3,
+    width / 2, height / 2, Math.max(width, height) * 0.7,
+  )
+  grad.addColorStop(0, 'rgba(0, 0, 0, 0)')
+  grad.addColorStop(1, 'rgba(24, 20, 28, 0.35)')
+  ctx.fillStyle = grad
+  ctx.fillRect(0, 0, width, height)
+
+  scene.textures.addCanvas('vignette', canvas)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MONITOR GLOW TEXTURE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function generateMonitorGlowTexture(scene: Phaser.Scene) {
+  const size = 16
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+
+  const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2)
+  grad.addColorStop(0, 'rgba(137, 196, 250, 0.6)')
+  grad.addColorStop(0.5, 'rgba(137, 196, 250, 0.2)')
+  grad.addColorStop(1, 'rgba(137, 196, 250, 0)')
+  ctx.fillStyle = grad
+  ctx.fillRect(0, 0, size, size)
+
+  scene.textures.addCanvas('monitor_glow', canvas)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SHADOW TEXTURE (character shadow)
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export function generateShadowTexture(scene: Phaser.Scene) {
   const canvas = document.createElement('canvas')
-  canvas.width = 28
-  canvas.height = 10
+  canvas.width = 36
+  canvas.height = 12
   const ctx = canvas.getContext('2d')!
-  ctx.fillStyle = 'rgba(24, 20, 28, 0.3)'
-  ctx.beginPath()
-  ctx.ellipse(14, 5, 12, 4, 0, 0, Math.PI * 2)
-  ctx.fill()
-  scene.textures.addCanvas('shadow', canvas)
-}
 
-// ─── Helper: generate a texture from a Graphics draw callback ───────────────
-
-function generateTexture(
-  scene: Phaser.Scene,
-  key: string,
-  width: number,
-  height: number,
-  draw: (g: Phaser.GameObjects.Graphics) => void
-) {
-  const g = scene.add.graphics()
-  draw(g)
-  g.generateTexture(key, width, height)
-  g.destroy()
-}
-
-// ─── Helper: darken a hex color ─────────────────────────────────────────────
-
-function darken(hexColor: string, amount: number): string {
-  const c = Phaser.Display.Color.HexStringToColor(hexColor)
-  return Phaser.Display.Color.RGBToString(
-    Math.max(0, c.red - amount),
-    Math.max(0, c.green - amount),
-    Math.max(0, c.blue - amount),
-  )
-}
-
-// ─── Map: tile key lookup ───────────────────────────────────────────────────
-
-export function getTileTextureKey(tileType: number): string {
-  switch (tileType) {
-    case T.WALL:        return 'tile_wall'
-    case T.DESK_H:      return 'tile_desk_h'
-    case T.DESK_V:      return 'tile_desk_v'
-    case T.MEETING:     return 'tile_meeting'
-    case T.LOUNGE:      return 'tile_lounge'
-    case T.PLANT:       return 'tile_plant'
-    case T.CHAIR:       return 'tile_chair'
-    case T.SOFA:        return 'tile_sofa'
-    case T.BOOKSHELF:   return 'tile_bookshelf'
-    case T.COFFEE:      return 'tile_coffee'
-    case T.WHITEBOARD:  return 'tile_whiteboard'
-    case T.RUG:         return 'tile_rug'
-    case T.WALL_BOTTOM: return 'tile_wall'
-    case T.CARPET:      return 'tile_carpet'
-    case T.GLASS_WALL:  return 'tile_glass'
-    default:            return 'tile_floor'
+  // Dithered elliptical shadow
+  const img = ctx.createImageData(36, 12)
+  const d = img.data
+  const cx = 18, cy = 6, rx = 16, ry = 5
+  for (let y = 0; y < 12; y++) {
+    for (let x = 0; x < 36; x++) {
+      const dx = (x - cx) / rx, dy = (y - cy) / ry
+      const dist = dx * dx + dy * dy
+      if (dist < 1) {
+        const alpha = (1 - dist) * 0.35
+        if (orderedDither(x, y, alpha * 2)) {
+          const i = (y * 36 + x) * 4
+          d[i] = 24; d[i + 1] = 20; d[i + 2] = 28; d[i + 3] = Math.round(alpha * 255)
+        }
+      }
+    }
   }
+  ctx.putImageData(img, 0, 0)
+  scene.textures.addCanvas('shadow', canvas)
 }

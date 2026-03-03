@@ -135,7 +135,7 @@ const OfficeGame = forwardRef<OfficeGameHandle, OfficeGameProps>(function Office
   return (
     <div
       ref={containerRef}
-      className="absolute inset-0"
+      className="absolute inset-0 z-0"
     />
   )
 })

@@ -169,21 +169,35 @@ export default function OfficePage() {
           <h1 className="text-sm font-semibold text-foreground">Virtual Office</h1>
           <StatusSelector current={status} onChange={handleStatusChange} />
         </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setSidePanel(sidePanel === 'players' ? null : 'players')}
-            className={`p-1.5 rounded transition-colors ${sidePanel === 'players' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-            title="Player list"
-          >
-            <Users className="h-4 w-4" />
-          </button>
-          <button
-            onClick={() => setSidePanel(sidePanel === 'chat' ? null : 'chat')}
-            className={`p-1.5 rounded transition-colors ${sidePanel === 'chat' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-            title="Chat"
-          >
-            <MessageSquare className="h-4 w-4" />
-          </button>
+        <div className="flex items-center gap-3">
+          <MicControls
+            isConnected={audio.isConnected}
+            isMuted={audio.isMuted}
+            isPushToTalk={audio.isPushToTalk}
+            masterVolume={audio.masterVolume}
+            currentZone={audio.currentZone}
+            onToggleMic={audio.toggleMic}
+            onSetMasterVolume={audio.setMasterVolume}
+            onSetPushToTalk={audio.setPushToTalk}
+            onStartPushToTalk={audio.startPushToTalk}
+            onStopPushToTalk={audio.stopPushToTalk}
+          />
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setSidePanel(sidePanel === 'players' ? null : 'players')}
+              className={`p-1.5 rounded transition-colors ${sidePanel === 'players' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+              title="Player list"
+            >
+              <Users className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setSidePanel(sidePanel === 'chat' ? null : 'chat')}
+              className={`p-1.5 rounded transition-colors ${sidePanel === 'chat' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+              title="Chat"
+            >
+              <MessageSquare className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -214,18 +228,6 @@ export default function OfficePage() {
             />
           )}
           <ControlsOverlay />
-          <MicControls
-            isConnected={audio.isConnected}
-            isMuted={audio.isMuted}
-            isPushToTalk={audio.isPushToTalk}
-            masterVolume={audio.masterVolume}
-            currentZone={audio.currentZone}
-            onToggleMic={audio.toggleMic}
-            onSetMasterVolume={audio.setMasterVolume}
-            onSetPushToTalk={audio.setPushToTalk}
-            onStartPushToTalk={audio.startPushToTalk}
-            onStopPushToTalk={audio.stopPushToTalk}
-          />
         </div>
 
         {/* Side panel */}

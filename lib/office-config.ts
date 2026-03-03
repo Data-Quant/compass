@@ -27,41 +27,47 @@ export type ChatChannel = (typeof CHAT_CHANNELS)[number]
 
 export const PALETTE = {
   // Floors
-  floorWood1:    '#c4a882',
-  floorWood2:    '#b89b76',
+  floorWood1:    '#d4b892',
+  floorWood2:    '#c0a478',
   floorWood3:    '#a88e6c',
-  floorCarpet1:  '#7c7068',
-  floorCarpet2:  '#6e6258',
-  meetingFloor:  '#8b8178',
-  loungeFloor:   '#9b8e84',
+  floorCarpet1:  '#645858',
+  floorCarpet2:  '#584c4c',
+  meetingFloor:  '#6a7a8a',
+  loungeFloor:   '#b0a090',
 
   // Walls
-  wallFace:      '#6e635a',
-  wallTop:       '#504840',
-  wallDark:      '#3c3632',
+  wallFace:      '#50463e',
+  wallTop:       '#3c3430',
+  wallDark:      '#2a2420',
 
   // Furniture
-  deskTop:       '#a08060',
+  deskTop:       '#8a6a48',
   deskLeg:       '#806848',
   monitorFrame:  '#40383a',
-  monitorScreen: '#7aacde',
+  monitorScreen: '#89c4fa',
   monitorGlow:   '#89b4fa',
-  chairSeat:     '#585868',
+  chairSeat:     '#4a4a62',
   chairBack:     '#484858',
 
   // Decor
   plantGreen1:   '#6eb87a',
   plantGreen2:   '#5a9c66',
   plantPot:      '#a08068',
-  sofaBody:      '#7868a0',
-  sofaCushion:   '#8878b0',
-  bookshelf:     '#806850',
+  sofaBody:      '#8070b0',
+  sofaCushion:   '#9888c0',
+  bookshelf:     '#6a5438',
   bookColors:    ['#f38ba8', '#89b4fa', '#a6e3a1', '#f9e2af', '#cba6f7', '#fab387'],
-  rug1:          '#b8886c',
-  rug2:          '#c89878',
+  rug1:          '#c08060',
+  rug2:          '#d09868',
   whiteboardBg:  '#e8e0d8',
   whiteboardFrame: '#888078',
-  coffeeMachine: '#585050',
+  coffeeMachine: '#484040',
+
+  // Extended detail colors
+  plantGreen3:   '#4a8850',
+  leafHighlight: '#90e89a',
+  potSoil:       '#5a4030',
+  wallHighlight: '#887e74',
 
   // Lighting
   ambientWarm:   '#f9e2af',
@@ -94,6 +100,52 @@ export function getSkinTone(userId: string): string {
     hash = ((hash << 7) - hash + userId.charCodeAt(i)) | 0
   }
   return SKIN_TONES[Math.abs(hash) % SKIN_TONES.length]
+}
+
+// ─── Hair & Body System ─────────────────────────────────────────────────────
+
+export const HAIR_COLORS = [
+  '#1a1a1a', '#4a3728', '#8b6914', '#c4943a',
+  '#dfc090', '#b8450a', '#666666', '#e8e0d8',
+]
+
+export const HAIR_STYLES = 5
+
+export function getHairColor(userId: string): string {
+  let hash = 0
+  for (let i = 0; i < userId.length; i++) {
+    hash = ((hash << 3) - hash + userId.charCodeAt(i)) | 0
+  }
+  return HAIR_COLORS[Math.abs(hash) % HAIR_COLORS.length]
+}
+
+export function getHairStyle(userId: string): number {
+  let hash = 0
+  for (let i = 0; i < userId.length; i++) {
+    hash = ((hash << 11) - hash + userId.charCodeAt(i)) | 0
+  }
+  return Math.abs(hash) % HAIR_STYLES
+}
+
+export type BodyType = 'male' | 'female'
+
+export function getBodyType(userId: string): BodyType {
+  let hash = 0
+  for (let i = 0; i < userId.length; i++) {
+    hash = ((hash << 9) - hash + userId.charCodeAt(i)) | 0
+  }
+  return Math.abs(hash) % 2 === 0 ? 'male' : 'female'
+}
+
+// ─── Sprite Asset Manifest ───────────────────────────────────────────────────
+
+export const SPRITE_ASSETS: Record<string, { path: string; scale: number }> = {
+  sprite_desk_h:    { path: '/office/desk-with-pc.png', scale: 0.5 },
+  sprite_desk_v:    { path: '/office/writing-table.png', scale: 0.5 },
+  sprite_chair:     { path: '/office/Chair.png', scale: 2.0 },
+  sprite_plant:     { path: '/office/plant.png', scale: 1.0 },
+  sprite_coffee:    { path: '/office/coffee-maker.png', scale: 0.5 },
+  sprite_bookshelf: { path: '/office/cabinet.png', scale: 0.5 },
 }
 
 // ─── Tile Types ──────────────────────────────────────────────────────────────
@@ -132,131 +184,142 @@ export type TileType = (typeof T)[keyof typeof T]
 //   Row 24-27: Open hall / entrance area
 //   Row 28-29: Bottom wall
 
-export function generateDefaultMap(): number[][] {
+export interface MapData {
+  tileMap: number[][]
+  floorMap: number[][]
+}
+
+export function generateDefaultMap(): MapData {
   const F = T.FLOOR, W = T.WALL, DH = T.DESK_H, DV = T.DESK_V
   const M = T.MEETING, L = T.LOUNGE, P = T.PLANT, CH = T.CHAIR
   const S = T.SOFA, BS = T.BOOKSHELF, CF = T.COFFEE, WB = T.WHITEBOARD
   const R = T.RUG, WB2 = T.WALL_BOTTOM, CP = T.CARPET, GW = T.GLASS_WALL
 
   const map: number[][] = []
+  const floor: number[][] = []
   for (let y = 0; y < MAP_HEIGHT; y++) {
     map[y] = new Array(MAP_WIDTH).fill(F)
+    floor[y] = new Array(MAP_WIDTH).fill(F)
   }
+
+  // Helper: set wall on both maps
+  const setWall = (y: number, x: number) => { map[y][x] = W; floor[y][x] = W }
+  // Helper: set zone floor on both maps
+  const setFloor = (y: number, x: number, t: number) => { map[y][x] = t; floor[y][x] = t }
+  // Helper: set object on tileMap only (floor preserved)
+  const setObj = (y: number, x: number, t: number) => { map[y][x] = t }
 
   // ── Border walls ─────────────────────────────────────────────────
   for (let x = 0; x < MAP_WIDTH; x++) {
-    map[0][x] = W
-    map[1][x] = W
-    map[MAP_HEIGHT - 1][x] = W
-    map[MAP_HEIGHT - 2][x] = W
+    setWall(0, x); setWall(1, x)
+    setWall(MAP_HEIGHT - 1, x); setWall(MAP_HEIGHT - 2, x)
   }
   for (let y = 0; y < MAP_HEIGHT; y++) {
-    map[y][0] = W
-    map[y][MAP_WIDTH - 1] = W
+    setWall(y, 0); setWall(y, MAP_WIDTH - 1)
   }
 
   // ── Left Meeting Room (interior: cols 2-8, rows 2-7) ────────────
-  for (let x = 1; x <= 9; x++) { map[2][x] = W; map[7][x] = W }
-  for (let y = 2; y <= 7; y++) { map[y][1] = W; map[y][9] = W }
+  for (let x = 1; x <= 9; x++) { setWall(2, x); setWall(7, x) }
+  for (let y = 2; y <= 7; y++) { setWall(y, 1); setWall(y, 9) }
   // Glass wall on right side with door
-  for (let y = 3; y <= 5; y++) map[y][9] = GW
+  for (let y = 3; y <= 5; y++) setObj(y, 9, GW)
   map[6][9] = F // door
   // Meeting room floor
-  for (let y = 3; y <= 6; y++) for (let x = 2; x <= 8; x++) map[y][x] = M
-  // Meeting table
-  for (let x = 3; x <= 7; x++) map[4][x] = DH
-  for (let x = 3; x <= 7; x++) map[5][x] = DH
+  for (let y = 3; y <= 6; y++) for (let x = 2; x <= 8; x++) setFloor(y, x, M)
+  // Meeting table (objects on meeting floor)
+  for (let x = 3; x <= 7; x++) setObj(4, x, DH)
+  for (let x = 3; x <= 7; x++) setObj(5, x, DH)
   // Chairs around table
-  map[3][4] = CH; map[3][6] = CH
-  map[6][4] = CH; map[6][6] = CH
+  setObj(3, 4, CH); setObj(3, 6, CH)
+  setObj(6, 4, CH); setObj(6, 6, CH)
   // Whiteboard
-  map[3][2] = WB
+  setObj(3, 2, WB)
 
   // ── Right Meeting Room (interior: cols 31-37, rows 2-7) ─────────
-  for (let x = 30; x <= 38; x++) { map[2][x] = W; map[7][x] = W }
-  for (let y = 2; y <= 7; y++) { map[y][30] = W; map[y][38] = W }
+  for (let x = 30; x <= 38; x++) { setWall(2, x); setWall(7, x) }
+  for (let y = 2; y <= 7; y++) { setWall(y, 30); setWall(y, 38) }
   // Glass wall on left with door
-  for (let y = 3; y <= 5; y++) map[y][30] = GW
+  for (let y = 3; y <= 5; y++) setObj(y, 30, GW)
   map[6][30] = F
-  for (let y = 3; y <= 6; y++) for (let x = 31; x <= 37; x++) map[y][x] = M
-  for (let x = 32; x <= 36; x++) map[4][x] = DH
-  for (let x = 32; x <= 36; x++) map[5][x] = DH
-  map[3][33] = CH; map[3][35] = CH
-  map[6][33] = CH; map[6][35] = CH
-  map[3][37] = WB
+  for (let y = 3; y <= 6; y++) for (let x = 31; x <= 37; x++) setFloor(y, x, M)
+  for (let x = 32; x <= 36; x++) setObj(4, x, DH)
+  for (let x = 32; x <= 36; x++) setObj(5, x, DH)
+  setObj(3, 33, CH); setObj(3, 35, CH)
+  setObj(6, 33, CH); setObj(6, 35, CH)
+  setObj(3, 37, WB)
 
   // ── Plants along top corridor ───────────────────────────────────
-  map[2][11] = P; map[2][14] = P; map[2][25] = P; map[2][28] = P
+  setObj(2, 11, P); setObj(2, 14, P); setObj(2, 25, P); setObj(2, 28, P)
 
   // ── Main Workspace — Left desk cluster (cols 3-7, rows 10-15) ──
-  for (let row of [10, 13]) {
-    for (let x = 3; x <= 6; x++) map[row][x] = DH
-    map[row + 1][3] = CH; map[row + 1][5] = CH
-    map[row - 1][4] = CH; map[row - 1][6] = CH
+  for (const row of [10, 13]) {
+    for (let x = 3; x <= 6; x++) setObj(row, x, DH)
+    setObj(row + 1, 3, CH); setObj(row + 1, 5, CH)
+    setObj(row - 1, 4, CH); setObj(row - 1, 6, CH)
   }
 
   // ── Main Workspace — Center cluster (cols 16-23, rows 10-15) ───
-  for (let row of [10, 13]) {
-    for (let x = 16; x <= 23; x++) map[row][x] = DH
-    map[row + 1][17] = CH; map[row + 1][19] = CH; map[row + 1][21] = CH
-    map[row - 1][18] = CH; map[row - 1][20] = CH; map[row - 1][22] = CH
+  for (const row of [10, 13]) {
+    for (let x = 16; x <= 23; x++) setObj(row, x, DH)
+    setObj(row + 1, 17, CH); setObj(row + 1, 19, CH); setObj(row + 1, 21, CH)
+    setObj(row - 1, 18, CH); setObj(row - 1, 20, CH); setObj(row - 1, 22, CH)
   }
 
   // ── Main Workspace — Right cluster (cols 33-36, rows 10-15) ────
-  for (let row of [10, 13]) {
-    for (let x = 33; x <= 36; x++) map[row][x] = DH
-    map[row + 1][33] = CH; map[row + 1][35] = CH
-    map[row - 1][34] = CH; map[row - 1][36] = CH
+  for (const row of [10, 13]) {
+    for (let x = 33; x <= 36; x++) setObj(row, x, DH)
+    setObj(row + 1, 33, CH); setObj(row + 1, 35, CH)
+    setObj(row - 1, 34, CH); setObj(row - 1, 36, CH)
   }
 
   // ── Bookshelf wall (right side, rows 10-15) ────────────────────
-  for (let y = 10; y <= 15; y++) map[y][38] = BS
+  for (let y = 10; y <= 15; y++) setObj(y, 38, BS)
 
   // ── Plants in workspace ─────────────────────────────────────────
-  map[10][10] = P; map[15][10] = P; map[10][28] = P; map[15][28] = P
-  map[12][14] = P; map[12][25] = P
+  setObj(10, 10, P); setObj(15, 10, P); setObj(10, 28, P); setObj(15, 28, P)
+  setObj(12, 14, P); setObj(12, 25, P)
 
   // ── Lounge Area (bottom-left, cols 2-12, rows 19-25) ───────────
-  for (let y = 19; y <= 25; y++) for (let x = 2; x <= 12; x++) map[y][x] = L
-  // Sofas in L-shape
-  map[20][3] = S; map[20][4] = S; map[20][5] = S
-  map[21][3] = S
-  map[22][3] = S; map[22][4] = S; map[22][5] = S
-  // Rug in lounge
+  for (let y = 19; y <= 25; y++) for (let x = 2; x <= 12; x++) setFloor(y, x, L)
+  // Sofas in L-shape (objects on lounge floor)
+  setObj(20, 3, S); setObj(20, 4, S); setObj(20, 5, S)
+  setObj(21, 3, S)
+  setObj(22, 3, S); setObj(22, 4, S); setObj(22, 5, S)
+  // Rug in lounge (floor type)
   for (let y = 20; y <= 22; y++) for (let x = 6; x <= 8; x++) {
-    if (map[y][x] === L) map[y][x] = R
+    if (map[y][x] === L) setFloor(y, x, R)
   }
   // Coffee table (using desk tile as table)
-  map[21][7] = DV
+  setObj(21, 7, DV)
   // Plants
-  map[19][2] = P; map[19][12] = P; map[25][2] = P
+  setObj(19, 2, P); setObj(19, 12, P); setObj(25, 2, P)
 
   // ── Break Room (bottom-right, cols 28-37, rows 19-25) ──────────
-  for (let y = 18; y <= 25; y++) for (let x = 27; x <= 37; x++) map[y][x] = CP
+  for (let y = 18; y <= 25; y++) for (let x = 27; x <= 37; x++) setFloor(y, x, CP)
   // Partial wall
-  for (let y = 18; y <= 22; y++) map[y][27] = W
-  map[23][27] = F // door
+  for (let y = 18; y <= 22; y++) setWall(y, 27)
+  map[23][27] = F; floor[23][27] = F // door
   // Coffee machine
-  map[19][37] = CF; map[20][37] = CF
+  setObj(19, 37, CF); setObj(20, 37, CF)
   // Small tables
-  map[21][30] = DV; map[21][34] = DV
+  setObj(21, 30, DV); setObj(21, 34, DV)
   // Chairs around tables
-  map[20][30] = CH; map[22][30] = CH; map[20][34] = CH; map[22][34] = CH
+  setObj(20, 30, CH); setObj(22, 30, CH); setObj(20, 34, CH); setObj(22, 34, CH)
   // Bookshelf on wall
-  map[19][28] = BS; map[19][29] = BS
-  map[25][37] = P; map[25][28] = P
+  setObj(19, 28, BS); setObj(19, 29, BS)
+  setObj(25, 37, P); setObj(25, 28, P)
 
   // ── Center corridor rug ─────────────────────────────────────────
   for (let x = 15; x <= 24; x++) {
-    map[17][x] = R
-    map[26][x] = R
+    setFloor(17, x, R)
+    setFloor(26, x, R)
   }
 
   // ── Entrance plants ─────────────────────────────────────────────
-  map[26][5] = P; map[26][34] = P
-  map[27][1] = P; map[27][38] = P
+  setObj(26, 5, P); setObj(26, 34, P)
+  setObj(27, 1, P); setObj(27, 38, P)
 
-  return map
+  return { tileMap: map, floorMap: floor }
 }
 
 // ─── Audio Zones (Phase 2 — proximity voice) ─────────────────────────────────

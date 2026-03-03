@@ -1,15 +1,16 @@
 import * as Phaser from 'phaser'
 import { Client, Room } from 'colyseus.js'
 import {
-  TILE_SIZE, MAP_WIDTH, MAP_HEIGHT, T,
-  getAvatarColor, getSkinTone, STATUS_COLORS,
-  generateDefaultMap, CHAT_BUBBLE_DURATION,
+  TILE_SIZE, MAP_WIDTH, MAP_HEIGHT, T, SPRITE_ASSETS,
+  getAvatarColor, getSkinTone, getHairColor, getHairStyle, getBodyType,
+  STATUS_COLORS, generateDefaultMap, CHAT_BUBBLE_DURATION,
   type OfficeStatus, type ChatChannel,
 } from '@/lib/office-config'
 import {
-  generateTileTextures, generateCharacterTexture,
-  generateAmbientTexture, generateShadowTexture,
-  getTileTextureKey,
+  generateFloorTextures, generateObjectTextures, generateCharacterTexture,
+  generateAmbientTexture, generateVignetteTexture, generateMonitorGlowTexture,
+  generateShadowTexture,
+  getFloorTextureKey, getObjectTextureKey, isSpriteAsset,
 } from '../sprites/OfficeSprites'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -27,6 +28,11 @@ interface PlayerData {
   isMoving: boolean
   status: string
   avatarSeed: string
+  avatarBodyType: string | null
+  avatarHairStyle: number | null
+  avatarHairColor: string | null
+  avatarSkinTone: string | null
+  avatarShirtColor: string | null
 }
 
 interface ChatMessageData {
@@ -57,6 +63,7 @@ interface PlayerSprite {
   walkTimer: number
   isMoving: boolean
   direction: string
+  idleTimer: number
 }
 
 export interface OfficeSceneCallbacks {
@@ -75,6 +82,7 @@ export class OfficeScene extends Phaser.Scene {
   private room: Room | null = null
   private client: Client | null = null
   private mapData: number[][] = []
+  private floorData: number[][] = []
   private playerSprites = new Map<string, PlayerSprite>()
   private playersData = new Map<string, PlayerData>()
   private localSessionId = ''
@@ -89,7 +97,11 @@ export class OfficeScene extends Phaser.Scene {
   private animatedPlants: { sprite: Phaser.GameObjects.Image; baseX: number; time: number }[] = []
   private monitorSprites: Phaser.GameObjects.Image[] = []
   private ambientOverlay: Phaser.GameObjects.Image | null = null
+  private vignetteOverlay: Phaser.GameObjects.Image | null = null
+  private monitorGlowImages: Phaser.GameObjects.Image[] = []
   private gameTime = 0
+  private baseZoom = 1
+  private userZoom = 1
 
   constructor(token: string, serverUrl: string, callbacks: OfficeSceneCallbacks) {
     super({ key: 'OfficeScene' })
@@ -98,16 +110,42 @@ export class OfficeScene extends Phaser.Scene {
     this.callbacks = callbacks
   }
 
+  preload() {
+    for (const [key, asset] of Object.entries(SPRITE_ASSETS)) {
+      this.load.image(key, asset.path)
+    }
+  }
+
   create() {
-    // Generate all textures
-    generateTileTextures(this)
+    generateFloorTextures(this)
+    generateObjectTextures(this)
     generateShadowTexture(this)
 
-    this.mapData = generateDefaultMap()
+    const { tileMap, floorMap } = generateDefaultMap()
+    this.mapData = tileMap
+    this.floorData = floorMap
+
     this.drawMap()
+    this.updateCameraZoom()
     this.setupInput()
     this.addAmbientLighting()
     this.connectToServer()
+
+    this.scale.on('resize', () => this.updateCameraZoom())
+  }
+
+  // ─── Dynamic Camera Zoom ──────────────────────────────────────────
+
+  private updateCameraZoom() {
+    // Target: show ~26 tiles across the viewport width
+    const targetWidthInTiles = 26
+    this.baseZoom = this.cameras.main.width / (targetWidthInTiles * TILE_SIZE)
+    this.applyCameraZoom()
+  }
+
+  private applyCameraZoom() {
+    const zoom = this.baseZoom * this.userZoom
+    this.cameras.main.setZoom(Math.max(0.5, Math.min(zoom, 5)))
   }
 
   // ─── Map Drawing ────────────────────────────────────────────────────
@@ -115,27 +153,67 @@ export class OfficeScene extends Phaser.Scene {
   private drawMap() {
     this.cameras.main.setBackgroundColor('#1a1520')
 
+    // ── Pass 1: Floors (depth 0) ──────────────────────────────────
+    for (let y = 0; y < MAP_HEIGHT; y++) {
+      for (let x = 0; x < MAP_WIDTH; x++) {
+        const floorType = this.floorData[y][x]
+        // Skip walls — they render their own opaque background
+        if (floorType === T.WALL) continue
+        const px = x * TILE_SIZE
+        const py = y * TILE_SIZE
+        const floorKey = getFloorTextureKey(floorType)
+        this.add.image(px, py, floorKey).setOrigin(0, 0).setDepth(0)
+      }
+    }
+
+    // ── Pass 2: Objects (depth 1) ─────────────────────────────────
     for (let y = 0; y < MAP_HEIGHT; y++) {
       for (let x = 0; x < MAP_WIDTH; x++) {
         const tile = this.mapData[y][x]
+        const objKey = getObjectTextureKey(tile)
+        if (!objKey) continue
+
         const px = x * TILE_SIZE
         const py = y * TILE_SIZE
-        const key = getTileTextureKey(tile)
 
-        const img = this.add.image(px, py, key).setOrigin(0, 0)
+        if (isSpriteAsset(tile)) {
+          // PNG sprite — load from preloaded image with scale
+          const asset = SPRITE_ASSETS[objKey]
+          const img = this.add.image(px, py, objKey)
+            .setOrigin(0, 0)
+            .setScale(asset.scale)
+            .setDepth(1)
 
-        // Track plants for animation
-        if (tile === T.PLANT) {
-          this.animatedPlants.push({
-            sprite: img,
-            baseX: px,
-            time: Math.random() * Math.PI * 2,
-          })
+          if (tile === T.PLANT) {
+            this.animatedPlants.push({
+              sprite: img,
+              baseX: px,
+              time: Math.random() * Math.PI * 2,
+            })
+          }
+          if (tile === T.DESK_H) {
+            this.monitorSprites.push(img)
+          }
+        } else {
+          // Procedural texture (wall, sofa, whiteboard, glass)
+          const img = this.add.image(px, py, objKey).setOrigin(0, 0).setDepth(1)
+          // Walls render at depth 1 too (opaque, no floor underneath)
+          if (tile === T.WALL) {
+            img.setDepth(1)
+          }
         }
+      }
+    }
 
-        // Track monitors for flicker
-        if (tile === T.DESK_H) {
-          this.monitorSprites.push(img)
+    // ── Pass 3: Wall shadows (depth 2) ────────────────────────────
+    for (let sy = 1; sy < MAP_HEIGHT; sy++) {
+      for (let sx = 0; sx < MAP_WIDTH; sx++) {
+        const above = this.mapData[sy - 1][sx]
+        const current = this.mapData[sy][sx]
+        if (above === T.WALL && current !== T.WALL && current !== T.GLASS_WALL) {
+          this.add.image(sx * TILE_SIZE, sy * TILE_SIZE, 'tile_wall_shadow')
+            .setOrigin(0, 0)
+            .setDepth(2)
         }
       }
     }
@@ -148,11 +226,40 @@ export class OfficeScene extends Phaser.Scene {
   private addAmbientLighting() {
     const w = MAP_WIDTH * TILE_SIZE
     const h = MAP_HEIGHT * TILE_SIZE
+
+    // Warm ambient gradient (ADD blend — brightens center)
     generateAmbientTexture(this, w, h)
     this.ambientOverlay = this.add.image(0, 0, 'ambient_light')
       .setOrigin(0, 0)
       .setDepth(100)
       .setBlendMode(Phaser.BlendModes.ADD)
+
+    // Vignette (MULTIPLY blend — darkens edges)
+    generateVignetteTexture(this, w, h)
+    this.vignetteOverlay = this.add.image(0, 0, 'vignette')
+      .setOrigin(0, 0)
+      .setDepth(99)
+      .setBlendMode(Phaser.BlendModes.MULTIPLY)
+
+    // Monitor glow — small blue radial at each DESK_H tile
+    generateMonitorGlowTexture(this)
+    for (let y = 0; y < MAP_HEIGHT; y++) {
+      for (let x = 0; x < MAP_WIDTH; x++) {
+        if (this.mapData[y][x] === T.DESK_H) {
+          const glow = this.add.image(
+            x * TILE_SIZE + TILE_SIZE / 2,
+            y * TILE_SIZE + TILE_SIZE / 2,
+            'monitor_glow',
+          )
+            .setOrigin(0.5, 0.5)
+            .setDepth(2)
+            .setBlendMode(Phaser.BlendModes.ADD)
+            .setAlpha(0.25)
+            .setScale(2.5)
+          this.monitorGlowImages.push(glow)
+        }
+      }
+    }
   }
 
   // ─── Input Setup ────────────────────────────────────────────────────
@@ -166,6 +273,13 @@ export class OfficeScene extends Phaser.Scene {
       S: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
       D: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
     }
+
+    // Mouse wheel zoom
+    this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _gos: Phaser.GameObjects.GameObject[], _dx: number, dy: number) => {
+      const step = dy > 0 ? 0.9 : 1.1
+      this.userZoom = Math.max(0.4, Math.min(this.userZoom * step, 3))
+      this.applyCameraZoom()
+    })
   }
 
   // ─── Server Connection ──────────────────────────────────────────────
@@ -277,19 +391,23 @@ export class OfficeScene extends Phaser.Scene {
     if (this.playerSprites.has(sessionId)) return
 
     const isLocal = sessionId === this.localSessionId
-    const shirtColor = getAvatarColor(player.userId || player.avatarSeed)
-    const skinColor = getSkinTone(player.userId || player.avatarSeed)
+    const seed = player.userId || player.avatarSeed
+    const shirtColor = player.avatarShirtColor || getAvatarColor(seed)
+    const skinColor = player.avatarSkinTone || getSkinTone(seed)
+    const hairColor = player.avatarHairColor || getHairColor(seed)
+    const hairStyle = player.avatarHairStyle ?? getHairStyle(seed)
+    const bodyType = (player.avatarBodyType as 'male' | 'female') || getBodyType(seed)
     const texKey = `char_${player.userId}`
 
     if (!this.textures.exists(texKey)) {
-      generateCharacterTexture(this, texKey, shirtColor, skinColor)
+      generateCharacterTexture(this, texKey, shirtColor, skinColor, hairColor, hairStyle, bodyType)
     }
 
     const px = player.x * TILE_SIZE + TILE_SIZE / 2
     const py = player.y * TILE_SIZE + TILE_SIZE / 2
 
     // Shadow
-    const shadow = this.add.image(0, 10, 'shadow').setOrigin(0.5, 0.5).setAlpha(0.5)
+    const shadow = this.add.image(0, 14, 'shadow').setOrigin(0.5, 0.5).setAlpha(0.5)
 
     // Character sprite (start at frame 0 = down idle)
     const charSprite = this.add.sprite(0, 0, texKey, 0)
@@ -297,14 +415,14 @@ export class OfficeScene extends Phaser.Scene {
 
     // Name label
     const firstName = (player.name || '').split(' ')[0] || '?'
-    const nameLabel = this.add.text(0, -28, firstName, {
+    const nameLabel = this.add.text(0, -48, firstName, {
       fontSize: '10px',
       fontFamily: 'system-ui, sans-serif',
       color: '#ffffff',
       align: 'center',
     }).setOrigin(0.5, 0.5)
 
-    const nameBg = this.add.rectangle(0, -28, nameLabel.width + 10, 15, 0x1a1520, 0.75)
+    const nameBg = this.add.rectangle(0, -48, nameLabel.width + 10, 15, 0x1a1520, 0.75)
       .setOrigin(0.5, 0.5)
       .setStrokeStyle(0.5, 0x3c3642, 0.5)
 
@@ -312,7 +430,7 @@ export class OfficeScene extends Phaser.Scene {
     const statusColor = Phaser.Display.Color.HexStringToColor(
       STATUS_COLORS[player.status as OfficeStatus] || STATUS_COLORS.ONLINE
     ).color
-    const statusDot = this.add.circle(nameLabel.width / 2 + 8, -28, 3.5, statusColor)
+    const statusDot = this.add.circle(nameLabel.width / 2 + 8, -48, 3.5, statusColor)
 
     // Local player highlight
     if (isLocal) {
@@ -326,6 +444,7 @@ export class OfficeScene extends Phaser.Scene {
       container, sprite: charSprite, shadow, nameLabel, nameBg, statusDot,
       targetX: px, targetY: py, textureKey: texKey,
       walkFrame: 0, walkTimer: 0, isMoving: false, direction: player.direction || 'down',
+      idleTimer: 0,
     })
 
     if (isLocal) {
@@ -395,7 +514,7 @@ export class OfficeScene extends Phaser.Scene {
     // Tail triangle
     const tail = this.add.triangle(0, bh / 2 - bubbleText.height / 2 + 2, -4, 0, 4, 0, 0, 5, 0x2a2430, 0.92)
 
-    const bubbleContainer = this.add.container(0, -45, [bubbleBg, bubbleText, tail])
+    const bubbleContainer = this.add.container(0, -66, [bubbleBg, bubbleText, tail])
     ps.container.add(bubbleContainer)
     ps.chatBubble = bubbleContainer
 
@@ -461,6 +580,15 @@ export class OfficeScene extends Phaser.Scene {
     // ── Update character animations ──────────────────────────────
     this.playerSprites.forEach((ps) => {
       this.updateCharacterFrame(ps, delta)
+
+      // Idle breathing (subtle Y oscillation)
+      if (!ps.isMoving) {
+        ps.idleTimer += delta
+        ps.sprite.y = Math.sin(ps.idleTimer * 0.003) * 0.5
+      } else {
+        ps.idleTimer = 0
+        ps.sprite.y = 0
+      }
 
       // Interpolate position
       const dx = ps.targetX - ps.container.x

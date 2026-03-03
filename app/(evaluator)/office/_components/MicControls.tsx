@@ -51,10 +51,8 @@ export function MicControls({
     }
   }, [onStartPushToTalk, onStopPushToTalk])
 
-  if (!isConnected) return null
-
   return (
-    <div className="absolute bottom-3 right-3 z-20 flex items-center gap-2 rounded-lg bg-card/90 backdrop-blur-sm border border-border px-3 py-2 shadow-lg">
+    <div className={`flex items-center gap-2 ${!isConnected ? 'opacity-50' : ''}`}>
       {/* Zone indicator */}
       {currentZone && (
         <div className="flex items-center gap-1.5 text-xs text-amber-400 mr-1">
