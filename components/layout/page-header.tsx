@@ -43,7 +43,7 @@ export function PageHeader({
             </Link>
             <Separator orientation="vertical" className="h-6 hidden sm:block" />
             <div className="flex items-center gap-3">
-              <Plutus21Logo size={28} className="text-foreground" />
+              <Plutus21Logo size={28} className="text-[#2F80ED] dark:text-foreground" />
               <Separator orientation="vertical" className="h-6 hidden sm:block" />
               <div className="hidden sm:flex items-center gap-2">
                 <span className="text-lg font-display tracking-tight text-foreground">

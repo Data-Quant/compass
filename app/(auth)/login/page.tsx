@@ -211,7 +211,7 @@ function SplashScreen({ onComplete }: { onComplete: () => void }) {
           >
             <Plutus21Logo
               size={36}
-              className="text-foreground"
+              className="text-[#2F80ED] dark:text-foreground"
             />
           </motion.div>
 
@@ -439,7 +439,7 @@ export default function LoginPage() {
               transition={{ delay: 0.2, duration: 0.5, ease: ease.smooth }}
               className="flex items-center gap-4"
             >
-              <Plutus21Logo size={36} className="text-foreground" />
+              <Plutus21Logo size={36} className="text-[#2F80ED] dark:text-foreground" />
               <div className="h-7 w-px bg-border/60" />
               <span className="text-xl font-display tracking-tight text-foreground">
                 {PLATFORM_NAME}
@@ -500,7 +500,7 @@ export default function LoginPage() {
               {/* Mobile branding */}
               <div className="lg:hidden text-center mb-8">
                 <div className="flex items-center justify-center gap-3 mb-4">
-                  <Plutus21Logo size={32} className="text-foreground" />
+                  <Plutus21Logo size={32} className="text-[#2F80ED] dark:text-foreground" />
                   <span className="text-xl font-display tracking-tight">
                     {PLATFORM_NAME}
                   </span>

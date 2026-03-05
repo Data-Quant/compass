@@ -9,9 +9,9 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       {
-        url: '/icons/plutus21/plutus-light-32.png',
-        sizes: '32x32',
-        type: 'image/png',
+        url: '/icons/plutus21/plutus-light.svg',
+        sizes: 'any',
+        type: 'image/svg+xml',
         media: '(prefers-color-scheme: light)',
       },
       {

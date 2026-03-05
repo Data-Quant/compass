@@ -20,7 +20,7 @@ export function Plutus21Logo({
 }: Plutus21LogoProps) {
   const fill =
     variant === 'light'
-      ? '#2a2f40'
+      ? '#2F80ED'
       : variant === 'dark'
         ? '#e5e7eb'
         : 'currentColor'

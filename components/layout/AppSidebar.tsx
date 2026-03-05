@@ -288,7 +288,7 @@ export function AppSidebar({ config, collapsed, onToggle, userRole, className }:
         'flex h-14 shrink-0 items-center border-b border-border px-3',
         collapsed ? 'justify-center' : 'gap-3'
       )}>
-        <Plutus21Logo size={22} className="text-foreground shrink-0" />
+        <Plutus21Logo size={22} className="text-[#2F80ED] dark:text-foreground shrink-0" />
         {!collapsed && (
           <span className="text-base font-display tracking-tight text-foreground">
             {PLATFORM_NAME}

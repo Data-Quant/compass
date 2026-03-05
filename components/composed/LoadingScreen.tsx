@@ -106,7 +106,7 @@ export function LoadingScreen({
           animate={{ opacity: 1, filter: 'blur(0px)' }}
           transition={{ delay: 0.2, duration: 0.5, ease }}
         >
-          <Plutus21Logo size={24} className="text-foreground/60" />
+          <Plutus21Logo size={24} className="text-[#2F80ED]/60 dark:text-foreground/60" />
           <div className="h-5 w-px bg-border/40" />
           <span className="text-sm font-display tracking-tight text-foreground/60">
             {PLATFORM_NAME}
