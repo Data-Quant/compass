@@ -19,6 +19,12 @@ type GoogleCalendarEventPayload = {
   }
 }
 
+type LeaveCalendarResult =
+  | { success: true; action: 'created' | 'updated'; eventId: string | null; fallbackToAllDay?: boolean }
+  | { success: true; action: 'deleted'; count: number }
+  | { success: true; action: 'not_found' }
+  | { success: false; action: 'skipped'; reason: string }
+
 // Calendar invites are only sent for fully approved leave.
 const ACTIVE_LEAVE_STATUSES = new Set<LeaveStatus>(['APPROVED'])
 
@@ -32,6 +38,8 @@ const LEAVE_STATUS_LABELS: Record<LeaveStatus, string> = {
 }
 
 const LEAVE_CALENDAR_TIMEZONE = process.env.LEAVE_CALENDAR_TIMEZONE || 'Asia/Karachi'
+const GOOGLE_CALENDAR_ENV_WARNING =
+  'Google Calendar env vars not configured (GOOGLE_CALENDAR_CLIENT_ID / GOOGLE_CALENDAR_CLIENT_SECRET / GOOGLE_CALENDAR_REFRESH_TOKEN)'
 
 function getCalendarConfig(): GoogleCalendarConfig | null {
   const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID?.trim()
@@ -44,6 +52,10 @@ function getCalendarConfig(): GoogleCalendarConfig | null {
   }
 
   return { clientId, clientSecret, refreshToken, calendarId }
+}
+
+function warnCalendarSkip(operation: 'sync' | 'remove', leaveRequestId: string, reason: string) {
+  console.warn(`[leave-calendar] ${operation} skipped for leave ${leaveRequestId}: ${reason}`)
 }
 
 function isValidEmail(email: string | null | undefined): email is string {
@@ -275,9 +287,11 @@ type LeaveCalendarContext = NonNullable<Awaited<ReturnType<typeof collectLeaveAt
 function buildLeaveEventPayload({
   leaveRequest,
   attendeeEmails,
+  forceAllDay = false,
 }: {
   leaveRequest: LeaveCalendarContext['leaveRequest']
   attendeeEmails: string[]
+  forceAllDay?: boolean
 }): GoogleCalendarEventPayload {
   const startDate = toUtcDateOnly(new Date(leaveRequest.startDate))
   const endDate = toUtcDateOnly(new Date(leaveRequest.endDate))
@@ -315,6 +329,7 @@ function buildLeaveEventPayload({
   ]
 
   const hasHalfDayTimes =
+    !forceAllDay &&
     leaveRequest.isHalfDay &&
     Boolean(leaveRequest.unavailableStartTime && leaveRequest.unavailableEndTime)
 
@@ -353,10 +368,47 @@ function buildLeaveEventPayload({
     },
   }
 }
-export async function removeLeaveCalendarEvent(leaveRequestId: string) {
+
+async function upsertLeaveCalendarEvent({
+  config,
+  accessToken,
+  primaryEventId,
+  payload,
+}: {
+  config: GoogleCalendarConfig
+  accessToken: string
+  primaryEventId?: string
+  payload: GoogleCalendarEventPayload
+}): Promise<Extract<LeaveCalendarResult, { action: 'created' | 'updated' }>> {
+  if (primaryEventId) {
+    await googleCalendarRequest<unknown>({
+      config,
+      accessToken,
+      method: 'PATCH',
+      eventId: primaryEventId,
+      query: { sendUpdates: 'all' },
+      body: payload,
+    })
+
+    return { success: true, action: 'updated', eventId: primaryEventId }
+  }
+
+  const created = await googleCalendarRequest<{ id?: string }>({
+    config,
+    accessToken,
+    method: 'POST',
+    query: { sendUpdates: 'all' },
+    body: payload,
+  })
+
+  return { success: true, action: 'created', eventId: created.id || null }
+}
+
+export async function removeLeaveCalendarEvent(leaveRequestId: string): Promise<LeaveCalendarResult> {
   const config = getCalendarConfig()
   if (!config) {
-    return { success: false, action: 'skipped', reason: 'Google Calendar env vars not configured' }
+    warnCalendarSkip('remove', leaveRequestId, GOOGLE_CALENDAR_ENV_WARNING)
+    return { success: false, action: 'skipped', reason: GOOGLE_CALENDAR_ENV_WARNING }
   }
 
   const accessToken = await getAccessToken(config)
@@ -379,10 +431,11 @@ export async function removeLeaveCalendarEvent(leaveRequestId: string) {
   return { success: true, action: 'deleted', count: eventIds.length }
 }
 
-export async function syncLeaveCalendarEvent(leaveRequestId: string) {
+export async function syncLeaveCalendarEvent(leaveRequestId: string): Promise<LeaveCalendarResult> {
   const config = getCalendarConfig()
   if (!config) {
-    return { success: false, action: 'skipped', reason: 'Google Calendar env vars not configured' }
+    warnCalendarSkip('sync', leaveRequestId, GOOGLE_CALENDAR_ENV_WARNING)
+    return { success: false, action: 'skipped', reason: GOOGLE_CALENDAR_ENV_WARNING }
   }
 
   const leaveData = await collectLeaveAttendeeEmails(leaveRequestId)
@@ -414,27 +467,39 @@ export async function syncLeaveCalendarEvent(leaveRequestId: string) {
     }
   }
 
-  const payload = buildLeaveEventPayload({ leaveRequest, attendeeEmails })
+  const supportsTimedHalfDay =
+    leaveRequest.isHalfDay &&
+    Boolean(leaveRequest.unavailableStartTime && leaveRequest.unavailableEndTime)
 
-  if (primaryEventId) {
-    await googleCalendarRequest<unknown>({
-      config,
-      accessToken,
-      method: 'PATCH',
-      eventId: primaryEventId,
-      query: { sendUpdates: 'all' },
-      body: payload,
-    })
-    return { success: true, action: 'updated', eventId: primaryEventId }
+  if (supportsTimedHalfDay) {
+    try {
+      return await upsertLeaveCalendarEvent({
+        config,
+        accessToken,
+        primaryEventId,
+        payload: buildLeaveEventPayload({ leaveRequest, attendeeEmails }),
+      })
+    } catch (error) {
+      console.warn(
+        `[leave-calendar] Timed half-day sync failed for leave ${leaveRequest.id}; retrying as all-day event.`,
+        error
+      )
+
+      const fallbackResult = await upsertLeaveCalendarEvent({
+        config,
+        accessToken,
+        primaryEventId,
+        payload: buildLeaveEventPayload({ leaveRequest, attendeeEmails, forceAllDay: true }),
+      })
+
+      return { ...fallbackResult, fallbackToAllDay: true }
+    }
   }
 
-  const created = await googleCalendarRequest<{ id?: string }>({
+  return upsertLeaveCalendarEvent({
     config,
     accessToken,
-    method: 'POST',
-    query: { sendUpdates: 'all' },
-    body: payload,
+    primaryEventId,
+    payload: buildLeaveEventPayload({ leaveRequest, attendeeEmails }),
   })
-
-  return { success: true, action: 'created', eventId: created.id || null }
 }
