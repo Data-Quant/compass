@@ -9,6 +9,7 @@ import { useLayoutUser } from '@/components/layout/SidebarLayout'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
+import { Button } from '@/components/ui/button'
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { EmptyState } from '@/components/composed/EmptyState'
@@ -18,6 +19,7 @@ import {
   Clock,
   ArrowRight,
   Users,
+  ClipboardList,
 } from 'lucide-react'
 
 interface Mapping {
@@ -29,6 +31,18 @@ interface Mapping {
   isComplete: boolean
 }
 
+interface PreEvaluationTask {
+  id: string
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'OVERDUE' | 'OVERRIDDEN'
+  progressCount: number
+  totalSections: number
+  period: {
+    id: string
+    name: string
+    startDate: string
+  }
+}
+
 const stagger = {
   container: { hidden: {}, visible: { transition: { staggerChildren: 0.06 } } },
   item: { hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0 } },
@@ -38,10 +52,12 @@ export default function EvaluationsPage() {
   const user = useLayoutUser()
   const [mappings, setMappings] = useState<Record<string, Mapping[]>>({})
   const [period, setPeriod] = useState<any>(null)
+  const [preEvaluationTask, setPreEvaluationTask] = useState<PreEvaluationTask | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (user) loadEvaluations()
+    if (!user) return
+    Promise.all([loadEvaluations(), loadPreEvaluationTask()]).finally(() => setLoading(false))
   }, [user])
 
   const loadEvaluations = async () => {
@@ -54,8 +70,16 @@ export default function EvaluationsPage() {
       }
     } catch {
       toast.error('Failed to load evaluations')
-    } finally {
-      setLoading(false)
+    }
+  }
+
+  const loadPreEvaluationTask = async () => {
+    try {
+      const res = await fetch('/api/pre-evaluation/current')
+      const data = await res.json()
+      setPreEvaluationTask(data.prep || null)
+    } catch {
+      // silent
     }
   }
 
@@ -91,6 +115,37 @@ export default function EvaluationsPage() {
           </div>
         )}
       </motion.div>
+
+      {preEvaluationTask && preEvaluationTask.status !== 'COMPLETED' && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
+          <Card className="border-blue-500/20">
+            <CardContent className="p-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="rounded-full bg-blue-500/10 p-2.5">
+                  <ClipboardList className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-medium text-foreground">Pre-evaluation onboarding is still open</p>
+                    <Badge variant="secondary" className="bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                      {preEvaluationTask.progressCount}/{preEvaluationTask.totalSections}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Finish the required lead questions and evaluatee list for {preEvaluationTask.period.name} before the cycle opens on{' '}
+                    {new Date(preEvaluationTask.period.startDate).toLocaleDateString()}.
+                  </p>
+                </div>
+              </div>
+              <Button asChild>
+                <Link href="/pre-evaluation" className="gap-1.5">
+                  Open Task <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       {/* No evaluations */}
       {totalEvaluations === 0 ? (

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import type { RelationshipType } from '@/types'
+import { getResolvedEvaluationQuestions, getEvaluationQuestionMeta } from '@/lib/pre-evaluation'
 
 export async function GET(
   request: NextRequest,
@@ -39,11 +41,16 @@ export async function GET(
       )
     }
 
-    // Get questions for this relationship type
-    const questions = await prisma.evaluationQuestion.findMany({
-      where: { relationshipType: mapping.relationshipType },
-      orderBy: { orderIndex: 'asc' },
+    const resolved = await getResolvedEvaluationQuestions({
+      relationshipType: mapping.relationshipType as RelationshipType,
+      periodId,
+      evaluatorId: user.id,
+      evaluateeId,
     })
+
+    if (resolved.error) {
+      return NextResponse.json({ error: resolved.error }, { status: 400 })
+    }
 
     // Get existing evaluations
     const evaluations = await prisma.evaluation.findMany({
@@ -52,13 +59,29 @@ export async function GET(
         evaluateeId,
         periodId,
       },
+      include: {
+        question: true,
+        leadQuestion: true,
+      },
     })
 
     // Map evaluations to questions
-    const questionsWithResponses = questions.map((question) => {
-      const evaluation = evaluations.find((e) => e.questionId === question.id)
+    const evaluationMap = new Map(
+      evaluations
+        .map((evaluation) => {
+          const meta = getEvaluationQuestionMeta(evaluation)
+          if (!meta) return null
+          return [meta.key, evaluation] as const
+        })
+        .filter(Boolean) as Array<readonly [string, (typeof evaluations)[number]]>
+    )
+
+    const questionsWithResponses = resolved.questions.map((question) => {
+      const evaluation = evaluationMap.get(`${question.sourceType}:${question.id}`)
       return {
         ...question,
+        id: question.id,
+        questionSource: question.sourceType,
         ratingValue: evaluation?.ratingValue ?? null,
         textResponse: evaluation?.textResponse ?? null,
         submittedAt: evaluation?.submittedAt,

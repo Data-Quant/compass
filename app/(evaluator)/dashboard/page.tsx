@@ -32,6 +32,7 @@ import {
   Users,
   Mail,
   MessageCircle,
+  ClipboardList,
 } from 'lucide-react'
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -101,6 +102,19 @@ interface PendingTeamLeadFormItem {
   onboardingDate: string
 }
 
+interface PreEvaluationTask {
+  id: string
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'OVERDUE' | 'OVERRIDDEN'
+  requiredQuestionCount: number
+  progressCount: number
+  totalSections: number
+  period: {
+    id: string
+    name: string
+    startDate: string
+  }
+}
+
 // â”€â”€â”€ Animation helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const stagger = {
@@ -140,6 +154,7 @@ export default function DashboardPage() {
   const [myEquipment, setMyEquipment] = useState<MyEquipmentItem[]>([])
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [pendingTeamLeadForms, setPendingTeamLeadForms] = useState<PendingTeamLeadFormItem[]>([])
+  const [preEvaluationTask, setPreEvaluationTask] = useState<PreEvaluationTask | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -151,6 +166,7 @@ export default function DashboardPage() {
       loadUpcomingTeamLeaves(),
       loadMyEquipment(),
       loadTeamMembers(),
+      loadPreEvaluationTask(),
     ]
     // Role-specific data
     if (user.role === 'HR' || user.role === 'SECURITY') {
@@ -253,6 +269,16 @@ export default function DashboardPage() {
     }
   }
 
+  const loadPreEvaluationTask = async () => {
+    try {
+      const res = await fetch('/api/pre-evaluation/current')
+      const data = await res.json()
+      setPreEvaluationTask(data.prep || null)
+    } catch {
+      // silent
+    }
+  }
+
   // â”€â”€â”€ Computed stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const allMappings = Object.values(mappings).flat()
@@ -290,6 +316,51 @@ export default function DashboardPage() {
           {period ? `${period.name} evaluation period` : 'Here\u2019s your overview'}
         </p>
       </motion.div>
+
+      {preEvaluationTask && preEvaluationTask.status !== 'COMPLETED' && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-8"
+        >
+          <Card className="border-blue-500/20">
+            <CardContent className="p-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="rounded-full bg-blue-500/10 p-2.5">
+                  <ClipboardList className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold text-foreground">Pre-evaluation onboarding required</p>
+                    <Badge variant="secondary" className="bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                      {preEvaluationTask.progressCount}/{preEvaluationTask.totalSections}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {preEvaluationTask.period.name} opens on{' '}
+                    {new Date(preEvaluationTask.period.startDate).toLocaleDateString()}.
+                    Complete your questions and evaluatee list before the cycle starts.
+                  </p>
+                  <div className="mt-3 flex items-center gap-3 max-w-md">
+                    <Progress
+                      value={Math.round((preEvaluationTask.progressCount / preEvaluationTask.totalSections) * 100)}
+                      className="flex-1 h-2"
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      {Math.round((preEvaluationTask.progressCount / preEvaluationTask.totalSections) * 100)}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <Button asChild>
+                <Link href="/pre-evaluation" className="gap-1.5">
+                  Open Task <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       {/* Quick stats */}
       <motion.div

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import type { RelationshipType } from '@/types'
+import { getResolvedQuestionCount } from '@/lib/pre-evaluation'
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,7 +21,6 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get active period if not specified
     const period =
       periodId === 'active'
         ? await prisma.evaluationPeriod.findFirst({
@@ -36,10 +37,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // ── Batch queries (4 DB calls instead of 42) ──
-
-    const [mappings, questionsByType, allEvaluations] = await Promise.all([
-      // 1. Get evaluator mappings with evaluatee info
+    const [mappings, allEvaluations] = await Promise.all([
       prisma.evaluatorMapping.findMany({
         where: { evaluatorId: user.id },
         include: {
@@ -53,41 +51,41 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
-
-      // 2. All questions grouped by relationship type (was repeated per mapping)
-      prisma.evaluationQuestion.groupBy({
-        by: ['relationshipType'],
-        _count: { id: true },
-      }),
-
-      // 3. All evaluations for this user + period in one query
       prisma.evaluation.findMany({
         where: {
           evaluatorId: user.id,
           periodId: period.id,
           submittedAt: { not: null },
         },
-        select: { evaluateeId: true },
+        select: {
+          evaluateeId: true,
+        },
       }),
     ])
 
-    // ── Join in-memory ──
-
-    const questionCountMap = new Map(
-      questionsByType.map((q) => [q.relationshipType, q._count.id])
-    )
-
-    // Group evaluations by evaluateeId
     const evalsByEvaluatee = new Map<string, number>()
-    for (const ev of allEvaluations) {
+    for (const evaluation of allEvaluations) {
       evalsByEvaluatee.set(
-        ev.evaluateeId,
-        (evalsByEvaluatee.get(ev.evaluateeId) || 0) + 1
+        evaluation.evaluateeId,
+        (evalsByEvaluatee.get(evaluation.evaluateeId) || 0) + 1
       )
     }
 
+    const questionCounts = await Promise.all(
+      mappings.map(async (mapping) => ({
+        mappingId: mapping.id,
+        total: await getResolvedQuestionCount({
+          relationshipType: mapping.relationshipType as RelationshipType,
+          periodId: period.id,
+          evaluatorId: user.id,
+          evaluateeId: mapping.evaluatee.id,
+        }),
+      }))
+    )
+    const questionCountMap = new Map(questionCounts.map((entry) => [entry.mappingId, entry.total]))
+
     const mappingsWithStatus = mappings.map((mapping) => {
-      const total = questionCountMap.get(mapping.relationshipType) || 0
+      const total = questionCountMap.get(mapping.id) || 0
       const completed = evalsByEvaluatee.get(mapping.evaluateeId) || 0
       const isComplete = completed >= total && total > 0
 
@@ -99,7 +97,6 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Group by relationship type
     const grouped = mappingsWithStatus.reduce(
       (acc, mapping) => {
         const type = mapping.relationshipType
@@ -116,7 +113,7 @@ export async function GET(request: NextRequest) {
       period,
       mappings: grouped,
       totalMappings: mappings.length,
-      completedMappings: mappingsWithStatus.filter((m) => m.isComplete).length,
+      completedMappings: mappingsWithStatus.filter((mapping) => mapping.isComplete).length,
     })
   } catch (error) {
     console.error('Failed to fetch dashboard data:', error)

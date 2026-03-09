@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db'
-import { RelationshipType, toCategorySetKey } from '@/types'
+import { RelationshipType, normalizeRelationshipTypeForWeighting, toCategorySetKey } from '@/types'
 import { calculateRedistributedWeights } from '@/lib/config'
+import { getEvaluationQuestionMeta } from '@/lib/pre-evaluation'
 
 export interface ScoreBreakdown {
   relationshipType: RelationshipType
@@ -31,7 +32,11 @@ export async function getAvailableEvaluatorTypes(employeeId: string): Promise<Re
     select: { relationshipType: true },
     distinct: ['relationshipType'],
   })
-  return mappings.map(m => m.relationshipType as RelationshipType)
+  return [...new Set(
+    mappings.map((mapping) =>
+      normalizeRelationshipTypeForWeighting(mapping.relationshipType as RelationshipType)
+    )
+  )]
 }
 
 /**
@@ -79,7 +84,7 @@ export async function getDynamicWeights(employeeId: string): Promise<Record<stri
   if (customWeightages.length > 0) {
     const weights: Record<string, number> = {}
     customWeightages.forEach(w => {
-      weights[w.relationshipType] = w.weightagePercentage
+      weights[normalizeRelationshipTypeForWeighting(w.relationshipType as RelationshipType)] = w.weightagePercentage
     })
     return weights
   }
@@ -119,6 +124,7 @@ export async function calculateWeightedScore(
     },
     include: {
       question: true,
+      leadQuestion: true,
       evaluator: true,
     },
   })
@@ -130,7 +136,10 @@ export async function calculateWeightedScore(
 
   const evaluatorToTypeMap = new Map<string, RelationshipType>()
   mappings.forEach((m) => {
-    evaluatorToTypeMap.set(m.evaluatorId, m.relationshipType as RelationshipType)
+    evaluatorToTypeMap.set(
+      m.evaluatorId,
+      normalizeRelationshipTypeForWeighting(m.relationshipType as RelationshipType)
+    )
   })
 
   // Group evaluations by relationship type
@@ -148,7 +157,11 @@ export async function calculateWeightedScore(
 
   // Determine weights: use the employee's full mapped category set (not just types with evaluations)
   // This ensures consistent weighting even if some evaluators haven't submitted yet
-  const allMappedTypes = [...new Set(mappings.map(m => m.relationshipType))]
+  const allMappedTypes = [...new Set(
+    mappings.map((mapping) =>
+      normalizeRelationshipTypeForWeighting(mapping.relationshipType as RelationshipType)
+    )
+  )]
   
   // Try weight profile first, then per-employee, then fallback
   let dynamicWeights = await getWeightProfileWeights(allMappedTypes)
@@ -161,7 +174,8 @@ export async function calculateWeightedScore(
     if (customWeightages.length > 0) {
       dynamicWeights = {}
       customWeightages.forEach(w => {
-        dynamicWeights![w.relationshipType] = w.weightagePercentage
+        dynamicWeights![normalizeRelationshipTypeForWeighting(w.relationshipType as RelationshipType)] =
+          w.weightagePercentage
       })
     } else {
       // Fallback to redistributed defaults based on types with actual evaluations
@@ -185,10 +199,14 @@ export async function calculateWeightedScore(
     // Group by question to calculate averages
     const questionGroups = new Map<string, typeof typeEvaluations>()
     for (const evaluation of typeEvaluations) {
-      if (!questionGroups.has(evaluation.questionId)) {
-        questionGroups.set(evaluation.questionId, [])
+      const questionMeta = getEvaluationQuestionMeta(evaluation)
+      if (!questionMeta) {
+        continue
       }
-      questionGroups.get(evaluation.questionId)!.push(evaluation)
+      if (!questionGroups.has(questionMeta.key)) {
+        questionGroups.set(questionMeta.key, [])
+      }
+      questionGroups.get(questionMeta.key)!.push(evaluation)
     }
 
     // Calculate average rating for this relationship type
@@ -198,7 +216,11 @@ export async function calculateWeightedScore(
 
     for (const [, questionEvals] of questionGroups.entries()) {
       const question = questionEvals[0].question
-      if (question.questionType === 'RATING') {
+      const questionMeta = getEvaluationQuestionMeta(questionEvals[0])
+      if (!questionMeta) {
+        continue
+      }
+      if (questionMeta.questionType === 'RATING') {
         let questionTotal = 0
         let questionCount = 0
 
@@ -212,7 +234,7 @@ export async function calculateWeightedScore(
 
         if (questionCount > 0) {
           totalRating += questionTotal / questionCount
-          totalMaxRating += question.maxRating
+          totalMaxRating += questionMeta.maxRating
         }
       }
     }
@@ -246,7 +268,9 @@ export async function calculateWeightedScore(
   const qualitativeFeedback: Record<string, string[]> = {}
   for (const evaluation of evaluations) {
     if (evaluation.textResponse && evaluation.textResponse.trim()) {
-      const questionKey = evaluation.question.questionText
+      const questionMeta = getEvaluationQuestionMeta(evaluation)
+      if (!questionMeta) continue
+      const questionKey = questionMeta.questionText
       if (!qualitativeFeedback[questionKey]) {
         qualitativeFeedback[questionKey] = []
       }

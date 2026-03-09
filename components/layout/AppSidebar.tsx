@@ -112,6 +112,7 @@ export const ADMIN_SIDEBAR: SidebarConfig = {
       defaultOpen: true,
       items: [
         { label: 'Periods', href: '/admin/periods', icon: CalendarDays },
+        { label: 'Pre-Evaluation', href: '/admin/pre-evaluations', icon: ClipboardCheck },
         { label: 'Questions', href: '/admin/questions', icon: HelpCircle },
         { label: 'Mappings', href: '/admin/mappings', icon: Link2 },
         { label: 'Weightages', href: '/admin/settings', icon: Sliders },

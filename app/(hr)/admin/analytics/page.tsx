@@ -76,7 +76,9 @@ export default function AnalyticsPage() {
     TEAM_LEAD: 'Team Lead',
     DIRECT_REPORT: 'Direct Report',
     PEER: 'Peer',
+    CROSS_DEPARTMENT: 'Cross-Department',
     HR: 'HR',
+    DEPT: 'Department',
     SELF: 'Self',
   }
 

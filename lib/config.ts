@@ -59,6 +59,7 @@ export const DEFAULT_WEIGHTS: Record<string, number> = {
   TEAM_LEAD: 0.20,
   DIRECT_REPORT: 0.15,
   PEER: 0.10,
+  CROSS_DEPARTMENT: 0.00,
   HR: 0.05,
   DEPT: 0.15,
   SELF: 0.00, // Self-evaluation is qualitative only
@@ -77,8 +78,11 @@ export function calculateRedistributedWeights(
   // Filter to only weights that have evaluators
   const activeWeights: Record<string, number> = {}
   let totalActiveWeight = 0
+  const normalizedTypes = [...new Set(
+    availableTypes.map((type) => (type === 'CROSS_DEPARTMENT' ? 'PEER' : type))
+  )]
 
-  for (const type of availableTypes) {
+  for (const type of normalizedTypes) {
     if (type in DEFAULT_WEIGHTS && type !== 'SELF') {
       activeWeights[type] = DEFAULT_WEIGHTS[type as keyof typeof DEFAULT_WEIGHTS]
       totalActiveWeight += activeWeights[type]

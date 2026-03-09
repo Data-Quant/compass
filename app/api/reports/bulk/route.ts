@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { RelationshipType, toCategorySetKey } from '@/types'
+import { RelationshipType, normalizeRelationshipTypeForWeighting, toCategorySetKey } from '@/types'
 import { calculateRedistributedWeights } from '@/lib/config'
 import { isAdminRole } from '@/lib/permissions'
+import { getEvaluationQuestionMeta } from '@/lib/pre-evaluation'
 
 /**
  * Bulk reports endpoint: fetches ALL employee report summaries in 6 DB calls
@@ -48,6 +49,7 @@ export async function GET(request: NextRequest) {
           },
           include: {
             question: true,
+            leadQuestion: true,
             evaluator: { select: { id: true, name: true } },
           },
         }),
@@ -100,7 +102,9 @@ export async function GET(request: NextRequest) {
       if (!customWeightMap.has(cw.employeeId)) {
         customWeightMap.set(cw.employeeId, {})
       }
-      customWeightMap.get(cw.employeeId)![cw.relationshipType] = cw.weightagePercentage
+      customWeightMap.get(cw.employeeId)![
+        normalizeRelationshipTypeForWeighting(cw.relationshipType as RelationshipType)
+      ] = cw.weightagePercentage
     }
 
     // ── Compute reports for every employee in-memory ──
@@ -112,7 +116,10 @@ export async function GET(request: NextRequest) {
       // Build evaluatorId -> relationshipType map
       const evaluatorToType = new Map<string, RelationshipType>()
       for (const m of employeeMappings) {
-        evaluatorToType.set(m.evaluatorId, m.relationshipType as RelationshipType)
+        evaluatorToType.set(
+          m.evaluatorId,
+          normalizeRelationshipTypeForWeighting(m.relationshipType as RelationshipType)
+        )
       }
 
       // Group evaluations by relationship type
@@ -126,7 +133,11 @@ export async function GET(request: NextRequest) {
       }
 
       // Determine weights
-      const allMappedTypes = [...new Set(employeeMappings.map((m) => m.relationshipType))]
+      const allMappedTypes = [...new Set(
+        employeeMappings.map((mapping) =>
+          normalizeRelationshipTypeForWeighting(mapping.relationshipType as RelationshipType)
+        )
+      )]
       const categoryKey = toCategorySetKey(allMappedTypes)
       let dynamicWeights: Record<string, number> | null = null
 
@@ -160,8 +171,10 @@ export async function GET(request: NextRequest) {
         // Group by question to average across evaluators
         const questionGroups = new Map<string, typeof typeEvals>()
         for (const ev of typeEvals) {
-          if (!questionGroups.has(ev.questionId)) questionGroups.set(ev.questionId, [])
-          questionGroups.get(ev.questionId)!.push(ev)
+          const questionMeta = getEvaluationQuestionMeta(ev)
+          if (!questionMeta) continue
+          if (!questionGroups.has(questionMeta.key)) questionGroups.set(questionMeta.key, [])
+          questionGroups.get(questionMeta.key)!.push(ev)
         }
 
         let totalRating = 0
@@ -169,8 +182,9 @@ export async function GET(request: NextRequest) {
         const evaluatorIds = new Set<string>()
 
         for (const [, qEvals] of questionGroups.entries()) {
-          const question = qEvals[0].question
-          if (question.questionType === 'RATING') {
+          const questionMeta = getEvaluationQuestionMeta(qEvals[0])
+          if (!questionMeta) continue
+          if (questionMeta.questionType === 'RATING') {
             let qTotal = 0
             let qCount = 0
             for (const ev of qEvals) {
@@ -182,7 +196,7 @@ export async function GET(request: NextRequest) {
             }
             if (qCount > 0) {
               totalRating += qTotal / qCount
-              totalMaxRating += question.maxRating
+              totalMaxRating += questionMeta.maxRating
             }
           }
         }

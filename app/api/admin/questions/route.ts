@@ -51,6 +51,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    if (relationshipType === 'CROSS_DEPARTMENT') {
+      return NextResponse.json(
+        { error: 'Cross-department questions are sourced from lead submissions, not the global question bank' },
+        { status: 400 }
+      )
+    }
+
     // Get the next order index for this relationship type
     const lastQuestion = await prisma.evaluationQuestion.findFirst({
       where: { relationshipType },

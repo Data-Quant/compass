@@ -100,6 +100,7 @@ export async function GET(request: NextRequest) {
       TEAM_LEAD: 0,
       DIRECT_REPORT: 0,
       PEER: 0,
+      CROSS_DEPARTMENT: 0,
       HR: 0,
       DEPT: 0,
       SELF: 0,

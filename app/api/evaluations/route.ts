@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { z } from 'zod'
 import type { RelationshipType } from '@/types'
+import { getResolvedEvaluationQuestions } from '@/lib/pre-evaluation'
 
 const evaluationSchema = z.object({
   evaluateeId: z.string().trim().min(1),
@@ -10,6 +11,7 @@ const evaluationSchema = z.object({
   responses: z.array(
     z.object({
       questionId: z.string().trim().min(1),
+      questionSource: z.enum(['GLOBAL', 'LEAD']),
       ratingValue: z.number().min(1).max(4).optional(),
       textResponse: z.string().max(5000).optional(),
     })
@@ -20,16 +22,27 @@ const evaluationDraftSchema = z.object({
   evaluateeId: z.string().trim().min(1),
   periodId: z.string().trim().min(1),
   questionId: z.string().trim().min(1),
+  questionSource: z.enum(['GLOBAL', 'LEAD']),
   ratingValue: z.number().min(1).max(4).nullable().optional(),
   textResponse: z.string().max(5000).nullable().optional(),
 })
 
-async function getAllowedQuestionIds(relationshipType: RelationshipType) {
-  const questions = await prisma.evaluationQuestion.findMany({
-    where: { relationshipType },
-    select: { id: true },
+async function findExistingEvaluation(params: {
+  evaluatorId: string
+  evaluateeId: string
+  periodId: string
+  questionId: string
+  questionSource: 'GLOBAL' | 'LEAD'
+}) {
+  return prisma.evaluation.findFirst({
+    where: {
+      evaluatorId: params.evaluatorId,
+      evaluateeId: params.evaluateeId,
+      periodId: params.periodId,
+      questionId: params.questionSource === 'GLOBAL' ? params.questionId : null,
+      leadQuestionId: params.questionSource === 'LEAD' ? params.questionId : null,
+    },
   })
-  return new Set(questions.map((q) => q.id))
 }
 
 export async function POST(request: NextRequest) {
@@ -69,8 +82,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const allowedQuestionIds = await getAllowedQuestionIds(mapping.relationshipType as RelationshipType)
-    if (allowedQuestionIds.size === 0) {
+    const resolved = await getResolvedEvaluationQuestions({
+      relationshipType: mapping.relationshipType as RelationshipType,
+      periodId: data.periodId,
+      evaluatorId: user.id,
+      evaluateeId: data.evaluateeId,
+    })
+
+    if (resolved.error) {
+      return NextResponse.json({ error: resolved.error }, { status: 400 })
+    }
+
+    const allowedQuestionKeys = new Set(
+      resolved.questions.map((question) => `${question.sourceType}:${question.id}`)
+    )
+    if (allowedQuestionKeys.size === 0) {
       return NextResponse.json(
         { error: 'No evaluation questions configured for this relationship type' },
         { status: 400 }
@@ -79,48 +105,54 @@ export async function POST(request: NextRequest) {
 
     const seenQuestionIds = new Set<string>()
     for (const response of data.responses) {
-      if (!allowedQuestionIds.has(response.questionId)) {
+      const questionKey = `${response.questionSource}:${response.questionId}`
+      if (!allowedQuestionKeys.has(questionKey)) {
         return NextResponse.json(
           { error: 'One or more questions are not valid for this evaluation relationship' },
           { status: 400 }
         )
       }
-      if (seenQuestionIds.has(response.questionId)) {
+      if (seenQuestionIds.has(questionKey)) {
         return NextResponse.json(
           { error: 'Duplicate question responses are not allowed' },
           { status: 400 }
         )
       }
-      seenQuestionIds.add(response.questionId)
+      seenQuestionIds.add(questionKey)
     }
 
     // Save or update evaluations
     const evaluations = []
     for (const response of data.responses) {
-      const evaluation = await prisma.evaluation.upsert({
-        where: {
-          evaluatorId_evaluateeId_questionId_periodId: {
-            evaluatorId: user.id,
-            evaluateeId: data.evaluateeId,
-            questionId: response.questionId,
-            periodId: data.periodId,
-          },
-        },
-        create: {
-          evaluatorId: user.id,
-          evaluateeId: data.evaluateeId,
-          questionId: response.questionId,
-          periodId: data.periodId,
-          ratingValue: response.ratingValue ?? null,
-          textResponse: response.textResponse ?? null,
-          submittedAt: new Date(),
-        },
-        update: {
-          ratingValue: response.ratingValue ?? null,
-          textResponse: response.textResponse ?? null,
-          submittedAt: new Date(),
-        },
+      const existing = await findExistingEvaluation({
+        evaluatorId: user.id,
+        evaluateeId: data.evaluateeId,
+        periodId: data.periodId,
+        questionId: response.questionId,
+        questionSource: response.questionSource,
       })
+
+      const payload = {
+        ratingValue: response.ratingValue ?? null,
+        textResponse: response.textResponse ?? null,
+        submittedAt: new Date(),
+      }
+
+      const evaluation = existing
+        ? await prisma.evaluation.update({
+            where: { id: existing.id },
+            data: payload,
+          })
+        : await prisma.evaluation.create({
+            data: {
+              evaluatorId: user.id,
+              evaluateeId: data.evaluateeId,
+              periodId: data.periodId,
+              questionId: response.questionSource === 'GLOBAL' ? response.questionId : null,
+              leadQuestionId: response.questionSource === 'LEAD' ? response.questionId : null,
+              ...payload,
+            },
+          })
       evaluations.push(evaluation)
     }
 
@@ -149,7 +181,7 @@ export async function PUT(request: NextRequest) {
 
     const body = await request.json()
     const data = evaluationDraftSchema.parse(body)
-    const { evaluateeId, periodId, questionId, ratingValue, textResponse } = data
+    const { evaluateeId, periodId, questionId, questionSource, ratingValue, textResponse } = data
 
     // Check if period is locked
     const period = await prisma.evaluationPeriod.findUnique({
@@ -178,8 +210,21 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    const allowedQuestionIds = await getAllowedQuestionIds(mapping.relationshipType as RelationshipType)
-    if (!allowedQuestionIds.has(questionId)) {
+    const resolved = await getResolvedEvaluationQuestions({
+      relationshipType: mapping.relationshipType as RelationshipType,
+      periodId,
+      evaluatorId: user.id,
+      evaluateeId,
+    })
+
+    if (resolved.error) {
+      return NextResponse.json({ error: resolved.error }, { status: 400 })
+    }
+
+    const allowedQuestionKeys = new Set(
+      resolved.questions.map((question) => `${question.sourceType}:${question.id}`)
+    )
+    if (!allowedQuestionKeys.has(`${questionSource}:${questionId}`)) {
       return NextResponse.json(
         { error: 'Question is not valid for this evaluation relationship' },
         { status: 400 }
@@ -187,28 +232,34 @@ export async function PUT(request: NextRequest) {
     }
 
     // Save as draft (no submittedAt)
-    const evaluation = await prisma.evaluation.upsert({
-      where: {
-        evaluatorId_evaluateeId_questionId_periodId: {
-          evaluatorId: user.id,
-          evaluateeId,
-          questionId,
-          periodId,
-        },
-      },
-      create: {
-        evaluatorId: user.id,
-        evaluateeId,
-        questionId,
-        periodId,
-        ratingValue: ratingValue ?? null,
-        textResponse: textResponse ?? null,
-      },
-      update: {
-        ratingValue: ratingValue ?? null,
-        textResponse: textResponse ?? null,
-      },
+    const existing = await findExistingEvaluation({
+      evaluatorId: user.id,
+      evaluateeId,
+      periodId,
+      questionId,
+      questionSource,
     })
+
+    const payload = {
+      ratingValue: ratingValue ?? null,
+      textResponse: textResponse ?? null,
+    }
+
+    const evaluation = existing
+      ? await prisma.evaluation.update({
+          where: { id: existing.id },
+          data: payload,
+        })
+      : await prisma.evaluation.create({
+          data: {
+            evaluatorId: user.id,
+            evaluateeId,
+            periodId,
+            questionId: questionSource === 'GLOBAL' ? questionId : null,
+            leadQuestionId: questionSource === 'LEAD' ? questionId : null,
+            ...payload,
+          },
+        })
 
     return NextResponse.json({ success: true, evaluation })
   } catch (error) {

@@ -24,12 +24,37 @@ enum RelationshipType {
   C_LEVEL
   HR
   DEPT
+  CROSS_DEPARTMENT
   SELF
 }
 
 enum QuestionType {
   RATING
   TEXT
+}
+
+enum PreEvaluationTriggerSource {
+  AUTO
+  MANUAL
+}
+
+enum PreEvaluationLeadStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  OVERDUE
+  OVERRIDDEN
+}
+
+enum PreEvaluationReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PreEvaluationEvaluateeType {
+  PRIMARY
+  CROSS_DEPARTMENT
 }
 
 enum EmailStatus {
@@ -249,6 +274,13 @@ model User {
   onboardingProgress      OnboardingProgress[]
   quizAttempts            QuizAttempt[]
   benefitCategory         BenefitCategory?        @relation(fields: [benefitCategoryId], references: [id], onDelete: SetNull)
+  preEvaluationLeadPreps  PreEvaluationLeadPrep[] @relation("PreEvaluationLead")
+  preEvaluationOverrides  PreEvaluationLeadPrep[] @relation("PreEvaluationOverrideBy")
+  preEvaluationResets     PreEvaluationLeadPrep[] @relation("PreEvaluationResetBy")
+  preEvaluationTriggeredPeriods EvaluationPeriod[] @relation("PreEvaluationTriggeredBy")
+  preEvaluationSelectionsAsEvaluatee PreEvaluationEvaluateeSelection[] @relation("PreEvaluationSelectionEvaluatee")
+  preEvaluationSelectionsAsSuggestedEvaluator PreEvaluationEvaluateeSelection[] @relation("PreEvaluationSelectionSuggestedEvaluator")
+  preEvaluationSelectionsReviewed PreEvaluationEvaluateeSelection[] @relation("PreEvaluationSelectionReviewedBy")
 
   @@index([name])
   @@index([email])
@@ -288,42 +320,128 @@ model EvaluationQuestion {
 }
 
 model EvaluationPeriod {
-  id        String   @id @default(cuid())
-  name      String   // e.g., "Q3 2025"
-  startDate DateTime
-  endDate   DateTime
-  isActive  Boolean  @default(true)
-  isLocked  Boolean  @default(false) // Prevents new submissions when locked
-  reminderSent Boolean @default(false) // Track if deadline reminder was sent
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                      String                     @id @default(cuid())
+  name                    String                     // e.g., "Q3 2025"
+  startDate               DateTime
+  endDate                 DateTime
+  isActive                Boolean                    @default(true)
+  isLocked                Boolean                    @default(false) // Prevents new submissions when locked
+  reminderSent            Boolean                    @default(false) // Track if deadline reminder was sent
+  preEvaluationTriggeredAt DateTime?
+  preEvaluationTriggerSource PreEvaluationTriggerSource?
+  preEvaluationTriggeredById String?
+  createdAt               DateTime                   @default(now())
+  updatedAt               DateTime                   @updatedAt
 
-  reports Report[]
-  evaluations Evaluation[]
+  reports                 Report[]
+  evaluations             Evaluation[]
+  preEvaluationPreps      PreEvaluationLeadPrep[]
+  preEvaluationTriggeredBy User?                    @relation("PreEvaluationTriggeredBy", fields: [preEvaluationTriggeredById], references: [id], onDelete: SetNull)
 
   @@index([isActive])
+  @@index([startDate])
+  @@index([preEvaluationTriggeredAt])
 }
 
 model Evaluation {
-  id           String    @id @default(cuid())
-  evaluatorId String
-  evaluateeId String
-  questionId   String
-  periodId     String
-  ratingValue  Int?
-  textResponse String?
-  submittedAt  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id             String                     @id @default(cuid())
+  evaluatorId    String
+  evaluateeId    String
+  questionId     String?
+  leadQuestionId String?
+  periodId       String
+  ratingValue    Int?
+  textResponse   String?
+  submittedAt    DateTime?
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
 
-  evaluator User              @relation(fields: [evaluatorId], references: [id], onDelete: Cascade)
-  question  EvaluationQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  period    EvaluationPeriod   @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  evaluator      User                       @relation(fields: [evaluatorId], references: [id], onDelete: Cascade)
+  question       EvaluationQuestion?        @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  leadQuestion   PreEvaluationLeadQuestion? @relation(fields: [leadQuestionId], references: [id], onDelete: Cascade)
+  period         EvaluationPeriod           @relation(fields: [periodId], references: [id], onDelete: Cascade)
 
   @@unique([evaluatorId, evaluateeId, questionId, periodId])
+  @@unique([evaluatorId, evaluateeId, leadQuestionId, periodId])
   @@index([evaluatorId])
   @@index([evaluateeId])
   @@index([periodId])
+  @@index([leadQuestionId])
+}
+
+model PreEvaluationLeadPrep {
+  id                     String                    @id @default(cuid())
+  periodId               String
+  leadId                 String
+  status                 PreEvaluationLeadStatus  @default(PENDING)
+  questionsSubmittedAt   DateTime?
+  evaluateesSubmittedAt  DateTime?
+  completedAt            DateTime?
+  overdueAt              DateTime?
+  overriddenAt           DateTime?
+  overriddenById         String?
+  overrideNote           String?
+  lastResetAt            DateTime?
+  resetById              String?
+  resetNote              String?
+  initialReminderSentAt  DateTime?
+  sevenDayReminderSentAt DateTime?
+  oneDayReminderSentAt   DateTime?
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+
+  period                 EvaluationPeriod         @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  lead                   User                     @relation("PreEvaluationLead", fields: [leadId], references: [id], onDelete: Cascade)
+  overriddenBy           User?                    @relation("PreEvaluationOverrideBy", fields: [overriddenById], references: [id], onDelete: SetNull)
+  resetBy                User?                    @relation("PreEvaluationResetBy", fields: [resetById], references: [id], onDelete: SetNull)
+  questions              PreEvaluationLeadQuestion[]
+  evaluateeSelections    PreEvaluationEvaluateeSelection[]
+
+  @@unique([periodId, leadId])
+  @@index([leadId])
+  @@index([periodId])
+  @@index([status])
+}
+
+model PreEvaluationLeadQuestion {
+  id           String                @id @default(cuid())
+  prepId        String
+  orderIndex    Int
+  questionText  String
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  prep          PreEvaluationLeadPrep @relation(fields: [prepId], references: [id], onDelete: Cascade)
+  evaluations   Evaluation[]          @relation
+
+  @@unique([prepId, orderIndex])
+  @@index([prepId])
+}
+
+model PreEvaluationEvaluateeSelection {
+  id                   String                   @id @default(cuid())
+  prepId               String
+  type                 PreEvaluationEvaluateeType
+  evaluateeId          String
+  suggestedEvaluatorId String?
+  selectionKey         String
+  reviewStatus         PreEvaluationReviewStatus @default(PENDING)
+  reviewedById         String?
+  reviewedAt           DateTime?
+  reviewNote           String?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+
+  prep                 PreEvaluationLeadPrep    @relation(fields: [prepId], references: [id], onDelete: Cascade)
+  evaluatee            User                     @relation("PreEvaluationSelectionEvaluatee", fields: [evaluateeId], references: [id], onDelete: Cascade)
+  suggestedEvaluator   User?                    @relation("PreEvaluationSelectionSuggestedEvaluator", fields: [suggestedEvaluatorId], references: [id], onDelete: SetNull)
+  reviewedBy           User?                    @relation("PreEvaluationSelectionReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@unique([prepId, selectionKey])
+  @@index([prepId])
+  @@index([evaluateeId])
+  @@index([suggestedEvaluatorId])
+  @@index([reviewStatus])
 }
 
 model Weightage {

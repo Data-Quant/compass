@@ -955,3 +955,96 @@ export async function sendOnboardingCompletedNotification(userId: string) {
     return { success: false, error: error.message }
   }
 }
+
+export async function sendPreEvaluationLeadPrepNotification(
+  prepId: string,
+  reminderType: 'INITIAL' | 'SEVEN_DAY' | 'ONE_DAY' | 'MANUAL_RESEND' = 'INITIAL'
+) {
+  const prep = await prisma.preEvaluationLeadPrep.findUnique({
+    where: { id: prepId },
+    include: {
+      lead: {
+        select: {
+          name: true,
+          email: true,
+        },
+      },
+      period: {
+        select: {
+          name: true,
+          startDate: true,
+        },
+      },
+    },
+  })
+
+  if (!prep || !prep.lead.email) {
+    return { success: false, message: 'Lead email not found' }
+  }
+
+  const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || '').replace(/\/$/, '')
+  const prepUrl = appBaseUrl ? `${appBaseUrl}/pre-evaluation` : '/pre-evaluation'
+  const startDateLabel = new Date(prep.period.startDate).toLocaleDateString()
+  const daysUntilStart = Math.ceil(
+    (new Date(prep.period.startDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+  )
+
+  const titleByType: Record<typeof reminderType, string> = {
+    INITIAL: 'Performance evaluations open in 2 weeks',
+    SEVEN_DAY: 'Performance evaluations open in 1 week',
+    ONE_DAY: 'Performance evaluations open tomorrow',
+    MANUAL_RESEND: 'Reminder: complete your pre-evaluation onboarding',
+  }
+
+  const bodyByType: Record<typeof reminderType, string> = {
+    INITIAL: 'Performance evaluations are opening in 2 weeks. Please complete your required pre-evaluation onboarding before the cycle starts.',
+    SEVEN_DAY: 'Performance evaluations are opening in 1 week. Please complete both required pre-evaluation submissions before the cycle starts.',
+    ONE_DAY: 'Performance evaluations open tomorrow. Complete your pre-evaluation onboarding now if it is still outstanding.',
+    MANUAL_RESEND: 'Please complete your pre-evaluation onboarding as soon as possible so the upcoming cycle can be prepared.',
+  }
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #2563eb;">${escapeHtml(titleByType[reminderType])}</h2>
+      <p>Hi ${escapeHtml(prep.lead.name)},</p>
+      <p>${escapeHtml(bodyByType[reminderType])}</p>
+
+      <div style="background: #F8FAFC; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>Evaluation Period:</strong> ${escapeHtml(prep.period.name)}</p>
+        <p><strong>Cycle Start Date:</strong> ${escapeHtml(startDateLabel)}</p>
+        <p><strong>Required submissions:</strong> 3 lead questions and your evaluatee list</p>
+        <p><strong>Time remaining:</strong> ${
+          daysUntilStart > 1
+            ? `${daysUntilStart} days`
+            : daysUntilStart === 1
+              ? '1 day'
+              : 'Starts today'
+        }</p>
+      </div>
+
+      ${
+        appBaseUrl
+          ? `<p><a href="${prepUrl}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;">Open Pre-Evaluation Onboarding</a></p>`
+          : ''
+      }
+
+      <p style="color: #64748B; font-size: 14px;">
+        This onboarding includes two required steps and should be completed before the cycle opens.
+      </p>
+    </div>
+  `
+
+  try {
+    const info = await transporter.sendMail({
+      from: `P21 Compass <${FROM_EMAIL}>`,
+      to: prep.lead.email,
+      subject: titleByType[reminderType],
+      html: htmlContent,
+    })
+
+    return { success: true, data: { messageId: info.messageId } }
+  } catch (error: any) {
+    console.error('Failed to send pre-evaluation onboarding notification:', error)
+    return { success: false, error: error.message }
+  }
+}

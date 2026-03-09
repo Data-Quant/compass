@@ -51,6 +51,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    if (weightages.some((w: any) => w.relationshipType === 'CROSS_DEPARTMENT')) {
+      return NextResponse.json(
+        { error: 'Cross-department evaluations inherit peer weighting and cannot be configured separately' },
+        { status: 400 }
+      )
+    }
+
     // Validate that weightages sum to 100%
     const total = weightages.reduce(
       (sum: number, w: any) => sum + (w.weightagePercentage || 0),

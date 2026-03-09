@@ -18,6 +18,7 @@ import { CheckCircle, Clock, Send } from 'lucide-react'
 
 interface Question {
   id: string
+  questionSource: 'GLOBAL' | 'LEAD'
   questionText: string
   questionType: string
   maxRating: number
@@ -90,7 +91,14 @@ export default function EvaluatePage() {
       await fetch('/api/evaluations', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ evaluateeId, periodId, questionId, ratingValue: rating, textResponse: text }),
+        body: JSON.stringify({
+          evaluateeId,
+          periodId,
+          questionId,
+          questionSource: questions.find((q) => q.id === questionId)?.questionSource || 'GLOBAL',
+          ratingValue: rating,
+          textResponse: text,
+        }),
       })
       setLastSaved(new Date())
     } catch (error) { console.error('Auto-save failed:', error) }
@@ -114,6 +122,7 @@ export default function EvaluatePage() {
 
       const responseData = questions.map((q) => ({
         questionId: q.id,
+        questionSource: q.questionSource,
         ratingValue: q.questionType === 'RATING' ? responses[q.id]?.rating : undefined,
         textResponse: responses[q.id]?.text,
       }))

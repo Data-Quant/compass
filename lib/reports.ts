@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db'
 import { calculateWeightedScore, EvaluationReport } from '@/lib/scoring'
 import { RelationshipType, RELATIONSHIP_TYPE_LABELS, RATING_LABELS } from '@/types'
 import { escapeHtml } from '@/lib/sanitize'
+import { getEvaluationQuestionMeta } from '@/lib/pre-evaluation'
 
 export interface DetailedEvaluationSection {
   relationshipType: RelationshipType
@@ -68,6 +69,7 @@ export async function generateDetailedReport(
     },
     include: {
       question: true,
+      leadQuestion: true,
       evaluator: true,
     },
     orderBy: [
@@ -107,12 +109,18 @@ export async function generateDetailedReport(
     if (!relationshipType) continue
 
     const evaluator = evaluatorEvaluations[0].evaluator
-    const categories = evaluatorEvaluations.map((evaluation) => ({
-      questionText: evaluation.question.questionText,
-      rating: evaluation.ratingValue,
-      maxRating: evaluation.question.maxRating,
-      feedback: evaluation.textResponse,
-    }))
+    const categories = evaluatorEvaluations
+      .map((evaluation) => {
+        const questionMeta = getEvaluationQuestionMeta(evaluation)
+        if (!questionMeta) return null
+        return {
+          questionText: questionMeta.questionText,
+          rating: evaluation.ratingValue,
+          maxRating: questionMeta.maxRating,
+          feedback: evaluation.textResponse,
+        }
+      })
+      .filter(Boolean) as DetailedEvaluationSection['categories']
 
     const ratingQuestions = categories.filter((c) => c.rating !== null)
     const totalScore = ratingQuestions.reduce((sum, c) => sum + (c.rating || 0), 0)
@@ -215,6 +223,7 @@ export function formatReportAsHTML(
       TEAM_LEAD: 'Evaluation as a Team Lead',
       DIRECT_REPORT: 'Evaluation as a Reporting Team Member',
       PEER: 'Evaluation as a Peer',
+      CROSS_DEPARTMENT: 'Cross-Department Evaluation',
       HR: 'HR Evaluation',
       DEPT: 'Department Evaluation',
       SELF: 'Self-Evaluation',
@@ -352,7 +361,7 @@ export function formatReportAsHTML(
   }
 
   // Render each evaluation section
-  const sectionOrder: RelationshipType[] = ['C_LEVEL', 'TEAM_LEAD', 'DIRECT_REPORT', 'PEER', 'HR', 'DEPT']
+  const sectionOrder: RelationshipType[] = ['C_LEVEL', 'TEAM_LEAD', 'DIRECT_REPORT', 'PEER', 'CROSS_DEPARTMENT', 'HR', 'DEPT']
   
   for (const type of sectionOrder) {
     const sections = sectionsByType.get(type)
@@ -420,6 +429,7 @@ export function formatReportAsHTML(
     TEAM_LEAD: 'Evaluation As Team Lead',
     DIRECT_REPORT: 'Evaluation As Reporting Team Member',
     PEER: 'Evaluation As Peer',
+    CROSS_DEPARTMENT: 'Cross-Department Evaluation',
     HR: 'HR Evaluation',
     C_LEVEL: 'CEO Evaluation',
     DEPT: 'Department Evaluation',
@@ -446,6 +456,7 @@ export function formatReportAsHTML(
       TEAM_LEAD: 0.20,
       DIRECT_REPORT: 0.15,
       PEER: 0.10,
+      CROSS_DEPARTMENT: 0.10,
       HR: 0.05,
       DEPT: 0.15,
       SELF: 0.00,

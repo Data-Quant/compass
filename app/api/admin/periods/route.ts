@@ -86,10 +86,21 @@ export async function PUT(request: NextRequest) {
 
     const { id, name, startDate, endDate, isActive, isLocked } = await request.json()
 
-    if (!id || !name || !startDate || !endDate) {
+    if (!id) {
       return NextResponse.json(
-        { error: 'ID, name, start date, and end date are required' },
+        { error: 'ID is required' },
         { status: 400 }
+      )
+    }
+
+    const existing = await prisma.evaluationPeriod.findUnique({
+      where: { id },
+    })
+
+    if (!existing) {
+      return NextResponse.json(
+        { error: 'Period not found' },
+        { status: 404 }
       )
     }
 
@@ -104,11 +115,11 @@ export async function PUT(request: NextRequest) {
     const period = await prisma.evaluationPeriod.update({
       where: { id },
       data: {
-        name,
-        startDate: new Date(startDate),
-        endDate: new Date(endDate),
-        isActive: isActive || false,
-        isLocked: isLocked || false,
+        name: name ?? existing.name,
+        startDate: startDate ? new Date(startDate) : existing.startDate,
+        endDate: endDate ? new Date(endDate) : existing.endDate,
+        isActive: isActive ?? existing.isActive,
+        isLocked: isLocked ?? existing.isLocked,
       },
     })
 
@@ -131,7 +142,8 @@ export async function DELETE(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const id = searchParams.get('id')
+    const body = await request.json().catch(() => ({}))
+    const id = searchParams.get('id') || body.id
 
     if (!id) {
       return NextResponse.json({ error: 'Period ID is required' }, { status: 400 })

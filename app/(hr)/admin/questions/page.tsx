@@ -87,7 +87,9 @@ export default function QuestionsPage() {
     finally { setIsDeleteDialogOpen(false); setQuestionToDelete(null) }
   }
 
-  const relationshipTypes = Object.keys(RELATIONSHIP_TYPE_LABELS) as RelationshipType[]
+  const relationshipTypes = (Object.keys(RELATIONSHIP_TYPE_LABELS) as RelationshipType[]).filter(
+    (type) => type !== 'CROSS_DEPARTMENT'
+  )
 
   if (loading) {
     return (

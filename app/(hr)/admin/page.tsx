@@ -32,6 +32,7 @@ import {
   AlertCircle,
   Monitor,
   ArrowRight,
+  ClipboardList,
 } from 'lucide-react'
 
 const stagger = {
@@ -70,6 +71,7 @@ const TICKET_STATUS_BADGE: Record<string, { label: string; className: string }> 
 export default function AdminDashboardPage() {
   const user = useLayoutUser()
   const [dashboardData, setDashboardData] = useState<any>(null)
+  const [preEvaluationData, setPreEvaluationData] = useState<any>(null)
   const [pendingLeave, setPendingLeave] = useState<LeaveRequest[]>([])
   const [openTickets, setOpenTickets] = useState<DeviceTicket[]>([])
   const [loading, setLoading] = useState(true)
@@ -77,7 +79,7 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     if (user) {
-      Promise.all([loadDashboard(), loadPendingLeave(), loadDeviceTickets()])
+      Promise.all([loadDashboard(), loadPreEvaluations(), loadPendingLeave(), loadDeviceTickets()])
         .finally(() => setLoading(false))
     }
   }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -98,6 +100,18 @@ export default function AdminDashboardPage() {
       const data = await res.json()
       if (data.requests) setPendingLeave(data.requests)
     } catch { /* silent */ }
+  }
+
+  const loadPreEvaluations = async () => {
+    try {
+      const res = await fetch('/api/admin/pre-evaluations')
+      const data = await res.json()
+      if (!data.error) {
+        setPreEvaluationData(data)
+      }
+    } catch {
+      // silent
+    }
   }
 
   const loadDeviceTickets = async () => {
@@ -152,6 +166,40 @@ export default function AdminDashboardPage() {
           </div>
         )}
       </motion.div>
+
+      {preEvaluationData?.period && preEvaluationData?.summary?.total > 0 && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
+          <Card className="border-blue-500/20">
+            <CardContent className="p-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="rounded-full bg-blue-500/10 p-2.5">
+                  <ClipboardList className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold text-foreground">Pre-evaluation onboarding</p>
+                    <Badge variant="secondary" className="bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                      {preEvaluationData.summary.completed}/{preEvaluationData.summary.total} complete
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {preEvaluationData.period.name} starts on{' '}
+                    {new Date(preEvaluationData.period.startDate).toLocaleDateString()}.
+                    {preEvaluationData.summary.overdue > 0
+                      ? ` ${preEvaluationData.summary.overdue} lead prep(s) are overdue.`
+                      : ' Review outstanding lead prep tasks before the cycle opens.'}
+                  </p>
+                </div>
+              </div>
+              <Button asChild>
+                <Link href={`/admin/pre-evaluations?periodId=${preEvaluationData.period.id}`} className="gap-1.5">
+                  Review Queue <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       {/* Stats */}
       <motion.div
