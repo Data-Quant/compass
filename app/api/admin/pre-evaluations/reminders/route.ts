@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { getSession } from '@/lib/auth'
 import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { sendPreEvaluationLeadPrepNotification } from '@/lib/email'
+import { canTriggerPreEvaluation } from '@/lib/pre-evaluation'
 
 const reminderSchema = z.object({
   prepId: z.string().trim().min(1).optional(),
@@ -28,16 +30,47 @@ export async function POST(request: NextRequest) {
     }
 
     const reminderType = parsed.data.reminderType || 'MANUAL_RESEND'
-    const where = parsed.data.prepId
-      ? { id: parsed.data.prepId }
+    const eligiblePeriodIds = (
+      await prisma.evaluationPeriod.findMany({
+        where: {
+          startDate: {
+            gt: new Date(),
+          },
+        },
+        select: { id: true, startDate: true },
+      })
+    )
+      .filter((period) => canTriggerPreEvaluation(period.startDate))
+      .map((period) => period.id)
+
+    const where: Prisma.PreEvaluationLeadPrepWhereInput = parsed.data.prepId
+      ? {
+          id: parsed.data.prepId,
+          periodId: { in: eligiblePeriodIds },
+        }
       : parsed.data.periodId
-        ? { periodId: parsed.data.periodId }
-        : { completedAt: null }
+        ? {
+            AND: [
+              { periodId: parsed.data.periodId },
+              { periodId: { in: eligiblePeriodIds } },
+            ],
+          }
+        : {
+            completedAt: null,
+            periodId: { in: eligiblePeriodIds },
+          }
 
     const preps = await prisma.preEvaluationLeadPrep.findMany({
       where,
       select: { id: true },
     })
+
+    if (preps.length === 0 && (parsed.data.prepId || parsed.data.periodId)) {
+      return NextResponse.json(
+        { error: 'Pre-evaluation reminders can only be sent before the cycle start date.' },
+        { status: 400 }
+      )
+    }
 
     let sent = 0
     const errors: string[] = []

@@ -46,6 +46,10 @@ function endOfDay(date: Date = new Date()) {
   return normalized
 }
 
+export function canTriggerPreEvaluation(periodStartDate: Date) {
+  return startOfDay(periodStartDate) > startOfDay()
+}
+
 export function buildPreEvaluationSelectionKey(
   type: 'PRIMARY' | 'CROSS_DEPARTMENT',
   evaluateeId: string,
@@ -198,6 +202,10 @@ export async function triggerPreEvaluationForPeriod(
 
   if (!period) {
     throw new Error('Evaluation period not found')
+  }
+
+  if (!canTriggerPreEvaluation(period.startDate)) {
+    throw new Error('Pre-evaluation onboarding can only be triggered before the cycle start date.')
   }
 
   const { leadIds, directReportsByLead } = await getLeadIdsForPreEvaluation(prisma, periodId)

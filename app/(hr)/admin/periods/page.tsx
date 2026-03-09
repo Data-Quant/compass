@@ -22,6 +22,14 @@ interface Period {
   _count?: { evaluations: number; reports: number }
 }
 
+const isPreEvaluationWindowOpen = (startDate: string) => {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const cycleStart = new Date(startDate)
+  cycleStart.setHours(0, 0, 0, 0)
+  return cycleStart > today
+}
+
 export default function PeriodsPage() {
   const [periods, setPeriods] = useState<Period[]>([])
   const [loading, setLoading] = useState(true)
@@ -144,10 +152,13 @@ export default function PeriodsPage() {
         </div>
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {periods.map((period, index) => (
-            <motion.div key={period.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 * index }}>
-              <Card>
-                <CardContent className="p-6">
+          {periods.map((period, index) => {
+            const canTriggerPreEvaluation = isPreEvaluationWindowOpen(period.startDate)
+
+            return (
+              <motion.div key={period.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 * index }}>
+                <Card>
+                  <CardContent className="p-6">
                   <div className="flex items-start justify-between mb-4">
                     <div>
                       <h3 className="font-semibold text-foreground text-lg">{period.name}</h3>
@@ -187,8 +198,12 @@ export default function PeriodsPage() {
                     </div>
                     <p className="text-xs text-muted-foreground mt-2">
                       {period.preEvaluationTriggeredAt
-                        ? `Triggered ${formatDate(period.preEvaluationTriggeredAt)}${period.preEvaluationTriggerSource ? ` via ${period.preEvaluationTriggerSource.toLowerCase()}` : ''}.`
-                        : 'No pre-cycle onboarding has been triggered for this period yet.'}
+                        ? canTriggerPreEvaluation
+                          ? `Triggered ${formatDate(period.preEvaluationTriggeredAt)}${period.preEvaluationTriggerSource ? ` via ${period.preEvaluationTriggerSource.toLowerCase()}` : ''}.`
+                          : 'Triggered after the cycle window. Create or update a future period to use pre-cycle onboarding.'
+                        : canTriggerPreEvaluation
+                          ? 'No pre-cycle onboarding has been triggered for this period yet.'
+                          : 'This cycle has already started, so pre-cycle onboarding is no longer available.'}
                     </p>
                   </div>
 
@@ -213,7 +228,7 @@ export default function PeriodsPage() {
                         Open Prep Queue <ArrowRight className="w-3.5 h-3.5" />
                       </Link>
                     </Button>
-                    {!period.preEvaluationTriggeredAt && (
+                    {!period.preEvaluationTriggeredAt && canTriggerPreEvaluation && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -225,10 +240,11 @@ export default function PeriodsPage() {
                       </Button>
                     )}
                   </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )
+          })}
         </div>
 
         {periods.length === 0 && (

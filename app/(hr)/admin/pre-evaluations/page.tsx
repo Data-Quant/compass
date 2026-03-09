@@ -143,6 +143,14 @@ function formatDate(value: string) {
   return new Date(value).toLocaleDateString()
 }
 
+function isPreEvaluationWindowOpen(startDate: string) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const cycleStart = new Date(startDate)
+  cycleStart.setHours(0, 0, 0, 0)
+  return cycleStart > today
+}
+
 export default function AdminPreEvaluationsPage() {
   const searchParams = useSearchParams()
   const [data, setData] = useState<PreEvaluationResponse | null>(null)
@@ -337,6 +345,7 @@ export default function AdminPreEvaluationsPage() {
   const summary = data.summary
   const period = data.period
   const completionPercent = summary?.total ? Math.round((summary.completed / summary.total) * 100) : 0
+  const canTriggerSelectedPeriod = period ? isPreEvaluationWindowOpen(period.startDate) : false
 
   return (
     <div className="p-6 sm:p-8 max-w-7xl mx-auto space-y-6">
@@ -365,11 +374,18 @@ export default function AdminPreEvaluationsPage() {
               </SelectContent>
             </Select>
 
-            <Button variant="outline" onClick={() => handleResend()} disabled={!selectedPeriodId || resendingAll}>
+            <Button
+              variant="outline"
+              onClick={() => handleResend()}
+              disabled={!selectedPeriodId || resendingAll || !canTriggerSelectedPeriod}
+            >
               <Bell className="h-4 w-4" />
               {resendingAll ? 'Sending...' : 'Resend Outstanding'}
             </Button>
-            <Button onClick={() => handleTrigger(false)} disabled={!selectedPeriodId || triggering}>
+            <Button
+              onClick={() => handleTrigger(false)}
+              disabled={!selectedPeriodId || triggering || !canTriggerSelectedPeriod}
+            >
               <Sparkles className="h-4 w-4" />
               {triggering ? 'Triggering...' : 'Trigger Flow'}
             </Button>
@@ -391,7 +407,13 @@ export default function AdminPreEvaluationsPage() {
                 )}
               </div>
               <p className="text-sm text-muted-foreground mt-1">
-                Cycle starts on {formatDate(period.startDate)}. {period.preEvaluationTriggeredAt ? `Initial trigger sent ${formatDateTime(period.preEvaluationTriggeredAt)}.` : 'HR can manually trigger the pre-cycle onboarding now.'}
+                Cycle starts on {formatDate(period.startDate)}. {period.preEvaluationTriggeredAt
+                  ? canTriggerSelectedPeriod
+                    ? `Initial trigger sent ${formatDateTime(period.preEvaluationTriggeredAt)}.`
+                    : 'This period has already started, so this triggered prep will not surface as a current lead task.'
+                  : canTriggerSelectedPeriod
+                    ? 'HR can manually trigger the pre-cycle onboarding now.'
+                    : 'This cycle has already started, so pre-cycle onboarding cannot be triggered.'}
               </p>
             </div>
             <div className="flex items-center gap-3">

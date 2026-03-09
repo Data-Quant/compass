@@ -27,10 +27,22 @@ export async function GET(request: NextRequest) {
       },
     })
 
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
     const periodId =
       periodIdParam ||
+      periods.find((period) => {
+        const startDate = new Date(period.startDate)
+        startDate.setHours(0, 0, 0, 0)
+        return Boolean(period.preEvaluationTriggeredAt) && startDate > today
+      })?.id ||
+      periods.find((period) => {
+        const startDate = new Date(period.startDate)
+        startDate.setHours(0, 0, 0, 0)
+        return startDate > today
+      })?.id ||
       periods.find((period) => period.preEvaluationTriggeredAt)?.id ||
-      periods.find((period) => new Date(period.startDate) >= new Date())?.id ||
       periods[0]?.id
 
     if (!periodId) {
