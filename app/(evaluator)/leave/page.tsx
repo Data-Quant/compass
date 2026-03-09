@@ -298,6 +298,7 @@ export default function LeavePage() {
   }
 
   const editableStatuses = new Set(['PENDING', 'LEAD_APPROVED', 'HR_APPROVED'])
+  const cancellableStatuses = new Set(['PENDING', 'LEAD_APPROVED', 'HR_APPROVED', 'APPROVED'])
 
   const calendarDepartments = useMemo(() => {
     const values = new Set<string>()
@@ -989,7 +990,7 @@ export default function LeavePage() {
                                       </Button>
                                     )}
 
-                                    {canEdit && (
+                                    {cancellableStatuses.has(request.status) && (
                                       <Button
                                         variant="ghost"
                                         size="sm"
@@ -1575,6 +1576,18 @@ export default function LeavePage() {
                   }}
                 >
                   Edit Request
+                </Button>
+              )}
+              {cancellableStatuses.has(selectedRequest.status) && (
+                <Button
+                  variant="outline"
+                  className="text-red-600 border-red-200 hover:bg-red-50 dark:border-red-900/40 dark:hover:bg-red-500/10"
+                  onClick={async () => {
+                    setIsDetailsModalOpen(false)
+                    await handleCancel(selectedRequest.id)
+                  }}
+                >
+                  Cancel Request
                 </Button>
               )}
               <Button onClick={() => setIsDetailsModalOpen(false)}>Close</Button>

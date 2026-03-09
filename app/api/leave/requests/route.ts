@@ -684,41 +684,44 @@ export async function DELETE(request: NextRequest) {
     }
     
     const isHR = isAdminRole(user.role)
+    const restoreApprovedLeaveBalance = async (tx: Prisma.TransactionClient) => {
+      const start = new Date(leaveRequest.startDate)
+      const end = new Date(leaveRequest.endDate)
+      const daysUsed = calculateLeaveDuration(start, end, leaveRequest.isHalfDay)
+      const usedField = `${leaveRequest.leaveType.toLowerCase()}Used` as 'casualUsed' | 'sickUsed' | 'annualUsed'
+
+      const balance = await tx.leaveBalance.findUnique({
+        where: {
+          employeeId_year: {
+            employeeId: leaveRequest.employeeId,
+            year: start.getFullYear(),
+          },
+        },
+      })
+
+      if (!balance) return
+
+      const decrementBy = Math.min(balance[usedField], daysUsed)
+      if (decrementBy <= 0) return
+
+      await tx.leaveBalance.update({
+        where: {
+          employeeId_year: {
+            employeeId: leaveRequest.employeeId,
+            year: start.getFullYear(),
+          },
+        },
+        data: {
+          [usedField]: { decrement: decrementBy },
+        },
+      })
+    }
 
     if (isHR) {
       await prisma.$transaction(async (tx) => {
         // Roll back used balance if removing an approved entry.
         if (leaveRequest.status === 'APPROVED') {
-          const start = new Date(leaveRequest.startDate)
-          const end = new Date(leaveRequest.endDate)
-          const daysUsed = calculateLeaveDuration(start, end, leaveRequest.isHalfDay)
-          const usedField = `${leaveRequest.leaveType.toLowerCase()}Used` as 'casualUsed' | 'sickUsed' | 'annualUsed'
-
-          const balance = await tx.leaveBalance.findUnique({
-            where: {
-              employeeId_year: {
-                employeeId: leaveRequest.employeeId,
-                year: start.getFullYear(),
-              },
-            },
-          })
-
-          if (balance) {
-            const decrementBy = Math.min(balance[usedField], daysUsed)
-            if (decrementBy > 0) {
-              await tx.leaveBalance.update({
-                where: {
-                  employeeId_year: {
-                    employeeId: leaveRequest.employeeId,
-                    year: start.getFullYear(),
-                  },
-                },
-                data: {
-                  [usedField]: { decrement: decrementBy },
-                },
-              })
-            }
-          }
+          await restoreApprovedLeaveBalance(tx)
         }
 
         await tx.leaveRequest.delete({
@@ -740,15 +743,22 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
     }
 
-    // Self-cancel is only allowed for non-approved requests.
-    if (leaveRequest.status === 'APPROVED') {
-      return NextResponse.json({ error: 'Cannot cancel approved request' }, { status: 400 })
+    if (leaveRequest.status === 'REJECTED') {
+      return NextResponse.json({ error: 'Cannot cancel a rejected request' }, { status: 400 })
     }
 
-    await prisma.leaveRequest.update({
-      where: { id: requestId },
-      data: { status: 'CANCELLED' },
-    })
+    if (leaveRequest.status !== 'CANCELLED') {
+      await prisma.$transaction(async (tx) => {
+        if (leaveRequest.status === 'APPROVED') {
+          await restoreApprovedLeaveBalance(tx)
+        }
+
+        await tx.leaveRequest.update({
+          where: { id: requestId },
+          data: { status: 'CANCELLED' },
+        })
+      })
+    }
 
     try {
       await removeLeaveCalendarEvent(requestId)
