@@ -33,7 +33,7 @@ export async function POST(
       include: {
         period: {
           select: {
-            startDate: true,
+            reviewStartDate: true,
           },
         },
       },
@@ -44,14 +44,14 @@ export async function POST(
     }
 
     const now = new Date()
-    const periodStart = new Date(prep.period.startDate)
-    periodStart.setHours(0, 0, 0, 0)
+    const reviewStartDate = new Date(prep.period.reviewStartDate)
+    reviewStartDate.setHours(0, 0, 0, 0)
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
-    if (periodStart <= today) {
+    if (reviewStartDate <= today) {
       return NextResponse.json(
-        { error: 'Pre-evaluation tasks cannot be reset after the cycle start date' },
+        { error: 'Pre-evaluation tasks cannot be reset after evaluations begin' },
         { status: 400 }
       )
     }

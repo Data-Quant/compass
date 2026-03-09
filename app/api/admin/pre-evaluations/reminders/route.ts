@@ -33,14 +33,14 @@ export async function POST(request: NextRequest) {
     const eligiblePeriodIds = (
       await prisma.evaluationPeriod.findMany({
         where: {
-          startDate: {
+          reviewStartDate: {
             gt: new Date(),
           },
         },
-        select: { id: true, startDate: true },
+        select: { id: true, reviewStartDate: true },
       })
     )
-      .filter((period) => canTriggerPreEvaluation(period.startDate))
+      .filter((period) => canTriggerPreEvaluation(period.reviewStartDate))
       .map((period) => period.id)
 
     const where: Prisma.PreEvaluationLeadPrepWhereInput = parsed.data.prepId
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
 
     if (preps.length === 0 && (parsed.data.prepId || parsed.data.periodId)) {
       return NextResponse.json(
-        { error: 'Pre-evaluation reminders can only be sent before the cycle start date.' },
+        { error: 'Pre-evaluation reminders can only be sent before evaluations begin.' },
         { status: 400 }
       )
     }

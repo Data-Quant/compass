@@ -30,7 +30,7 @@ type PrepWithPeriod = Pick<
   | 'overriddenAt'
 > & {
   period: {
-    startDate: Date
+    reviewStartDate: Date
   }
 }
 
@@ -46,8 +46,8 @@ function endOfDay(date: Date = new Date()) {
   return normalized
 }
 
-export function canTriggerPreEvaluation(periodStartDate: Date) {
-  return startOfDay(periodStartDate) > startOfDay()
+export function canTriggerPreEvaluation(reviewStartDate: Date) {
+  return startOfDay(reviewStartDate) > startOfDay()
 }
 
 export function buildPreEvaluationSelectionKey(
@@ -62,21 +62,21 @@ export function derivePreEvaluationStatus(
   prep: PrepWithPeriod
 ): 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'OVERDUE' | 'OVERRIDDEN' {
   const today = startOfDay()
-  const periodStart = startOfDay(prep.period.startDate)
+  const reviewStart = startOfDay(prep.period.reviewStartDate)
   const isComplete = Boolean(prep.questionsSubmittedAt && prep.evaluateesSubmittedAt)
   const hasPartialSubmission = Boolean(prep.questionsSubmittedAt || prep.evaluateesSubmittedAt)
 
   if (isComplete || prep.completedAt) {
     return 'COMPLETED'
   }
-  if (periodStart <= today) {
+  if (reviewStart <= today) {
     return prep.overriddenAt ? 'OVERRIDDEN' : 'OVERDUE'
   }
   return hasPartialSubmission ? 'IN_PROGRESS' : 'PENDING'
 }
 
-export function isPrepEditable(periodStartDate: Date) {
-  return startOfDay(periodStartDate) > startOfDay()
+export function isPrepEditable(reviewStartDate: Date) {
+  return startOfDay(reviewStartDate) > startOfDay()
 }
 
 export async function syncPrepStatus(db: DbClient, prepId: string) {
@@ -92,7 +92,7 @@ export async function syncPrepStatus(db: DbClient, prepId: string) {
       overriddenAt: true,
       period: {
         select: {
-          startDate: true,
+          reviewStartDate: true,
         },
       },
     },
@@ -196,6 +196,7 @@ export async function triggerPreEvaluationForPeriod(
       id: true,
       name: true,
       startDate: true,
+      reviewStartDate: true,
       preEvaluationTriggeredAt: true,
     },
   })
@@ -204,8 +205,8 @@ export async function triggerPreEvaluationForPeriod(
     throw new Error('Evaluation period not found')
   }
 
-  if (!canTriggerPreEvaluation(period.startDate)) {
-    throw new Error('Pre-evaluation onboarding can only be triggered before the cycle start date.')
+  if (!canTriggerPreEvaluation(period.reviewStartDate)) {
+    throw new Error('Pre-evaluation onboarding can only be triggered before the evaluation start date.')
   }
 
   const { leadIds, directReportsByLead } = await getLeadIdsForPreEvaluation(prisma, periodId)
@@ -265,6 +266,7 @@ export async function triggerPreEvaluationForPeriod(
               id: true,
               name: true,
               startDate: true,
+              reviewStartDate: true,
             },
           },
         },
@@ -288,7 +290,7 @@ export async function getCurrentLeadPrep(userId: string) {
         preEvaluationTriggeredAt: {
           not: null,
         },
-        endDate: {
+        reviewStartDate: {
           gte: startOfDay(),
         },
       },
@@ -300,6 +302,7 @@ export async function getCurrentLeadPrep(userId: string) {
           name: true,
           startDate: true,
           endDate: true,
+          reviewStartDate: true,
           isActive: true,
           preEvaluationTriggeredAt: true,
         },
@@ -334,7 +337,7 @@ export async function getCurrentLeadPrep(userId: string) {
     },
     orderBy: {
       period: {
-        startDate: 'asc',
+        reviewStartDate: 'asc',
       },
     },
   })
@@ -366,7 +369,7 @@ export async function getCurrentLeadPrep(userId: string) {
   return {
     ...prep,
     status: effectiveStatus,
-    editable: isPrepEditable(prep.period.startDate),
+    editable: isPrepEditable(prep.period.reviewStartDate),
     candidateUsers: users,
   }
 }
@@ -655,12 +658,12 @@ export async function findDuePreEvaluationPeriods() {
   return prisma.evaluationPeriod.findMany({
     where: {
       preEvaluationTriggeredAt: null,
-      startDate: {
+      reviewStartDate: {
         gte: dueDate,
         lt: nextDay,
       },
     },
-    orderBy: { startDate: 'asc' },
+    orderBy: { reviewStartDate: 'asc' },
   })
 }
 
@@ -670,7 +673,7 @@ export async function markOverduePreEvaluations() {
     where: {
       completedAt: null,
       period: {
-        startDate: {
+        reviewStartDate: {
           lte: today,
         },
       },
@@ -715,7 +718,7 @@ export async function getPreEvaluationReminderCandidates(dayOffset: 7 | 1) {
         { evaluateesSubmittedAt: null },
       ],
       period: {
-        startDate: {
+        reviewStartDate: {
           gte: targetDate,
           lt: nextDay,
         },
@@ -735,6 +738,7 @@ export async function getPreEvaluationReminderCandidates(dayOffset: 7 | 1) {
           id: true,
           name: true,
           startDate: true,
+          reviewStartDate: true,
         },
       },
     },

@@ -133,15 +133,16 @@ async function main() {
   })
 
   if (!period) {
-    period = await prisma.evaluationPeriod.create({
-      data: {
-        id: 'q3-2025',
-        name: 'Q3 2025',
-        startDate: new Date('2025-10-01'),
-        endDate: new Date('2025-12-31'),
-        isActive: true,
-      },
-    })
+      period = await prisma.evaluationPeriod.create({
+        data: {
+          id: 'q3-2025',
+          name: 'Q3 2025',
+          startDate: new Date('2025-10-01'),
+          endDate: new Date('2025-12-31'),
+          reviewStartDate: new Date('2026-01-07'),
+          isActive: true,
+        },
+      })
   }
 
   // Create evaluation questions

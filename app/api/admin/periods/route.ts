@@ -3,6 +3,28 @@ import { getSession } from '@/lib/auth'
 import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 
+function toDateOnly(value: string | Date) {
+  const date = value instanceof Date ? new Date(value) : new Date(value)
+  date.setHours(0, 0, 0, 0)
+  return date
+}
+
+function validatePeriodDates(startDate: Date, endDate: Date, reviewStartDate: Date) {
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || Number.isNaN(reviewStartDate.getTime())) {
+    return 'Invalid period dates'
+  }
+
+  if (endDate < startDate) {
+    return 'End date must be on or after the quarter start date'
+  }
+
+  if (reviewStartDate <= endDate) {
+    return 'Evaluation start date must be after the quarter end date'
+  }
+
+  return null
+}
+
 // GET - List all evaluation periods
 export async function GET(request: NextRequest) {
   try {
@@ -41,13 +63,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { name, startDate, endDate, isActive } = await request.json()
+    const { name, startDate, endDate, reviewStartDate, isActive } = await request.json()
 
-    if (!name || !startDate || !endDate) {
+    if (!name || !startDate || !endDate || !reviewStartDate) {
       return NextResponse.json(
-        { error: 'Name, start date, and end date are required' },
+        { error: 'Name, quarter start, quarter end, and evaluation start date are required' },
         { status: 400 }
       )
+    }
+
+    const normalizedStartDate = toDateOnly(startDate)
+    const normalizedEndDate = toDateOnly(endDate)
+    const normalizedReviewStartDate = toDateOnly(reviewStartDate)
+    const validationError = validatePeriodDates(normalizedStartDate, normalizedEndDate, normalizedReviewStartDate)
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 })
     }
 
     // If setting this period as active, deactivate all others
@@ -60,8 +90,9 @@ export async function POST(request: NextRequest) {
     const period = await prisma.evaluationPeriod.create({
       data: {
         name,
-        startDate: new Date(startDate),
-        endDate: new Date(endDate),
+        startDate: normalizedStartDate,
+        endDate: normalizedEndDate,
+        reviewStartDate: normalizedReviewStartDate,
         isActive: isActive || false,
       },
     })
@@ -84,7 +115,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { id, name, startDate, endDate, isActive, isLocked } = await request.json()
+    const { id, name, startDate, endDate, reviewStartDate, isActive, isLocked } = await request.json()
 
     if (!id) {
       return NextResponse.json(
@@ -104,6 +135,14 @@ export async function PUT(request: NextRequest) {
       )
     }
 
+    const normalizedStartDate = startDate ? toDateOnly(startDate) : existing.startDate
+    const normalizedEndDate = endDate ? toDateOnly(endDate) : existing.endDate
+    const normalizedReviewStartDate = reviewStartDate ? toDateOnly(reviewStartDate) : existing.reviewStartDate
+    const validationError = validatePeriodDates(normalizedStartDate, normalizedEndDate, normalizedReviewStartDate)
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 })
+    }
+
     // If setting this period as active, deactivate all others
     if (isActive) {
       await prisma.evaluationPeriod.updateMany({
@@ -116,8 +155,9 @@ export async function PUT(request: NextRequest) {
       where: { id },
       data: {
         name: name ?? existing.name,
-        startDate: startDate ? new Date(startDate) : existing.startDate,
-        endDate: endDate ? new Date(endDate) : existing.endDate,
+        startDate: normalizedStartDate,
+        endDate: normalizedEndDate,
+        reviewStartDate: normalizedReviewStartDate,
         isActive: isActive ?? existing.isActive,
         isLocked: isLocked ?? existing.isLocked,
       },

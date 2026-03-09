@@ -40,6 +40,7 @@ interface PreEvaluationTask {
     id: string
     name: string
     startDate: string
+    reviewStartDate: string
   }
 }
 
@@ -131,11 +132,11 @@ export default function EvaluationsPage() {
                       {preEvaluationTask.progressCount}/{preEvaluationTask.totalSections}
                     </Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Finish the required lead questions and evaluatee list for {preEvaluationTask.period.name} before the cycle opens on{' '}
-                    {new Date(preEvaluationTask.period.startDate).toLocaleDateString()}.
-                  </p>
-                </div>
+                    <p className="text-sm text-muted-foreground mt-1">
+                    Finish the required lead questions and evaluatee list for {preEvaluationTask.period.name} before evaluations begin on{' '}
+                    {new Date(preEvaluationTask.period.reviewStartDate).toLocaleDateString()}.
+                    </p>
+                  </div>
               </div>
               <Button asChild>
                 <Link href="/pre-evaluation" className="gap-1.5">

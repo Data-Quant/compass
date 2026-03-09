@@ -16,18 +16,18 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Calendar, Plus, Edit2, Trash2, Lock, Unlock, Bell, CheckCircle, Clock, Sparkles, ArrowRight } from 'lucide-react'
 
 interface Period {
-  id: string; name: string; startDate: string; endDate: string; isActive: boolean; isLocked?: boolean; reminderSent?: boolean; createdAt: string
+  id: string; name: string; startDate: string; endDate: string; reviewStartDate: string; isActive: boolean; isLocked?: boolean; reminderSent?: boolean; createdAt: string
   preEvaluationTriggeredAt?: string | null
   preEvaluationTriggerSource?: 'AUTO' | 'MANUAL' | null
   _count?: { evaluations: number; reports: number }
 }
 
-const isPreEvaluationWindowOpen = (startDate: string) => {
+const isPreEvaluationWindowOpen = (reviewStartDate: string) => {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
-  const cycleStart = new Date(startDate)
-  cycleStart.setHours(0, 0, 0, 0)
-  return cycleStart > today
+  const evaluationStart = new Date(reviewStartDate)
+  evaluationStart.setHours(0, 0, 0, 0)
+  return evaluationStart > today
 }
 
 export default function PeriodsPage() {
@@ -37,7 +37,7 @@ export default function PeriodsPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [selectedPeriod, setSelectedPeriod] = useState<Period | null>(null)
   const [periodToDelete, setPeriodToDelete] = useState<Period | null>(null)
-  const [formData, setFormData] = useState({ name: '', startDate: '', endDate: '', isActive: false, isLocked: false })
+  const [formData, setFormData] = useState({ name: '', startDate: '', endDate: '', reviewStartDate: '', isActive: false, isLocked: false })
   const [saving, setSaving] = useState(false)
   const [sendingReminders, setSendingReminders] = useState<string | null>(null)
   const [triggeringPreEvaluation, setTriggeringPreEvaluation] = useState<string | null>(null)
@@ -59,17 +59,17 @@ export default function PeriodsPage() {
   const handleOpenModal = (period?: Period) => {
     if (period) {
       setSelectedPeriod(period)
-      setFormData({ name: period.name, startDate: formatDateForInput(period.startDate), endDate: formatDateForInput(period.endDate), isActive: period.isActive, isLocked: period.isLocked || false })
+      setFormData({ name: period.name, startDate: formatDateForInput(period.startDate), endDate: formatDateForInput(period.endDate), reviewStartDate: formatDateForInput(period.reviewStartDate), isActive: period.isActive, isLocked: period.isLocked || false })
     } else {
       setSelectedPeriod(null)
-      setFormData({ name: '', startDate: '', endDate: '', isActive: false, isLocked: false })
+      setFormData({ name: '', startDate: '', endDate: '', reviewStartDate: '', isActive: false, isLocked: false })
     }
     setIsModalOpen(true)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!formData.name || !formData.startDate || !formData.endDate) { toast.error('All fields required'); return }
+    if (!formData.name || !formData.startDate || !formData.endDate || !formData.reviewStartDate) { toast.error('All fields required'); return }
     setSaving(true)
     try {
       const method = selectedPeriod ? 'PUT' : 'POST'
@@ -153,7 +153,7 @@ export default function PeriodsPage() {
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {periods.map((period, index) => {
-            const canTriggerPreEvaluation = isPreEvaluationWindowOpen(period.startDate)
+            const canTriggerPreEvaluation = isPreEvaluationWindowOpen(period.reviewStartDate)
 
             return (
               <motion.div key={period.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 * index }}>
@@ -162,7 +162,12 @@ export default function PeriodsPage() {
                   <div className="flex items-start justify-between mb-4">
                     <div>
                       <h3 className="font-semibold text-foreground text-lg">{period.name}</h3>
-                      <p className="text-sm text-muted-foreground">{formatDate(period.startDate)} - {formatDate(period.endDate)}</p>
+                      <p className="text-sm text-muted-foreground">
+                        Quarter: {formatDate(period.startDate)} - {formatDate(period.endDate)}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Evaluations start: {formatDate(period.reviewStartDate)}
+                      </p>
                     </div>
                     <div className="flex gap-1">
                       {period.isActive && (
@@ -203,7 +208,7 @@ export default function PeriodsPage() {
                           : 'Triggered after the cycle window. Create or update a future period to use pre-cycle onboarding.'
                         : canTriggerPreEvaluation
                           ? 'No pre-cycle onboarding has been triggered for this period yet.'
-                          : 'This cycle has already started, so pre-cycle onboarding is no longer available.'}
+                          : 'Evaluations have already started for this period, so pre-cycle onboarding is no longer available.'}
                     </p>
                   </div>
 
@@ -266,13 +271,17 @@ export default function PeriodsPage() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="start-date" className="mb-1">Start Date *</Label>
+              <Label htmlFor="start-date" className="mb-1">Quarter Start *</Label>
               <Input id="start-date" type="date" value={formData.startDate} onChange={(e) => setFormData({ ...formData, startDate: e.target.value })} />
             </div>
             <div>
-              <Label htmlFor="end-date" className="mb-1">End Date *</Label>
+              <Label htmlFor="end-date" className="mb-1">Quarter End *</Label>
               <Input id="end-date" type="date" value={formData.endDate} onChange={(e) => setFormData({ ...formData, endDate: e.target.value })} />
             </div>
+          </div>
+          <div>
+            <Label htmlFor="review-start-date" className="mb-1">Evaluation Start *</Label>
+            <Input id="review-start-date" type="date" value={formData.reviewStartDate} onChange={(e) => setFormData({ ...formData, reviewStartDate: e.target.value })} />
           </div>
           <div className="flex gap-6">
             <label className="flex items-center gap-2 cursor-pointer">

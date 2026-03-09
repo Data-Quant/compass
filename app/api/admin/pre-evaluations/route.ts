@@ -15,12 +15,13 @@ export async function GET(request: NextRequest) {
     const periodIdParam = searchParams.get('periodId')
 
     const periods = await prisma.evaluationPeriod.findMany({
-      orderBy: { startDate: 'desc' },
+      orderBy: { reviewStartDate: 'desc' },
       select: {
         id: true,
         name: true,
         startDate: true,
         endDate: true,
+        reviewStartDate: true,
         isActive: true,
         isLocked: true,
         preEvaluationTriggeredAt: true,
@@ -33,14 +34,14 @@ export async function GET(request: NextRequest) {
     const periodId =
       periodIdParam ||
       periods.find((period) => {
-        const startDate = new Date(period.startDate)
-        startDate.setHours(0, 0, 0, 0)
-        return Boolean(period.preEvaluationTriggeredAt) && startDate > today
+        const reviewStartDate = new Date(period.reviewStartDate)
+        reviewStartDate.setHours(0, 0, 0, 0)
+        return Boolean(period.preEvaluationTriggeredAt) && reviewStartDate > today
       })?.id ||
       periods.find((period) => {
-        const startDate = new Date(period.startDate)
-        startDate.setHours(0, 0, 0, 0)
-        return startDate > today
+        const reviewStartDate = new Date(period.reviewStartDate)
+        reviewStartDate.setHours(0, 0, 0, 0)
+        return reviewStartDate > today
       })?.id ||
       periods.find((period) => period.preEvaluationTriggeredAt)?.id ||
       periods[0]?.id
@@ -110,7 +111,7 @@ export async function GET(request: NextRequest) {
         },
         period: {
           select: {
-            startDate: true,
+            reviewStartDate: true,
           },
         },
       },

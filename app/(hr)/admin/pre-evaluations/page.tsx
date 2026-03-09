@@ -38,6 +38,7 @@ interface PeriodOption {
   name: string
   startDate: string
   endDate: string
+  reviewStartDate: string
   isActive: boolean
   isLocked: boolean
   preEvaluationTriggeredAt: string | null
@@ -143,12 +144,12 @@ function formatDate(value: string) {
   return new Date(value).toLocaleDateString()
 }
 
-function isPreEvaluationWindowOpen(startDate: string) {
+function isPreEvaluationWindowOpen(reviewStartDate: string) {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
-  const cycleStart = new Date(startDate)
-  cycleStart.setHours(0, 0, 0, 0)
-  return cycleStart > today
+  const evaluationStart = new Date(reviewStartDate)
+  evaluationStart.setHours(0, 0, 0, 0)
+  return evaluationStart > today
 }
 
 export default function AdminPreEvaluationsPage() {
@@ -345,7 +346,7 @@ export default function AdminPreEvaluationsPage() {
   const summary = data.summary
   const period = data.period
   const completionPercent = summary?.total ? Math.round((summary.completed / summary.total) * 100) : 0
-  const canTriggerSelectedPeriod = period ? isPreEvaluationWindowOpen(period.startDate) : false
+  const canTriggerSelectedPeriod = period ? isPreEvaluationWindowOpen(period.reviewStartDate) : false
 
   return (
     <div className="p-6 sm:p-8 max-w-7xl mx-auto space-y-6">
@@ -407,13 +408,13 @@ export default function AdminPreEvaluationsPage() {
                 )}
               </div>
               <p className="text-sm text-muted-foreground mt-1">
-                Cycle starts on {formatDate(period.startDate)}. {period.preEvaluationTriggeredAt
+                Quarter runs {formatDate(period.startDate)} to {formatDate(period.endDate)}. Evaluations start on {formatDate(period.reviewStartDate)}. {period.preEvaluationTriggeredAt
                   ? canTriggerSelectedPeriod
                     ? `Initial trigger sent ${formatDateTime(period.preEvaluationTriggeredAt)}.`
-                    : 'This period has already started, so this triggered prep will not surface as a current lead task.'
+                    : 'Evaluations have already started for this period, so this triggered prep will not surface as a current lead task.'
                   : canTriggerSelectedPeriod
                     ? 'HR can manually trigger the pre-cycle onboarding now.'
-                    : 'This cycle has already started, so pre-cycle onboarding cannot be triggered.'}
+                    : 'Evaluations have already started for this period, so pre-cycle onboarding cannot be triggered.'}
               </p>
             </div>
             <div className="flex items-center gap-3">

@@ -324,6 +324,7 @@ model EvaluationPeriod {
   name                    String                     // e.g., "Q3 2025"
   startDate               DateTime
   endDate                 DateTime
+  reviewStartDate         DateTime
   isActive                Boolean                    @default(true)
   isLocked                Boolean                    @default(false) // Prevents new submissions when locked
   reminderSent            Boolean                    @default(false) // Track if deadline reminder was sent
@@ -340,6 +341,7 @@ model EvaluationPeriod {
 
   @@index([isActive])
   @@index([startDate])
+  @@index([reviewStartDate])
   @@index([preEvaluationTriggeredAt])
 }
 

@@ -33,7 +33,7 @@ export async function POST(
       include: {
         period: {
           select: {
-            startDate: true,
+            reviewStartDate: true,
           },
         },
       },
@@ -43,14 +43,14 @@ export async function POST(
       return NextResponse.json({ error: 'Pre-evaluation prep not found' }, { status: 404 })
     }
 
-    const periodStart = new Date(prep.period.startDate)
-    periodStart.setHours(0, 0, 0, 0)
+    const reviewStartDate = new Date(prep.period.reviewStartDate)
+    reviewStartDate.setHours(0, 0, 0, 0)
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
-    if (periodStart > today) {
+    if (reviewStartDate > today) {
       return NextResponse.json(
-        { error: 'Overrides are only available after the cycle start date' },
+        { error: 'Overrides are only available after evaluations begin' },
         { status: 400 }
       )
     }

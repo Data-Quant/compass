@@ -112,6 +112,7 @@ interface PreEvaluationTask {
     id: string
     name: string
     startDate: string
+    reviewStartDate: string
   }
 }
 
@@ -337,9 +338,9 @@ export default function DashboardPage() {
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground mt-1">
-                    {preEvaluationTask.period.name} opens on{' '}
-                    {new Date(preEvaluationTask.period.startDate).toLocaleDateString()}.
-                    Complete your questions and evaluatee list before the cycle starts.
+                    {preEvaluationTask.period.name} evaluations start on{' '}
+                    {new Date(preEvaluationTask.period.reviewStartDate).toLocaleDateString()}.
+                    Complete your questions and evaluatee list before evaluations begin.
                   </p>
                   <div className="mt-3 flex items-center gap-3 max-w-md">
                     <Progress

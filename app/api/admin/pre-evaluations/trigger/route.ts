@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     console.error('Failed to trigger pre-evaluations:', error)
     if (
       error instanceof Error &&
-      error.message === 'Pre-evaluation onboarding can only be triggered before the cycle start date.'
+      error.message === 'Pre-evaluation onboarding can only be triggered before the evaluation start date.'
     ) {
       return NextResponse.json({ error: error.message }, { status: 400 })
     }

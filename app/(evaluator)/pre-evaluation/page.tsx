@@ -68,6 +68,7 @@ interface PrepResponse {
       name: string
       startDate: string
       endDate: string
+      reviewStartDate: string
       isActive: boolean
     }
   } | null
@@ -267,7 +268,8 @@ export default function PreEvaluationPage() {
               Pre-Evaluation Onboarding
             </h1>
             <p className="text-muted-foreground mt-1">
-              {prep.period.name} opens on {new Date(prep.period.startDate).toLocaleDateString()}.
+              {prep.period.name} quarter ends on {new Date(prep.period.endDate).toLocaleDateString()}. Evaluations start on{' '}
+              {new Date(prep.period.reviewStartDate).toLocaleDateString()}.
             </p>
           </div>
           <Badge variant="secondary">
@@ -288,7 +290,7 @@ export default function PreEvaluationPage() {
             <div>
               <p className="font-medium text-foreground">This pre-evaluation task is locked.</p>
               <p className="text-sm text-muted-foreground">
-                The cycle has already opened. Late submission is disabled; HR can review or override the overdue task.
+                Evaluations have already started. Late submission is disabled; HR can review or override the overdue task.
               </p>
             </div>
           </CardContent>

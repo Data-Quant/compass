@@ -969,12 +969,13 @@ export async function sendPreEvaluationLeadPrepNotification(
           email: true,
         },
       },
-      period: {
-        select: {
-          name: true,
-          startDate: true,
+        period: {
+          select: {
+            name: true,
+            startDate: true,
+            reviewStartDate: true,
+          },
         },
-      },
     },
   })
 
@@ -984,9 +985,9 @@ export async function sendPreEvaluationLeadPrepNotification(
 
   const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || '').replace(/\/$/, '')
   const prepUrl = appBaseUrl ? `${appBaseUrl}/pre-evaluation` : '/pre-evaluation'
-  const startDateLabel = new Date(prep.period.startDate).toLocaleDateString()
+  const reviewStartDateLabel = new Date(prep.period.reviewStartDate).toLocaleDateString()
   const daysUntilStart = Math.ceil(
-    (new Date(prep.period.startDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+    (new Date(prep.period.reviewStartDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
   )
 
   const titleByType: Record<typeof reminderType, string> = {
@@ -997,10 +998,10 @@ export async function sendPreEvaluationLeadPrepNotification(
   }
 
   const bodyByType: Record<typeof reminderType, string> = {
-    INITIAL: 'Performance evaluations are opening in 2 weeks. Please complete your required pre-evaluation onboarding before the cycle starts.',
-    SEVEN_DAY: 'Performance evaluations are opening in 1 week. Please complete both required pre-evaluation submissions before the cycle starts.',
+    INITIAL: 'Performance evaluations are opening in 2 weeks. Please complete your required pre-evaluation onboarding before evaluations begin.',
+    SEVEN_DAY: 'Performance evaluations are opening in 1 week. Please complete both required pre-evaluation submissions before evaluations begin.',
     ONE_DAY: 'Performance evaluations open tomorrow. Complete your pre-evaluation onboarding now if it is still outstanding.',
-    MANUAL_RESEND: 'Please complete your pre-evaluation onboarding as soon as possible so the upcoming cycle can be prepared.',
+    MANUAL_RESEND: 'Please complete your pre-evaluation onboarding as soon as possible so the upcoming evaluations can be prepared.',
   }
 
   const htmlContent = `
@@ -1009,18 +1010,18 @@ export async function sendPreEvaluationLeadPrepNotification(
       <p>Hi ${escapeHtml(prep.lead.name)},</p>
       <p>${escapeHtml(bodyByType[reminderType])}</p>
 
-      <div style="background: #F8FAFC; padding: 20px; border-radius: 8px; margin: 20px 0;">
-        <p><strong>Evaluation Period:</strong> ${escapeHtml(prep.period.name)}</p>
-        <p><strong>Cycle Start Date:</strong> ${escapeHtml(startDateLabel)}</p>
-        <p><strong>Required submissions:</strong> 3 lead questions and your evaluatee list</p>
-        <p><strong>Time remaining:</strong> ${
-          daysUntilStart > 1
-            ? `${daysUntilStart} days`
-            : daysUntilStart === 1
-              ? '1 day'
-              : 'Starts today'
-        }</p>
-      </div>
+        <div style="background: #F8FAFC; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <p><strong>Evaluation Period:</strong> ${escapeHtml(prep.period.name)}</p>
+          <p><strong>Evaluations Begin:</strong> ${escapeHtml(reviewStartDateLabel)}</p>
+          <p><strong>Required submissions:</strong> 3 lead questions and your evaluatee list</p>
+          <p><strong>Time remaining:</strong> ${
+            daysUntilStart > 1
+              ? `${daysUntilStart} days`
+              : daysUntilStart === 1
+                ? '1 day'
+                : 'Evaluations start today'
+          }</p>
+        </div>
 
       ${
         appBaseUrl
@@ -1029,7 +1030,7 @@ export async function sendPreEvaluationLeadPrepNotification(
       }
 
       <p style="color: #64748B; font-size: 14px;">
-        This onboarding includes two required steps and should be completed before the cycle opens.
+        This onboarding includes two required steps and should be completed before evaluations begin.
       </p>
     </div>
   `

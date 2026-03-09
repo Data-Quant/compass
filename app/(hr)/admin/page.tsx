@@ -183,11 +183,11 @@ export default function AdminDashboardPage() {
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground mt-1">
-                    {preEvaluationData.period.name} starts on{' '}
-                    {new Date(preEvaluationData.period.startDate).toLocaleDateString()}.
+                    {preEvaluationData.period.name} evaluations start on{' '}
+                    {new Date(preEvaluationData.period.reviewStartDate).toLocaleDateString()}.
                     {preEvaluationData.summary.overdue > 0
                       ? ` ${preEvaluationData.summary.overdue} lead prep(s) are overdue.`
-                      : ' Review outstanding lead prep tasks before the cycle opens.'}
+                      : ' Review outstanding lead prep tasks before evaluations begin.'}
                   </p>
                 </div>
               </div>

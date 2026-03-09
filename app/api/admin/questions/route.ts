@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
+import { derivePreEvaluationStatus } from '@/lib/pre-evaluation'
 
 // GET - List all evaluation questions
 export async function GET(request: NextRequest) {
@@ -12,7 +13,103 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
+    const view = searchParams.get('view')
     const relationshipType = searchParams.get('relationshipType')
+    const periodIdParam = searchParams.get('periodId')
+
+    if (view === 'lead-submissions') {
+      const periods = await prisma.evaluationPeriod.findMany({
+        orderBy: { reviewStartDate: 'desc' },
+        select: {
+          id: true,
+          name: true,
+          startDate: true,
+          endDate: true,
+          reviewStartDate: true,
+          isActive: true,
+          preEvaluationTriggeredAt: true,
+        },
+      })
+
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+
+      const selectedPeriodId =
+        periodIdParam ||
+        periods.find((period) => period.isActive)?.id ||
+        periods.find((period) => {
+          const reviewStartDate = new Date(period.reviewStartDate)
+          reviewStartDate.setHours(0, 0, 0, 0)
+          return Boolean(period.preEvaluationTriggeredAt) && reviewStartDate >= today
+        })?.id ||
+        periods.find((period) => {
+          const reviewStartDate = new Date(period.reviewStartDate)
+          reviewStartDate.setHours(0, 0, 0, 0)
+          return reviewStartDate >= today
+        })?.id ||
+        periods.find((period) => period.preEvaluationTriggeredAt)?.id ||
+        periods[0]?.id
+
+      if (!selectedPeriodId) {
+        return NextResponse.json({
+          periods: [],
+          selectedPeriodId: null,
+          leadQuestionSets: [],
+        })
+      }
+
+      const leadQuestionSets = await prisma.preEvaluationLeadPrep.findMany({
+        where: { periodId: selectedPeriodId },
+        include: {
+          lead: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              department: true,
+              position: true,
+            },
+          },
+          period: {
+            select: {
+              id: true,
+              name: true,
+              startDate: true,
+              endDate: true,
+              reviewStartDate: true,
+              isActive: true,
+              preEvaluationTriggeredAt: true,
+            },
+          },
+          questions: {
+            orderBy: { orderIndex: 'asc' },
+          },
+        },
+        orderBy: {
+          lead: {
+            name: 'asc',
+          },
+        },
+      })
+
+      return NextResponse.json({
+        periods,
+        selectedPeriodId,
+        leadQuestionSets: leadQuestionSets.map((prep) => ({
+          id: prep.id,
+          status: derivePreEvaluationStatus(prep),
+          questionsSubmittedAt: prep.questionsSubmittedAt,
+          evaluateesSubmittedAt: prep.evaluateesSubmittedAt,
+          questionCount: prep.questions.length,
+          isRuntimeActive: Boolean(
+            prep.period.isActive && prep.questionsSubmittedAt && prep.questions.length > 0
+          ),
+          lead: prep.lead,
+          period: prep.period,
+          questions: prep.questions,
+        })),
+      })
+    }
 
     const where = relationshipType ? { relationshipType: relationshipType as any } : {}
 
@@ -132,7 +229,8 @@ export async function DELETE(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const id = searchParams.get('id')
+    const body = await request.json().catch(() => null)
+    const id = searchParams.get('id') || body?.id
 
     if (!id) {
       return NextResponse.json({ error: 'Question ID is required' }, { status: 400 })
