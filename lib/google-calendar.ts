@@ -1,5 +1,6 @@
 import { LeaveStatus } from '@prisma/client'
 import { prisma } from '@/lib/db'
+import { C_LEVEL_EVALUATORS } from '@/lib/config'
 
 type GoogleCalendarConfig = {
   clientId: string
@@ -60,6 +61,20 @@ function warnCalendarSkip(operation: 'sync' | 'remove', leaveRequestId: string, 
 
 function isValidEmail(email: string | null | undefined): email is string {
   return Boolean(email && email.includes('@'))
+}
+
+export function shouldIncludeExecutiveLeaveInviteForPosition(position: string | null | undefined) {
+  if (!position) return false
+
+  const normalized = position.trim().toLowerCase()
+  if (!normalized) return false
+
+  return (
+    normalized.includes('principal') ||
+    normalized.includes('manager') ||
+    normalized.includes('junior partner') ||
+    /\bjp\b/.test(normalized)
+  )
 }
 
 function toUtcDateOnly(value: Date) {
@@ -227,12 +242,29 @@ async function collectTeamInviteEmails(employeeId: string) {
   return emails
 }
 
+async function collectExecutiveInviteEmails() {
+  const executives = await prisma.user.findMany({
+    where: {
+      name: { in: C_LEVEL_EVALUATORS },
+      email: { not: null },
+    },
+    select: { email: true },
+  })
+
+  const emails = new Set<string>()
+  for (const executive of executives) {
+    if (isValidEmail(executive.email)) emails.add(executive.email.toLowerCase())
+  }
+
+  return emails
+}
+
 async function collectLeaveAttendeeEmails(leaveRequestId: string) {
   const leaveRequest = await prisma.leaveRequest.findUnique({
     where: { id: leaveRequestId },
     include: {
       employee: {
-        select: { id: true, name: true, email: true, department: true },
+        select: { id: true, name: true, email: true, department: true, position: true },
       },
       coverPerson: {
         select: { id: true, email: true },
@@ -242,7 +274,7 @@ async function collectLeaveAttendeeEmails(leaveRequestId: string) {
 
   if (!leaveRequest) return null
 
-  const [hrUsers, teamEmails, additionalUsers] = await Promise.all([
+  const [hrUsers, teamEmails, additionalUsers, executiveEmails] = await Promise.all([
     prisma.user.findMany({
       where: {
         role: 'HR',
@@ -260,6 +292,9 @@ async function collectLeaveAttendeeEmails(leaveRequestId: string) {
           select: { email: true },
         })
       : Promise.resolve([] as Array<{ email: string | null }>),
+    shouldIncludeExecutiveLeaveInviteForPosition(leaveRequest.employee.position)
+      ? collectExecutiveInviteEmails()
+      : Promise.resolve(new Set<string>()),
   ])
 
   const allEmails = new Set<string>()
@@ -274,6 +309,9 @@ async function collectLeaveAttendeeEmails(leaveRequestId: string) {
   }
   for (const user of additionalUsers) {
     if (isValidEmail(user.email)) allEmails.add(user.email.toLowerCase())
+  }
+  for (const email of executiveEmails) {
+    allEmails.add(email.toLowerCase())
   }
 
   return {
