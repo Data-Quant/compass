@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -35,6 +36,7 @@ import {
   Wrench,
   CheckCircle2,
   Eye,
+  Trash2,
 } from 'lucide-react'
 
 interface DeviceTicket {
@@ -92,6 +94,7 @@ export default function HRDeviceTicketsPage() {
   // Update modal state
   const [updateModal, setUpdateModal] = useState<{ open: boolean; ticket: DeviceTicket | null }>({ open: false, ticket: null })
   const [detailsModal, setDetailsModal] = useState<{ open: boolean; ticket: DeviceTicket | null }>({ open: false, ticket: null })
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; ticket: DeviceTicket | null }>({ open: false, ticket: null })
   const [newStatus, setNewStatus] = useState('')
   const [solution, setSolution] = useState('')
   const [expectedResolutionDate, setExpectedResolutionDate] = useState('')
@@ -159,6 +162,10 @@ export default function HRDeviceTicketsPage() {
     setDetailsModal({ open: true, ticket })
   }
 
+  const openDeleteDialog = (ticket: DeviceTicket) => {
+    setDeleteDialog({ open: true, ticket })
+  }
+
   const handleUpdate = async () => {
     if (!updateModal.ticket) return
 
@@ -198,6 +205,39 @@ export default function HRDeviceTicketsPage() {
       }
     } catch {
       toast.error('Failed to update ticket')
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deleteDialog.ticket) return
+
+    setProcessing(true)
+    try {
+      const res = await fetch('/api/device-tickets', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: deleteDialog.ticket.id }),
+      })
+
+      const data = await res.json()
+
+      if (data.success) {
+        toast.success('Ticket deleted')
+        setDeleteDialog({ open: false, ticket: null })
+        if (updateModal.ticket?.id === deleteDialog.ticket.id) {
+          setUpdateModal({ open: false, ticket: null })
+        }
+        if (detailsModal.ticket?.id === deleteDialog.ticket.id) {
+          setDetailsModal({ open: false, ticket: null })
+        }
+        loadTickets()
+      } else {
+        toast.error(data.error || 'Failed to delete ticket')
+      }
+    } catch {
+      toast.error('Failed to delete ticket')
     } finally {
       setProcessing(false)
     }
@@ -367,23 +407,34 @@ export default function HRDeviceTicketsPage() {
                             {new Date(ticket.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                           </TableCell>
                           <TableCell className="px-4 py-3 whitespace-nowrap">
-                            {canAdvance ? (
+                            <div className="flex items-center gap-2">
+                              {canAdvance ? (
+                                <Button
+                                  size="sm"
+                                  onClick={() => openUpdateModal(ticket)}
+                                >
+                                  Update
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openDetailsModal(ticket)}
+                                >
+                                  <Eye className="w-3.5 h-3.5 mr-1" />
+                                  View
+                                </Button>
+                              )}
                               <Button
-                                size="sm"
-                                onClick={() => openUpdateModal(ticket)}
-                              >
-                                Update
-                              </Button>
-                            ) : (
-                              <Button
-                                size="sm"
+                                size="icon"
                                 variant="outline"
-                                onClick={() => openDetailsModal(ticket)}
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => openDeleteDialog(ticket)}
+                                title="Delete ticket"
                               >
-                                <Eye className="w-3.5 h-3.5 mr-1" />
-                                View
+                                <Trash2 className="w-3.5 h-3.5" />
                               </Button>
-                            )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       )
@@ -574,6 +625,20 @@ export default function HRDeviceTicketsPage() {
           </div>
         )}
       </Modal>
+
+      <ConfirmDialog
+        isOpen={deleteDialog.open}
+        onClose={() => setDeleteDialog({ open: false, ticket: null })}
+        onConfirm={handleDelete}
+        title="Delete Ticket"
+        message={
+          deleteDialog.ticket
+            ? `Delete "${deleteDialog.ticket.title}" for ${deleteDialog.ticket.employee.name}? This cannot be undone.`
+            : 'Delete this ticket? This cannot be undone.'
+        }
+        confirmText={processing ? 'Deleting...' : 'Delete'}
+        variant="danger"
+      />
     </div>
   )
 }

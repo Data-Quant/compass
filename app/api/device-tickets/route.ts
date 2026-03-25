@@ -191,3 +191,45 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create ticket' }, { status: 500 })
   }
 }
+
+// DELETE - Remove a device ticket (HR/Security)
+export async function DELETE(request: NextRequest) {
+  try {
+    const user = await getSession()
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const isSupportUser = user.role === 'HR' || user.role === 'SECURITY'
+    if (!isSupportUser) {
+      return NextResponse.json({ error: 'Only HR or Security can delete tickets' }, { status: 403 })
+    }
+
+    const { searchParams } = new URL(request.url)
+    const body = await request.json().catch(() => ({}))
+    const id = searchParams.get('id') || body.id
+
+    if (!id) {
+      return NextResponse.json({ error: 'Ticket ID is required' }, { status: 400 })
+    }
+
+    const existingTicket = await prisma.deviceTicket.findUnique({
+      where: { id },
+      select: { id: true },
+    })
+
+    if (!existingTicket) {
+      return NextResponse.json({ error: 'Ticket not found' }, { status: 404 })
+    }
+
+    await prisma.deviceTicket.delete({
+      where: { id },
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('Failed to delete device ticket:', error)
+    return NextResponse.json({ error: 'Failed to delete ticket' }, { status: 500 })
+  }
+}

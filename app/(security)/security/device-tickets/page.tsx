@@ -14,8 +14,10 @@ import {
   Shield,
   Clock,
   Eye,
+  Trash2,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -135,6 +137,10 @@ export default function SecurityDeviceTicketsPage() {
     open: boolean
     ticket: DeviceTicket | null
   }>({ open: false, ticket: null })
+  const [deleteDialog, setDeleteDialog] = useState<{
+    open: boolean
+    ticket: DeviceTicket | null
+  }>({ open: false, ticket: null })
   const [newStatus, setNewStatus] = useState('')
   const [solution, setSolution] = useState('')
   const [expectedResolutionDate, setExpectedResolutionDate] = useState('')
@@ -204,6 +210,10 @@ export default function SecurityDeviceTicketsPage() {
     setDetailsModal({ open: true, ticket })
   }
 
+  const openDeleteDialog = (ticket: DeviceTicket) => {
+    setDeleteDialog({ open: true, ticket })
+  }
+
   const handleUpdate = async () => {
     if (!updateModal.ticket) return
 
@@ -258,6 +268,39 @@ export default function SecurityDeviceTicketsPage() {
       }
     } catch {
       toast.error('Failed to update ticket')
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deleteDialog.ticket) return
+
+    setProcessing(true)
+    try {
+      const res = await fetch('/api/device-tickets', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: deleteDialog.ticket.id }),
+      })
+
+      const data = await res.json()
+
+      if (data.success) {
+        toast.success('Ticket deleted')
+        setDeleteDialog({ open: false, ticket: null })
+        if (updateModal.ticket?.id === deleteDialog.ticket.id) {
+          setUpdateModal({ open: false, ticket: null })
+        }
+        if (detailsModal.ticket?.id === deleteDialog.ticket.id) {
+          setDetailsModal({ open: false, ticket: null })
+        }
+        loadTickets()
+      } else {
+        toast.error(data.error || 'Failed to delete ticket')
+      }
+    } catch {
+      toast.error('Failed to delete ticket')
     } finally {
       setProcessing(false)
     }
@@ -480,23 +523,34 @@ export default function SecurityDeviceTicketsPage() {
                             })}
                           </TableCell>
                           <TableCell className="px-4 py-3 whitespace-nowrap">
-                            {canAdvance ? (
+                            <div className="flex items-center gap-2">
+                              {canAdvance ? (
+                                <Button
+                                  size="sm"
+                                  onClick={() => openUpdateModal(ticket)}
+                                >
+                                  Update
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openDetailsModal(ticket)}
+                                >
+                                  <Eye className="w-3.5 h-3.5 mr-1" />
+                                  View
+                                </Button>
+                              )}
                               <Button
-                                size="sm"
-                                onClick={() => openUpdateModal(ticket)}
-                              >
-                                Update
-                              </Button>
-                            ) : (
-                              <Button
-                                size="sm"
+                                size="icon"
                                 variant="outline"
-                                onClick={() => openDetailsModal(ticket)}
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => openDeleteDialog(ticket)}
+                                title="Delete ticket"
                               >
-                                <Eye className="w-3.5 h-3.5 mr-1" />
-                                View
+                                <Trash2 className="w-3.5 h-3.5" />
                               </Button>
-                            )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       )
@@ -622,6 +676,20 @@ export default function SecurityDeviceTicketsPage() {
           </div>
         )}
       </Modal>
+
+      <ConfirmDialog
+        isOpen={deleteDialog.open}
+        onClose={() => setDeleteDialog({ open: false, ticket: null })}
+        onConfirm={handleDelete}
+        title="Delete Ticket"
+        message={
+          deleteDialog.ticket
+            ? `Delete "${deleteDialog.ticket.title}" for ${deleteDialog.ticket.employee.name}? This cannot be undone.`
+            : 'Delete this ticket? This cannot be undone.'
+        }
+        confirmText={processing ? 'Deleting...' : 'Delete'}
+        variant="danger"
+      />
 
       {/* Resolved Ticket Details Modal */}
       <Modal
