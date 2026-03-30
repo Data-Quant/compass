@@ -511,10 +511,10 @@ export default function LoginPage() {
               </motion.h1>
               <motion.p
                 key={`hero-company-${branding.companyName}`}
-                initial={{ opacity: 0, filter: 'blur(8px)' }}
-                animate={{ opacity: 1, filter: 'blur(0px)' }}
-                exit={{ opacity: 0, filter: 'blur(8px)' }}
-                transition={{ delay: 0.55, duration: 0.5, ease: ease.smooth }}
+                initial={{ opacity: 0, x: -48, filter: 'blur(8px)' }}
+                animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+                exit={{ opacity: 0, x: 48, filter: 'blur(8px)' }}
+                transition={{ duration: 0.34, ease: ease.smooth }}
                 className="text-lg text-muted-foreground leading-relaxed"
               >
                 Performance reviews, leave management, and team collaboration —
@@ -553,10 +553,10 @@ export default function LoginPage() {
                 <AnimatePresence mode="wait" initial={false}>
                   <motion.p
                     key={`mobile-brand-${branding.companyName}`}
-                    initial={{ opacity: 0, y: 4, filter: 'blur(6px)' }}
-                    animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-                    exit={{ opacity: 0, y: -4, filter: 'blur(6px)' }}
-                    transition={{ duration: 0.24, ease: ease.smooth }}
+                    initial={{ opacity: 0, x: -32, filter: 'blur(6px)' }}
+                    animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+                    exit={{ opacity: 0, x: 32, filter: 'blur(6px)' }}
+                    transition={{ duration: 0.28, ease: ease.smooth }}
                     className="text-muted-foreground text-sm"
                   >
                     {branding.companyName} Performance Platform

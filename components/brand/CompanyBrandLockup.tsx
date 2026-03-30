@@ -23,10 +23,10 @@ export function CompanyBrandLockup({
     <AnimatePresence mode="wait" initial={false}>
       <motion.span
         key={selectedCompany}
-        initial={{ opacity: 0, y: 4, scale: 0.97, filter: 'blur(8px)' }}
-        animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
-        exit={{ opacity: 0, y: -4, scale: 0.97, filter: 'blur(8px)' }}
-        transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+        initial={{ opacity: 0, x: -36, scale: 0.98, filter: 'blur(8px)' }}
+        animate={{ opacity: 1, x: 0, scale: 1, filter: 'blur(0px)' }}
+        exit={{ opacity: 0, x: 36, scale: 0.98, filter: 'blur(8px)' }}
+        transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
         className={cn('inline-flex shrink-0 items-center gap-2', className)}
         aria-label={branding.companyName}
         role="img"
