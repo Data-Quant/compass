@@ -5,8 +5,9 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
-import { Plutus21Logo } from '@/components/brand/Plutus21Logo'
-import { PLATFORM_NAME } from '@/lib/config'
+import { CompanyBrandMark } from '@/components/brand/CompanyBrandMark'
+import { CompanyBrandLockup } from '@/components/brand/CompanyBrandLockup'
+import { useCompanyBranding } from '@/components/providers/company-branding-provider'
 import {
   ChevronLeft,
   ChevronRight,
@@ -275,6 +276,7 @@ interface AppSidebarProps {
 
 export function AppSidebar({ config, collapsed, onToggle, userRole, className }: AppSidebarProps) {
   const pathname = usePathname()
+  const { branding } = useCompanyBranding()
 
   return (
     <aside
@@ -289,11 +291,20 @@ export function AppSidebar({ config, collapsed, onToggle, userRole, className }:
         'flex h-14 shrink-0 items-center border-b border-border px-3',
         collapsed ? 'justify-center' : 'gap-3'
       )}>
-        <Plutus21Logo size={22} className="text-[#2F80ED] dark:text-foreground shrink-0" />
+        {collapsed ? (
+          <CompanyBrandMark size={22} className="text-[#2F80ED] dark:text-foreground shrink-0" />
+        ) : (
+          <CompanyBrandLockup size={22} className="text-[#2F80ED] dark:text-foreground shrink-0" />
+        )}
         {!collapsed && (
-          <span className="text-base font-display tracking-tight text-foreground">
-            {PLATFORM_NAME}
-          </span>
+          <div className="min-w-0">
+            <div className="text-base font-display tracking-tight text-foreground">
+              {branding.platformName}
+            </div>
+            <div className="truncate text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+              {branding.companyName}
+            </div>
+          </div>
         )}
       </div>
 

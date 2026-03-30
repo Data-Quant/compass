@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/select'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { ShimmerButton } from '@/components/magicui/shimmer-button'
+import { useCompanyBranding } from '@/components/providers/company-branding-provider'
 import {
   Monitor,
   Plus,
@@ -29,7 +30,6 @@ import {
   ChevronUp,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { COMPANY_NAME } from '@/lib/config'
 
 interface DeviceTicket {
   id: string
@@ -76,6 +76,7 @@ const STATUS_CONFIG = {
 }
 
 export default function DeviceSupportPage() {
+  const { branding } = useCompanyBranding()
   const [tickets, setTickets] = useState<DeviceTicket[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -606,7 +607,7 @@ export default function DeviceSupportPage() {
           transition={{ delay: 1 }}
           className="mt-16 flex items-center justify-center gap-2 text-xs text-muted-foreground/50"
         >
-          <span>Powered by {COMPANY_NAME}</span>
+          <span>Powered by {branding.companyName}</span>
         </motion.div>
     </div>
   )

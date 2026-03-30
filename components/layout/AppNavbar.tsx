@@ -20,8 +20,8 @@ import {
   SheetTrigger,
   SheetClose,
 } from '@/components/ui/sheet'
-import { Plutus21Logo } from '@/components/brand/Plutus21Logo'
-import { PLATFORM_NAME, COMPANY_NAME } from '@/lib/config'
+import { CompanyBrandLockup } from '@/components/brand/CompanyBrandLockup'
+import { useCompanyBranding } from '@/components/providers/company-branding-provider'
 
 interface NavLink {
   href: string
@@ -38,6 +38,8 @@ interface AppNavbarProps {
 }
 
 export function AppNavbar({ user, onLogout, badge, navLinks = [] }: AppNavbarProps) {
+  const { branding } = useCompanyBranding()
+
   // Default nav links based on role
   const defaultLinks: NavLink[] = [
     {
@@ -101,12 +103,15 @@ export function AppNavbar({ user, onLogout, badge, navLinks = [] }: AppNavbarPro
             animate={{ opacity: 1, x: 0 }}
             className="flex items-center gap-3"
           >
-            <Plutus21Logo size={28} className="text-[#2F80ED] dark:text-foreground" />
+            <CompanyBrandLockup size={28} className="text-[#2F80ED] dark:text-foreground" />
             <Separator orientation="vertical" className="h-6 hidden sm:block" />
             <div className="hidden sm:flex items-center gap-2">
               <span className="text-lg font-display tracking-tight text-foreground">
-                {PLATFORM_NAME}
+                {branding.platformName}
               </span>
+              <Badge variant="secondary" className="text-[10px] uppercase tracking-[0.18em]">
+                {branding.companyName}
+              </Badge>
               {badge && (
                 <Badge variant="secondary" className="text-xs">
                   {badge}
@@ -157,10 +162,13 @@ export function AppNavbar({ user, onLogout, badge, navLinks = [] }: AppNavbarPro
                   {/* Header */}
                   <div className="flex items-center justify-between p-4 border-b border-border">
                     <div className="flex items-center gap-2">
-                      <Plutus21Logo size={22} className="text-[#2F80ED] dark:text-foreground" />
+                      <CompanyBrandLockup size={22} className="text-[#2F80ED] dark:text-foreground" />
                       <span className="font-display tracking-tight text-foreground">
-                        {PLATFORM_NAME}
+                        {branding.platformName}
                       </span>
+                      <Badge variant="secondary" className="text-[10px] uppercase tracking-[0.18em]">
+                        {branding.companyName}
+                      </Badge>
                       {badge && (
                         <Badge variant="secondary" className="text-xs">
                           {badge}

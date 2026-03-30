@@ -5,6 +5,7 @@ import { LogOut, Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { UserAvatar } from '@/components/composed/UserAvatar'
+import { useCompanyBranding } from '@/components/providers/company-branding-provider'
 import { cn } from '@/lib/utils'
 
 interface TopBarProps {
@@ -16,9 +17,11 @@ interface TopBarProps {
 
 export function TopBar({ user, onMenuClick, showMenuButton = false, className }: TopBarProps) {
   const router = useRouter()
+  const { clearSelectedCompany } = useCompanyBranding()
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' })
+    clearSelectedCompany()
     router.push('/login')
   }
 

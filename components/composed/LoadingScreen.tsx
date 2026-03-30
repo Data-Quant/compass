@@ -2,8 +2,8 @@
 
 import { motion } from 'framer-motion'
 import { cn } from '@/lib/utils'
-import { Plutus21Logo } from '@/components/brand/Plutus21Logo'
-import { PLATFORM_NAME } from '@/lib/config'
+import { CompanyBrandLockup } from '@/components/brand/CompanyBrandLockup'
+import { useCompanyBranding } from '@/components/providers/company-branding-provider'
 
 interface LoadingScreenProps {
   message?: string
@@ -55,6 +55,8 @@ export function LoadingScreen({
   className,
   variant = 'page',
 }: LoadingScreenProps) {
+  const { branding } = useCompanyBranding()
+
   /* ── Card variant: minimal spinner ── */
   if (variant === 'card') {
     return (
@@ -106,11 +108,16 @@ export function LoadingScreen({
           animate={{ opacity: 1, filter: 'blur(0px)' }}
           transition={{ delay: 0.2, duration: 0.5, ease }}
         >
-          <Plutus21Logo size={24} className="text-[#2F80ED]/60 dark:text-foreground/60" />
+          <CompanyBrandLockup size={24} className="text-[#2F80ED]/60 dark:text-foreground/60" />
           <div className="h-5 w-px bg-border/40" />
-          <span className="text-sm font-display tracking-tight text-foreground/60">
-            {PLATFORM_NAME}
-          </span>
+          <div className="flex flex-col">
+            <span className="text-sm font-display tracking-tight text-foreground/60">
+              {branding.platformName}
+            </span>
+            <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/50">
+              {branding.companyName}
+            </span>
+          </div>
         </motion.div>
       </motion.div>
     </div>

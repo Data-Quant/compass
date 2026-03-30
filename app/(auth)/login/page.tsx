@@ -13,7 +13,8 @@ import { Button } from '@/components/ui/button'
 import { BackgroundBeams } from '@/components/aceternity/background-beams'
 import { ShimmerButton } from '@/components/magicui/shimmer-button'
 import { UserAvatar } from '@/components/composed/UserAvatar'
-import { Plutus21Logo } from '@/components/brand/Plutus21Logo'
+import { CompanyBrandLockup } from '@/components/brand/CompanyBrandLockup'
+import { useCompanyBranding } from '@/components/providers/company-branding-provider'
 import {
   Search,
   Users,
@@ -24,7 +25,10 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react'
-import { PLATFORM_NAME, COMPANY_NAME } from '@/lib/config'
+import {
+  type CompanyView,
+  userMatchesCompanyView,
+} from '@/lib/company-branding'
 
 interface User {
   id: string
@@ -34,6 +38,11 @@ interface User {
   role: string
   hasPassword?: boolean
 }
+
+const companyOptions: Array<{ value: CompanyView; label: string }> = [
+  { value: 'plutus', label: 'Plutus' },
+  { value: '3e', label: '3E' },
+]
 
 /* ─── Design-system easing curves ─── */
 const ease = {
@@ -167,7 +176,15 @@ function CompassHero({ size = 120 }: { size?: number }) {
  *  - No skeleton loaders
  *  - Confident emptiness with generous spacing
  * ──────────────────────────────────────────── */
-function SplashScreen({ onComplete }: { onComplete: () => void }) {
+function SplashScreen({
+  onComplete,
+  platformName,
+  companyName,
+}: {
+  onComplete: () => void
+  platformName: string
+  companyName: string
+}) {
   useEffect(() => {
     const timer = setTimeout(onComplete, 2800)
     return () => clearTimeout(timer)
@@ -209,7 +226,7 @@ function SplashScreen({ onComplete }: { onComplete: () => void }) {
             animate={{ scale: 1, opacity: 1 }}
             transition={{ delay: 1.2, duration: 0.4, ...ease.spring }}
           >
-            <Plutus21Logo
+            <CompanyBrandLockup
               size={36}
               className="text-[#2F80ED] dark:text-foreground"
             />
@@ -228,7 +245,7 @@ function SplashScreen({ onComplete }: { onComplete: () => void }) {
             animate={{ opacity: 1, filter: 'blur(0px)', x: 0 }}
             transition={{ delay: 1.5, duration: 0.5, ease: ease.smooth }}
           >
-            {PLATFORM_NAME}
+            {platformName}
           </motion.span>
         </motion.div>
 
@@ -239,7 +256,7 @@ function SplashScreen({ onComplete }: { onComplete: () => void }) {
           animate={{ opacity: 1, filter: 'blur(0px)' }}
           transition={{ delay: 1.9, duration: 0.5, ease: ease.smooth }}
         >
-          {COMPANY_NAME} Performance Platform
+          {companyName} Performance Platform
         </motion.p>
 
         {/* 4. Subtle loading indicator */}
@@ -272,6 +289,7 @@ function SplashScreen({ onComplete }: { onComplete: () => void }) {
  * Main Login Page
  * ──────────────────────────────────────────── */
 export default function LoginPage() {
+  const { selectedCompany, setSelectedCompany, branding } = useCompanyBranding()
   const [users, setUsers] = useState<User[]>([])
   const [usersLoadError, setUsersLoadError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
@@ -315,6 +333,17 @@ export default function LoginPage() {
 
     loadUsers()
   }, [])
+
+  useEffect(() => {
+    if (!selectedUser) return
+
+    if (!userMatchesCompanyView(selectedUser, selectedCompany)) {
+      setSelectedUser(null)
+      setPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+    }
+  }, [selectedCompany, selectedUser])
 
   const handleSplashComplete = useCallback(() => {
     setShowSplash(false)
@@ -381,11 +410,21 @@ export default function LoginPage() {
     newPassword.length >= 6 &&
     newPassword === confirmPassword
 
-  const filteredUsers = users.filter(
-    (user) =>
-      user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.department?.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase()
+  const filteredUsers = users.filter((user) => {
+    if (!userMatchesCompanyView(user, selectedCompany)) {
+      return false
+    }
+
+    if (!normalizedSearchTerm) {
+      return true
+    }
+
+    return (
+      user.name.toLowerCase().includes(normalizedSearchTerm) ||
+      user.department?.toLowerCase().includes(normalizedSearchTerm)
+    )
+  })
 
   if (!mounted) return null
 
@@ -394,9 +433,13 @@ export default function LoginPage() {
   return (
     <>
       {/* Splash overlay */}
-      <AnimatePresence>
-        {splashVisible && (
-          <SplashScreen onComplete={handleSplashComplete} />
+        <AnimatePresence>
+          {splashVisible && (
+            <SplashScreen
+              onComplete={handleSplashComplete}
+              platformName={branding.platformName}
+              companyName={branding.companyName}
+            />
         )}
       </AnimatePresence>
 
@@ -439,10 +482,10 @@ export default function LoginPage() {
               transition={{ delay: 0.2, duration: 0.5, ease: ease.smooth }}
               className="flex items-center gap-4"
             >
-              <Plutus21Logo size={36} className="text-[#2F80ED] dark:text-foreground" />
+              <CompanyBrandLockup size={36} className="text-[#2F80ED] dark:text-foreground" />
               <div className="h-7 w-px bg-border/60" />
               <span className="text-xl font-display tracking-tight text-foreground">
-                {PLATFORM_NAME}
+                {branding.platformName}
               </span>
             </motion.div>
 
@@ -473,7 +516,7 @@ export default function LoginPage() {
                 className="text-lg text-muted-foreground leading-relaxed"
               >
                 Performance reviews, leave management, and team collaboration —
-                everything you need to thrive at {COMPANY_NAME}.
+                everything you need to thrive at {branding.companyName}.
               </motion.p>
             </div>
 
@@ -500,13 +543,13 @@ export default function LoginPage() {
               {/* Mobile branding */}
               <div className="lg:hidden text-center mb-8">
                 <div className="flex items-center justify-center gap-3 mb-4">
-                  <Plutus21Logo size={32} className="text-[#2F80ED] dark:text-foreground" />
+                  <CompanyBrandLockup size={32} className="text-[#2F80ED] dark:text-foreground" />
                   <span className="text-xl font-display tracking-tight">
-                    {PLATFORM_NAME}
+                    {branding.platformName}
                   </span>
                 </div>
                 <p className="text-muted-foreground text-sm">
-                  {COMPANY_NAME} Performance Platform
+                  {branding.companyName} Performance Platform
                 </p>
               </div>
 
@@ -659,8 +702,31 @@ export default function LoginPage() {
                             Welcome back
                           </h2>
                           <p className="text-sm text-muted-foreground">
-                            Select your name to continue
+                            Select your company and name to continue
                           </p>
+                        </div>
+
+                        <div className="mb-4">
+                          <Label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                            Company
+                          </Label>
+                          <div className="mt-3 grid grid-cols-2 gap-2">
+                            {companyOptions.map((option) => {
+                              const isActive = selectedCompany === option.value
+
+                              return (
+                                <Button
+                                  key={option.value}
+                                  type="button"
+                                  variant={isActive ? 'default' : 'outline'}
+                                  className="justify-center"
+                                  onClick={() => setSelectedCompany(option.value)}
+                                >
+                                  {option.label}
+                                </Button>
+                              )
+                            })}
+                          </div>
                         </div>
 
                         {/* Search */}
@@ -752,7 +818,7 @@ export default function LoginPage() {
 
                         <div className="mt-6 pt-6 border-t border-border">
                           <p className="text-[11px] text-center text-muted-foreground/60 uppercase tracking-wider">
-                            {users.length} team members &bull; {COMPANY_NAME}
+                            {filteredUsers.length} visible users &bull; {branding.companyName}
                           </p>
                         </div>
                       </motion.div>

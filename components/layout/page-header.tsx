@@ -7,8 +7,8 @@ import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { Plutus21Logo } from '@/components/brand/Plutus21Logo'
-import { PLATFORM_NAME, COMPANY_NAME } from '@/lib/config'
+import { CompanyBrandLockup } from '@/components/brand/CompanyBrandLockup'
+import { useCompanyBranding } from '@/components/providers/company-branding-provider'
 
 interface PageHeaderProps {
   backHref: string
@@ -25,6 +25,8 @@ export function PageHeader({
   onLogout,
   badge,
 }: PageHeaderProps) {
+  const { branding } = useCompanyBranding()
+
   return (
     <motion.nav
       initial={{ opacity: 0, y: -10 }}
@@ -43,12 +45,15 @@ export function PageHeader({
             </Link>
             <Separator orientation="vertical" className="h-6 hidden sm:block" />
             <div className="flex items-center gap-3">
-              <Plutus21Logo size={28} className="text-[#2F80ED] dark:text-foreground" />
+              <CompanyBrandLockup size={28} className="text-[#2F80ED] dark:text-foreground" />
               <Separator orientation="vertical" className="h-6 hidden sm:block" />
-              <div className="hidden sm:flex items-center gap-2">
+              <div className="hidden sm:flex items-center gap-2 min-w-0">
                 <span className="text-lg font-display tracking-tight text-foreground">
-                  {PLATFORM_NAME}
+                  {branding.platformName}
                 </span>
+                <Badge variant="secondary" className="text-[10px] uppercase tracking-[0.18em]">
+                  {branding.companyName}
+                </Badge>
               </div>
               {badge && (
                 <Badge variant="secondary" className="text-xs">
