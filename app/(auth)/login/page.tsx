@@ -510,8 +510,10 @@ export default function LoginPage() {
                 <span className="text-foreground">your growth</span>
               </motion.h1>
               <motion.p
+                key={`hero-company-${branding.companyName}`}
                 initial={{ opacity: 0, filter: 'blur(8px)' }}
                 animate={{ opacity: 1, filter: 'blur(0px)' }}
+                exit={{ opacity: 0, filter: 'blur(8px)' }}
                 transition={{ delay: 0.55, duration: 0.5, ease: ease.smooth }}
                 className="text-lg text-muted-foreground leading-relaxed"
               >
@@ -548,9 +550,18 @@ export default function LoginPage() {
                     {branding.platformName}
                   </span>
                 </div>
-                <p className="text-muted-foreground text-sm">
-                  {branding.companyName} Performance Platform
-                </p>
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.p
+                    key={`mobile-brand-${branding.companyName}`}
+                    initial={{ opacity: 0, y: 4, filter: 'blur(6px)' }}
+                    animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                    exit={{ opacity: 0, y: -4, filter: 'blur(6px)' }}
+                    transition={{ duration: 0.24, ease: ease.smooth }}
+                    className="text-muted-foreground text-sm"
+                  >
+                    {branding.companyName} Performance Platform
+                  </motion.p>
+                </AnimatePresence>
               </div>
 
               <Card className="rounded-card border-border/50 shadow-premium">
