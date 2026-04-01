@@ -12,6 +12,7 @@ import {
   Eye,
   Palmtree,
   Plus,
+  Search,
   Sun,
   Thermometer,
   TriangleAlert,
@@ -202,6 +203,8 @@ export default function LeavePage() {
   const [selectedDayEvents, setSelectedDayEvents] = useState<CalendarEvent[]>([])
   const [departmentFilter, setDepartmentFilter] = useState<string>('ALL')
   const [reminderNoticeShown, setReminderNoticeShown] = useState(false)
+  const [notifySearch, setNotifySearch] = useState('')
+  const [editNotifySearch, setEditNotifySearch] = useState('')
 
   // Calendar state
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth())
@@ -312,6 +315,27 @@ export default function LeavePage() {
   const cancellableStatuses = new Set(['PENDING', 'LEAD_APPROVED', 'HR_APPROVED', 'APPROVED'])
   const canCancelRequest = (request: LeaveRequest) =>
     cancellableStatuses.has(request.status) && !hasLeaveEnded(request.endDate)
+  const availableNotifyUsers = useMemo(
+    () => users.filter((u) => u.id !== user?.id),
+    [users, user?.id]
+  )
+  const filterNotifyUsers = (searchTerm: string) => {
+    const normalized = searchTerm.trim().toLowerCase()
+    if (!normalized) return availableNotifyUsers
+    return availableNotifyUsers.filter(
+      (u) =>
+        u.name.toLowerCase().includes(normalized) ||
+        u.department?.toLowerCase().includes(normalized)
+    )
+  }
+  const filteredNotifyUsers = useMemo(
+    () => filterNotifyUsers(notifySearch),
+    [availableNotifyUsers, notifySearch]
+  )
+  const filteredEditNotifyUsers = useMemo(
+    () => filterNotifyUsers(editNotifySearch),
+    [availableNotifyUsers, editNotifySearch]
+  )
 
   const calendarDepartments = useMemo(() => {
     const values = new Set<string>()
@@ -531,6 +555,7 @@ export default function LeavePage() {
 
   const openEditModal = (request: LeaveRequest) => {
     setSelectedRequest(request)
+    setEditNotifySearch('')
     setEditFormData({
       id: request.id,
       leaveType: request.leaveType,
@@ -638,6 +663,7 @@ export default function LeavePage() {
   const clearSelection = () => {
     setSelectedRange({ start: null, end: null })
     setSelectingEnd(false)
+    setNotifySearch('')
     setFormData({
       ...formData,
       startDate: '',
@@ -1374,8 +1400,17 @@ export default function LeavePage() {
             <p className="text-xs text-muted-foreground mb-2">
               These people will receive an email notification. Approval still goes to your lead and HR only.
             </p>
+            <div className="relative mb-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                value={notifySearch}
+                onChange={(e) => setNotifySearch(e.target.value)}
+                placeholder="Search by name or department..."
+                className="pl-10"
+              />
+            </div>
             <div className="max-h-32 overflow-y-auto border border-input rounded-md p-2 bg-muted space-y-1.5">
-              {users.filter(u => u.id !== user?.id).map((u) => (
+              {filteredNotifyUsers.map((u) => (
                 <label key={u.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted/80 rounded px-2 py-1.5">
                   <Checkbox
                     checked={formData.additionalNotifyIds.includes(u.id)}
@@ -1390,8 +1425,11 @@ export default function LeavePage() {
                   {u.department && <span className="text-xs text-muted-foreground">({u.department})</span>}
                 </label>
               ))}
-              {users.filter(u => u.id !== user?.id).length === 0 && (
+              {availableNotifyUsers.length === 0 && (
                 <p className="text-xs text-muted-foreground py-2">No other team members</p>
+              )}
+              {availableNotifyUsers.length > 0 && filteredNotifyUsers.length === 0 && (
+                <p className="text-xs text-muted-foreground py-2">No matches found</p>
               )}
             </div>
           </div>
@@ -1825,8 +1863,17 @@ export default function LeavePage() {
               Notify additional team members
               <span className="text-muted-foreground font-normal ml-1">(optional)</span>
             </Label>
+            <div className="relative mb-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                value={editNotifySearch}
+                onChange={(e) => setEditNotifySearch(e.target.value)}
+                placeholder="Search by name or department..."
+                className="pl-10"
+              />
+            </div>
             <div className="max-h-32 overflow-y-auto border border-input rounded-md p-2 bg-muted space-y-1.5">
-              {users.filter((u) => u.id !== user?.id).map((u) => (
+              {filteredEditNotifyUsers.map((u) => (
                 <label key={u.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted/80 rounded px-2 py-1.5">
                   <Checkbox
                     checked={editFormData.additionalNotifyIds.includes(u.id)}
@@ -1841,11 +1888,24 @@ export default function LeavePage() {
                   {u.department && <span className="text-xs text-muted-foreground">({u.department})</span>}
                 </label>
               ))}
+              {availableNotifyUsers.length === 0 && (
+                <p className="text-xs text-muted-foreground py-2">No other team members</p>
+              )}
+              {availableNotifyUsers.length > 0 && filteredEditNotifyUsers.length === 0 && (
+                <p className="text-xs text-muted-foreground py-2">No matches found</p>
+              )}
             </div>
           </div>
 
           <div className="flex justify-end gap-3 pt-2">
-            <Button type="button" variant="outline" onClick={() => setIsEditModalOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setEditNotifySearch('')
+                setIsEditModalOpen(false)
+              }}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={updating}>
