@@ -18,6 +18,7 @@ if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
 }
 
 const FROM_EMAIL = process.env.GMAIL_USER || 'plutuscompass@gmail.com'
+const DEFAULT_ONBOARDING_EXECUTION_RECIPIENT = 'execution@plutus21.com'
 
 function parseRecipientList(raw: string | undefined | null) {
   return (raw || '')
@@ -59,6 +60,23 @@ async function getHrRecipientEmails() {
     select: { email: true },
   })
   return hrUsers.map((u) => u.email).filter(Boolean) as string[]
+}
+
+function getOnboardingExecutionRecipients() {
+  return parseRecipientList(
+    process.env.ONBOARDING_EXECUTION_RECIPIENTS || DEFAULT_ONBOARDING_EXECUTION_RECIPIENT
+  )
+}
+
+function mergeRecipientEmails(...groups: Array<Array<string | null | undefined>>) {
+  return [
+    ...new Set(
+      groups
+        .flat()
+        .map((email) => email?.trim())
+        .filter(Boolean) as string[]
+    ),
+  ]
 }
 
 export async function sendMail(to: string, subject: string, html: string) {
@@ -731,7 +749,11 @@ export async function sendPositionClosedNotification(positionId: string) {
   }
 
   const securityRecipients = await getSecurityRecipientEmails()
-  const recipients = [...new Set([position.teamLead?.email, ...securityRecipients].filter(Boolean) as string[])]
+  const recipients = mergeRecipientEmails(
+    [position.teamLead?.email],
+    securityRecipients,
+    getOnboardingExecutionRecipients()
+  )
   if (recipients.length === 0) {
     return { success: false, message: 'No recipients configured for position closed notification' }
   }
@@ -776,7 +798,10 @@ export async function sendTeamLeadFormSubmittedNotification(newHireId: string) {
     return { success: false, message: 'New hire not found' }
   }
 
-  const recipients = await getHrRecipientEmails()
+  const recipients = mergeRecipientEmails(
+    await getHrRecipientEmails(),
+    getOnboardingExecutionRecipients()
+  )
   if (recipients.length === 0) {
     return { success: false, message: 'No HR recipients configured' }
   }
@@ -820,7 +845,8 @@ export async function sendTeamLeadFormRequestNotification(newHireId: string) {
   }
 
   const teamLeadEmail = newHire.teamLead?.email
-  if (!teamLeadEmail) {
+  const recipients = mergeRecipientEmails([teamLeadEmail], getOnboardingExecutionRecipients())
+  if (recipients.length === 0) {
     return { success: false, message: 'No team lead email configured' }
   }
 
@@ -850,7 +876,7 @@ export async function sendTeamLeadFormRequestNotification(newHireId: string) {
   try {
     const info = await transporter.sendMail({
       from: `P21 Compass <${FROM_EMAIL}>`,
-      to: teamLeadEmail,
+      to: recipients.join(', '),
       subject: `Action Required: Team Lead Form for ${newHire.name}`,
       html: htmlContent,
     })
@@ -870,7 +896,10 @@ export async function sendSecurityChecklistCompleteNotification(newHireId: strin
     return { success: false, message: 'New hire not found' }
   }
 
-  const recipients = await getHrRecipientEmails()
+  const recipients = mergeRecipientEmails(
+    await getHrRecipientEmails(),
+    getOnboardingExecutionRecipients()
+  )
   if (recipients.length === 0) {
     return { success: false, message: 'No HR recipients configured' }
   }
@@ -919,12 +948,11 @@ export async function sendOnboardingCompletedNotification(userId: string) {
   }
 
   const hrRecipients = await getHrRecipientEmails()
-  const recipients = [
-    ...new Set([
-      ...hrRecipients,
-      onboardingUser.newHireRecord?.teamLead?.email,
-    ].filter(Boolean) as string[]),
-  ]
+  const recipients = mergeRecipientEmails(
+    hrRecipients,
+    [onboardingUser.newHireRecord?.teamLead?.email],
+    getOnboardingExecutionRecipients()
+  )
 
   if (recipients.length === 0) {
     return { success: false, message: 'No recipients configured for onboarding completion notification' }

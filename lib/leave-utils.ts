@@ -50,3 +50,14 @@ export function calculateLeaveDuration(
 
   return calculateLeaveDays(startDate, endDate)
 }
+
+export function leaveRequiresLeadApproval(
+  isHalfDay: boolean,
+  superiorLeadCount: number
+): boolean {
+  return !isHalfDay && superiorLeadCount > 0
+}
+
+export function hasLeaveEnded(endDate: Date, now = new Date()): boolean {
+  return toUtcDateOnly(endDate).getTime() < toUtcDateOnly(now).getTime()
+}

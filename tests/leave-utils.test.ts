@@ -1,6 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { calculateLeaveDays, calculateLeaveDuration, isValidLeaveDateRange } from '../lib/leave-utils'
+import {
+  calculateLeaveDays,
+  calculateLeaveDuration,
+  hasLeaveEnded,
+  isValidLeaveDateRange,
+  leaveRequiresLeadApproval,
+} from '../lib/leave-utils'
 
 test('calculateLeaveDays includes both start and end weekdays', () => {
   const start = new Date('2026-02-02T00:00:00.000Z') // Monday
@@ -46,4 +52,20 @@ test('calculateLeaveDuration delegates to full-day calculator when not half-day'
   const start = new Date('2026-02-06T00:00:00.000Z') // Friday
   const end = new Date('2026-02-09T00:00:00.000Z') // Monday
   assert.equal(calculateLeaveDuration(start, end, false), 2)
+})
+
+test('leaveRequiresLeadApproval skips lead approval for half-day leaves', () => {
+  assert.equal(leaveRequiresLeadApproval(true, 1), false)
+})
+
+test('leaveRequiresLeadApproval still requires leads for full-day leaves with an upstream lead', () => {
+  assert.equal(leaveRequiresLeadApproval(false, 1), true)
+  assert.equal(leaveRequiresLeadApproval(false, 0), false)
+})
+
+test('hasLeaveEnded compares end date by calendar day', () => {
+  const now = new Date('2026-04-01T12:00:00.000Z')
+  assert.equal(hasLeaveEnded(new Date('2026-03-31T00:00:00.000Z'), now), true)
+  assert.equal(hasLeaveEnded(new Date('2026-04-01T00:00:00.000Z'), now), false)
+  assert.equal(hasLeaveEnded(new Date('2026-04-02T00:00:00.000Z'), now), false)
 })

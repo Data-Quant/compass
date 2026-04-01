@@ -4,7 +4,7 @@ import { getSession } from '@/lib/auth'
 import { sendLeaveApprovalNotification } from '@/lib/email'
 import { LeaveStatus, Prisma } from '@prisma/client'
 import { z } from 'zod'
-import { calculateLeaveDuration } from '@/lib/leave-utils'
+import { calculateLeaveDuration, leaveRequiresLeadApproval } from '@/lib/leave-utils'
 import { isAdminRole } from '@/lib/permissions'
 import { removeLeaveCalendarEvent, syncLeaveCalendarEvent } from '@/lib/google-calendar'
 
@@ -53,9 +53,13 @@ export async function POST(request: NextRequest) {
         relationshipType: 'TEAM_LEAD',
       },
     })
-    const requiresLeadApproval = superiorLeadCount > 0
-    
     const isHR = isAdminRole(user.role)
+
+    if (leaveRequest.isHalfDay && !isHR) {
+      return NextResponse.json({ error: 'Half-day leave requests are approved by HR only' }, { status: 403 })
+    }
+
+    const requiresLeadApproval = leaveRequiresLeadApproval(leaveRequest.isHalfDay, superiorLeadCount)
     
     // Check if user is a lead for this employee (if not HR)
     let isLead = false

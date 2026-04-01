@@ -170,6 +170,17 @@ const formatApiDate = (value: string, options?: Intl.DateTimeFormatOptions) => {
   return parsed.toLocaleDateString('en-US', options)
 }
 
+const hasLeaveEnded = (endDate: string) => {
+  const parsed = parseInputDateAsLocal(toDateKey(endDate))
+  if (!parsed) return false
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  parsed.setHours(0, 0, 0, 0)
+
+  return parsed.getTime() < today.getTime()
+}
+
 export default function LeavePage() {
   const layoutUser = useLayoutUser()
   const [user, setUser] = useState<any>(null)
@@ -299,6 +310,8 @@ export default function LeavePage() {
 
   const editableStatuses = new Set(['PENDING', 'LEAD_APPROVED', 'HR_APPROVED'])
   const cancellableStatuses = new Set(['PENDING', 'LEAD_APPROVED', 'HR_APPROVED', 'APPROVED'])
+  const canCancelRequest = (request: LeaveRequest) =>
+    cancellableStatuses.has(request.status) && !hasLeaveEnded(request.endDate)
 
   const calendarDepartments = useMemo(() => {
     const values = new Set<string>()
@@ -990,7 +1003,7 @@ export default function LeavePage() {
                                       </Button>
                                     )}
 
-                                    {cancellableStatuses.has(request.status) && (
+                                    {canCancelRequest(request) && (
                                       <Button
                                         variant="ghost"
                                         size="sm"
@@ -1578,7 +1591,7 @@ export default function LeavePage() {
                   Edit Request
                 </Button>
               )}
-              {cancellableStatuses.has(selectedRequest.status) && (
+              {canCancelRequest(selectedRequest) && (
                 <Button
                   variant="outline"
                   className="text-red-600 border-red-200 hover:bg-red-50 dark:border-red-900/40 dark:hover:bg-red-500/10"

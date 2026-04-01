@@ -4,7 +4,12 @@ import { getSession } from '@/lib/auth'
 import { sendLeaveRequestNotification } from '@/lib/email'
 import { Prisma } from '@prisma/client'
 import { z } from 'zod'
-import { calculateLeaveDuration, isValidLeaveDateRange } from '@/lib/leave-utils'
+import {
+  calculateLeaveDuration,
+  hasLeaveEnded,
+  isValidLeaveDateRange,
+  leaveRequiresLeadApproval,
+} from '@/lib/leave-utils'
 import { isAdminRole } from '@/lib/permissions'
 import { removeLeaveCalendarEvent, syncLeaveCalendarEvent } from '@/lib/google-calendar'
 
@@ -172,6 +177,7 @@ export async function GET(request: NextRequest) {
     const where: {
       employeeId?: string | { in: string[] }
       status?: (typeof LEAVE_STATUSES)[number] | { in: (typeof LEAVE_STATUSES)[number][] }
+      isHalfDay?: boolean
     } = {}
     
     if (employeeId === 'me') {
@@ -221,6 +227,7 @@ export async function GET(request: NextRequest) {
       const teamMemberIds = leadMappings.map(m => m.evaluateeId)
       where.employeeId = { in: teamMemberIds }
       where.status = { in: ['PENDING', 'HR_APPROVED'] }
+      where.isHalfDay = false
     }
     
     const requests = await prisma.leaveRequest.findMany({
@@ -297,7 +304,7 @@ export async function POST(request: NextRequest) {
         relationshipType: 'TEAM_LEAD',
       },
     })
-    const requiresLeadApproval = superiorLeadCount > 0
+    const requiresLeadApproval = leaveRequiresLeadApproval(isHalfDay, superiorLeadCount)
 
     // Ensure employee exists when HR enters leave on behalf.
     if (isOnBehalfRequest || coverPersonId) {
@@ -741,6 +748,13 @@ export async function DELETE(request: NextRequest) {
     // Non-HR users can only cancel their own request.
     if (leaveRequest.employeeId !== user.id) {
       return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
+    }
+
+    if (hasLeaveEnded(new Date(leaveRequest.endDate))) {
+      return NextResponse.json(
+        { error: 'Past leave requests cannot be cancelled' },
+        { status: 400 }
+      )
     }
 
     if (leaveRequest.status === 'REJECTED') {
