@@ -1,6 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildLeaveEventPayload, shouldIncludeExecutiveLeaveInviteForPosition } from '../lib/google-calendar'
+import {
+  buildLeaveEventPayload,
+  buildTeamInviteEmailSet,
+  shouldIncludeExecutiveLeaveInviteForPosition,
+} from '../lib/google-calendar'
 
 test('executive leave invite rule includes principals, managers, and junior partners', () => {
   assert.equal(shouldIncludeExecutiveLeaveInviteForPosition('Principal'), true)
@@ -82,4 +86,48 @@ test('half-day leave event payload falls back to default timezone when request t
     dateTime: '2026-04-11T18:00:00',
     timeZone: 'Asia/Karachi',
   })
+})
+
+test('team leave invite helper includes upstream leads, direct reports, and peers from canonical mappings', () => {
+  const emails = buildTeamInviteEmailSet({
+    employeeId: 'ammar',
+    leadMappings: [
+      {
+        evaluator: { email: 'hamiz@plutus21.com' },
+      },
+    ],
+    directReportMappings: [
+      {
+        evaluatee: { email: 'haider@plutus21.com' },
+      },
+      {
+        evaluatee: { email: 'anees@plutus21.com' },
+      },
+    ],
+    peerMappings: [
+      {
+        evaluatorId: 'ammar',
+        evaluateeId: 'satish',
+        evaluator: { email: 'ammar@plutus21.com' },
+        evaluatee: { email: 'satish@plutus21.com' },
+      },
+      {
+        evaluatorId: 'eman',
+        evaluateeId: 'ammar',
+        evaluator: { email: 'eman@plutus21.com' },
+        evaluatee: { email: 'ammar@plutus21.com' },
+      },
+    ],
+  })
+
+  assert.deepEqual(
+    [...emails].sort(),
+    [
+      'anees@plutus21.com',
+      'eman@plutus21.com',
+      'haider@plutus21.com',
+      'hamiz@plutus21.com',
+      'satish@plutus21.com',
+    ]
+  )
 })

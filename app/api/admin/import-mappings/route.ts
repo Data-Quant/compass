@@ -21,9 +21,19 @@ interface ImportResult {
   errors: string[]
 }
 
+const USER_NAME_ALIASES: Record<string, string> = {
+  'nohelia figuerdo': 'Nohelia Figueredo',
+  'umair asmat': 'Omair Asmat',
+}
+
 // Helper to normalize names for comparison
 function normalizeName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+function resolveImportedName(name: string): string {
+  const normalized = normalizeName(name)
+  return USER_NAME_ALIASES[normalized] || name.trim()
 }
 
 // Helper to check if a name matches C-Level evaluators
@@ -73,7 +83,7 @@ export async function POST(request: NextRequest) {
     for (const row of rows) {
       if (!row.Name || row.Name.trim() === '') continue
 
-      const name = row.Name.trim()
+      const name = resolveImportedName(row.Name)
       const normalizedName = normalizeName(name)
       const designation = row.Designation?.trim() || null
       const department = row.Department?.trim() || null
@@ -149,20 +159,33 @@ export async function POST(request: NextRequest) {
       evaluateeId: string,
       relationshipType: string
     ): Promise<boolean> {
-      const evaluatorNormalized = normalizeName(evaluatorName)
+      const resolvedEvaluatorName = resolveImportedName(evaluatorName)
+      const evaluatorNormalized = normalizeName(resolvedEvaluatorName)
       const evaluatorId = userMap.get(evaluatorNormalized)
 
       if (!evaluatorId) {
-        // Try to find user in database
+        // Try to find user in database before creating a placeholder.
         const evaluator = await prisma.user.findFirst({
-          where: { name: { contains: evaluatorName.trim(), mode: 'insensitive' } },
+          where: { name: { contains: resolvedEvaluatorName, mode: 'insensitive' } },
         })
-        if (!evaluator) {
-          result.errors.push(`Evaluator not found: ${evaluatorName}`)
-          return false
+
+        if (evaluator) {
+          userMap.set(evaluatorNormalized, evaluator.id)
+          return createMapping(resolvedEvaluatorName, evaluateeId, relationshipType)
         }
-        userMap.set(evaluatorNormalized, evaluator.id)
-        return createMapping(evaluatorName, evaluateeId, relationshipType)
+
+        const createdEvaluator = await prisma.user.create({
+          data: {
+            name: resolvedEvaluatorName,
+            role: isHREvaluator(resolvedEvaluatorName) ? 'HR' : 'EMPLOYEE',
+            department: isCLevelEvaluator(resolvedEvaluatorName) ? 'Executive' : null,
+            position: isCLevelEvaluator(resolvedEvaluatorName) ? 'C-Level Executive' : null,
+          },
+        })
+
+        result.usersCreated++
+        userMap.set(evaluatorNormalized, createdEvaluator.id)
+        return createMapping(resolvedEvaluatorName, evaluateeId, relationshipType)
       }
 
       await createLogicalEvaluatorMapping(prisma, {

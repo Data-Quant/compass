@@ -13,6 +13,17 @@ type MappingShape<TUser = unknown> = {
   evaluatee?: TUser
 }
 
+type ManagementMappingInput = Pick<
+  MappingShape,
+  'evaluatorId' | 'evaluateeId' | 'relationshipType'
+>
+
+type PhysicalMappingRow = {
+  evaluatorId: string
+  evaluateeId: string
+  relationshipType: RelationshipType
+}
+
 export function isMirroredRelationshipType(type: RelationshipType) {
   return type === 'TEAM_LEAD' || type === 'DIRECT_REPORT' || type === 'PEER'
 }
@@ -28,11 +39,28 @@ export function normalizeRelationshipTypeForManagement(type: RelationshipType): 
   return type === 'DIRECT_REPORT' ? 'TEAM_LEAD' : type
 }
 
-function getCanonicalLogicalKey(mapping: Pick<MappingShape, 'evaluatorId' | 'evaluateeId' | 'relationshipType'>) {
-  if (mapping.relationshipType === 'TEAM_LEAD' || mapping.relationshipType === 'DIRECT_REPORT') {
-    const leaderId = mapping.relationshipType === 'TEAM_LEAD' ? mapping.evaluatorId : mapping.evaluateeId
-    const reportId = mapping.relationshipType === 'TEAM_LEAD' ? mapping.evaluateeId : mapping.evaluatorId
-    return `TEAM_LEAD:${leaderId}:${reportId}`
+export function getCanonicalManagementPair(mapping: ManagementMappingInput) {
+  if (mapping.relationshipType === 'TEAM_LEAD') {
+    return {
+      leaderId: mapping.evaluatorId,
+      reportId: mapping.evaluateeId,
+    }
+  }
+
+  if (mapping.relationshipType === 'DIRECT_REPORT') {
+    return {
+      leaderId: mapping.evaluateeId,
+      reportId: mapping.evaluatorId,
+    }
+  }
+
+  return null
+}
+
+function getCanonicalLogicalKey(mapping: ManagementMappingInput) {
+  const managementPair = getCanonicalManagementPair(mapping)
+  if (managementPair) {
+    return `TEAM_LEAD:${managementPair.leaderId}:${managementPair.reportId}`
   }
 
   if (mapping.relationshipType === 'PEER') {
@@ -105,29 +133,29 @@ export function collapseLogicalMappings<TUser>(
   return collapsed
 }
 
-function getPhysicalMappingsForLogicalRelationship(input: {
+export function getPhysicalMappingsForLogicalRelationship(input: {
   evaluatorId: string
   evaluateeId: string
   relationshipType: RelationshipType
-}) {
-  const normalizedType = normalizeRelationshipTypeForManagement(input.relationshipType)
+}): PhysicalMappingRow[] {
+  const managementPair = getCanonicalManagementPair(input)
 
-  if (normalizedType === 'TEAM_LEAD') {
+  if (managementPair) {
     return [
       {
-        evaluatorId: input.evaluatorId,
-        evaluateeId: input.evaluateeId,
+        evaluatorId: managementPair.leaderId,
+        evaluateeId: managementPair.reportId,
         relationshipType: 'TEAM_LEAD' as const,
       },
       {
-        evaluatorId: input.evaluateeId,
-        evaluateeId: input.evaluatorId,
+        evaluatorId: managementPair.reportId,
+        evaluateeId: managementPair.leaderId,
         relationshipType: 'DIRECT_REPORT' as const,
       },
     ]
   }
 
-  if (normalizedType === 'PEER') {
+  if (input.relationshipType === 'PEER') {
     const pair = [
       {
         evaluatorId: input.evaluatorId,
@@ -151,7 +179,7 @@ function getPhysicalMappingsForLogicalRelationship(input: {
     {
       evaluatorId: input.evaluatorId,
       evaluateeId: input.evaluateeId,
-      relationshipType: normalizedType,
+      relationshipType: input.relationshipType,
     },
   ]
 }

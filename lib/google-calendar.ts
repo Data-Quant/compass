@@ -188,6 +188,56 @@ async function findLeaveEventIds(config: GoogleCalendarConfig, accessToken: stri
     .filter((id): id is string => Boolean(id))
 }
 
+type TeamInviteLeadMapping = {
+  evaluator: { email: string | null }
+}
+
+type TeamInviteDirectReportMapping = {
+  evaluatee: { email: string | null }
+}
+
+type TeamInvitePeerMapping = {
+  evaluatorId: string
+  evaluateeId: string
+  evaluator: { email: string | null }
+  evaluatee: { email: string | null }
+}
+
+export function buildTeamInviteEmailSet(args: {
+  employeeId: string
+  leadMappings: TeamInviteLeadMapping[]
+  directReportMappings: TeamInviteDirectReportMapping[]
+  peerMappings: TeamInvitePeerMapping[]
+}) {
+  const emails = new Set<string>()
+
+  for (const mapping of args.leadMappings) {
+    if (isValidEmail(mapping.evaluator.email)) {
+      emails.add(mapping.evaluator.email.toLowerCase())
+    }
+  }
+
+  for (const mapping of args.directReportMappings) {
+    if (isValidEmail(mapping.evaluatee.email)) {
+      emails.add(mapping.evaluatee.email.toLowerCase())
+    }
+  }
+
+  for (const mapping of args.peerMappings) {
+    if (mapping.evaluatorId === args.employeeId) {
+      if (isValidEmail(mapping.evaluatee.email)) {
+        emails.add(mapping.evaluatee.email.toLowerCase())
+      }
+    } else if (mapping.evaluateeId === args.employeeId) {
+      if (isValidEmail(mapping.evaluator.email)) {
+        emails.add(mapping.evaluator.email.toLowerCase())
+      }
+    }
+  }
+
+  return emails
+}
+
 async function collectTeamInviteEmails(employeeId: string) {
   const [leadMappings, directReportMappings, peerMappings] = await Promise.all([
     prisma.evaluatorMapping.findMany({
@@ -222,25 +272,12 @@ async function collectTeamInviteEmails(employeeId: string) {
     }),
   ])
 
-  const emails = new Set<string>()
-
-  for (const mapping of leadMappings) {
-    if (isValidEmail(mapping.evaluator.email)) emails.add(mapping.evaluator.email.toLowerCase())
-  }
-
-  for (const mapping of directReportMappings) {
-    if (isValidEmail(mapping.evaluatee.email)) emails.add(mapping.evaluatee.email.toLowerCase())
-  }
-
-  for (const mapping of peerMappings) {
-    if (mapping.evaluatorId === employeeId) {
-      if (isValidEmail(mapping.evaluatee.email)) emails.add(mapping.evaluatee.email.toLowerCase())
-    } else if (mapping.evaluateeId === employeeId) {
-      if (isValidEmail(mapping.evaluator.email)) emails.add(mapping.evaluator.email.toLowerCase())
-    }
-  }
-
-  return emails
+  return buildTeamInviteEmailSet({
+    employeeId,
+    leadMappings,
+    directReportMappings,
+    peerMappings,
+  })
 }
 
 async function collectExecutiveInviteEmails() {

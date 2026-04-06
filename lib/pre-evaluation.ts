@@ -34,6 +34,12 @@ type PrepWithPeriod = Pick<
   }
 }
 
+type LeadRelationshipMapping = {
+  evaluatorId: string
+  evaluateeId: string
+  relationshipType: RelationshipType
+}
+
 function startOfDay(date: Date = new Date()) {
   const normalized = new Date(date)
   normalized.setHours(0, 0, 0, 0)
@@ -77,6 +83,34 @@ export function derivePreEvaluationStatus(
 
 export function isPrepEditable(reviewStartDate: Date) {
   return startOfDay(reviewStartDate) > startOfDay()
+}
+
+export function deriveLeadRelationships(
+  mappings: LeadRelationshipMapping[]
+) {
+  const directReportsByLead: Record<string, string[]> = {}
+
+  for (const mapping of mappings) {
+    if (mapping.relationshipType !== 'TEAM_LEAD') {
+      continue
+    }
+
+    if (!directReportsByLead[mapping.evaluatorId]) {
+      directReportsByLead[mapping.evaluatorId] = []
+    }
+
+    if (!directReportsByLead[mapping.evaluatorId].includes(mapping.evaluateeId)) {
+      directReportsByLead[mapping.evaluatorId].push(mapping.evaluateeId)
+      directReportsByLead[mapping.evaluatorId].sort((first, second) => first.localeCompare(second))
+    }
+  }
+
+  const leadIds = Object.keys(directReportsByLead).sort((first, second) => first.localeCompare(second))
+
+  return {
+    leadIds,
+    directReportsByLead,
+  }
 }
 
 export async function syncPrepStatus(db: DbClient, prepId: string) {
@@ -126,20 +160,11 @@ export async function getLeadIdsForPreEvaluation(db: DbClient, periodId: string)
     select: {
       evaluatorId: true,
       evaluateeId: true,
+      relationshipType: true,
     },
   })
 
-  const leadIds = [...new Set(mappings.map((mapping) => mapping.evaluatorId))]
-  return {
-    leadIds,
-    directReportsByLead: mappings.reduce<Record<string, string[]>>((acc, mapping) => {
-      if (!acc[mapping.evaluatorId]) {
-        acc[mapping.evaluatorId] = []
-      }
-      acc[mapping.evaluatorId].push(mapping.evaluateeId)
-      return acc
-    }, {}),
-  }
+  return deriveLeadRelationships(mappings)
 }
 
 export async function ensurePreEvaluationPrep(

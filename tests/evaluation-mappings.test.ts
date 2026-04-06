@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   collapseLogicalMappings,
   countLogicalMappings,
+  getPhysicalMappingsForLogicalRelationship,
   getInverseRelationshipType,
   normalizeRelationshipTypeForManagement,
 } from '../lib/evaluation-mappings'
@@ -14,6 +15,50 @@ const carol = { id: 'carol', name: 'Carol', department: 'Design', position: 'Des
 test('normalizeRelationshipTypeForManagement treats DIRECT_REPORT as TEAM_LEAD input', () => {
   assert.equal(normalizeRelationshipTypeForManagement('DIRECT_REPORT'), 'TEAM_LEAD')
   assert.equal(normalizeRelationshipTypeForManagement('PEER'), 'PEER')
+})
+
+test('getPhysicalMappingsForLogicalRelationship keeps TEAM_LEAD input in canonical lead-to-report direction', () => {
+  assert.deepEqual(
+    getPhysicalMappingsForLogicalRelationship({
+      evaluatorId: 'alice',
+      evaluateeId: 'bob',
+      relationshipType: 'TEAM_LEAD',
+    }),
+    [
+      {
+        evaluatorId: 'alice',
+        evaluateeId: 'bob',
+        relationshipType: 'TEAM_LEAD',
+      },
+      {
+        evaluatorId: 'bob',
+        evaluateeId: 'alice',
+        relationshipType: 'DIRECT_REPORT',
+      },
+    ]
+  )
+})
+
+test('getPhysicalMappingsForLogicalRelationship canonicalizes DIRECT_REPORT input to the same physical pair', () => {
+  assert.deepEqual(
+    getPhysicalMappingsForLogicalRelationship({
+      evaluatorId: 'bob',
+      evaluateeId: 'alice',
+      relationshipType: 'DIRECT_REPORT',
+    }),
+    [
+      {
+        evaluatorId: 'alice',
+        evaluateeId: 'bob',
+        relationshipType: 'TEAM_LEAD',
+      },
+      {
+        evaluatorId: 'bob',
+        evaluateeId: 'alice',
+        relationshipType: 'DIRECT_REPORT',
+      },
+    ]
+  )
 })
 
 test('getInverseRelationshipType returns mirrored relationship pairs', () => {
