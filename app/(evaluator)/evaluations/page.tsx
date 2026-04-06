@@ -40,6 +40,11 @@ interface IncomingAssignment {
   isSubmitted: boolean
 }
 
+interface TeamIncomingAssignments {
+  teamMember: { id: string; name: string; department: string | null; position: string | null }
+  evaluators: IncomingAssignment[]
+}
+
 interface PreEvaluationTask {
   id: string
   status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'OVERDUE' | 'OVERRIDDEN'
@@ -62,6 +67,7 @@ export default function EvaluationsPage() {
   const user = useLayoutUser()
   const [mappings, setMappings] = useState<Record<string, Mapping[]>>({})
   const [incomingAssignments, setIncomingAssignments] = useState<IncomingAssignment[]>([])
+  const [teamIncomingAssignments, setTeamIncomingAssignments] = useState<TeamIncomingAssignments[]>([])
   const [period, setPeriod] = useState<any>(null)
   const [preEvaluationTask, setPreEvaluationTask] = useState<PreEvaluationTask | null>(null)
   const [loading, setLoading] = useState(true)
@@ -79,6 +85,7 @@ export default function EvaluationsPage() {
         setMappings(data.mappings)
         setPeriod(data.period)
         setIncomingAssignments(data.incoming || [])
+        setTeamIncomingAssignments(data.teamIncoming || [])
       }
     } catch {
       toast.error('Failed to load evaluations')
@@ -310,6 +317,86 @@ export default function EvaluationsPage() {
           </CardContent>
         </Card>
       </motion.div>
+
+      {teamIncomingAssignments.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-primary" />
+                  <h2 className="text-lg font-semibold text-foreground">Who Is Evaluating Your Team</h2>
+                </div>
+                <Badge variant="secondary">{teamIncomingAssignments.length} team member(s)</Badge>
+              </div>
+
+              <div className="space-y-4">
+                {teamIncomingAssignments.map((group) => (
+                  <div key={group.teamMember.id} className="rounded-xl border bg-muted/10 p-4">
+                    <div className="flex items-center gap-3 mb-3">
+                      <UserAvatar name={group.teamMember.name} size="sm" />
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{group.teamMember.name}</p>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          {group.teamMember.position && <span>{group.teamMember.position}</span>}
+                          {group.teamMember.position && group.teamMember.department && <span>·</span>}
+                          {group.teamMember.department && <span>{group.teamMember.department}</span>}
+                        </div>
+                      </div>
+                    </div>
+
+                    {group.evaluators.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No evaluators are assigned to this team member for the active period yet.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {group.evaluators.map((assignment) => (
+                          <div
+                            key={assignment.id}
+                            className="flex items-center justify-between rounded-lg border bg-background/80 px-4 py-3"
+                          >
+                            <div className="flex items-center gap-3">
+                              <UserAvatar name={assignment.evaluator.name} size="sm" />
+                              <div>
+                                <p className="text-sm font-medium text-foreground">{assignment.evaluator.name}</p>
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                  <span>
+                                    {RELATIONSHIP_TYPE_LABELS[
+                                      assignment.relationshipType as keyof typeof RELATIONSHIP_TYPE_LABELS
+                                    ] || assignment.relationshipType}
+                                  </span>
+                                  {(assignment.evaluator.position || assignment.evaluator.department) && <span>·</span>}
+                                  <span>
+                                    {[assignment.evaluator.position, assignment.evaluator.department]
+                                      .filter(Boolean)
+                                      .join(' · ')}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <Badge
+                              variant="secondary"
+                              className={
+                                assignment.isSubmitted
+                                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                                  : 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                              }
+                            >
+                              {assignment.isSubmitted ? 'Submitted' : 'Pending'}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
     </div>
   )
 }

@@ -42,6 +42,29 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    const directReportMappings = await prisma.evaluatorMapping.findMany({
+      where: {
+        evaluatorId: user.id,
+        relationshipType: 'TEAM_LEAD',
+      },
+      select: {
+        evaluateeId: true,
+        evaluatee: {
+          select: {
+            id: true,
+            name: true,
+            department: true,
+            position: true,
+          },
+        },
+      },
+      orderBy: {
+        evaluatee: { name: 'asc' },
+      },
+    })
+
+    const directReportIds = directReportMappings.map((mapping) => mapping.evaluateeId)
+
     const [assignments, submittedEvaluations] = await Promise.all([
       getResolvedEvaluationAssignments(period.id, { includeUsers: true }),
       prisma.evaluation.groupBy({
@@ -52,6 +75,7 @@ export async function GET(request: NextRequest) {
           OR: [
             { evaluatorId: user.id },
             { evaluateeId: user.id },
+            ...(directReportIds.length > 0 ? [{ evaluateeId: { in: directReportIds } }] : []),
           ],
         },
         _count: { id: true },
@@ -67,6 +91,9 @@ export async function GET(request: NextRequest) {
 
     const outgoingAssignments = assignments.filter((assignment) => assignment.evaluatorId === user.id)
     const incomingAssignments = assignments.filter((assignment) => assignment.evaluateeId === user.id)
+    const teamIncomingAssignments = assignments.filter((assignment) =>
+      directReportIds.includes(assignment.evaluateeId)
+    )
 
     const outgoingWithStatus = await Promise.all(
       outgoingAssignments.map(async (assignment) => {
@@ -118,6 +145,48 @@ export async function GET(request: NextRequest) {
       })
     )
 
+    const teamIncomingByMember = await Promise.all(
+      directReportMappings.map(async (directReport) => {
+        const memberAssignments = teamIncomingAssignments.filter(
+          (assignment) => assignment.evaluateeId === directReport.evaluateeId
+        )
+
+        const evaluators = await Promise.all(
+          memberAssignments.map(async (assignment) => {
+            const questionsCount = await getResolvedQuestionCount({
+              relationshipType: assignment.relationshipType as RelationshipType,
+              periodId: period.id,
+              evaluatorId: assignment.evaluatorId,
+              evaluateeId: assignment.evaluateeId,
+            })
+            const completedCount =
+              submittedCounts.get(buildPairKey(assignment.evaluatorId, assignment.evaluateeId)) || 0
+
+            return {
+              id:
+                assignment.mappingId ||
+                assignment.selectionId ||
+                `${assignment.evaluatorId}:${assignment.evaluateeId}:${assignment.relationshipType}`,
+              evaluator: assignment.evaluator!,
+              relationshipType: assignment.relationshipType,
+              questionsCount,
+              completedCount,
+              isSubmitted: questionsCount > 0 && completedCount >= questionsCount,
+            }
+          })
+        )
+
+        return {
+          teamMember: directReport.evaluatee,
+          evaluators: evaluators.sort((a, b) => {
+            const nameCompare = a.evaluator.name.localeCompare(b.evaluator.name)
+            if (nameCompare !== 0) return nameCompare
+            return a.relationshipType.localeCompare(b.relationshipType)
+          }),
+        }
+      })
+    )
+
     const grouped = outgoingWithStatus.reduce(
       (acc, mapping) => {
         const type = mapping.relationshipType
@@ -134,6 +203,7 @@ export async function GET(request: NextRequest) {
       period,
       mappings: grouped,
       incoming: incomingWithStatus,
+      teamIncoming: teamIncomingByMember,
       totalMappings: outgoingWithStatus.length,
       completedMappings: outgoingWithStatus.filter((mapping) => mapping.isComplete).length,
     })
