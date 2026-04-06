@@ -189,9 +189,7 @@ export default function MappingsPage() {
     finally { setImporting(false) }
   }
 
-  const relationshipTypes = (Object.keys(RELATIONSHIP_TYPE_LABELS) as RelationshipType[]).filter(
-    (type) => type !== 'DIRECT_REPORT'
-  )
+  const relationshipTypes = Object.keys(RELATIONSHIP_TYPE_LABELS) as RelationshipType[]
   const allUsers = users
   const employees = users.filter(u => u.role === 'EMPLOYEE')
   

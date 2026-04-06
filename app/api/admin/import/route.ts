@@ -3,7 +3,10 @@ import { getSession } from '@/lib/auth'
 import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import type { RelationshipType } from '@/types'
-import { createLogicalEvaluatorMapping } from '@/lib/evaluation-mappings'
+import {
+  createLogicalEvaluatorMapping,
+  shouldSkipMappingParticipants,
+} from '@/lib/evaluation-mappings'
 
 // POST - Import users or mappings from CSV data
 export async function POST(request: NextRequest) {
@@ -213,6 +216,11 @@ async function importMappings(data: any[]) {
 
       if (!evaluatee) {
         results.errors.push(`Row ${rowNum}: Evaluatee not found "${evaluateeName || evaluateeEmail}"`)
+        continue
+      }
+
+      if (shouldSkipMappingParticipants([evaluator, evaluatee])) {
+        results.skipped++
         continue
       }
 

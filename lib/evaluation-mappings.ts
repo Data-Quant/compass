@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db'
 import type { Prisma, EvaluatorMapping } from '@prisma/client'
 import type { RelationshipType } from '@/types'
+import { isThreeEDepartment } from '@/lib/company-branding'
 
 type DbClient = typeof prisma | Prisma.TransactionClient
 
@@ -22,6 +23,10 @@ type PhysicalMappingRow = {
   evaluatorId: string
   evaluateeId: string
   relationshipType: RelationshipType
+}
+
+type MappingUserShape = {
+  department?: string | null
 }
 
 export function isMirroredRelationshipType(type: RelationshipType) {
@@ -71,10 +76,18 @@ function getCanonicalLogicalKey(mapping: ManagementMappingInput) {
   return `${mapping.relationshipType}:${mapping.evaluatorId}:${mapping.evaluateeId}`
 }
 
+type CollapseOptions = {
+  collapseManagementRelationships?: boolean
+}
+
 function buildLogicalDisplayMapping<TUser>(
-  mapping: MappingShape<TUser>
+  mapping: MappingShape<TUser>,
+  options: CollapseOptions = {}
 ): MappingShape<TUser> {
-  if (mapping.relationshipType === 'DIRECT_REPORT') {
+  const collapseManagementRelationships =
+    options.collapseManagementRelationships !== false
+
+  if (collapseManagementRelationships && mapping.relationshipType === 'DIRECT_REPORT') {
     return {
       ...mapping,
       evaluatorId: mapping.evaluateeId,
@@ -115,22 +128,40 @@ function buildLogicalDisplayMapping<TUser>(
 }
 
 export function collapseLogicalMappings<TUser>(
-  mappings: Array<MappingShape<TUser>>
+  mappings: Array<MappingShape<TUser>>,
+  options: CollapseOptions = {}
 ): Array<MappingShape<TUser>> {
+  const collapseManagementRelationships =
+    options.collapseManagementRelationships !== false
   const seen = new Set<string>()
   const collapsed: Array<MappingShape<TUser>> = []
 
   for (const mapping of mappings) {
-    const key = getCanonicalLogicalKey(mapping)
+    const key =
+      collapseManagementRelationships || mapping.relationshipType === 'PEER'
+        ? getCanonicalLogicalKey(mapping)
+        : `${mapping.relationshipType}:${mapping.evaluatorId}:${mapping.evaluateeId}`
     if (seen.has(key)) {
       continue
     }
 
     seen.add(key)
-    collapsed.push(buildLogicalDisplayMapping(mapping))
+    collapsed.push(
+      buildLogicalDisplayMapping(mapping, {
+        collapseManagementRelationships,
+      })
+    )
   }
 
   return collapsed
+}
+
+export function collapseAdminMappings<TUser>(
+  mappings: Array<MappingShape<TUser>>
+): Array<MappingShape<TUser>> {
+  return collapseLogicalMappings(mappings, {
+    collapseManagementRelationships: false,
+  })
 }
 
 export function getPhysicalMappingsForLogicalRelationship(input: {
@@ -251,4 +282,14 @@ export function getMappingPairKey(mapping: Pick<EvaluatorMapping, 'evaluatorId' 
     evaluateeId: mapping.evaluateeId,
     relationshipType: mapping.relationshipType as RelationshipType,
   })
+}
+
+export function isExcludedMappingUser(user: MappingUserShape | null | undefined) {
+  return isThreeEDepartment(user?.department)
+}
+
+export function shouldSkipMappingParticipants(
+  participants: Array<MappingUserShape | null | undefined>
+) {
+  return participants.some((participant) => isExcludedMappingUser(participant))
 }

@@ -7,6 +7,7 @@ import {
   createLogicalEvaluatorMapping,
   deleteLogicalEvaluatorMappingById,
   getMappingPairKey,
+  shouldSkipMappingParticipants,
 } from '@/lib/evaluation-mappings'
 import { getCollapsedAdminMappings } from '@/lib/evaluation-assignments'
 
@@ -22,7 +23,9 @@ export async function GET(request: NextRequest) {
     const evaluateeId = searchParams.get('evaluateeId')
     const evaluatorId = searchParams.get('evaluatorId')
 
-    const allMappings = await getCollapsedAdminMappings()
+    const allMappings = (await getCollapsedAdminMappings()).filter(
+      (mapping) => !shouldSkipMappingParticipants([mapping.evaluator, mapping.evaluatee])
+    )
     const mappings = allMappings.filter((mapping) => {
       if (evaluateeId && mapping.evaluateeId !== evaluateeId) return false
       if (evaluatorId && mapping.evaluatorId !== evaluatorId) return false
@@ -56,6 +59,27 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const participants = await prisma.user.findMany({
+      where: {
+        id: { in: [...new Set([evaluatorId, evaluateeId])] },
+      },
+      select: {
+        id: true,
+        department: true,
+      },
+    })
+
+    if (participants.length !== [...new Set([evaluatorId, evaluateeId])].length) {
+      return NextResponse.json({ error: 'Evaluator or evaluatee not found' }, { status: 404 })
+    }
+
+    if (shouldSkipMappingParticipants(participants)) {
+      return NextResponse.json(
+        { error: '3E employees are managed separately and cannot be added to these mappings' },
+        { status: 400 }
+      )
+    }
+
     await prisma.$transaction(async (tx) => {
       await createLogicalEvaluatorMapping(tx, {
         evaluatorId,
@@ -71,7 +95,14 @@ export async function POST(request: NextRequest) {
     })
     const mappings = await getCollapsedAdminMappings()
     const mapping =
-      mappings.find((entry) => getMappingPairKey(entry) === targetPairKey) || null
+      mappings.find(
+        (entry) =>
+          entry.evaluatorId === evaluatorId &&
+          entry.evaluateeId === evaluateeId &&
+          entry.relationshipType === relationshipType
+      ) ||
+      mappings.find((entry) => getMappingPairKey(entry) === targetPairKey) ||
+      null
 
     return NextResponse.json({ success: true, mapping })
   } catch (error) {
@@ -164,6 +195,11 @@ export async function PUT(request: NextRequest) {
 
         if (!evaluatee) {
           results.errors.push(`Evaluatee not found: ${mapping.evaluateeName || mapping.evaluateeEmail}`)
+          continue
+        }
+
+        if (shouldSkipMappingParticipants([evaluator, evaluatee])) {
+          results.skipped++
           continue
         }
 

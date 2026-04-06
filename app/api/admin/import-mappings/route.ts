@@ -4,7 +4,10 @@ import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { C_LEVEL_EVALUATORS, HR_EVALUATORS } from '@/lib/config'
 import type { RelationshipType } from '@/types'
-import { createLogicalEvaluatorMapping } from '@/lib/evaluation-mappings'
+import {
+  createLogicalEvaluatorMapping,
+  shouldSkipMappingParticipants,
+} from '@/lib/evaluation-mappings'
 
 interface CSVRow {
   Name: string
@@ -79,6 +82,7 @@ export async function POST(request: NextRequest) {
 
     // First pass: Create/update all users from the CSV
     const userMap = new Map<string, string>() // normalized name -> user id
+    const userDetailsById = new Map<string, { department: string | null }>()
 
     for (const row of rows) {
       if (!row.Name || row.Name.trim() === '') continue
@@ -109,6 +113,9 @@ export async function POST(request: NextRequest) {
             result.usersUpdated++
           }
           userMap.set(normalizedName, existingUser.id)
+          userDetailsById.set(existingUser.id, {
+            department: department ?? existingUser.department,
+          })
         } else {
           // Create new user
           const newUser = await prisma.user.create({
@@ -121,6 +128,9 @@ export async function POST(request: NextRequest) {
           })
           result.usersCreated++
           userMap.set(normalizedName, newUser.id)
+          userDetailsById.set(newUser.id, {
+            department: newUser.department,
+          })
         }
       } catch (error) {
         console.error(`Error processing user ${name}:`, error)
@@ -137,6 +147,9 @@ export async function POST(request: NextRequest) {
         })
         if (existing) {
           userMap.set(normalized, existing.id)
+          userDetailsById.set(existing.id, {
+            department: existing.department,
+          })
         }
       }
     }
@@ -149,6 +162,9 @@ export async function POST(request: NextRequest) {
         })
         if (existing) {
           userMap.set(normalized, existing.id)
+          userDetailsById.set(existing.id, {
+            department: existing.department,
+          })
         }
       }
     }
@@ -171,6 +187,9 @@ export async function POST(request: NextRequest) {
 
         if (evaluator) {
           userMap.set(evaluatorNormalized, evaluator.id)
+          userDetailsById.set(evaluator.id, {
+            department: evaluator.department,
+          })
           return createMapping(resolvedEvaluatorName, evaluateeId, relationshipType)
         }
 
@@ -185,7 +204,18 @@ export async function POST(request: NextRequest) {
 
         result.usersCreated++
         userMap.set(evaluatorNormalized, createdEvaluator.id)
+        userDetailsById.set(createdEvaluator.id, {
+          department: createdEvaluator.department,
+        })
         return createMapping(resolvedEvaluatorName, evaluateeId, relationshipType)
+      }
+
+      const evaluator = userDetailsById.get(evaluatorId)
+      const evaluatee = userDetailsById.get(evaluateeId)
+
+      if (shouldSkipMappingParticipants([evaluator, evaluatee])) {
+        result.mappingsSkipped++
+        return false
       }
 
       await createLogicalEvaluatorMapping(prisma, {
@@ -250,6 +280,10 @@ export async function POST(request: NextRequest) {
     // Third pass: HR evaluators evaluate ALL employees
     const allEmployees = await prisma.user.findMany({
       where: { role: 'EMPLOYEE' },
+      select: {
+        id: true,
+        department: true,
+      },
     })
 
     for (const hrName of HR_EVALUATORS) {
@@ -262,6 +296,10 @@ export async function POST(request: NextRequest) {
       }
 
       for (const employee of allEmployees) {
+        userDetailsById.set(employee.id, {
+          department: employee.department,
+        })
+
         // HR doesn't evaluate themselves
         if (employee.id !== hrId) {
           await createMapping(hrName, employee.id, 'HR')

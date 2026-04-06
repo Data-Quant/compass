@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/db'
 import type { Prisma } from '@prisma/client'
 import type { RelationshipType } from '@/types'
-import { collapseLogicalMappings } from '@/lib/evaluation-mappings'
+import { collapseAdminMappings } from '@/lib/evaluation-mappings'
 
 type DbClient = typeof prisma | Prisma.TransactionClient
 
@@ -223,5 +223,5 @@ export async function getCollapsedAdminMappings() {
     ],
   })
 
-  return collapseLogicalMappings(rawMappings)
+  return collapseAdminMappings(rawMappings)
 }
