@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
-import { C_LEVEL_EVALUATORS, HR_EVALUATORS } from '@/lib/config'
+import {
+  C_LEVEL_EVALUATORS,
+  HAMIZ_EVALUATOR,
+  HR_EVALUATORS,
+  isCLevelEvaluatorName,
+} from '@/lib/config'
 import type { RelationshipType } from '@/types'
 import {
   createLogicalEvaluatorMapping,
@@ -37,12 +42,6 @@ function normalizeName(name: string): string {
 function resolveImportedName(name: string): string {
   const normalized = normalizeName(name)
   return USER_NAME_ALIASES[normalized] || name.trim()
-}
-
-// Helper to check if a name matches C-Level evaluators
-function isCLevelEvaluator(name: string): boolean {
-  const normalized = normalizeName(name)
-  return C_LEVEL_EVALUATORS.some(cl => normalizeName(cl) === normalized)
 }
 
 // Helper to check if a name matches HR evaluators
@@ -197,8 +196,8 @@ export async function POST(request: NextRequest) {
           data: {
             name: resolvedEvaluatorName,
             role: isHREvaluator(resolvedEvaluatorName) ? 'HR' : 'EMPLOYEE',
-            department: isCLevelEvaluator(resolvedEvaluatorName) ? 'Executive' : null,
-            position: isCLevelEvaluator(resolvedEvaluatorName) ? 'C-Level Executive' : null,
+            department: isCLevelEvaluatorName(resolvedEvaluatorName) ? 'Executive' : null,
+            position: isCLevelEvaluatorName(resolvedEvaluatorName) ? 'C-Level Executive' : null,
           },
         })
 
@@ -244,8 +243,8 @@ export async function POST(request: NextRequest) {
       for (let i = 1; i <= 5; i++) {
         const teamLeadName = row[`Team Lead ${i}`]?.trim()
         if (teamLeadName && teamLeadName !== '') {
-          // Check if this team lead is actually a C-Level evaluator
-          if (isCLevelEvaluator(teamLeadName)) {
+          // Hamiz in a Team Lead column should map to the Hamiz/C-Level bucket.
+          if (isCLevelEvaluatorName(teamLeadName)) {
             await createMapping(teamLeadName, evaluateeId, 'C_LEVEL')
           } else {
             await createMapping(teamLeadName, evaluateeId, 'TEAM_LEAD')
@@ -309,7 +308,7 @@ export async function POST(request: NextRequest) {
 
     // Fourth pass: Create DEPT mappings (Hamiz evaluates departments)
     // Find Hamiz user for DEPT evaluations
-    const hamizName = C_LEVEL_EVALUATORS.find(n => normalizeName(n).includes('hamiz'))
+    const hamizName = HAMIZ_EVALUATOR
     if (hamizName) {
       const hamizNormalized = normalizeName(hamizName)
       const hamizId = userMap.get(hamizNormalized)

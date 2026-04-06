@@ -38,13 +38,22 @@ export const THEME = {
  * These settings control how evaluator relationships and weights are determined
  */
 
-// C-Level evaluators - these people's evaluations carry the C_LEVEL weight (40%)
+// Hamiz is the only evaluator that should contribute to the C_LEVEL/Hamiz weight bucket.
+export const HAMIZ_EVALUATOR = 'Hamiz Awan'
+
+// C-Level evaluators - keep this aligned with weight profiles and CSV import rules.
 export const C_LEVEL_EVALUATORS = [
-  'Hamiz Awan',
-  'Brad Herman',
-  'Daniyal Awan',
-  'Richard Reizes',
+  HAMIZ_EVALUATOR,
 ]
+
+export function isCLevelEvaluatorName(name: string | null | undefined) {
+  if (!name) return false
+
+  const normalized = name.trim().toLowerCase().replace(/\s+/g, ' ')
+  return C_LEVEL_EVALUATORS.some(
+    (evaluatorName) => evaluatorName.trim().toLowerCase().replace(/\s+/g, ' ') === normalized
+  )
+}
 
 // HR evaluators - these people evaluate ALL employees with HR relationship type
 export const HR_EVALUATORS = [
