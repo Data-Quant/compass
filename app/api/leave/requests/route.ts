@@ -10,6 +10,7 @@ import {
   isValidLeaveDateRange,
   leaveRequiresLeadApproval,
 } from '@/lib/leave-utils'
+import { normalizeLeaveTimeZone } from '@/lib/leave-timezone'
 import { isAdminRole } from '@/lib/permissions'
 import { removeLeaveCalendarEvent, syncLeaveCalendarEvent } from '@/lib/google-calendar'
 
@@ -32,6 +33,11 @@ const optionalTimeSchema = z.preprocess(
   z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Time must be in HH:mm format').optional().nullable()
 )
 
+const optionalTimeZoneSchema = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z.string().trim().min(1).max(100).optional().nullable()
+)
+
 const isSameUtcDay = (a: Date, b: Date) =>
   a.getUTCFullYear() === b.getUTCFullYear() &&
   a.getUTCMonth() === b.getUTCMonth() &&
@@ -41,6 +47,7 @@ const leaveRequestPayloadBaseSchema = z.object({
   leaveType: z.enum(LEAVE_TYPES),
   isHalfDay: z.boolean().optional().default(false),
   halfDaySession: z.enum(HALF_DAY_SESSIONS).optional(),
+  requestTimezone: optionalTimeZoneSchema,
   unavailableStartTime: optionalTimeSchema,
   unavailableEndTime: optionalTimeSchema,
   startDate: z.coerce.date(),
@@ -297,6 +304,7 @@ export async function POST(request: NextRequest) {
       endDate,
       reason,
       transitionPlan,
+      requestTimezone,
       coverPersonId,
       additionalNotifyIds,
       employeeId,
@@ -391,6 +399,7 @@ export async function POST(request: NextRequest) {
       : []
 
     const safeTransitionPlan = transitionPlan?.trim() || ''
+    const normalizedRequestTimezone = normalizeLeaveTimeZone(requestTimezone)
 
     // Create the leave request
     const leaveRequest = await prisma.$transaction(async (tx) => {
@@ -405,6 +414,7 @@ export async function POST(request: NextRequest) {
               leaveType,
               isHalfDay,
               halfDaySession: isHalfDay ? (halfDaySession ?? null) : null,
+              requestTimezone: normalizedRequestTimezone,
               unavailableStartTime: isHalfDay ? (unavailableStartTime ?? null) : null,
               unavailableEndTime: isHalfDay ? (unavailableEndTime ?? null) : null,
               startDate: start,
@@ -449,6 +459,7 @@ export async function POST(request: NextRequest) {
             leaveType,
             isHalfDay,
             halfDaySession: isHalfDay ? (halfDaySession ?? null) : null,
+            requestTimezone: normalizedRequestTimezone,
             unavailableStartTime: isHalfDay ? (unavailableStartTime ?? null) : null,
             unavailableEndTime: isHalfDay ? (unavailableEndTime ?? null) : null,
             startDate: start,
@@ -479,6 +490,7 @@ export async function POST(request: NextRequest) {
           leaveType,
           isHalfDay,
           halfDaySession: isHalfDay ? (halfDaySession ?? null) : null,
+          requestTimezone: normalizedRequestTimezone,
           unavailableStartTime: isHalfDay ? (unavailableStartTime ?? null) : null,
           unavailableEndTime: isHalfDay ? (unavailableEndTime ?? null) : null,
           startDate: start,
@@ -551,6 +563,7 @@ export async function PUT(request: NextRequest) {
       endDate,
       reason,
       transitionPlan,
+      requestTimezone,
       coverPersonId,
       additionalNotifyIds,
     } = parsed.data
@@ -561,6 +574,7 @@ export async function PUT(request: NextRequest) {
       select: {
         id: true,
         employeeId: true,
+        requestTimezone: true,
         status: true,
       },
     })
@@ -629,6 +643,7 @@ export async function PUT(request: NextRequest) {
     const validNotifyIds = Array.isArray(additionalNotifyIds)
       ? [...new Set(additionalNotifyIds.filter((notifyId) => notifyId !== targetEmployeeId))]
       : []
+    const normalizedRequestTimezone = normalizeLeaveTimeZone(requestTimezone || existing.requestTimezone)
 
     const updated = await prisma.leaveRequest.update({
       where: { id },
@@ -636,6 +651,7 @@ export async function PUT(request: NextRequest) {
         leaveType,
         isHalfDay,
         halfDaySession: isHalfDay ? (halfDaySession ?? null) : null,
+        requestTimezone: normalizedRequestTimezone,
         unavailableStartTime: isHalfDay ? (unavailableStartTime ?? null) : null,
         unavailableEndTime: isHalfDay ? (unavailableEndTime ?? null) : null,
         startDate: start,

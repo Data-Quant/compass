@@ -524,6 +524,7 @@ model LeaveRequest {
   leaveType       LeaveType
   isHalfDay       Boolean     @default(false)
   halfDaySession  HalfDaySession?
+  requestTimezone String      @default("Asia/Karachi")
   unavailableStartTime String?  // HH:mm
   unavailableEndTime   String?  // HH:mm
   startDate       DateTime

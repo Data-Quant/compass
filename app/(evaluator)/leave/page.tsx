@@ -39,6 +39,7 @@ import { StatsCard } from '@/components/composed/StatsCard'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { Textarea } from '@/components/ui/textarea'
 import { calculateLeaveDuration } from '@/lib/leave-utils'
+import { detectBrowserLeaveTimeZone } from '@/lib/leave-timezone'
 
 interface LeaveBalance {
   casualDays: number
@@ -502,6 +503,7 @@ export default function LeavePage() {
         startDate: formData.startDate,
         endDate,
         isHalfDay,
+        requestTimezone: detectBrowserLeaveTimeZone(),
         halfDaySession: isHalfDay ? formData.halfDaySession : undefined,
         unavailableStartTime: isHalfDay ? formData.unavailableStartTime : undefined,
         unavailableEndTime: isHalfDay ? formData.unavailableEndTime : undefined,
@@ -603,6 +605,7 @@ export default function LeavePage() {
           id: editFormData.id,
           leaveType: editFormData.leaveType,
           isHalfDay,
+          requestTimezone: detectBrowserLeaveTimeZone(),
           halfDaySession: isHalfDay ? editFormData.halfDaySession : undefined,
           unavailableStartTime: isHalfDay ? editFormData.unavailableStartTime : undefined,
           unavailableEndTime: isHalfDay ? editFormData.unavailableEndTime : undefined,

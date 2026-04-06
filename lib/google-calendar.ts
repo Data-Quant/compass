@@ -2,6 +2,7 @@ import { LeaveStatus } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { C_LEVEL_EVALUATORS } from '@/lib/config'
 import { safeRecordLeaveAuditEvent } from '@/lib/leave-audit'
+import { normalizeLeaveTimeZone } from '@/lib/leave-timezone'
 
 type GoogleCalendarConfig = {
   clientId: string
@@ -39,7 +40,6 @@ const LEAVE_STATUS_LABELS: Record<LeaveStatus, string> = {
   CANCELLED: 'Cancelled',
 }
 
-const LEAVE_CALENDAR_TIMEZONE = process.env.LEAVE_CALENDAR_TIMEZONE || 'Asia/Karachi'
 const GOOGLE_CALENDAR_ENV_WARNING =
   'Google Calendar env vars not configured (GOOGLE_CALENDAR_CLIENT_ID / GOOGLE_CALENDAR_CLIENT_SECRET / GOOGLE_CALENDAR_REFRESH_TOKEN)'
 
@@ -323,7 +323,7 @@ async function collectLeaveAttendeeEmails(leaveRequestId: string) {
 
 type LeaveCalendarContext = NonNullable<Awaited<ReturnType<typeof collectLeaveAttendeeEmails>>>
 
-function buildLeaveEventPayload({
+export function buildLeaveEventPayload({
   leaveRequest,
   attendeeEmails,
   forceAllDay = false,
@@ -336,6 +336,7 @@ function buildLeaveEventPayload({
   const endDate = toUtcDateOnly(new Date(leaveRequest.endDate))
   const returnDate = plusUtcDays(endDate, 1)
   const statusLabel = LEAVE_STATUS_LABELS[leaveRequest.status]
+  const leaveTimeZone = normalizeLeaveTimeZone(leaveRequest.requestTimezone)
 
   const halfDaySessionLabel =
     leaveRequest.halfDaySession === 'FIRST_HALF'
@@ -357,6 +358,7 @@ function buildLeaveEventPayload({
       ? [
           `Half-day session: ${halfDaySessionLabel || 'Not specified'}`,
           `Unavailable hours: ${unavailableHours || 'Not specified'}`,
+          `Timezone: ${leaveTimeZone}`,
         ]
       : []),
     `Status: ${statusLabel}`,
@@ -375,14 +377,14 @@ function buildLeaveEventPayload({
   const start = hasHalfDayTimes
     ? {
         dateTime: `${formatUtcDateOnly(startDate)}T${leaveRequest.unavailableStartTime}:00`,
-        timeZone: LEAVE_CALENDAR_TIMEZONE,
+        timeZone: leaveTimeZone,
       }
     : { date: formatUtcDateOnly(startDate) }
 
   const end = hasHalfDayTimes
     ? {
         dateTime: `${formatUtcDateOnly(startDate)}T${leaveRequest.unavailableEndTime}:00`,
-        timeZone: LEAVE_CALENDAR_TIMEZONE,
+        timeZone: leaveTimeZone,
       }
     : {
         // Google all-day events use exclusive end date.
