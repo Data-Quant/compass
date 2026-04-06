@@ -17,6 +17,52 @@ export async function GET() {
       ],
     }
 
+    const directReportMappings = await prisma.evaluatorMapping.findMany({
+      where: {
+        evaluatorId: user.id,
+        relationshipType: 'TEAM_LEAD',
+        evaluatee: activeFilter,
+      },
+      select: {
+        evaluatee: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            discordId: true,
+            department: true,
+            position: true,
+            payrollProfile: {
+              select: {
+                officialEmail: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        evaluatee: {
+          name: 'asc',
+        },
+      },
+      take: 50,
+    })
+
+    if (directReportMappings.length > 0) {
+      return NextResponse.json({
+        teamMembers: directReportMappings.map(({ evaluatee }) => ({
+          id: evaluatee.id,
+          name: evaluatee.name,
+          email: evaluatee.email || evaluatee.payrollProfile?.officialEmail || null,
+          discordId: evaluatee.discordId,
+          department: evaluatee.department,
+          position: evaluatee.position,
+        })),
+        scope: 'direct_reports',
+        department: user.department?.trim() || null,
+      })
+    }
+
     const trimmedDepartment = user.department?.trim() || null
     const where: Prisma.UserWhereInput = trimmedDepartment
       ? {
