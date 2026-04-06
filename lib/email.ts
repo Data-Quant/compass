@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db'
 import { formatReportAsHTML, generateDetailedReport } from './reports'
 import { escapeHtml } from '@/lib/sanitize'
 import { calculateLeaveDuration } from '@/lib/leave-utils'
+import { safeRecordLeaveAuditEvent } from '@/lib/leave-audit'
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -262,6 +263,7 @@ export async function sendLeaveRequestNotification(requestId: string) {
   const returnDate = returnDateValue.toLocaleDateString()
   const daysCount = calculateLeaveDuration(startDateValue, endDateValue, leaveRequest.isHalfDay)
   const durationLabel = getLeaveDurationLabel(daysCount)
+  const subject = `Leave Request: ${employee.name} - ${leaveRequest.leaveType} (${startDate} to ${endDate})`
 
   const hrEmails = await getHrRecipientEmails()
   const fallbackRecipients = parseRecipientList(
@@ -308,6 +310,17 @@ export async function sendLeaveRequestNotification(requestId: string) {
     ...(coverPersonEmail ? [coverPersonEmail] : []),
   ])]
   if (recipients.length === 0) {
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId: requestId,
+      channel: 'EMAIL',
+      eventType: 'REQUEST_NOTIFICATION',
+      status: 'SKIPPED',
+      recipients,
+      subject,
+      metadata: {
+        reason: 'No recipients configured for leave request notification',
+      },
+    })
     return { success: false, message: 'No recipients configured for leave request notification' }
   }
 
@@ -352,13 +365,42 @@ export async function sendLeaveRequestNotification(requestId: string) {
     const info = await transporter.sendMail({
       from: `P21 Compass <${FROM_EMAIL}>`,
       to: recipients.join(', '),
-      subject: `Leave Request: ${employee.name} - ${leaveRequest.leaveType} (${startDate} to ${endDate})`,
+      subject,
       html: htmlContent,
+    })
+
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId: requestId,
+      channel: 'EMAIL',
+      eventType: 'REQUEST_NOTIFICATION',
+      status: 'SUCCESS',
+      recipients,
+      subject,
+      providerMessageId: info.messageId || null,
+      metadata: {
+        leaveStatus: leaveRequest.status,
+        recipientCount: recipients.length,
+        isHalfDay: leaveRequest.isHalfDay,
+      },
     })
 
     return { success: true, data: { messageId: info.messageId } }
   } catch (error: any) {
     console.error('Failed to send leave request notification:', error)
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId: requestId,
+      channel: 'EMAIL',
+      eventType: 'REQUEST_NOTIFICATION',
+      status: 'FAILED',
+      recipients,
+      subject,
+      metadata: {
+        leaveStatus: leaveRequest.status,
+        recipientCount: recipients.length,
+        isHalfDay: leaveRequest.isHalfDay,
+      },
+      error,
+    })
     return { success: false, error: error.message }
   }
 }
@@ -376,7 +418,23 @@ export async function sendLeaveApprovalNotification(
     },
   })
 
-  if (!leaveRequest || !leaveRequest.employee.email) {
+  if (!leaveRequest) {
+    return { success: false, message: 'Request or employee email not found' }
+  }
+
+  if (!leaveRequest.employee.email) {
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId: requestId,
+      channel: 'EMAIL',
+      eventType: 'APPROVAL_NOTIFICATION',
+      status: 'SKIPPED',
+      recipients: [],
+      subject: null,
+      metadata: {
+        reason: 'Employee email not found',
+        approvalStatus: status,
+      },
+    })
     return { success: false, message: 'Request or employee email not found' }
   }
 
@@ -394,6 +452,7 @@ export async function sendLeaveApprovalNotification(
   const durationLabel = getLeaveDurationLabel(daysCount)
 
   const isApproved = status === 'approved'
+  const subject = `Leave Request ${isApproved ? 'Approved' : 'Rejected'}: ${leaveRequest.leaveType} (${startDate} - ${endDate})`
   const statusColor = isApproved ? '#10B981' : '#EF4444'
   const statusBg = isApproved ? '#D1FAE5' : '#FEE2E2'
 
@@ -436,13 +495,40 @@ export async function sendLeaveApprovalNotification(
     const info = await transporter.sendMail({
       from: `P21 Compass <${FROM_EMAIL}>`,
       to: employeeEmail,
-      subject: `Leave Request ${isApproved ? 'Approved' : 'Rejected'}: ${leaveRequest.leaveType} (${startDate} - ${endDate})`,
+      subject,
       html: htmlContent,
+    })
+
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId: requestId,
+      channel: 'EMAIL',
+      eventType: 'APPROVAL_NOTIFICATION',
+      status: 'SUCCESS',
+      recipients: [employeeEmail],
+      subject,
+      providerMessageId: info.messageId || null,
+      metadata: {
+        approvalStatus: status,
+        approverName,
+      },
     })
 
     return { success: true, data: { messageId: info.messageId } }
   } catch (error: any) {
     console.error('Failed to send leave approval notification:', error)
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId: requestId,
+      channel: 'EMAIL',
+      eventType: 'APPROVAL_NOTIFICATION',
+      status: 'FAILED',
+      recipients: [employeeEmail],
+      subject,
+      metadata: {
+        approvalStatus: status,
+        approverName,
+      },
+      error,
+    })
     return { success: false, error: error.message }
   }
 }
@@ -468,6 +554,17 @@ export async function sendTransitionPlanReminderNotification(requestId: string) 
   }
 
   if (!leaveRequest.employee.email) {
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId: requestId,
+      channel: 'EMAIL',
+      eventType: 'TRANSITION_PLAN_REMINDER',
+      status: 'SKIPPED',
+      recipients: [],
+      subject: null,
+      metadata: {
+        reason: 'Employee email not found',
+      },
+    })
     return { success: false, message: 'Employee email not found' }
   }
 
@@ -498,6 +595,7 @@ export async function sendTransitionPlanReminderNotification(requestId: string) 
       : daysUntilStart === 1
         ? 'Your leave starts tomorrow.'
         : `Your leave starts in ${daysUntilStart} days.`
+  const subject = `Reminder: Add transition plan for leave (${startDate} to ${endDate})`
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -533,13 +631,38 @@ export async function sendTransitionPlanReminderNotification(requestId: string) 
     const info = await transporter.sendMail({
       from: `P21 Compass <${FROM_EMAIL}>`,
       to: employeeEmail,
-      subject: `Reminder: Add transition plan for leave (${startDate} to ${endDate})`,
+      subject,
       html: htmlContent,
+    })
+
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId: requestId,
+      channel: 'EMAIL',
+      eventType: 'TRANSITION_PLAN_REMINDER',
+      status: 'SUCCESS',
+      recipients: [employeeEmail],
+      subject,
+      providerMessageId: info.messageId || null,
+      metadata: {
+        daysUntilStart,
+      },
     })
 
     return { success: true, data: { messageId: info.messageId } }
   } catch (error: any) {
     console.error('Failed to send transition plan reminder:', error)
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId: requestId,
+      channel: 'EMAIL',
+      eventType: 'TRANSITION_PLAN_REMINDER',
+      status: 'FAILED',
+      recipients: [employeeEmail],
+      subject,
+      metadata: {
+        daysUntilStart,
+      },
+      error,
+    })
     return { success: false, error: error.message }
   }
 }

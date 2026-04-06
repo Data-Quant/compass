@@ -1,6 +1,7 @@
 import { LeaveStatus } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { C_LEVEL_EVALUATORS } from '@/lib/config'
+import { safeRecordLeaveAuditEvent } from '@/lib/leave-audit'
 
 type GoogleCalendarConfig = {
   clientId: string
@@ -446,33 +447,83 @@ export async function removeLeaveCalendarEvent(leaveRequestId: string): Promise<
   const config = getCalendarConfig()
   if (!config) {
     warnCalendarSkip('remove', leaveRequestId, GOOGLE_CALENDAR_ENV_WARNING)
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId,
+      channel: 'CALENDAR',
+      eventType: 'CALENDAR_REMOVE',
+      status: 'SKIPPED',
+      metadata: {
+        reason: GOOGLE_CALENDAR_ENV_WARNING,
+      },
+    })
     return { success: false, action: 'skipped', reason: GOOGLE_CALENDAR_ENV_WARNING }
   }
 
-  const accessToken = await getAccessToken(config)
-  const eventIds = await findLeaveEventIds(config, accessToken, leaveRequestId)
+  try {
+    const accessToken = await getAccessToken(config)
+    const eventIds = await findLeaveEventIds(config, accessToken, leaveRequestId)
 
-  if (eventIds.length === 0) {
-    return { success: true, action: 'not_found' }
-  }
+    if (eventIds.length === 0) {
+      await safeRecordLeaveAuditEvent({
+        leaveRequestId,
+        channel: 'CALENDAR',
+        eventType: 'CALENDAR_REMOVE',
+        status: 'SKIPPED',
+        metadata: {
+          action: 'not_found',
+        },
+      })
+      return { success: true, action: 'not_found' }
+    }
 
-  for (const eventId of eventIds) {
-    await googleCalendarRequest<null>({
-      config,
-      accessToken,
-      method: 'DELETE',
-      eventId,
-      query: { sendUpdates: 'all' },
+    for (const eventId of eventIds) {
+      await googleCalendarRequest<null>({
+        config,
+        accessToken,
+        method: 'DELETE',
+        eventId,
+        query: { sendUpdates: 'all' },
+      })
+    }
+
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId,
+      channel: 'CALENDAR',
+      eventType: 'CALENDAR_REMOVE',
+      status: 'SUCCESS',
+      metadata: {
+        action: 'deleted',
+        count: eventIds.length,
+        eventIds,
+      },
     })
-  }
 
-  return { success: true, action: 'deleted', count: eventIds.length }
+    return { success: true, action: 'deleted', count: eventIds.length }
+  } catch (error) {
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId,
+      channel: 'CALENDAR',
+      eventType: 'CALENDAR_REMOVE',
+      status: 'FAILED',
+      error,
+    })
+    throw error
+  }
 }
 
 export async function syncLeaveCalendarEvent(leaveRequestId: string): Promise<LeaveCalendarResult> {
   const config = getCalendarConfig()
   if (!config) {
     warnCalendarSkip('sync', leaveRequestId, GOOGLE_CALENDAR_ENV_WARNING)
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId,
+      channel: 'CALENDAR',
+      eventType: 'CALENDAR_SYNC',
+      status: 'SKIPPED',
+      metadata: {
+        reason: GOOGLE_CALENDAR_ENV_WARNING,
+      },
+    })
     return { success: false, action: 'skipped', reason: GOOGLE_CALENDAR_ENV_WARNING }
   }
 
@@ -488,56 +539,97 @@ export async function syncLeaveCalendarEvent(leaveRequestId: string): Promise<Le
     return removeLeaveCalendarEvent(leaveRequest.id)
   }
 
-  const accessToken = await getAccessToken(config)
-  const eventIds = await findLeaveEventIds(config, accessToken, leaveRequest.id)
-  const primaryEventId = eventIds[0]
+  try {
+    const accessToken = await getAccessToken(config)
+    const eventIds = await findLeaveEventIds(config, accessToken, leaveRequest.id)
+    const primaryEventId = eventIds[0]
 
-  // Clean up duplicates if they exist.
-  if (eventIds.length > 1) {
-    for (const duplicateEventId of eventIds.slice(1)) {
-      await googleCalendarRequest<null>({
-        config,
-        accessToken,
-        method: 'DELETE',
-        eventId: duplicateEventId,
-        query: { sendUpdates: 'all' },
-      })
+    // Clean up duplicates if they exist.
+    if (eventIds.length > 1) {
+      for (const duplicateEventId of eventIds.slice(1)) {
+        await googleCalendarRequest<null>({
+          config,
+          accessToken,
+          method: 'DELETE',
+          eventId: duplicateEventId,
+          query: { sendUpdates: 'all' },
+        })
+      }
     }
-  }
 
-  const supportsTimedHalfDay =
-    leaveRequest.isHalfDay &&
-    Boolean(leaveRequest.unavailableStartTime && leaveRequest.unavailableEndTime)
+    const supportsTimedHalfDay =
+      leaveRequest.isHalfDay &&
+      Boolean(leaveRequest.unavailableStartTime && leaveRequest.unavailableEndTime)
 
-  if (supportsTimedHalfDay) {
-    try {
-      return await upsertLeaveCalendarEvent({
+    let result: LeaveCalendarResult
+
+    if (supportsTimedHalfDay) {
+      try {
+        result = await upsertLeaveCalendarEvent({
+          config,
+          accessToken,
+          primaryEventId,
+          payload: buildLeaveEventPayload({ leaveRequest, attendeeEmails }),
+        })
+      } catch (error) {
+        console.warn(
+          `[leave-calendar] Timed half-day sync failed for leave ${leaveRequest.id}; retrying as all-day event.`,
+          error
+        )
+
+        const fallbackResult = await upsertLeaveCalendarEvent({
+          config,
+          accessToken,
+          primaryEventId,
+          payload: buildLeaveEventPayload({ leaveRequest, attendeeEmails, forceAllDay: true }),
+        })
+
+        result = { ...fallbackResult, fallbackToAllDay: true }
+      }
+    } else {
+      result = await upsertLeaveCalendarEvent({
         config,
         accessToken,
         primaryEventId,
         payload: buildLeaveEventPayload({ leaveRequest, attendeeEmails }),
       })
-    } catch (error) {
-      console.warn(
-        `[leave-calendar] Timed half-day sync failed for leave ${leaveRequest.id}; retrying as all-day event.`,
-        error
-      )
-
-      const fallbackResult = await upsertLeaveCalendarEvent({
-        config,
-        accessToken,
-        primaryEventId,
-        payload: buildLeaveEventPayload({ leaveRequest, attendeeEmails, forceAllDay: true }),
-      })
-
-      return { ...fallbackResult, fallbackToAllDay: true }
     }
-  }
 
-  return upsertLeaveCalendarEvent({
-    config,
-    accessToken,
-    primaryEventId,
-    payload: buildLeaveEventPayload({ leaveRequest, attendeeEmails }),
-  })
+    if (result.success) {
+      await safeRecordLeaveAuditEvent({
+        leaveRequestId,
+        channel: 'CALENDAR',
+        eventType: 'CALENDAR_SYNC',
+        status: 'SUCCESS',
+        recipients: attendeeEmails,
+        subject: `${leaveRequest.employee.name} - ${leaveRequest.leaveType}${leaveRequest.isHalfDay ? ' Half-Day' : ''} Leave (${LEAVE_STATUS_LABELS[leaveRequest.status]})`,
+        providerMessageId: 'eventId' in result ? result.eventId || null : null,
+        metadata: {
+          action: result.action,
+          fallbackToAllDay: 'fallbackToAllDay' in result ? Boolean(result.fallbackToAllDay) : false,
+          attendeeCount: attendeeEmails.length,
+          isHalfDay: leaveRequest.isHalfDay,
+          leaveStatus: leaveRequest.status,
+        },
+      })
+    }
+
+    return result
+  } catch (error) {
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId,
+      channel: 'CALENDAR',
+      eventType: 'CALENDAR_SYNC',
+      status: 'FAILED',
+      recipients: attendeeEmails,
+      subject: `${leaveRequest.employee.name} - ${leaveRequest.leaveType}${leaveRequest.isHalfDay ? ' Half-Day' : ''} Leave (${LEAVE_STATUS_LABELS[leaveRequest.status]})`,
+      metadata: {
+        attendeeCount: attendeeEmails.length,
+        isHalfDay: leaveRequest.isHalfDay,
+        leaveStatus: leaveRequest.status,
+      },
+      error,
+    })
+    throw error
+  }
 }

@@ -84,6 +84,25 @@ enum HalfDaySession {
   SECOND_HALF
 }
 
+enum LeaveAuditChannel {
+  EMAIL
+  CALENDAR
+}
+
+enum LeaveAuditEventType {
+  REQUEST_NOTIFICATION
+  APPROVAL_NOTIFICATION
+  TRANSITION_PLAN_REMINDER
+  CALENDAR_SYNC
+  CALENDAR_REMOVE
+}
+
+enum LeaveAuditStatus {
+  SUCCESS
+  FAILED
+  SKIPPED
+}
+
 enum TicketStatus {
   OPEN             // Employee just submitted
   UNDER_REVIEW     // HR is looking at it
@@ -238,6 +257,7 @@ model User {
   // Leave management relations
   leaveRequests       LeaveRequest[]     @relation("LeaveEmployee")
   leaveCovering       LeaveRequest[]     @relation("LeaveCover")
+  leaveAuditEvents    LeaveAuditEvent[]  @relation("LeaveAuditActor")
   
   // Device management relations
   deviceTickets       DeviceTicket[]     @relation("DeviceTicketEmployee")
@@ -531,10 +551,34 @@ model LeaveRequest {
   
   employee        User        @relation("LeaveEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
   coverPerson     User?       @relation("LeaveCover", fields: [coverPersonId], references: [id], onDelete: SetNull)
+  auditEvents     LeaveAuditEvent[]
 
   @@index([employeeId])
   @@index([status])
   @@index([startDate, endDate])
+}
+
+model LeaveAuditEvent {
+  id                String             @id @default(cuid())
+  leaveRequestId    String
+  actorId           String?
+  channel           LeaveAuditChannel
+  eventType         LeaveAuditEventType
+  status            LeaveAuditStatus
+  recipients        Json?
+  subject           String?
+  providerMessageId String?
+  metadata          Json?
+  errorMessage      String?
+  createdAt         DateTime           @default(now())
+
+  leaveRequest      LeaveRequest       @relation(fields: [leaveRequestId], references: [id], onDelete: Cascade)
+  actor             User?              @relation("LeaveAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([leaveRequestId, createdAt])
+  @@index([eventType, createdAt])
+  @@index([status, createdAt])
+  @@index([actorId])
 }
 
 model LeaveBalance {
