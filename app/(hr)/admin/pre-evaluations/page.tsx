@@ -58,7 +58,7 @@ interface SelectionUser {
 
 interface Selection {
   id: string
-  type: 'PRIMARY' | 'CROSS_DEPARTMENT'
+  type: 'PRIMARY' | 'PEER' | 'CROSS_DEPARTMENT'
   evaluateeId: string
   suggestedEvaluatorId: string | null
   reviewStatus: 'PENDING' | 'APPROVED' | 'REJECTED'
@@ -301,23 +301,23 @@ export default function AdminPreEvaluationsPage() {
       })
       const result = await response.json()
       if (!response.ok) {
-        toast.error(result.error || 'Failed to review cross-department suggestion')
+        toast.error(result.error || 'Failed to review selection')
         return
       }
       toast.success(`Selection ${reviewStatus === 'APPROVED' ? 'approved' : 'rejected'}`)
       await loadData(selectedPeriodId)
     } catch {
-      toast.error('Failed to review cross-department suggestion')
+      toast.error('Failed to review selection')
     } finally {
       setActiveActionKey(null)
     }
   }
 
-  const crossDepartmentSelections = useMemo(
+  const additionalEvaluatorSelections = useMemo(
     () =>
       (data?.preps || []).flatMap((prep) =>
         prep.evaluateeSelections
-          .filter((selection) => selection.type === 'CROSS_DEPARTMENT')
+          .filter((selection) => selection.type !== 'PRIMARY')
           .map((selection) => ({ prep, selection }))
       ),
     [data]
@@ -357,7 +357,7 @@ export default function AdminPreEvaluationsPage() {
               Pre-Evaluation Onboarding
             </h1>
             <p className="text-muted-foreground mt-1">
-              Monitor team lead submissions, review cross-department suggestions, and trigger the pre-cycle flow.
+              Monitor team lead submissions, review additional evaluator requests, and trigger the pre-cycle flow.
             </p>
           </div>
 
@@ -492,13 +492,14 @@ export default function AdminPreEvaluationsPage() {
         <Tabs defaultValue="lead-preps" className="space-y-4">
           <TabsList>
             <TabsTrigger value="lead-preps">Lead Submissions</TabsTrigger>
-            <TabsTrigger value="cross-review">Cross-Department Review</TabsTrigger>
+            <TabsTrigger value="cross-review">Additional Evaluator Review</TabsTrigger>
           </TabsList>
 
           <TabsContent value="lead-preps" className="space-y-4">
             {data.preps.map((prep) => {
               const badge = STATUS_BADGES[prep.status]
               const primarySelections = prep.evaluateeSelections.filter((selection) => selection.type === 'PRIMARY')
+              const peerSelections = prep.evaluateeSelections.filter((selection) => selection.type === 'PEER')
               const crossSelections = prep.evaluateeSelections.filter((selection) => selection.type === 'CROSS_DEPARTMENT')
               const progressCount = Number(Boolean(prep.questionsSubmittedAt)) + Number(Boolean(prep.evaluateesSubmittedAt))
               const progressValue = Math.round((progressCount / 2) * 100)
@@ -614,7 +615,7 @@ export default function AdminPreEvaluationsPage() {
                         <div>
                           <h3 className="font-medium text-foreground">Evaluatee intake</h3>
                           <p className="text-sm text-muted-foreground">
-                            Primary rows are reference only. Cross-department rows need HR review.
+                            Primary rows are reference only. Peer and cross-department rows need HR review.
                           </p>
                         </div>
 
@@ -633,6 +634,38 @@ export default function AdminPreEvaluationsPage() {
                             </div>
                           ) : (
                             <p className="text-sm text-muted-foreground">No primary evaluatees submitted.</p>
+                          )}
+                        </div>
+
+                        <div className="rounded-lg border p-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <p className="font-medium text-foreground">Peer evaluator requests</p>
+                            <Badge variant="secondary">{peerSelections.length}</Badge>
+                          </div>
+                          {peerSelections.length > 0 ? (
+                            <div className="space-y-3">
+                              {peerSelections.map((selection) => {
+                                const reviewBadge = REVIEW_BADGES[selection.reviewStatus]
+                                return (
+                                  <div key={selection.id} className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div>
+                                        <p className="text-sm font-medium text-foreground">{selection.evaluatee.name}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                          Requested peer evaluator: {selection.suggestedEvaluator?.name || 'Not set'}
+                                        </p>
+                                      </div>
+                                      <Badge className={reviewBadge.className}>{reviewBadge.label}</Badge>
+                                    </div>
+                                    {selection.reviewNote && (
+                                      <p className="text-xs text-muted-foreground">Note: {selection.reviewNote}</p>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">No peer requests submitted.</p>
                           )}
                         </div>
 
@@ -676,14 +709,14 @@ export default function AdminPreEvaluationsPage() {
           </TabsContent>
 
           <TabsContent value="cross-review" className="space-y-4">
-            {crossDepartmentSelections.length === 0 ? (
+            {additionalEvaluatorSelections.length === 0 ? (
               <EmptyState
                 icon={<CheckCircle2 className="h-12 w-12" />}
-                title="No cross-department suggestions"
-                description="Once leads submit cross-department evaluator suggestions, they will appear here for HR review."
+                title="No additional evaluator requests"
+                description="Once leads submit peer or cross-department evaluator requests, they will appear here for HR review."
               />
             ) : (
-              crossDepartmentSelections.map(({ prep, selection }) => {
+              additionalEvaluatorSelections.map(({ prep, selection }) => {
                 const reviewBadge = REVIEW_BADGES[selection.reviewStatus]
                 const approveKey = `review:${selection.id}:APPROVED`
                 const rejectKey = `review:${selection.id}:REJECTED`
@@ -696,12 +729,18 @@ export default function AdminPreEvaluationsPage() {
                           <div className="flex flex-wrap items-center gap-2">
                             <p className="font-semibold text-foreground">{selection.evaluatee.name}</p>
                             <Badge className={reviewBadge.className}>{reviewBadge.label}</Badge>
+                            <Badge variant="secondary">
+                              {selection.type === 'PEER' ? 'Peer' : 'Cross-Department'}
+                            </Badge>
                           </div>
                           <p className="text-sm text-muted-foreground mt-1">
-                            Suggested evaluator: {selection.suggestedEvaluator?.name || 'Not provided'}
+                            {selection.type === 'PEER' ? 'Requested peer evaluator' : 'Suggested evaluator'}: {selection.suggestedEvaluator?.name || 'Not provided'}
                           </p>
                           <p className="text-sm text-muted-foreground">
-                            Source lead: {prep.lead.name} · Question set for {period?.name || 'this period'}
+                            Source lead: {prep.lead.name}
+                            {selection.type === 'CROSS_DEPARTMENT'
+                              ? ` · Question set for ${period?.name || 'this period'}`
+                              : ` · Applies only to ${period?.name || 'this period'}`}
                           </p>
                         </div>
                         <div className="text-sm text-muted-foreground lg:text-right">

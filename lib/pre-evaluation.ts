@@ -51,7 +51,7 @@ export function canTriggerPreEvaluation(reviewStartDate: Date) {
 }
 
 export function buildPreEvaluationSelectionKey(
-  type: 'PRIMARY' | 'CROSS_DEPARTMENT',
+  type: 'PRIMARY' | 'PEER' | 'CROSS_DEPARTMENT',
   evaluateeId: string,
   suggestedEvaluatorId?: string | null
 ) {
@@ -344,24 +344,48 @@ export async function getCurrentLeadPrep(userId: string) {
 
   if (!prep) return null
 
-  const users = await prisma.user.findMany({
-    where: {
-      role: 'EMPLOYEE',
-      id: { not: userId },
-      OR: [
-        { payrollProfile: { is: null } },
-        { payrollProfile: { is: { isPayrollActive: true } } },
-      ],
-    },
-    select: {
-      id: true,
-      name: true,
-      department: true,
-      position: true,
-      role: true,
-    },
-    orderBy: { name: 'asc' },
-  })
+  const [users, directReportMappings] = await Promise.all([
+    prisma.user.findMany({
+      where: {
+        role: 'EMPLOYEE',
+        id: { not: userId },
+        OR: [
+          { payrollProfile: { is: null } },
+          { payrollProfile: { is: { isPayrollActive: true } } },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        department: true,
+        position: true,
+        role: true,
+      },
+      orderBy: { name: 'asc' },
+    }),
+    prisma.evaluatorMapping.findMany({
+      where: {
+        evaluatorId: userId,
+        relationshipType: 'TEAM_LEAD',
+      },
+      select: {
+        evaluatee: {
+          select: {
+            id: true,
+            name: true,
+            department: true,
+            position: true,
+            role: true,
+          },
+        },
+      },
+      orderBy: {
+        evaluatee: {
+          name: 'asc',
+        },
+      },
+    }),
+  ])
 
   const synced = await syncPrepStatus(prisma, prep.id)
   const effectiveStatus = synced?.status || prep.status
@@ -371,6 +395,7 @@ export async function getCurrentLeadPrep(userId: string) {
     status: effectiveStatus,
     editable: isPrepEditable(prep.period.reviewStartDate),
     candidateUsers: users,
+    directReportUsers: directReportMappings.map((mapping) => mapping.evaluatee),
   }
 }
 
@@ -614,7 +639,7 @@ export async function saveDraftQuestions(
 export async function saveDraftSelections(
   prepId: string,
   selections: Array<{
-    type: 'PRIMARY' | 'CROSS_DEPARTMENT'
+    type: 'PRIMARY' | 'PEER' | 'CROSS_DEPARTMENT'
     evaluateeId: string
     suggestedEvaluatorId?: string | null
   }>,

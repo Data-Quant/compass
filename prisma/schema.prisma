@@ -54,6 +54,7 @@ enum PreEvaluationReviewStatus {
 
 enum PreEvaluationEvaluateeType {
   PRIMARY
+  PEER
   CROSS_DEPARTMENT
 }
 

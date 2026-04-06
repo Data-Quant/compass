@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db'
 import { z } from 'zod'
 import type { RelationshipType } from '@/types'
 import { getResolvedEvaluationQuestions } from '@/lib/pre-evaluation'
+import { getResolvedEvaluationAssignmentForPair } from '@/lib/evaluation-assignments'
 
 const evaluationSchema = z.object({
   evaluateeId: z.string().trim().min(1),
@@ -67,15 +68,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate that evaluator has permission to evaluate this person
-    const mapping = await prisma.evaluatorMapping.findFirst({
-      where: {
-        evaluatorId: user.id,
-        evaluateeId: data.evaluateeId,
-      },
-    })
+    const assignment = await getResolvedEvaluationAssignmentForPair(
+      data.periodId,
+      user.id,
+      data.evaluateeId
+    )
 
-    if (!mapping) {
+    if (!assignment) {
       return NextResponse.json(
         { error: 'You are not authorized to evaluate this person' },
         { status: 403 }
@@ -83,7 +82,7 @@ export async function POST(request: NextRequest) {
     }
 
     const resolved = await getResolvedEvaluationQuestions({
-      relationshipType: mapping.relationshipType as RelationshipType,
+      relationshipType: assignment.relationshipType as RelationshipType,
       periodId: data.periodId,
       evaluatorId: user.id,
       evaluateeId: data.evaluateeId,
@@ -195,15 +194,9 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    // Validate that evaluator has permission to evaluate this person
-    const mapping = await prisma.evaluatorMapping.findFirst({
-      where: {
-        evaluatorId: user.id,
-        evaluateeId,
-      },
-    })
+    const assignment = await getResolvedEvaluationAssignmentForPair(periodId, user.id, evaluateeId)
 
-    if (!mapping) {
+    if (!assignment) {
       return NextResponse.json(
         { error: 'You are not authorized to evaluate this person' },
         { status: 403 }
@@ -211,7 +204,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const resolved = await getResolvedEvaluationQuestions({
-      relationshipType: mapping.relationshipType as RelationshipType,
+      relationshipType: assignment.relationshipType as RelationshipType,
       periodId,
       evaluatorId: user.id,
       evaluateeId,

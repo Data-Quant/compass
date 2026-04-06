@@ -52,10 +52,19 @@ export function calculateLeaveDuration(
 }
 
 export function leaveRequiresLeadApproval(
+  leaveType: 'CASUAL' | 'SICK' | 'ANNUAL',
   isHalfDay: boolean,
   superiorLeadCount: number
 ): boolean {
-  return !isHalfDay && superiorLeadCount > 0
+  if (superiorLeadCount <= 0) {
+    return false
+  }
+
+  if (!isHalfDay) {
+    return true
+  }
+
+  return leaveType === 'CASUAL'
 }
 
 export function hasLeaveEnded(endDate: Date, now = new Date()): boolean {

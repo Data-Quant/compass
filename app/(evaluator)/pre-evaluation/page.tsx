@@ -32,7 +32,7 @@ interface CandidateUser {
 
 interface SelectionRow {
   id?: string
-  type: 'PRIMARY' | 'CROSS_DEPARTMENT'
+  type: 'PRIMARY' | 'PEER' | 'CROSS_DEPARTMENT'
   evaluateeId: string
   suggestedEvaluatorId?: string | null
   reviewStatus?: 'PENDING' | 'APPROVED' | 'REJECTED'
@@ -63,6 +63,7 @@ interface PrepResponse {
     questions: Array<{ id: string; orderIndex: number; questionText: string }>
     evaluateeSelections: SelectionRow[]
     candidateUsers: CandidateUser[]
+    directReportUsers: CandidateUser[]
     period: {
       id: string
       name: string
@@ -121,7 +122,9 @@ export default function PreEvaluationPage() {
   }, [])
 
   const candidateUsers = prep?.candidateUsers || []
+  const directReportUsers = prep?.directReportUsers || []
   const primarySelections = selections.filter((selection) => selection.type === 'PRIMARY')
+  const peerSelections = selections.filter((selection) => selection.type === 'PEER')
   const crossSelections = selections.filter((selection) => selection.type === 'CROSS_DEPARTMENT')
   const progressValue = prep ? Math.round((prep.progressCount / prep.totalSections) * 100) : 0
   const hasValidQuestions = questionInputs.every((question) => question.trim())
@@ -133,6 +136,15 @@ export default function PreEvaluationPage() {
         label: `${user.name}${user.department ? ` (${user.department})` : ''}`,
       })),
     [candidateUsers]
+  )
+
+  const directReportOptions = useMemo(
+    () =>
+      directReportUsers.map((user) => ({
+        value: user.id,
+        label: `${user.name}${user.department ? ` (${user.department})` : ''}`,
+      })),
+    [directReportUsers]
   )
 
   const saveQuestions = async (submit = false) => {
@@ -219,6 +231,17 @@ export default function PreEvaluationPage() {
       ...current,
       {
         type: 'CROSS_DEPARTMENT',
+        evaluateeId: '',
+        suggestedEvaluatorId: '',
+      },
+    ])
+  }
+
+  const addPeerSelection = () => {
+    setSelections((current) => [
+      ...current,
+      {
+        type: 'PEER',
         evaluateeId: '',
         suggestedEvaluatorId: '',
       },
@@ -359,7 +382,7 @@ export default function PreEvaluationPage() {
             <div>
               <h2 className="text-lg font-semibold text-foreground">2. Evaluatee List</h2>
               <p className="text-sm text-muted-foreground">
-                Review your primary evaluatees and add any cross-department evaluator suggestions for HR review.
+                Review your primary evaluatees and add any peer or cross-department evaluator suggestions for HR review.
               </p>
             </div>
             {prep.evaluateesSubmittedAt && (
@@ -424,6 +447,98 @@ export default function PreEvaluationPage() {
           <div className="space-y-4 pt-2">
             <div className="flex items-center justify-between">
               <div>
+                <h3 className="font-medium text-foreground">Peer Evaluator Requests</h3>
+                <p className="text-sm text-muted-foreground">
+                  Request quarter-specific peer evaluators for your direct reports.
+                </p>
+              </div>
+              {!prep.evaluateesSubmittedAt && (
+                <Button variant="outline" size="sm" onClick={addPeerSelection} disabled={readOnly}>
+                  <Plus className="h-4 w-4" /> Add Peer Request
+                </Button>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              {peerSelections.length === 0 && (
+                <p className="text-sm text-muted-foreground">No peer evaluator requests added yet.</p>
+              )}
+              {peerSelections.map((selection, index) => {
+                const selectionIndex = selections.findIndex((row) => row === selection)
+                return (
+                  <div key={selection.id || `peer-${index}`} className="rounded-lg border p-4 space-y-3">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Direct report</Label>
+                        <Select
+                          value={selection.evaluateeId || '__empty__'}
+                          onValueChange={(value) => updateSelection(selectionIndex, { evaluateeId: value === '__empty__' ? '' : value })}
+                          disabled={readOnly || Boolean(prep.evaluateesSubmittedAt)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select direct report" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__empty__">Select direct report</SelectItem>
+                            {directReportOptions.map((user) => (
+                              <SelectItem key={user.value} value={user.value}>
+                                {user.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Requested peer evaluator</Label>
+                        <Select
+                          value={selection.suggestedEvaluatorId || '__empty__'}
+                          onValueChange={(value) =>
+                            updateSelection(selectionIndex, {
+                              suggestedEvaluatorId: value === '__empty__' ? '' : value,
+                            })
+                          }
+                          disabled={readOnly || Boolean(prep.evaluateesSubmittedAt)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select evaluator" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__empty__">Select evaluator</SelectItem>
+                            {userOptions.map((user) => (
+                              <SelectItem key={user.value} value={user.value}>
+                                {user.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Badge variant="secondary" className="gap-1">
+                        <Users className="h-3.5 w-3.5" />
+                        {selection.reviewStatus || 'PENDING'}
+                      </Badge>
+                      {!prep.evaluateesSubmittedAt && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeSelection(selectionIndex)}
+                          disabled={readOnly}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Remove
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-4 pt-2">
+            <div className="flex items-center justify-between">
+              <div>
                 <h3 className="font-medium text-foreground">Cross-Department Suggestions</h3>
                 <p className="text-sm text-muted-foreground">
                   Suggest additional evaluators from other teams for HR to review.
@@ -457,7 +572,7 @@ export default function PreEvaluationPage() {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="__empty__">Select evaluatee</SelectItem>
-                            {userOptions.map((user) => (
+                            {directReportOptions.map((user) => (
                               <SelectItem key={user.value} value={user.value}>
                                 {user.label}
                               </SelectItem>

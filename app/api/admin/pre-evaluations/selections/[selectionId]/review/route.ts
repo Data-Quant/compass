@@ -31,11 +31,18 @@ export async function POST(
 
     const selection = await prisma.preEvaluationEvaluateeSelection.findUnique({
       where: { id: selectionId },
-      select: { id: true },
+      select: { id: true, type: true },
     })
 
     if (!selection) {
       return NextResponse.json({ error: 'Selection not found' }, { status: 404 })
+    }
+
+    if (selection.type === 'PRIMARY') {
+      return NextResponse.json(
+        { error: 'Primary evaluatee rows are informational and cannot be reviewed' },
+        { status: 400 }
+      )
     }
 
     const updated = await prisma.preEvaluationEvaluateeSelection.update({

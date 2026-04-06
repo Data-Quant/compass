@@ -225,9 +225,28 @@ export async function GET(request: NextRequest) {
       })
       
       const teamMemberIds = leadMappings.map(m => m.evaluateeId)
-      where.employeeId = { in: teamMemberIds }
-      where.status = { in: ['PENDING', 'HR_APPROVED'] }
-      where.isHalfDay = false
+
+      const requests = await prisma.leaveRequest.findMany({
+        where: {
+          employeeId: { in: teamMemberIds },
+          status: { in: ['PENDING', 'HR_APPROVED'] },
+          OR: [
+            { isHalfDay: false },
+            { isHalfDay: true, leaveType: 'CASUAL' },
+          ],
+        },
+        include: {
+          employee: {
+            select: { id: true, name: true, department: true, position: true },
+          },
+          coverPerson: {
+            select: { id: true, name: true },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      })
+
+      return NextResponse.json({ requests })
     }
     
     const requests = await prisma.leaveRequest.findMany({
@@ -296,7 +315,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Cover person cannot be the same as the employee' }, { status: 400 })
     }
 
-    // If a TEAM_LEAD mapping exists for this employee, lead approval is required.
+    // Full-day leave requires lead approval when an upstream TEAM_LEAD exists.
+    // For half-day leave, casual still needs lead approval while sick remains HR-only.
     // Senior members without upstream TEAM_LEAD relationships remain HR-only.
     const superiorLeadCount = await prisma.evaluatorMapping.count({
       where: {
@@ -304,7 +324,7 @@ export async function POST(request: NextRequest) {
         relationshipType: 'TEAM_LEAD',
       },
     })
-    const requiresLeadApproval = leaveRequiresLeadApproval(isHalfDay, superiorLeadCount)
+    const requiresLeadApproval = leaveRequiresLeadApproval(leaveType, isHalfDay, superiorLeadCount)
 
     // Ensure employee exists when HR enters leave on behalf.
     if (isOnBehalfRequest || coverPersonId) {

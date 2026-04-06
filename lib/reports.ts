@@ -3,6 +3,7 @@ import { calculateWeightedScore, EvaluationReport } from '@/lib/scoring'
 import { RelationshipType, RELATIONSHIP_TYPE_LABELS, RATING_LABELS } from '@/types'
 import { escapeHtml } from '@/lib/sanitize'
 import { getEvaluationQuestionMeta } from '@/lib/pre-evaluation'
+import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 
 export interface DetailedEvaluationSection {
   relationshipType: RelationshipType
@@ -78,12 +79,9 @@ export async function generateDetailedReport(
     ],
   })
 
-  // Get mappings to determine relationship types
-  const mappings = await prisma.evaluatorMapping.findMany({
-    where: { evaluateeId: employeeId },
-    include: {
-      evaluator: true,
-    },
+  const mappings = await getResolvedEvaluationAssignments(periodId, {
+    evaluateeId: employeeId,
+    includeUsers: true,
   })
 
   const evaluatorToTypeMap = new Map<string, RelationshipType>()

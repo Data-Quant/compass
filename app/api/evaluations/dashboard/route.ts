@@ -3,6 +3,11 @@ import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import type { RelationshipType } from '@/types'
 import { getResolvedQuestionCount } from '@/lib/pre-evaluation'
+import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
+
+function buildPairKey(evaluatorId: string, evaluateeId: string) {
+  return `${evaluatorId}:${evaluateeId}`
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -37,67 +42,83 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const [mappings, allEvaluations] = await Promise.all([
-      prisma.evaluatorMapping.findMany({
-        where: { evaluatorId: user.id },
-        include: {
-          evaluatee: {
-            select: {
-              id: true,
-              name: true,
-              department: true,
-              position: true,
-            },
-          },
-        },
-      }),
-      prisma.evaluation.findMany({
+    const [assignments, submittedEvaluations] = await Promise.all([
+      getResolvedEvaluationAssignments(period.id, { includeUsers: true }),
+      prisma.evaluation.groupBy({
+        by: ['evaluatorId', 'evaluateeId'],
         where: {
-          evaluatorId: user.id,
           periodId: period.id,
           submittedAt: { not: null },
+          OR: [
+            { evaluatorId: user.id },
+            { evaluateeId: user.id },
+          ],
         },
-        select: {
-          evaluateeId: true,
-        },
+        _count: { id: true },
       }),
     ])
 
-    const evalsByEvaluatee = new Map<string, number>()
-    for (const evaluation of allEvaluations) {
-      evalsByEvaluatee.set(
-        evaluation.evaluateeId,
-        (evalsByEvaluatee.get(evaluation.evaluateeId) || 0) + 1
-      )
-    }
-
-    const questionCounts = await Promise.all(
-      mappings.map(async (mapping) => ({
-        mappingId: mapping.id,
-        total: await getResolvedQuestionCount({
-          relationshipType: mapping.relationshipType as RelationshipType,
-          periodId: period.id,
-          evaluatorId: user.id,
-          evaluateeId: mapping.evaluatee.id,
-        }),
-      }))
+    const submittedCounts = new Map(
+      submittedEvaluations.map((evaluation) => [
+        buildPairKey(evaluation.evaluatorId, evaluation.evaluateeId),
+        evaluation._count.id,
+      ])
     )
-    const questionCountMap = new Map(questionCounts.map((entry) => [entry.mappingId, entry.total]))
 
-    const mappingsWithStatus = mappings.map((mapping) => {
-      const total = questionCountMap.get(mapping.id) || 0
-      const completed = evalsByEvaluatee.get(mapping.evaluateeId) || 0
-      const isComplete = completed >= total && total > 0
+    const outgoingAssignments = assignments.filter((assignment) => assignment.evaluatorId === user.id)
+    const incomingAssignments = assignments.filter((assignment) => assignment.evaluateeId === user.id)
 
-      return {
-        ...mapping,
-        questionsCount: total,
-        completedCount: completed,
-        isComplete,
-      }
-    })
+    const outgoingWithStatus = await Promise.all(
+      outgoingAssignments.map(async (assignment) => {
+        const questionsCount = await getResolvedQuestionCount({
+          relationshipType: assignment.relationshipType as RelationshipType,
+          periodId: period.id,
+          evaluatorId: assignment.evaluatorId,
+          evaluateeId: assignment.evaluateeId,
+        })
+        const completedCount =
+          submittedCounts.get(buildPairKey(assignment.evaluatorId, assignment.evaluateeId)) || 0
 
-    const grouped = mappingsWithStatus.reduce(
+        return {
+          id:
+            assignment.mappingId ||
+            assignment.selectionId ||
+            `${assignment.evaluatorId}:${assignment.evaluateeId}:${assignment.relationshipType}`,
+          evaluatee: assignment.evaluatee!,
+          relationshipType: assignment.relationshipType,
+          questionsCount,
+          completedCount,
+          isComplete: questionsCount > 0 && completedCount >= questionsCount,
+        }
+      })
+    )
+
+    const incomingWithStatus = await Promise.all(
+      incomingAssignments.map(async (assignment) => {
+        const questionsCount = await getResolvedQuestionCount({
+          relationshipType: assignment.relationshipType as RelationshipType,
+          periodId: period.id,
+          evaluatorId: assignment.evaluatorId,
+          evaluateeId: assignment.evaluateeId,
+        })
+        const completedCount =
+          submittedCounts.get(buildPairKey(assignment.evaluatorId, assignment.evaluateeId)) || 0
+
+        return {
+          id:
+            assignment.mappingId ||
+            assignment.selectionId ||
+            `${assignment.evaluatorId}:${assignment.evaluateeId}:${assignment.relationshipType}`,
+          evaluator: assignment.evaluator!,
+          relationshipType: assignment.relationshipType,
+          questionsCount,
+          completedCount,
+          isSubmitted: questionsCount > 0 && completedCount >= questionsCount,
+        }
+      })
+    )
+
+    const grouped = outgoingWithStatus.reduce(
       (acc, mapping) => {
         const type = mapping.relationshipType
         if (!acc[type]) {
@@ -106,14 +127,15 @@ export async function GET(request: NextRequest) {
         acc[type].push(mapping)
         return acc
       },
-      {} as Record<string, typeof mappingsWithStatus>
+      {} as Record<string, typeof outgoingWithStatus>
     )
 
     return NextResponse.json({
       period,
       mappings: grouped,
-      totalMappings: mappings.length,
-      completedMappings: mappingsWithStatus.filter((mapping) => mapping.isComplete).length,
+      incoming: incomingWithStatus,
+      totalMappings: outgoingWithStatus.length,
+      completedMappings: outgoingWithStatus.filter((mapping) => mapping.isComplete).length,
     })
   } catch (error) {
     console.error('Failed to fetch dashboard data:', error)

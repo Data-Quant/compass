@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db'
 import { RelationshipType, normalizeRelationshipTypeForWeighting, toCategorySetKey } from '@/types'
 import { calculateRedistributedWeights } from '@/lib/config'
 import { getEvaluationQuestionMeta } from '@/lib/pre-evaluation'
+import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 
 export interface ScoreBreakdown {
   relationshipType: RelationshipType
@@ -26,12 +27,17 @@ export interface EvaluationReport {
 /**
  * Get the available evaluator types for an employee based on their mappings
  */
-export async function getAvailableEvaluatorTypes(employeeId: string): Promise<RelationshipType[]> {
-  const mappings = await prisma.evaluatorMapping.findMany({
-    where: { evaluateeId: employeeId },
-    select: { relationshipType: true },
-    distinct: ['relationshipType'],
-  })
+export async function getAvailableEvaluatorTypes(
+  employeeId: string,
+  periodId?: string
+): Promise<RelationshipType[]> {
+  const mappings = periodId
+    ? await getResolvedEvaluationAssignments(periodId, { evaluateeId: employeeId })
+    : await prisma.evaluatorMapping.findMany({
+        where: { evaluateeId: employeeId },
+        select: { relationshipType: true },
+        distinct: ['relationshipType'],
+      })
   return [...new Set(
     mappings.map((mapping) =>
       normalizeRelationshipTypeForWeighting(mapping.relationshipType as RelationshipType)
@@ -67,8 +73,11 @@ export async function getWeightProfileWeights(
  * 2. Per-employee custom Weightage overrides
  * 3. Proportional redistribution of default weights (fallback)
  */
-export async function getDynamicWeights(employeeId: string): Promise<Record<string, number>> {
-  const availableTypes = await getAvailableEvaluatorTypes(employeeId)
+export async function getDynamicWeights(
+  employeeId: string,
+  periodId?: string
+): Promise<Record<string, number>> {
+  const availableTypes = await getAvailableEvaluatorTypes(employeeId, periodId)
 
   // 1. Try weight profile based on category set
   const profileWeights = await getWeightProfileWeights(availableTypes)
@@ -129,9 +138,8 @@ export async function calculateWeightedScore(
     },
   })
 
-  // Get all mappings for this employee to build relationship type map
-  const mappings = await prisma.evaluatorMapping.findMany({
-    where: { evaluateeId: employeeId },
+  const mappings = await getResolvedEvaluationAssignments(periodId, {
+    evaluateeId: employeeId,
   })
 
   const evaluatorToTypeMap = new Map<string, RelationshipType>()

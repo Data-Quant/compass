@@ -3,6 +3,8 @@ import { getSession } from '@/lib/auth'
 import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { C_LEVEL_EVALUATORS, HR_EVALUATORS } from '@/lib/config'
+import type { RelationshipType } from '@/types'
+import { createLogicalEvaluatorMapping } from '@/lib/evaluation-mappings'
 
 interface CSVRow {
   Name: string
@@ -163,26 +165,10 @@ export async function POST(request: NextRequest) {
         return createMapping(evaluatorName, evaluateeId, relationshipType)
       }
 
-      // Check if mapping already exists
-      const existing = await prisma.evaluatorMapping.findFirst({
-        where: {
-          evaluatorId,
-          evaluateeId,
-          relationshipType: relationshipType as any,
-        },
-      })
-
-      if (existing) {
-        result.mappingsSkipped++
-        return false
-      }
-
-      await prisma.evaluatorMapping.create({
-        data: {
-          evaluatorId,
-          evaluateeId,
-          relationshipType: relationshipType as any,
-        },
+      await createLogicalEvaluatorMapping(prisma, {
+        evaluatorId,
+        evaluateeId,
+        relationshipType: relationshipType as RelationshipType,
       })
       result.mappingsCreated++
       return true

@@ -31,6 +31,15 @@ interface Mapping {
   isComplete: boolean
 }
 
+interface IncomingAssignment {
+  id: string
+  evaluator: { id: string; name: string; department: string | null; position: string | null }
+  relationshipType: string
+  questionsCount: number
+  completedCount: number
+  isSubmitted: boolean
+}
+
 interface PreEvaluationTask {
   id: string
   status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'OVERDUE' | 'OVERRIDDEN'
@@ -52,6 +61,7 @@ const stagger = {
 export default function EvaluationsPage() {
   const user = useLayoutUser()
   const [mappings, setMappings] = useState<Record<string, Mapping[]>>({})
+  const [incomingAssignments, setIncomingAssignments] = useState<IncomingAssignment[]>([])
   const [period, setPeriod] = useState<any>(null)
   const [preEvaluationTask, setPreEvaluationTask] = useState<PreEvaluationTask | null>(null)
   const [loading, setLoading] = useState(true)
@@ -68,6 +78,7 @@ export default function EvaluationsPage() {
       if (data.mappings) {
         setMappings(data.mappings)
         setPeriod(data.period)
+        setIncomingAssignments(data.incoming || [])
       }
     } catch {
       toast.error('Failed to load evaluations')
@@ -235,6 +246,70 @@ export default function EvaluationsPage() {
           })}
         </motion.div>
       )}
+
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-primary" />
+                <h2 className="text-lg font-semibold text-foreground">Who Is Evaluating You</h2>
+              </div>
+              {incomingAssignments.length > 0 && (
+                <Badge variant="secondary">{incomingAssignments.length} evaluator(s)</Badge>
+              )}
+            </div>
+
+            {incomingAssignments.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {period
+                  ? 'No incoming evaluators are assigned to you for this active period.'
+                  : 'No active evaluation period found.'}
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {incomingAssignments.map((assignment) => (
+                  <div
+                    key={assignment.id}
+                    className="flex items-center justify-between py-3 px-4 rounded-lg border bg-muted/20"
+                  >
+                    <div className="flex items-center gap-3">
+                      <UserAvatar name={assignment.evaluator.name} size="sm" />
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{assignment.evaluator.name}</p>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <span>
+                            {RELATIONSHIP_TYPE_LABELS[
+                              assignment.relationshipType as keyof typeof RELATIONSHIP_TYPE_LABELS
+                            ] || assignment.relationshipType}
+                          </span>
+                          {(assignment.evaluator.position || assignment.evaluator.department) && <span>·</span>}
+                          <span>
+                            {[assignment.evaluator.position, assignment.evaluator.department]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <Badge
+                      variant="secondary"
+                      className={
+                        assignment.isSubmitted
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                          : 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                      }
+                    >
+                      {assignment.isSubmitted ? 'Submitted' : 'Pending'}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
     </div>
   )
 }

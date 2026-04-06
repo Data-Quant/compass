@@ -4,6 +4,7 @@ import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import type { RelationshipType } from '@/types'
 import { getResolvedQuestionCount } from '@/lib/pre-evaluation'
+import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 
 export async function GET() {
   try {
@@ -25,13 +26,7 @@ export async function GET() {
         prisma.user.findMany({
           select: { id: true, name: true, department: true, position: true },
         }),
-        prisma.evaluatorMapping.findMany({
-          select: {
-            evaluatorId: true,
-            evaluateeId: true,
-            relationshipType: true,
-          },
-        }),
+        getResolvedEvaluationAssignments(period.id),
         prisma.evaluation.groupBy({
           by: ['evaluateeId'],
           where: { periodId: period.id, submittedAt: { not: null } },

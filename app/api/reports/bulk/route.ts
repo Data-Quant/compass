@@ -5,6 +5,7 @@ import { RelationshipType, normalizeRelationshipTypeForWeighting, toCategorySetK
 import { calculateRedistributedWeights } from '@/lib/config'
 import { isAdminRole } from '@/lib/permissions'
 import { getEvaluationQuestionMeta } from '@/lib/pre-evaluation'
+import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 
 /**
  * Bulk reports endpoint: fetches ALL employee report summaries in 6 DB calls
@@ -54,14 +55,8 @@ export async function GET(request: NextRequest) {
           },
         }),
 
-        // 4. ALL evaluator mappings
-        prisma.evaluatorMapping.findMany({
-          select: {
-            evaluateeId: true,
-            evaluatorId: true,
-            relationshipType: true,
-          },
-        }),
+        // 4. ALL active evaluator assignments for this period
+        getResolvedEvaluationAssignments(period.id),
 
         // 5. ALL weight profiles
         prisma.weightProfile.findMany(),

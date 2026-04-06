@@ -10,7 +10,7 @@ import {
 } from '@/lib/pre-evaluation'
 
 const selectionSchema = z.object({
-  type: z.enum(['PRIMARY', 'CROSS_DEPARTMENT']),
+  type: z.enum(['PRIMARY', 'PEER', 'CROSS_DEPARTMENT']),
   evaluateeId: z.string().trim().min(1),
   suggestedEvaluatorId: z.string().trim().min(1).optional().nullable(),
 })
@@ -19,18 +19,24 @@ const submitSchema = z.object({
   selections: z.array(selectionSchema).min(1),
 })
 
-function validateSelections(selections: z.infer<typeof selectionSchema>[]) {
+function validateSelections(
+  selections: z.infer<typeof selectionSchema>[],
+  directReportIds: Set<string>
+) {
   const seen = new Set<string>()
 
   for (const selection of selections) {
     if (selection.type === 'PRIMARY' && selection.suggestedEvaluatorId) {
       return 'Primary selections cannot include a suggested evaluator'
     }
-    if (selection.type === 'CROSS_DEPARTMENT' && !selection.suggestedEvaluatorId) {
-      return 'Cross-department selections require a suggested evaluator'
+    if ((selection.type === 'CROSS_DEPARTMENT' || selection.type === 'PEER') && !selection.suggestedEvaluatorId) {
+      return `${selection.type === 'PEER' ? 'Peer' : 'Cross-department'} selections require a suggested evaluator`
     }
     if (selection.suggestedEvaluatorId && selection.suggestedEvaluatorId === selection.evaluateeId) {
       return 'An employee cannot be assigned to evaluate themselves'
+    }
+    if (selection.type === 'PEER' && !directReportIds.has(selection.evaluateeId)) {
+      return 'Peer evaluator requests are only allowed for your direct reports'
     }
 
     const key = buildPreEvaluationSelectionKey(
@@ -72,6 +78,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const directReportIds = new Set(prep.directReportUsers.map((user) => user.id))
+
     const body = await request.json()
     const parsed = submitSchema.safeParse(body)
     if (!parsed.success) {
@@ -81,7 +89,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const validationError = validateSelections(parsed.data.selections)
+    const validationError = validateSelections(parsed.data.selections, directReportIds)
     if (validationError) {
       return NextResponse.json({ error: validationError }, { status: 400 })
     }

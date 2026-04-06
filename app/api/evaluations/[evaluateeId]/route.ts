@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import type { RelationshipType } from '@/types'
 import { getResolvedEvaluationQuestions, getEvaluationQuestionMeta } from '@/lib/pre-evaluation'
+import { getResolvedEvaluationAssignmentForPair } from '@/lib/evaluation-assignments'
 
 export async function GET(
   request: NextRequest,
@@ -26,15 +27,9 @@ export async function GET(
 
     const { evaluateeId } = await params
 
-    // Get relationship type
-    const mapping = await prisma.evaluatorMapping.findFirst({
-      where: {
-        evaluatorId: user.id,
-        evaluateeId,
-      },
-    })
+    const assignment = await getResolvedEvaluationAssignmentForPair(periodId, user.id, evaluateeId)
 
-    if (!mapping) {
+    if (!assignment) {
       return NextResponse.json(
         { error: 'You are not authorized to evaluate this person' },
         { status: 403 }
@@ -42,7 +37,7 @@ export async function GET(
     }
 
     const resolved = await getResolvedEvaluationQuestions({
-      relationshipType: mapping.relationshipType as RelationshipType,
+      relationshipType: assignment.relationshipType as RelationshipType,
       periodId,
       evaluatorId: user.id,
       evaluateeId,
@@ -98,7 +93,7 @@ export async function GET(
           position: true,
         },
       }),
-      relationshipType: mapping.relationshipType,
+      relationshipType: assignment.relationshipType,
       questions: questionsWithResponses,
       isSubmitted: evaluations.some((e) => e.submittedAt !== null),
     })

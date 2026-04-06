@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth'
 import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { RelationshipType } from '@/types'
+import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 
 export async function GET(request: NextRequest) {
   try {
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest) {
         },
       }),
       prisma.user.findMany(),
-      prisma.evaluatorMapping.findMany(),
+      getResolvedEvaluationAssignments(period.id),
     ])
 
     const departmentStats: Record<

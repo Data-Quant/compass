@@ -54,13 +54,17 @@ test('calculateLeaveDuration delegates to full-day calculator when not half-day'
   assert.equal(calculateLeaveDuration(start, end, false), 2)
 })
 
-test('leaveRequiresLeadApproval skips lead approval for half-day leaves', () => {
-  assert.equal(leaveRequiresLeadApproval(true, 1), false)
+test('leaveRequiresLeadApproval skips lead approval for sick half-day leaves', () => {
+  assert.equal(leaveRequiresLeadApproval('SICK', true, 1), false)
+})
+
+test('leaveRequiresLeadApproval still requires leads for casual half-day leaves with an upstream lead', () => {
+  assert.equal(leaveRequiresLeadApproval('CASUAL', true, 1), true)
 })
 
 test('leaveRequiresLeadApproval still requires leads for full-day leaves with an upstream lead', () => {
-  assert.equal(leaveRequiresLeadApproval(false, 1), true)
-  assert.equal(leaveRequiresLeadApproval(false, 0), false)
+  assert.equal(leaveRequiresLeadApproval('ANNUAL', false, 1), true)
+  assert.equal(leaveRequiresLeadApproval('ANNUAL', false, 0), false)
 })
 
 test('hasLeaveEnded compares end date by calendar day', () => {

@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth'
 import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { sendMail } from '@/lib/email'
+import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,11 +27,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Get all users who need to submit evaluations
-    const mappings = await prisma.evaluatorMapping.findMany({
-      include: {
-        evaluator: true,
-        evaluatee: true,
-      },
+    const mappings = await getResolvedEvaluationAssignments(periodId, {
+      includeUsers: true,
     })
 
     // Get all submitted evaluations for this period
@@ -63,7 +61,7 @@ export async function POST(request: NextRequest) {
           pendingEvaluatees: [],
         }
       }
-      acc[mapping.evaluatorId].pendingEvaluatees.push(mapping.evaluatee.name)
+      acc[mapping.evaluatorId].pendingEvaluatees.push(mapping.evaluatee?.name || 'Unknown employee')
       return acc
     }, {} as Record<string, { evaluator: any; pendingEvaluatees: string[] }>)
 

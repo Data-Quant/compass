@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
+import type { RelationshipType } from '@/types'
+import { createLogicalEvaluatorMapping } from '@/lib/evaluation-mappings'
 
 // POST - Import users or mappings from CSV data
 export async function POST(request: NextRequest) {
@@ -214,27 +216,10 @@ async function importMappings(data: any[]) {
         continue
       }
 
-      // Check if mapping already exists
-      const existing = await prisma.evaluatorMapping.findFirst({
-        where: {
-          evaluatorId: evaluator.id,
-          evaluateeId: evaluatee.id,
-          relationshipType: normalizedType as any,
-        },
-      })
-
-      if (existing) {
-        results.skipped++
-        continue
-      }
-
-      // Create mapping
-      await prisma.evaluatorMapping.create({
-        data: {
-          evaluatorId: evaluator.id,
-          evaluateeId: evaluatee.id,
-          relationshipType: normalizedType as any,
-        },
+      await createLogicalEvaluatorMapping(prisma, {
+        evaluatorId: evaluator.id,
+        evaluateeId: evaluatee.id,
+        relationshipType: normalizedType as RelationshipType,
       })
       results.created++
     } catch (error) {

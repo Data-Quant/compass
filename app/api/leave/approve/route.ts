@@ -47,6 +47,7 @@ export async function POST(request: NextRequest) {
 
     // Some senior members (for example team leads / junior partners) do not have
     // an upstream TEAM_LEAD mapping. Those requests should be HR-only approvals.
+    // Sick half-day leave is also HR-only, while casual half-day still needs lead approval.
     const superiorLeadCount = await prisma.evaluatorMapping.count({
       where: {
         evaluateeId: leaveRequest.employeeId,
@@ -55,11 +56,15 @@ export async function POST(request: NextRequest) {
     })
     const isHR = isAdminRole(user.role)
 
-    if (leaveRequest.isHalfDay && !isHR) {
-      return NextResponse.json({ error: 'Half-day leave requests are approved by HR only' }, { status: 403 })
+    if (leaveRequest.isHalfDay && leaveRequest.leaveType === 'SICK' && !isHR) {
+      return NextResponse.json({ error: 'Half-day sick leave requests are approved by HR only' }, { status: 403 })
     }
 
-    const requiresLeadApproval = leaveRequiresLeadApproval(leaveRequest.isHalfDay, superiorLeadCount)
+    const requiresLeadApproval = leaveRequiresLeadApproval(
+      leaveRequest.leaveType,
+      leaveRequest.isHalfDay,
+      superiorLeadCount
+    )
     
     // Check if user is a lead for this employee (if not HR)
     let isLead = false

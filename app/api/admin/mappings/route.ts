@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
+import type { RelationshipType } from '@/types'
+import {
+  createLogicalEvaluatorMapping,
+  deleteLogicalEvaluatorMappingById,
+  getMappingPairKey,
+} from '@/lib/evaluation-mappings'
+import { getCollapsedAdminMappings } from '@/lib/evaluation-assignments'
 
 // GET - List all evaluator mappings
 export async function GET(request: NextRequest) {
@@ -15,24 +22,11 @@ export async function GET(request: NextRequest) {
     const evaluateeId = searchParams.get('evaluateeId')
     const evaluatorId = searchParams.get('evaluatorId')
 
-    const where: any = {}
-    if (evaluateeId) where.evaluateeId = evaluateeId
-    if (evaluatorId) where.evaluatorId = evaluatorId
-
-    const mappings = await prisma.evaluatorMapping.findMany({
-      where,
-      include: {
-        evaluator: {
-          select: { id: true, name: true, department: true, position: true },
-        },
-        evaluatee: {
-          select: { id: true, name: true, department: true, position: true },
-        },
-      },
-      orderBy: [
-        { evaluatee: { name: 'asc' } },
-        { relationshipType: 'asc' },
-      ],
+    const allMappings = await getCollapsedAdminMappings()
+    const mappings = allMappings.filter((mapping) => {
+      if (evaluateeId && mapping.evaluateeId !== evaluateeId) return false
+      if (evaluatorId && mapping.evaluatorId !== evaluatorId) return false
+      return true
     })
 
     return NextResponse.json({ mappings })
@@ -62,33 +56,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if mapping already exists
-    const existing = await prisma.evaluatorMapping.findFirst({
-      where: { evaluatorId, evaluateeId, relationshipType },
-    })
-
-    if (existing) {
-      return NextResponse.json(
-        { error: 'This mapping already exists' },
-        { status: 400 }
-      )
-    }
-
-    const mapping = await prisma.evaluatorMapping.create({
-      data: {
+    await prisma.$transaction(async (tx) => {
+      await createLogicalEvaluatorMapping(tx, {
         evaluatorId,
         evaluateeId,
-        relationshipType,
-      },
-      include: {
-        evaluator: {
-          select: { id: true, name: true, department: true },
-        },
-        evaluatee: {
-          select: { id: true, name: true, department: true },
-        },
-      },
+        relationshipType: relationshipType as RelationshipType,
+      })
     })
+
+    const targetPairKey = getMappingPairKey({
+      evaluatorId,
+      evaluateeId,
+      relationshipType: relationshipType as RelationshipType,
+    })
+    const mappings = await getCollapsedAdminMappings()
+    const mapping =
+      mappings.find((entry) => getMappingPairKey(entry) === targetPairKey) || null
 
     return NextResponse.json({ success: true, mapping })
   } catch (error) {
@@ -115,9 +98,13 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Mapping ID is required' }, { status: 400 })
     }
 
-    await prisma.evaluatorMapping.delete({
-      where: { id },
-    })
+    const deleted = await prisma.$transaction(async (tx) =>
+      deleteLogicalEvaluatorMappingById(tx, id)
+    )
+
+    if (!deleted) {
+      return NextResponse.json({ error: 'Mapping not found' }, { status: 404 })
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {
@@ -180,26 +167,10 @@ export async function PUT(request: NextRequest) {
           continue
         }
 
-        // Check if mapping already exists
-        const existing = await prisma.evaluatorMapping.findFirst({
-          where: {
-            evaluatorId: evaluator.id,
-            evaluateeId: evaluatee.id,
-            relationshipType: mapping.relationshipType,
-          },
-        })
-
-        if (existing) {
-          results.skipped++
-          continue
-        }
-
-        await prisma.evaluatorMapping.create({
-          data: {
-            evaluatorId: evaluator.id,
-            evaluateeId: evaluatee.id,
-            relationshipType: mapping.relationshipType,
-          },
+        await createLogicalEvaluatorMapping(prisma, {
+          evaluatorId: evaluator.id,
+          evaluateeId: evaluatee.id,
+          relationshipType: mapping.relationshipType as RelationshipType,
         })
 
         results.created++
