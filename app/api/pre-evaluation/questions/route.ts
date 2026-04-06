@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { getCurrentLeadPrep, saveDraftQuestions } from '@/lib/pre-evaluation'
+import {
+  getCurrentLeadPrep,
+  PRE_EVALUATION_QUESTION_COUNT,
+  saveDraftQuestions,
+} from '@/lib/pre-evaluation'
 
 const draftSchema = z.object({
-  questions: z.array(z.string().max(1000)).max(3),
+  questions: z.array(z.string().max(1000)).max(PRE_EVALUATION_QUESTION_COUNT),
 })
 
 export async function PUT(request: NextRequest) {

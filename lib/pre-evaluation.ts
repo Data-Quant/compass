@@ -2,7 +2,7 @@ import type { Prisma, PreEvaluationLeadPrep, PreEvaluationLeadQuestion, Question
 import { prisma } from '@/lib/db'
 import type { RelationshipType } from '@/types'
 
-export const PRE_EVALUATION_QUESTION_COUNT = 3
+export const PRE_EVALUATION_QUESTION_COUNT = 2
 
 export type QuestionSourceType = 'GLOBAL' | 'LEAD'
 
@@ -40,6 +40,12 @@ type LeadRelationshipMapping = {
   relationshipType: RelationshipType
 }
 
+export interface PreEvaluationSelectionInput {
+  type: 'PRIMARY' | 'PEER' | 'CROSS_DEPARTMENT'
+  evaluateeId: string
+  suggestedEvaluatorId?: string | null
+}
+
 function startOfDay(date: Date = new Date()) {
   const normalized = new Date(date)
   normalized.setHours(0, 0, 0, 0)
@@ -69,8 +75,8 @@ export function derivePreEvaluationStatus(
 ): 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'OVERDUE' | 'OVERRIDDEN' {
   const today = startOfDay()
   const reviewStart = startOfDay(prep.period.reviewStartDate)
-  const isComplete = Boolean(prep.questionsSubmittedAt && prep.evaluateesSubmittedAt)
-  const hasPartialSubmission = Boolean(prep.questionsSubmittedAt || prep.evaluateesSubmittedAt)
+  const isComplete = Boolean(prep.questionsSubmittedAt)
+  const hasPartialSubmission = Boolean(prep.questionsSubmittedAt)
 
   if (isComplete || prep.completedAt) {
     return 'COMPLETED'
@@ -135,8 +141,7 @@ export async function syncPrepStatus(db: DbClient, prepId: string) {
   if (!prep) return null
 
   const nextStatus = derivePreEvaluationStatus(prep)
-  const nextCompletedAt =
-    prep.questionsSubmittedAt && prep.evaluateesSubmittedAt ? prep.completedAt || new Date() : null
+  const nextCompletedAt = prep.questionsSubmittedAt ? prep.completedAt || new Date() : null
   const nextOverdueAt =
     nextStatus === 'OVERDUE' || nextStatus === 'OVERRIDDEN'
       ? prep.overdueAt || new Date()
@@ -663,11 +668,7 @@ export async function saveDraftQuestions(
 
 export async function saveDraftSelections(
   prepId: string,
-  selections: Array<{
-    type: 'PRIMARY' | 'PEER' | 'CROSS_DEPARTMENT'
-    evaluateeId: string
-    suggestedEvaluatorId?: string | null
-  }>,
+  selections: PreEvaluationSelectionInput[],
   db: DbClient = prisma
 ) {
   await db.preEvaluationEvaluateeSelection.deleteMany({
@@ -692,6 +693,56 @@ export async function saveDraftSelections(
     })),
     skipDuplicates: true,
   })
+}
+
+export function validatePreEvaluationSelections(
+  selections: PreEvaluationSelectionInput[],
+  options: {
+    directReportIds: Set<string>
+    allowedEvaluateeIds?: Set<string>
+  }
+) {
+  const seen = new Set<string>()
+  const allowedEvaluateeIds = options.allowedEvaluateeIds || options.directReportIds
+
+  for (const selection of selections) {
+    if (selection.type === 'PRIMARY') {
+      if (selection.suggestedEvaluatorId) {
+        return 'Primary selections cannot include a suggested evaluator'
+      }
+      if (!options.directReportIds.has(selection.evaluateeId)) {
+        return 'Primary selections must be team members who report to you'
+      }
+    }
+
+    if ((selection.type === 'CROSS_DEPARTMENT' || selection.type === 'PEER') && !selection.suggestedEvaluatorId) {
+      return `${selection.type === 'PEER' ? 'Peer' : 'Cross-department'} selections require a suggested evaluator`
+    }
+
+    if (
+      (selection.type === 'CROSS_DEPARTMENT' || selection.type === 'PEER') &&
+      !allowedEvaluateeIds.has(selection.evaluateeId)
+    ) {
+      return 'Evaluator change requests are only allowed for you or your direct reports'
+    }
+
+    if (selection.suggestedEvaluatorId && selection.suggestedEvaluatorId === selection.evaluateeId) {
+      return 'An employee cannot be assigned to evaluate themselves'
+    }
+
+    const key = buildPreEvaluationSelectionKey(
+      selection.type,
+      selection.evaluateeId,
+      selection.suggestedEvaluatorId || null
+    )
+
+    if (seen.has(key)) {
+      return 'Duplicate evaluatee selections are not allowed'
+    }
+    seen.add(key)
+  }
+
+  return null
 }
 
 export function isReminderDay(targetDate: Date, periodStartDate: Date) {
@@ -763,10 +814,7 @@ export async function getPreEvaluationReminderCandidates(dayOffset: 7 | 1) {
   return prisma.preEvaluationLeadPrep.findMany({
     where: {
       completedAt: null,
-      OR: [
-        { questionsSubmittedAt: null },
-        { evaluateesSubmittedAt: null },
-      ],
+      questionsSubmittedAt: null,
       period: {
         reviewStartDate: {
           gte: targetDate,

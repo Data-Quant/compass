@@ -41,7 +41,10 @@ export async function POST(request: NextRequest) {
     const parsed = submitSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'You must submit exactly 3 questions', details: parsed.error.errors },
+        {
+          error: `You must submit exactly ${PRE_EVALUATION_QUESTION_COUNT} questions`,
+          details: parsed.error.errors,
+        },
         { status: 400 }
       )
     }

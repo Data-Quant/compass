@@ -1150,7 +1150,7 @@ export async function sendPreEvaluationLeadPrepNotification(
 
   const bodyByType: Record<typeof reminderType, string> = {
     INITIAL: 'Performance evaluations are opening in 2 weeks. Please complete your required pre-evaluation onboarding before evaluations begin.',
-    SEVEN_DAY: 'Performance evaluations are opening in 1 week. Please complete both required pre-evaluation submissions before evaluations begin.',
+    SEVEN_DAY: 'Performance evaluations are opening in 1 week. Please complete your required pre-evaluation questions before evaluations begin.',
     ONE_DAY: 'Performance evaluations open tomorrow. Complete your pre-evaluation onboarding now if it is still outstanding.',
     MANUAL_RESEND: 'Please complete your pre-evaluation onboarding as soon as possible so the upcoming evaluations can be prepared.',
   }
@@ -1164,7 +1164,7 @@ export async function sendPreEvaluationLeadPrepNotification(
         <div style="background: #F8FAFC; padding: 20px; border-radius: 8px; margin: 20px 0;">
           <p><strong>Evaluation Period:</strong> ${escapeHtml(prep.period.name)}</p>
           <p><strong>Evaluations Begin:</strong> ${escapeHtml(reviewStartDateLabel)}</p>
-          <p><strong>Required submissions:</strong> 3 lead questions and your evaluatee list</p>
+          <p><strong>Required submission:</strong> 2 lead questions</p>
           <p><strong>Time remaining:</strong> ${
             daysUntilStart > 1
               ? `${daysUntilStart} days`
@@ -1181,7 +1181,7 @@ export async function sendPreEvaluationLeadPrepNotification(
       }
 
       <p style="color: #64748B; font-size: 14px;">
-        This onboarding includes two required steps and should be completed before evaluations begin.
+        Evaluator change requests can be submitted separately from the Evaluations page while the pre-cycle window is open.
       </p>
     </div>
   `

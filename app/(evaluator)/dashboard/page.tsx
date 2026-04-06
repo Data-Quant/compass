@@ -340,7 +340,7 @@ export default function DashboardPage() {
                   <p className="text-sm text-muted-foreground mt-1">
                     {preEvaluationTask.period.name} evaluations start on{' '}
                     {new Date(preEvaluationTask.period.reviewStartDate).toLocaleDateString()}.
-                    Complete your questions and evaluatee list before evaluations begin.
+                    Complete your lead questions before evaluations begin.
                   </p>
                   <div className="mt-3 flex items-center gap-3 max-w-md">
                     <Progress

@@ -464,7 +464,7 @@ export default function AdminPreEvaluationsPage() {
             <div>
               <p className="font-medium text-foreground">Overall completion</p>
               <p className="text-sm text-muted-foreground">
-                {summary.completed} of {summary.total} team leads have submitted both required sections.
+                {summary.completed} of {summary.total} team leads have submitted their required question set.
               </p>
             </div>
             <div className="flex items-center gap-3 min-w-[280px]">
@@ -501,8 +501,8 @@ export default function AdminPreEvaluationsPage() {
               const primarySelections = prep.evaluateeSelections.filter((selection) => selection.type === 'PRIMARY')
               const peerSelections = prep.evaluateeSelections.filter((selection) => selection.type === 'PEER')
               const crossSelections = prep.evaluateeSelections.filter((selection) => selection.type === 'CROSS_DEPARTMENT')
-              const progressCount = Number(Boolean(prep.questionsSubmittedAt)) + Number(Boolean(prep.evaluateesSubmittedAt))
-              const progressValue = Math.round((progressCount / 2) * 100)
+              const progressCount = Number(Boolean(prep.questionsSubmittedAt))
+              const progressValue = Math.round((progressCount / 1) * 100)
 
               return (
                 <Card key={prep.id}>
@@ -520,7 +520,7 @@ export default function AdminPreEvaluationsPage() {
                           </p>
                           <div className="mt-3 flex items-center gap-3 max-w-md">
                             <Progress value={progressValue} className="flex-1 h-2" />
-                            <span className="text-xs text-muted-foreground">{progressCount}/2 sections</span>
+                            <span className="text-xs text-muted-foreground">{progressCount}/1 section</span>
                           </div>
                         </div>
                       </div>
@@ -574,7 +574,7 @@ export default function AdminPreEvaluationsPage() {
                         <p className="mt-1 font-medium text-foreground">{formatDateTime(prep.questionsSubmittedAt)}</p>
                       </div>
                       <div className="rounded-lg border p-4">
-                        <p className="text-muted-foreground">Evaluatees submitted</p>
+                        <p className="text-muted-foreground">Change requests submitted</p>
                         <p className="mt-1 font-medium text-foreground">{formatDateTime(prep.evaluateesSubmittedAt)}</p>
                       </div>
                       <div className="rounded-lg border p-4">
@@ -613,7 +613,7 @@ export default function AdminPreEvaluationsPage() {
 
                       <div className="space-y-4">
                         <div>
-                          <h3 className="font-medium text-foreground">Evaluatee intake</h3>
+                          <h3 className="font-medium text-foreground">Evaluator change intake</h3>
                           <p className="text-sm text-muted-foreground">
                             Primary rows are reference only. Peer and cross-department rows need HR review.
                           </p>

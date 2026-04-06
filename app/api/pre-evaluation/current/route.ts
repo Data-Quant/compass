@@ -14,14 +14,14 @@ export async function GET() {
       return NextResponse.json({ prep: null })
     }
 
-    const progressCount = Number(Boolean(prep.questionsSubmittedAt)) + Number(Boolean(prep.evaluateesSubmittedAt))
+    const progressCount = Number(Boolean(prep.questionsSubmittedAt))
 
     return NextResponse.json({
       prep: {
         ...prep,
         requiredQuestionCount: PRE_EVALUATION_QUESTION_COUNT,
         progressCount,
-        totalSections: 2,
+        totalSections: 1,
       },
     })
   } catch (error) {
