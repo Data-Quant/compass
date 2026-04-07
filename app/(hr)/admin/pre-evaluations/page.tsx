@@ -594,7 +594,7 @@ export default function AdminPreEvaluationsPage() {
                         <div>
                           <h3 className="font-medium text-foreground">Submitted questions</h3>
                           <p className="text-sm text-muted-foreground">
-                            These will drive team lead and approved cross-department evaluations for this period.
+                            These become extra KPI questions for this lead&apos;s direct-report evaluations during the active period.
                           </p>
                         </div>
                         {prep.questions.length > 0 ? (

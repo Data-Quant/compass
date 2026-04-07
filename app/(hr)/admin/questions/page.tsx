@@ -529,10 +529,10 @@ export default function QuestionsPage() {
                   )}
                 </div>
                 <p className="text-sm text-muted-foreground mt-2">
-                  These questions stay separate from the global bank and become the runtime question set for team lead
-                  evaluations, plus approved cross-department evaluations, for the selected period. When submitted, they
-                  are added on top of the default Team Lead bank; if a lead never submits, runtime uses only the
-                  default Team Lead bank. Evaluations begin on{' '}
+                  These questions stay separate from the global bank and become extra KPI questions that each lead
+                  answers about their direct reports for the selected period. When submitted, they are added on top of
+                  the default Direct Reports question bank. They do not change what direct reports answer about the
+                  lead. Evaluations begin on{' '}
                   {selectedPeriod ? formatDate(selectedPeriod.reviewStartDate) : 'the configured review date'}.
                 </p>
               </div>
@@ -676,12 +676,12 @@ export default function QuestionsPage() {
                             </p>
                             {set.usesDefaultBank && (
                               <p className="mt-2 text-sm text-muted-foreground">
-                                Runtime will use only the default Team Lead question bank until a lead-specific set is submitted.
+                                Runtime will use only the default Direct Reports question bank until a lead-specific KPI set is submitted.
                               </p>
                             )}
                             {!set.usesDefaultBank && (
                               <p className="mt-2 text-sm text-muted-foreground">
-                                Runtime will use the default Team Lead question bank plus this lead&apos;s submitted questions.
+                                Runtime will use the default Direct Reports question bank plus this lead&apos;s submitted KPI questions for their direct-report evaluations.
                               </p>
                             )}
                           </div>
@@ -695,9 +695,9 @@ export default function QuestionsPage() {
                               </p>
                               <p>Runtime total: {set.effectiveQuestionCount} questions</p>
                               {set.usesDefaultBank ? (
-                                <p>Default bank only: {defaultLeadQuestionCount} questions</p>
+                                <p>Direct-report bank only: {defaultLeadQuestionCount} questions</p>
                               ) : (
-                                <p>Default bank {defaultLeadQuestionCount} + lead questions {set.questionCount}</p>
+                                <p>Direct-report bank {defaultLeadQuestionCount} + lead KPI questions {set.questionCount}</p>
                               )}
                             </div>
                             <div className="flex justify-end">
@@ -731,7 +731,7 @@ export default function QuestionsPage() {
                         ) : (
                           <div className="rounded-lg border border-dashed p-5">
                             <p className="text-sm text-muted-foreground">
-                              This lead has not submitted their question set yet. The default Team Lead question bank will be used unless HR adds or overrides the extra lead questions here.
+                              This lead has not submitted their KPI question set yet. The default Direct Reports question bank will be used unless HR adds or overrides the extra lead questions here.
                             </p>
                           </div>
                         )}
@@ -828,7 +828,7 @@ export default function QuestionsPage() {
       >
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            HR can add or override this lead&apos;s extra question set. If nothing is submitted, runtime will use only the default Team Lead question bank.
+            HR can add or override this lead&apos;s extra KPI question set. If nothing is submitted, runtime will use only the default Direct Reports question bank.
           </p>
 
           {leadQuestionInputs.map((question, index) => (

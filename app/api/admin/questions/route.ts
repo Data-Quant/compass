@@ -4,7 +4,7 @@ import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import {
   derivePreEvaluationStatus,
-  getDefaultQuestionBankRelationshipType,
+  getLeadAuthoredQuestionBankRelationshipType,
   getRuntimeLeadQuestionCount,
   hasSubmittedLeadQuestionSet,
   PRE_EVALUATION_QUESTION_COUNT,
@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
         },
       })
 
-      const defaultQuestionBankType = getDefaultQuestionBankRelationshipType('TEAM_LEAD')
+      const defaultQuestionBankType = getLeadAuthoredQuestionBankRelationshipType()
       const defaultQuestionCount = await prisma.evaluationQuestion.count({
         where: { relationshipType: defaultQuestionBankType },
       })

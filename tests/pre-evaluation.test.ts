@@ -6,6 +6,7 @@ import {
   deriveLeadRelationships,
   derivePreEvaluationStatus,
   getDefaultQuestionBankRelationshipType,
+  getLeadAuthoredQuestionBankRelationshipType,
   getRuntimeLeadQuestionCount,
   hasSubmittedLeadQuestionSet,
   validatePreEvaluationSelections,
@@ -65,9 +66,14 @@ test('draft lead questions do not count as a submitted custom question set', () 
   )
 })
 
-test('cross-department evaluations fall back to the team lead question bank', () => {
+test('question bank direction swaps team lead and direct report banks', () => {
+  assert.equal(getDefaultQuestionBankRelationshipType('TEAM_LEAD'), 'DIRECT_REPORT')
+  assert.equal(getDefaultQuestionBankRelationshipType('DIRECT_REPORT'), 'TEAM_LEAD')
   assert.equal(getDefaultQuestionBankRelationshipType('CROSS_DEPARTMENT'), 'TEAM_LEAD')
-  assert.equal(getDefaultQuestionBankRelationshipType('TEAM_LEAD'), 'TEAM_LEAD')
+})
+
+test('lead-authored KPI questions extend the direct report bank', () => {
+  assert.equal(getLeadAuthoredQuestionBankRelationshipType(), 'DIRECT_REPORT')
 })
 
 test('runtime lead question count adds submitted lead questions on top of the default bank', () => {
@@ -90,20 +96,20 @@ test('runtime lead question count adds submitted lead questions on top of the de
   )
 })
 
-test('runtime evaluation questions keep default bank and append lead questions', () => {
+test('runtime evaluation questions keep the base bank and append lead KPI questions', () => {
   const questions = buildRuntimeEvaluationQuestionSet({
     relationshipType: 'TEAM_LEAD',
     globalQuestions: [
       {
         id: 'global-1',
-        questionText: 'Default question 1',
+        questionText: 'Direct report default question 1',
         questionType: 'RATING',
         maxRating: 4,
         orderIndex: 1,
       },
       {
         id: 'global-2',
-        questionText: 'Default question 2',
+        questionText: 'Direct report default question 2',
         questionType: 'TEXT',
         maxRating: 4,
         orderIndex: 2,

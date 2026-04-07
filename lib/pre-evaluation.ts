@@ -145,11 +145,23 @@ export function hasSubmittedLeadQuestionSet(source: PrepQuestionSource) {
 export function getDefaultQuestionBankRelationshipType(
   relationshipType: RelationshipType
 ): RelationshipType {
+  if (relationshipType === 'TEAM_LEAD') {
+    return 'DIRECT_REPORT'
+  }
+
+  if (relationshipType === 'DIRECT_REPORT') {
+    return 'TEAM_LEAD'
+  }
+
   if (relationshipType === 'CROSS_DEPARTMENT') {
     return 'TEAM_LEAD'
   }
 
   return relationshipType
+}
+
+export function getLeadAuthoredQuestionBankRelationshipType(): RelationshipType {
+  return 'DIRECT_REPORT'
 }
 
 export function getRuntimeLeadQuestionCount(params: {
@@ -556,53 +568,6 @@ async function getLeadQuestionSetForTeamLead(periodId: string, leadId: string) {
   }
 }
 
-async function getLeadQuestionSetForCrossDepartment(
-  periodId: string,
-  evaluatorId: string,
-  evaluateeId: string
-) {
-  const selection = await prisma.preEvaluationEvaluateeSelection.findFirst({
-    where: {
-      type: 'CROSS_DEPARTMENT',
-      evaluateeId,
-      suggestedEvaluatorId: evaluatorId,
-      reviewStatus: 'APPROVED',
-      prep: {
-        periodId,
-      },
-    },
-    include: {
-      prep: {
-        include: {
-          lead: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-          questions: {
-            orderBy: { orderIndex: 'asc' },
-          },
-        },
-      },
-    },
-    orderBy: {
-      reviewedAt: 'desc',
-    },
-  })
-
-  if (!selection || !hasSubmittedLeadQuestionSet(selection.prep)) {
-    return null
-  }
-
-  return {
-    selectionId: selection.id,
-    sourceLeadId: selection.prep.lead.id,
-    sourceLeadName: selection.prep.lead.name,
-    questions: selection.prep.questions,
-  }
-}
-
 async function getGlobalQuestionBank(
   relationshipType: RelationshipType
 ) {
@@ -624,7 +589,7 @@ export async function getResolvedEvaluationQuestions(params: {
   evaluatorId: string
   evaluateeId: string
 }) {
-  const { relationshipType, periodId, evaluatorId, evaluateeId } = params
+  const { relationshipType, periodId, evaluatorId } = params
   let leadSource:
     | {
         sourceLeadId: string
@@ -635,10 +600,6 @@ export async function getResolvedEvaluationQuestions(params: {
 
   if (relationshipType === 'TEAM_LEAD') {
     leadSource = await getLeadQuestionSetForTeamLead(periodId, evaluatorId)
-  }
-
-  if (relationshipType === 'CROSS_DEPARTMENT') {
-    leadSource = await getLeadQuestionSetForCrossDepartment(periodId, evaluatorId, evaluateeId)
   }
 
   const { bankRelationshipType, questions: globalQuestions } = await getGlobalQuestionBank(
@@ -668,6 +629,10 @@ export async function getResolvedEvaluationQuestions(params: {
       error:
         relationshipType === 'CROSS_DEPARTMENT'
           ? 'No default Team Lead questions are configured for cross-department evaluations.'
+          : relationshipType === 'TEAM_LEAD'
+            ? 'No default Direct Reports questions are configured for team lead evaluations.'
+            : relationshipType === 'DIRECT_REPORT'
+              ? 'No default Team Lead questions are configured for direct report evaluations.'
           : 'No default questions are configured for this relationship type.',
     }
   }

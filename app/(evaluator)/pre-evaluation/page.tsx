@@ -162,7 +162,7 @@ export default function PreEvaluationPage() {
             <div>
               <p className="font-medium text-foreground">This pre-evaluation task is locked.</p>
               <p className="text-sm text-muted-foreground">
-                Evaluations have already started. Late submission is disabled; HR can review or override the overdue task, and the default Team Lead question bank will be used unless a lead-specific add-on set was submitted.
+                Evaluations have already started. Late submission is disabled; HR can review or override the overdue task, and the default Direct Reports question bank will be used unless a lead-specific KPI add-on set was submitted.
               </p>
             </div>
           </CardContent>
@@ -173,9 +173,9 @@ export default function PreEvaluationPage() {
         <CardContent className="p-6 space-y-5">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-foreground">Lead Evaluation Questions</h2>
+              <h2 className="text-lg font-semibold text-foreground">Direct Report KPI Questions</h2>
               <p className="text-sm text-muted-foreground">
-                Submit exactly {prep.requiredQuestionCount} extra questions for your team and approved cross-department evaluators. These are added on top of the default Team Lead question bank. If you do not submit them, runtime uses only the default Team Lead bank.
+                Submit exactly {prep.requiredQuestionCount} extra KPI questions that you will answer about your direct reports. These are added on top of the default Direct Reports question bank for your direct-report evaluations. They do not change the questions your team answers about you. If you do not submit them, runtime uses only the default Direct Reports bank.
               </p>
             </div>
             {prep.questionsSubmittedAt && (
