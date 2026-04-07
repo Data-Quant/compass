@@ -58,6 +58,8 @@ interface LeadQuestionSet {
   questionsSubmittedAt: string | null
   evaluateesSubmittedAt: string | null
   questionCount: number
+  usesDefaultBank: boolean
+  effectiveQuestionCount: number
   isRuntimeActive: boolean
   lead: {
     id: string
@@ -77,7 +79,17 @@ interface LeadQuestionSet {
 interface LeadQuestionResponse {
   periods: PeriodOption[]
   selectedPeriodId: string | null
+  requiredQuestionCount: number
+  defaultQuestionCount: number
   leadQuestionSets: LeadQuestionSet[]
+}
+
+function buildLeadQuestionInputs(count: number, questions: LeadQuestionSet['questions'] = []) {
+  const next = Array.from({ length: count }, () => '')
+  questions.forEach((question) => {
+    next[question.orderIndex - 1] = question.questionText
+  })
+  return next
 }
 
 const LEAD_STATUS_BADGES: Record<LeadQuestionSet['status'], { label: string; className: string }> = {
@@ -108,10 +120,15 @@ export default function QuestionsPage() {
   const [selectedPeriodId, setSelectedPeriodId] = useState<string>('')
   const [selectedLeadId, setSelectedLeadId] = useState<string>('')
   const [selectedDepartment, setSelectedDepartment] = useState<string>('')
+  const [requiredLeadQuestionCount, setRequiredLeadQuestionCount] = useState(2)
+  const [defaultLeadQuestionCount, setDefaultLeadQuestionCount] = useState(0)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [selectedQuestion, setSelectedQuestion] = useState<GlobalQuestion | null>(null)
   const [questionToDelete, setQuestionToDelete] = useState<GlobalQuestion | null>(null)
+  const [isLeadQuestionModalOpen, setIsLeadQuestionModalOpen] = useState(false)
+  const [selectedLeadQuestionSet, setSelectedLeadQuestionSet] = useState<LeadQuestionSet | null>(null)
+  const [leadQuestionInputs, setLeadQuestionInputs] = useState<string[]>([])
   const [formData, setFormData] = useState({
     questionText: '',
     questionType: 'RATING',
@@ -119,6 +136,7 @@ export default function QuestionsPage() {
     maxRating: 4,
   })
   const [saving, setSaving] = useState(false)
+  const [savingLeadQuestions, setSavingLeadQuestions] = useState(false)
 
   const relationshipTypes = (Object.keys(RELATIONSHIP_TYPE_LABELS) as RelationshipType[]).filter(
     (type) => type !== 'CROSS_DEPARTMENT'
@@ -221,6 +239,8 @@ export default function QuestionsPage() {
 
       setLeadQuestionSets(data.leadQuestionSets || [])
       setPeriodOptions(data.periods || [])
+      setRequiredLeadQuestionCount(data.requiredQuestionCount || 2)
+      setDefaultLeadQuestionCount(data.defaultQuestionCount || 0)
       if (data.selectedPeriodId && data.selectedPeriodId !== selectedPeriodId) {
         setSelectedPeriodId(data.selectedPeriodId)
       }
@@ -316,6 +336,45 @@ export default function QuestionsPage() {
     } finally {
       setIsDeleteDialogOpen(false)
       setQuestionToDelete(null)
+    }
+  }
+
+  const openLeadQuestionModal = (set: LeadQuestionSet) => {
+    setSelectedLeadQuestionSet(set)
+    setLeadQuestionInputs(buildLeadQuestionInputs(requiredLeadQuestionCount, set.questions))
+    setIsLeadQuestionModalOpen(true)
+  }
+
+  const handleLeadQuestionSave = async (submit = false) => {
+    if (!selectedLeadQuestionSet) return
+
+    const trimmedQuestions = leadQuestionInputs.map((question) => question.trim())
+    if (submit && trimmedQuestions.some((question) => !question)) {
+      toast.error(`Submit exactly ${requiredLeadQuestionCount} non-empty questions`)
+      return
+    }
+
+    setSavingLeadQuestions(true)
+    try {
+      const response = await fetch(`/api/admin/pre-evaluations/${selectedLeadQuestionSet.id}/questions`, {
+        method: submit ? 'POST' : 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ questions: trimmedQuestions }),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        toast.error(data.error || 'Failed to save lead questions')
+        return
+      }
+
+      toast.success(submit ? 'Lead question set submitted on behalf of the lead' : 'Lead question draft saved')
+      setIsLeadQuestionModalOpen(false)
+      setSelectedLeadQuestionSet(null)
+      await loadLeadQuestionSets(selectedPeriodId || undefined)
+    } catch {
+      toast.error('Failed to save lead questions')
+    } finally {
+      setSavingLeadQuestions(false)
     }
   }
 
@@ -471,7 +530,9 @@ export default function QuestionsPage() {
                 </div>
                 <p className="text-sm text-muted-foreground mt-2">
                   These questions stay separate from the global bank and become the runtime question set for team lead
-                  evaluations, plus approved cross-department evaluations, for the selected period. Evaluations begin on{' '}
+                  evaluations, plus approved cross-department evaluations, for the selected period. When submitted, they
+                  are added on top of the default Team Lead bank; if a lead never submits, runtime uses only the
+                  default Team Lead bank. Evaluations begin on{' '}
                   {selectedPeriod ? formatDate(selectedPeriod.reviewStartDate) : 'the configured review date'}.
                 </p>
               </div>
@@ -581,11 +642,11 @@ export default function QuestionsPage() {
                     }
                   : set.questionCount > 0
                     ? {
-                        label: 'Draft Saved',
+                        label: 'Draft Only',
                         className: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
                       }
                     : {
-                        label: 'Not Submitted',
+                        label: 'Using Default Bank',
                         className: 'bg-slate-500/10 text-slate-600 dark:text-slate-300',
                       }
 
@@ -611,16 +672,40 @@ export default function QuestionsPage() {
                               )}
                             </div>
                             <p className="text-sm text-muted-foreground mt-2">
-                              {[set.lead.position, set.lead.department, set.lead.email].filter(Boolean).join(' · ') || 'Team lead'}
+                              {[set.lead.position, set.lead.department, set.lead.email].filter(Boolean).join(' | ') || 'Team lead'}
                             </p>
+                            {set.usesDefaultBank && (
+                              <p className="mt-2 text-sm text-muted-foreground">
+                                Runtime will use only the default Team Lead question bank until a lead-specific set is submitted.
+                              </p>
+                            )}
+                            {!set.usesDefaultBank && (
+                              <p className="mt-2 text-sm text-muted-foreground">
+                                Runtime will use the default Team Lead question bank plus this lead&apos;s submitted questions.
+                              </p>
+                            )}
                           </div>
 
-                          <div className="text-sm text-muted-foreground xl:text-right">
-                            <p>Questions submitted: {formatDateTime(set.questionsSubmittedAt)}</p>
-                            <p>
-                              Set size: {set.questionCount}/3
-                              {set.period.isActive ? ' · Active evaluation period' : ' · Upcoming / inactive period'}
-                            </p>
+                          <div className="space-y-3 xl:text-right">
+                            <div className="text-sm text-muted-foreground">
+                              <p>Questions submitted: {formatDateTime(set.questionsSubmittedAt)}</p>
+                              <p>
+                                Lead set size: {set.questionCount}/{requiredLeadQuestionCount}
+                                {set.period.isActive ? ' | Active evaluation period' : ' | Upcoming / inactive period'}
+                              </p>
+                              <p>Runtime total: {set.effectiveQuestionCount} questions</p>
+                              {set.usesDefaultBank ? (
+                                <p>Default bank only: {defaultLeadQuestionCount} questions</p>
+                              ) : (
+                                <p>Default bank {defaultLeadQuestionCount} + lead questions {set.questionCount}</p>
+                              )}
+                            </div>
+                            <div className="flex justify-end">
+                              <Button variant="outline" size="sm" onClick={() => openLeadQuestionModal(set)}>
+                                <Edit2 className="w-4 h-4" />
+                                {set.questionCount > 0 || set.questionsSubmittedAt ? 'Override Questions' : 'Add on Behalf'}
+                              </Button>
+                            </div>
                           </div>
                         </div>
 
@@ -646,7 +731,7 @@ export default function QuestionsPage() {
                         ) : (
                           <div className="rounded-lg border border-dashed p-5">
                             <p className="text-sm text-muted-foreground">
-                              This lead has not submitted their question set yet.
+                              This lead has not submitted their question set yet. The default Team Lead question bank will be used unless HR adds or overrides the extra lead questions here.
                             </p>
                           </div>
                         )}
@@ -727,6 +812,61 @@ export default function QuestionsPage() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={isLeadQuestionModalOpen}
+        onClose={() => {
+          setIsLeadQuestionModalOpen(false)
+          setSelectedLeadQuestionSet(null)
+        }}
+        title={
+          selectedLeadQuestionSet
+            ? `Manage ${selectedLeadQuestionSet.lead.name}'s Question Set`
+            : 'Manage Lead Question Set'
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            HR can add or override this lead&apos;s extra question set. If nothing is submitted, runtime will use only the default Team Lead question bank.
+          </p>
+
+          {leadQuestionInputs.map((question, index) => (
+            <div key={`lead-question-${index}`} className="space-y-2">
+              <Label htmlFor={`lead-question-${index}`}>Question {index + 1}</Label>
+              <Textarea
+                id={`lead-question-${index}`}
+                rows={3}
+                value={question}
+                onChange={(event) =>
+                  setLeadQuestionInputs((current) =>
+                    current.map((value, valueIndex) =>
+                      valueIndex === index ? event.target.value : value
+                    )
+                  )
+                }
+              />
+            </div>
+          ))}
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void handleLeadQuestionSave(false)}
+              disabled={savingLeadQuestions}
+            >
+              {savingLeadQuestions ? 'Saving...' : 'Save Draft'}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void handleLeadQuestionSave(true)}
+              disabled={savingLeadQuestions}
+            >
+              {savingLeadQuestions ? 'Saving...' : 'Submit on Behalf'}
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       <ConfirmDialog

@@ -108,11 +108,6 @@ export async function getResolvedEvaluationAssignments(
         ...selectionWhere,
         type: 'CROSS_DEPARTMENT',
         suggestedEvaluatorId: { not: null },
-        prep: {
-          periodId,
-          evaluateesSubmittedAt: { not: null },
-          questionsSubmittedAt: { not: null },
-        },
       },
       ...(includeUsers
         ? {

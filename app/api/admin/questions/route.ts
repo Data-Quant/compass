@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
-import { derivePreEvaluationStatus } from '@/lib/pre-evaluation'
+import {
+  derivePreEvaluationStatus,
+  getDefaultQuestionBankRelationshipType,
+  getRuntimeLeadQuestionCount,
+  hasSubmittedLeadQuestionSet,
+  PRE_EVALUATION_QUESTION_COUNT,
+} from '@/lib/pre-evaluation'
 
 // GET - List all evaluation questions
 export async function GET(request: NextRequest) {
@@ -54,6 +60,8 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({
           periods: [],
           selectedPeriodId: null,
+          requiredQuestionCount: PRE_EVALUATION_QUESTION_COUNT,
+          defaultQuestionCount: 0,
           leadQuestionSets: [],
         })
       }
@@ -92,22 +100,38 @@ export async function GET(request: NextRequest) {
         },
       })
 
+      const defaultQuestionBankType = getDefaultQuestionBankRelationshipType('TEAM_LEAD')
+      const defaultQuestionCount = await prisma.evaluationQuestion.count({
+        where: { relationshipType: defaultQuestionBankType },
+      })
+
       return NextResponse.json({
         periods,
         selectedPeriodId,
-        leadQuestionSets: leadQuestionSets.map((prep) => ({
-          id: prep.id,
-          status: derivePreEvaluationStatus(prep),
-          questionsSubmittedAt: prep.questionsSubmittedAt,
-          evaluateesSubmittedAt: prep.evaluateesSubmittedAt,
-          questionCount: prep.questions.length,
-          isRuntimeActive: Boolean(
-            prep.period.isActive && prep.questionsSubmittedAt && prep.questions.length > 0
-          ),
-          lead: prep.lead,
-          period: prep.period,
-          questions: prep.questions,
-        })),
+        requiredQuestionCount: PRE_EVALUATION_QUESTION_COUNT,
+        defaultQuestionCount,
+        leadQuestionSets: leadQuestionSets.map((prep) => {
+          const hasSubmittedCustomQuestions = hasSubmittedLeadQuestionSet(prep)
+          const effectiveQuestionCount = getRuntimeLeadQuestionCount({
+            defaultQuestionCount,
+            leadQuestionCount: prep.questions.length,
+            includeLeadQuestions: hasSubmittedCustomQuestions,
+          })
+
+          return {
+            id: prep.id,
+            status: derivePreEvaluationStatus(prep),
+            questionsSubmittedAt: prep.questionsSubmittedAt,
+            evaluateesSubmittedAt: prep.evaluateesSubmittedAt,
+            questionCount: prep.questions.length,
+            usesDefaultBank: !hasSubmittedCustomQuestions,
+            effectiveQuestionCount,
+            isRuntimeActive: Boolean(prep.period.isActive && effectiveQuestionCount > 0),
+            lead: prep.lead,
+            period: prep.period,
+            questions: prep.questions,
+          }
+        }),
       })
     }
 

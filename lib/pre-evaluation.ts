@@ -40,6 +40,25 @@ type LeadRelationshipMapping = {
   relationshipType: RelationshipType
 }
 
+type PrepQuestionSource = {
+  questionsSubmittedAt: Date | null
+  questions: Array<PreEvaluationLeadQuestion>
+}
+
+type RuntimeGlobalQuestionInput = {
+  id: string
+  questionText: string
+  questionType: QuestionType
+  maxRating: number
+  orderIndex: number
+}
+
+type RuntimeLeadQuestionInput = {
+  id: string
+  questionText: string
+  orderIndex: number
+}
+
 export interface PreEvaluationSelectionInput {
   type: 'PRIMARY' | 'PEER' | 'CROSS_DEPARTMENT'
   evaluateeId: string
@@ -117,6 +136,75 @@ export function deriveLeadRelationships(
     leadIds,
     directReportsByLead,
   }
+}
+
+export function hasSubmittedLeadQuestionSet(source: PrepQuestionSource) {
+  return Boolean(source.questionsSubmittedAt) && source.questions.length > 0
+}
+
+export function getDefaultQuestionBankRelationshipType(
+  relationshipType: RelationshipType
+): RelationshipType {
+  if (relationshipType === 'CROSS_DEPARTMENT') {
+    return 'TEAM_LEAD'
+  }
+
+  return relationshipType
+}
+
+export function getRuntimeLeadQuestionCount(params: {
+  defaultQuestionCount: number
+  leadQuestionCount: number
+  includeLeadQuestions: boolean
+}) {
+  return params.defaultQuestionCount + (params.includeLeadQuestions ? params.leadQuestionCount : 0)
+}
+
+export function buildRuntimeEvaluationQuestionSet(params: {
+  relationshipType: RelationshipType
+  globalQuestions: RuntimeGlobalQuestionInput[]
+  leadQuestions?: RuntimeLeadQuestionInput[]
+  globalSourceLeadId?: string
+  globalSourceLeadName?: string
+  leadSourceLeadId?: string
+  leadSourceLeadName?: string
+}) {
+  const sortedGlobalQuestions = [...params.globalQuestions].sort(
+    (first, second) => first.orderIndex - second.orderIndex
+  )
+  const sortedLeadQuestions = [...(params.leadQuestions || [])].sort(
+    (first, second) => first.orderIndex - second.orderIndex
+  )
+
+  const resolvedGlobalQuestions = sortedGlobalQuestions.map<ResolvedEvaluationQuestion>(
+    (question, index) => ({
+      id: question.id,
+      sourceType: 'GLOBAL',
+      relationshipType: params.relationshipType,
+      questionText: question.questionText,
+      questionType: question.questionType,
+      maxRating: question.maxRating,
+      orderIndex: index + 1,
+      sourceLeadId: params.globalSourceLeadId,
+      sourceLeadName: params.globalSourceLeadName,
+    })
+  )
+
+  const resolvedLeadQuestions = sortedLeadQuestions.map<ResolvedEvaluationQuestion>(
+    (question, index) => ({
+      id: question.id,
+      sourceType: 'LEAD',
+      relationshipType: params.relationshipType,
+      questionText: question.questionText,
+      questionType: 'RATING',
+      maxRating: 4,
+      orderIndex: resolvedGlobalQuestions.length + index + 1,
+      sourceLeadId: params.leadSourceLeadId,
+      sourceLeadName: params.leadSourceLeadName,
+    })
+  )
+
+  return [...resolvedGlobalQuestions, ...resolvedLeadQuestions]
 }
 
 export async function syncPrepStatus(db: DbClient, prepId: string) {
@@ -457,7 +545,7 @@ async function getLeadQuestionSetForTeamLead(periodId: string, leadId: string) {
     },
   })
 
-  if (!prep || !prep.questionsSubmittedAt || prep.questions.length === 0) {
+  if (!prep || !hasSubmittedLeadQuestionSet(prep)) {
     return null
   }
 
@@ -481,9 +569,6 @@ async function getLeadQuestionSetForCrossDepartment(
       reviewStatus: 'APPROVED',
       prep: {
         periodId,
-        questionsSubmittedAt: {
-          not: null,
-        },
       },
     },
     include: {
@@ -506,7 +591,7 @@ async function getLeadQuestionSetForCrossDepartment(
     },
   })
 
-  if (!selection || selection.prep.questions.length === 0) {
+  if (!selection || !hasSubmittedLeadQuestionSet(selection.prep)) {
     return null
   }
 
@@ -518,6 +603,21 @@ async function getLeadQuestionSetForCrossDepartment(
   }
 }
 
+async function getGlobalQuestionBank(
+  relationshipType: RelationshipType
+) {
+  const bankRelationshipType = getDefaultQuestionBankRelationshipType(relationshipType)
+  const questions = await prisma.evaluationQuestion.findMany({
+    where: { relationshipType: bankRelationshipType },
+    orderBy: { orderIndex: 'asc' },
+  })
+
+  return {
+    bankRelationshipType,
+    questions,
+  }
+}
+
 export async function getResolvedEvaluationQuestions(params: {
   relationshipType: RelationshipType
   periodId: string
@@ -525,69 +625,56 @@ export async function getResolvedEvaluationQuestions(params: {
   evaluateeId: string
 }) {
   const { relationshipType, periodId, evaluatorId, evaluateeId } = params
+  let leadSource:
+    | {
+        sourceLeadId: string
+        sourceLeadName: string
+        questions: Array<PreEvaluationLeadQuestion>
+      }
+    | null = null
 
   if (relationshipType === 'TEAM_LEAD') {
-    const source = await getLeadQuestionSetForTeamLead(periodId, evaluatorId)
-    if (source) {
-      return {
-        sourceType: 'LEAD' as const,
-        questions: source.questions.map<ResolvedEvaluationQuestion>((question) => ({
-          id: question.id,
-          sourceType: 'LEAD',
-          relationshipType,
-          questionText: question.questionText,
-          questionType: 'RATING',
-          maxRating: 4,
-          orderIndex: question.orderIndex,
-          sourceLeadId: source.sourceLeadId,
-          sourceLeadName: source.sourceLeadName,
-        })),
-      }
-    }
+    leadSource = await getLeadQuestionSetForTeamLead(periodId, evaluatorId)
   }
 
   if (relationshipType === 'CROSS_DEPARTMENT') {
-    const source = await getLeadQuestionSetForCrossDepartment(periodId, evaluatorId, evaluateeId)
-    if (!source) {
-      return {
-        sourceType: 'LEAD' as const,
-        questions: [],
-        error: 'Cross-department evaluation is not configured for this period.',
-      }
-    }
+    leadSource = await getLeadQuestionSetForCrossDepartment(periodId, evaluatorId, evaluateeId)
+  }
 
+  const { bankRelationshipType, questions: globalQuestions } = await getGlobalQuestionBank(
+    relationshipType
+  )
+
+  const questions = buildRuntimeEvaluationQuestionSet({
+    relationshipType,
+    globalQuestions,
+    leadQuestions: leadSource?.questions,
+    globalSourceLeadId:
+      relationshipType === 'CROSS_DEPARTMENT' && bankRelationshipType === 'TEAM_LEAD'
+        ? 'default-team-lead-bank'
+        : undefined,
+    globalSourceLeadName:
+      relationshipType === 'CROSS_DEPARTMENT' && bankRelationshipType === 'TEAM_LEAD'
+        ? 'Default Team Lead Question Bank'
+        : undefined,
+    leadSourceLeadId: leadSource?.sourceLeadId,
+    leadSourceLeadName: leadSource?.sourceLeadName,
+  })
+
+  if (questions.length === 0) {
     return {
-      sourceType: 'LEAD' as const,
-      questions: source.questions.map<ResolvedEvaluationQuestion>((question) => ({
-        id: question.id,
-        sourceType: 'LEAD',
-        relationshipType,
-        questionText: question.questionText,
-        questionType: 'RATING',
-        maxRating: 4,
-        orderIndex: question.orderIndex,
-        sourceLeadId: source.sourceLeadId,
-        sourceLeadName: source.sourceLeadName,
-      })),
+      sourceType: leadSource ? 'LEAD' as const : 'GLOBAL' as const,
+      questions,
+      error:
+        relationshipType === 'CROSS_DEPARTMENT'
+          ? 'No default Team Lead questions are configured for cross-department evaluations.'
+          : 'No default questions are configured for this relationship type.',
     }
   }
 
-  const globalQuestions = await prisma.evaluationQuestion.findMany({
-    where: { relationshipType },
-    orderBy: { orderIndex: 'asc' },
-  })
-
   return {
-    sourceType: 'GLOBAL' as const,
-    questions: globalQuestions.map<ResolvedEvaluationQuestion>((question) => ({
-      id: question.id,
-      sourceType: 'GLOBAL',
-      relationshipType,
-      questionText: question.questionText,
-      questionType: question.questionType,
-      maxRating: question.maxRating,
-      orderIndex: question.orderIndex,
-    })),
+    sourceType: leadSource ? 'LEAD' as const : 'GLOBAL' as const,
+    questions,
   }
 }
 

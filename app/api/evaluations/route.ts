@@ -5,6 +5,11 @@ import { z } from 'zod'
 import type { RelationshipType } from '@/types'
 import { getResolvedEvaluationQuestions } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignmentForPair } from '@/lib/evaluation-assignments'
+import {
+  isEvaluationResponseComplete,
+  normalizeEvaluationTextResponse,
+  ratingRequiresExplanation,
+} from '@/lib/evaluation-response'
 
 const evaluationSchema = z.object({
   evaluateeId: z.string().trim().min(1),
@@ -92,10 +97,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: resolved.error }, { status: 400 })
     }
 
-    const allowedQuestionKeys = new Set(
-      resolved.questions.map((question) => `${question.sourceType}:${question.id}`)
+    const allowedQuestions = new Map<string, (typeof resolved.questions)[number]>(
+      resolved.questions.map((question) => [`${question.sourceType}:${question.id}`, question] as const)
     )
-    if (allowedQuestionKeys.size === 0) {
+    if (allowedQuestions.size === 0) {
       return NextResponse.json(
         { error: 'No evaluation questions configured for this relationship type' },
         { status: 400 }
@@ -105,7 +110,8 @@ export async function POST(request: NextRequest) {
     const seenQuestionIds = new Set<string>()
     for (const response of data.responses) {
       const questionKey = `${response.questionSource}:${response.questionId}`
-      if (!allowedQuestionKeys.has(questionKey)) {
+      const allowedQuestion = allowedQuestions.get(questionKey)
+      if (!allowedQuestion) {
         return NextResponse.json(
           { error: 'One or more questions are not valid for this evaluation relationship' },
           { status: 400 }
@@ -118,6 +124,23 @@ export async function POST(request: NextRequest) {
         )
       }
       seenQuestionIds.add(questionKey)
+
+      if (
+        !isEvaluationResponseComplete({
+          questionType: allowedQuestion.questionType,
+          ratingValue: response.ratingValue,
+          textResponse: response.textResponse,
+        })
+      ) {
+        return NextResponse.json(
+          {
+            error: ratingRequiresExplanation(response.ratingValue)
+              ? `Explanation is required for ratings of 1 or 4 on "${allowedQuestion.questionText}".`
+              : `A rating is required for "${allowedQuestion.questionText}".`,
+          },
+          { status: 400 }
+        )
+      }
     }
 
     // Save or update evaluations
@@ -133,7 +156,7 @@ export async function POST(request: NextRequest) {
 
       const payload = {
         ratingValue: response.ratingValue ?? null,
-        textResponse: response.textResponse ?? null,
+        textResponse: normalizeEvaluationTextResponse(response.textResponse),
         submittedAt: new Date(),
       }
 
@@ -214,10 +237,10 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: resolved.error }, { status: 400 })
     }
 
-    const allowedQuestionKeys = new Set(
-      resolved.questions.map((question) => `${question.sourceType}:${question.id}`)
+    const allowedQuestions = new Map<string, (typeof resolved.questions)[number]>(
+      resolved.questions.map((question) => [`${question.sourceType}:${question.id}`, question] as const)
     )
-    if (!allowedQuestionKeys.has(`${questionSource}:${questionId}`)) {
+    if (!allowedQuestions.has(`${questionSource}:${questionId}`)) {
       return NextResponse.json(
         { error: 'Question is not valid for this evaluation relationship' },
         { status: 400 }
@@ -235,7 +258,7 @@ export async function PUT(request: NextRequest) {
 
     const payload = {
       ratingValue: ratingValue ?? null,
-      textResponse: textResponse ?? null,
+      textResponse: normalizeEvaluationTextResponse(textResponse),
     }
 
     const evaluation = existing

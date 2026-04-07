@@ -1,9 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  buildRuntimeEvaluationQuestionSet,
   PRE_EVALUATION_QUESTION_COUNT,
   deriveLeadRelationships,
   derivePreEvaluationStatus,
+  getDefaultQuestionBankRelationshipType,
+  getRuntimeLeadQuestionCount,
+  hasSubmittedLeadQuestionSet,
   validatePreEvaluationSelections,
 } from '../lib/pre-evaluation'
 
@@ -40,6 +44,126 @@ test('deriveLeadRelationships builds direct report ownership from TEAM_LEAD rows
 
 test('pre-evaluation question count is now two for team leads', () => {
   assert.equal(PRE_EVALUATION_QUESTION_COUNT, 2)
+})
+
+test('draft lead questions do not count as a submitted custom question set', () => {
+  assert.equal(
+    hasSubmittedLeadQuestionSet({
+      questionsSubmittedAt: null,
+      questions: [
+        {
+          id: 'q-1',
+          prepId: 'prep-1',
+          orderIndex: 1,
+          questionText: 'Draft question',
+          createdAt: new Date('2026-04-01T00:00:00.000Z'),
+          updatedAt: new Date('2026-04-01T00:00:00.000Z'),
+        },
+      ],
+    }),
+    false
+  )
+})
+
+test('cross-department evaluations fall back to the team lead question bank', () => {
+  assert.equal(getDefaultQuestionBankRelationshipType('CROSS_DEPARTMENT'), 'TEAM_LEAD')
+  assert.equal(getDefaultQuestionBankRelationshipType('TEAM_LEAD'), 'TEAM_LEAD')
+})
+
+test('runtime lead question count adds submitted lead questions on top of the default bank', () => {
+  assert.equal(
+    getRuntimeLeadQuestionCount({
+      defaultQuestionCount: 3,
+      leadQuestionCount: 2,
+      includeLeadQuestions: true,
+    }),
+    5
+  )
+
+  assert.equal(
+    getRuntimeLeadQuestionCount({
+      defaultQuestionCount: 3,
+      leadQuestionCount: 2,
+      includeLeadQuestions: false,
+    }),
+    3
+  )
+})
+
+test('runtime evaluation questions keep default bank and append lead questions', () => {
+  const questions = buildRuntimeEvaluationQuestionSet({
+    relationshipType: 'TEAM_LEAD',
+    globalQuestions: [
+      {
+        id: 'global-1',
+        questionText: 'Default question 1',
+        questionType: 'RATING',
+        maxRating: 4,
+        orderIndex: 1,
+      },
+      {
+        id: 'global-2',
+        questionText: 'Default question 2',
+        questionType: 'TEXT',
+        maxRating: 4,
+        orderIndex: 2,
+      },
+    ],
+    leadQuestions: [
+      {
+        id: 'lead-1',
+        questionText: 'Lead add-on 1',
+        orderIndex: 1,
+      },
+      {
+        id: 'lead-2',
+        questionText: 'Lead add-on 2',
+        orderIndex: 2,
+      },
+    ],
+    leadSourceLeadId: 'lead-a',
+    leadSourceLeadName: 'Lead A',
+  })
+
+  assert.deepEqual(
+    questions.map((question) => ({
+      id: question.id,
+      sourceType: question.sourceType,
+      questionType: question.questionType,
+      orderIndex: question.orderIndex,
+      sourceLeadName: question.sourceLeadName || null,
+    })),
+    [
+      {
+        id: 'global-1',
+        sourceType: 'GLOBAL',
+        questionType: 'RATING',
+        orderIndex: 1,
+        sourceLeadName: null,
+      },
+      {
+        id: 'global-2',
+        sourceType: 'GLOBAL',
+        questionType: 'TEXT',
+        orderIndex: 2,
+        sourceLeadName: null,
+      },
+      {
+        id: 'lead-1',
+        sourceType: 'LEAD',
+        questionType: 'RATING',
+        orderIndex: 3,
+        sourceLeadName: 'Lead A',
+      },
+      {
+        id: 'lead-2',
+        sourceType: 'LEAD',
+        questionType: 'RATING',
+        orderIndex: 4,
+        sourceLeadName: 'Lead A',
+      },
+    ]
+  )
 })
 
 test('derivePreEvaluationStatus completes once lead questions are submitted', () => {

@@ -1,11 +1,15 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { RATING_LABELS } from '@/types'
+import {
+  isEvaluationResponseComplete,
+  ratingRequiresExplanation,
+} from '@/lib/evaluation-response'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -41,10 +45,17 @@ export default function EvaluatePage() {
   const [saving, setSaving] = useState(false)
   const [responses, setResponses] = useState<Record<string, { rating?: number; text?: string }>>({})
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
+  const textSaveTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   useEffect(() => {
     loadEvaluationData()
   }, [evaluateeId])
+
+  useEffect(() => {
+    return () => {
+      Object.values(textSaveTimeouts.current).forEach((timeout) => clearTimeout(timeout))
+    }
+  }, [])
 
   const loadEvaluationData = async () => {
     try {
@@ -78,8 +89,13 @@ export default function EvaluatePage() {
 
   const handleTextChange = (questionId: string, text: string) => {
     setResponses((prev) => ({ ...prev, [questionId]: { ...prev[questionId], text } }))
-    const timeoutId = setTimeout(() => { autoSave(questionId, responses[questionId]?.rating, text) }, 500)
-    return () => clearTimeout(timeoutId)
+    if (textSaveTimeouts.current[questionId]) {
+      clearTimeout(textSaveTimeouts.current[questionId])
+    }
+
+    textSaveTimeouts.current[questionId] = setTimeout(() => {
+      autoSave(questionId, responses[questionId]?.rating, text)
+    }, 500)
   }
 
   const autoSave = async (questionId: string, rating?: number, text?: string) => {
@@ -107,11 +123,22 @@ export default function EvaluatePage() {
   const handleSubmit = async () => {
     if (isSubmitted) { toast.info('This evaluation has already been submitted.'); return }
 
-    const missingFields: string[] = []
+    const incompleteQuestions: string[] = []
     questions.forEach((q) => {
-      if (q.questionType === 'RATING' && !responses[q.id]?.rating) missingFields.push(q.questionText)
+      if (
+        !isEvaluationResponseComplete({
+          questionType: q.questionType,
+          ratingValue: responses[q.id]?.rating,
+          textResponse: responses[q.id]?.text,
+        })
+      ) {
+        incompleteQuestions.push(q.questionText)
+      }
     })
-    if (missingFields.length > 0) { toast.error(`Please complete all required rating fields (${missingFields.length} remaining)`); return }
+    if (incompleteQuestions.length > 0) {
+      toast.error(`Please complete all required responses (${incompleteQuestions.length} remaining)`)
+      return
+    }
 
     setSaving(true)
     try {
@@ -139,7 +166,13 @@ export default function EvaluatePage() {
     finally { setSaving(false) }
   }
 
-  const completedQuestions = questions.filter(q => q.questionType === 'RATING' ? responses[q.id]?.rating : true).length
+  const completedQuestions = questions.filter((question) =>
+    isEvaluationResponseComplete({
+      questionType: question.questionType,
+      ratingValue: responses[question.id]?.rating,
+      textResponse: responses[question.id]?.text,
+    })
+  ).length
   const totalQuestions = questions.length
   const progress = totalQuestions > 0 ? Math.round((completedQuestions / totalQuestions) * 100) : 0
 
@@ -228,6 +261,38 @@ export default function EvaluatePage() {
                             </div>
                           </button>
                         ))}
+                      </div>
+
+                      <div className="mt-4 space-y-2">
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <label
+                            htmlFor={`explanation-${question.id}`}
+                            className="font-medium text-foreground"
+                          >
+                            Explanation
+                          </label>
+                          {ratingRequiresExplanation(responses[question.id]?.rating) ? (
+                            <span className="text-amber-600 dark:text-amber-400">
+                              Required for ratings of 1 or 4
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">
+                              Optional for ratings of 2 or 3
+                            </span>
+                          )}
+                        </div>
+                        <Textarea
+                          id={`explanation-${question.id}`}
+                          value={responses[question.id]?.text || ''}
+                          onChange={(e) => handleTextChange(question.id, e.target.value)}
+                          disabled={isSubmitted}
+                          rows={3}
+                          placeholder={
+                            ratingRequiresExplanation(responses[question.id]?.rating)
+                              ? 'Please explain why you selected this rating.'
+                              : 'Add context if helpful.'
+                          }
+                        />
                       </div>
                     </div>
                   ) : (

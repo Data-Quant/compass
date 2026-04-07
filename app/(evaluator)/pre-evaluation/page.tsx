@@ -162,7 +162,7 @@ export default function PreEvaluationPage() {
             <div>
               <p className="font-medium text-foreground">This pre-evaluation task is locked.</p>
               <p className="text-sm text-muted-foreground">
-                Evaluations have already started. Late submission is disabled; HR can review or override the overdue task.
+                Evaluations have already started. Late submission is disabled; HR can review or override the overdue task, and the default Team Lead question bank will be used unless a lead-specific add-on set was submitted.
               </p>
             </div>
           </CardContent>
@@ -175,7 +175,7 @@ export default function PreEvaluationPage() {
             <div>
               <h2 className="text-lg font-semibold text-foreground">Lead Evaluation Questions</h2>
               <p className="text-sm text-muted-foreground">
-                Submit exactly {prep.requiredQuestionCount} questions for your team and approved cross-department evaluators.
+                Submit exactly {prep.requiredQuestionCount} extra questions for your team and approved cross-department evaluators. These are added on top of the default Team Lead question bank. If you do not submit them, runtime uses only the default Team Lead bank.
               </p>
             </div>
             {prep.questionsSubmittedAt && (
