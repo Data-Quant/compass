@@ -40,6 +40,27 @@ interface Mapping {
 
 interface User { id: string; name: string; department: string | null; role: string; position?: string }
 
+interface ImportWarnings {
+  unmatchedCategorySets?: Array<{
+    categorySetKey: string
+    employeeCount: number
+    employeeNames: string[]
+  }>
+  mismatchedEmployees?: Array<{
+    employeeName: string
+    categorySetKey: string
+  }>
+}
+
+interface ImportValidation {
+  matchedProfiles: number
+  mismatchedProfiles: Array<{
+    displayName: string
+    missingExpectedMembers: string[]
+    unexpectedMembers: string[]
+  }>
+}
+
 export default function MappingsPage() {
   const [mappings, setMappings] = useState<Mapping[]>([])
   const [users, setUsers] = useState<User[]>([])
@@ -57,6 +78,8 @@ export default function MappingsPage() {
   const [saving, setSaving] = useState(false)
   const [importData, setImportData] = useState<any[]>([])
   const [importPreview, setImportPreview] = useState<any[]>([])
+  const [workbookFile, setWorkbookFile] = useState<File | null>(null)
+  const [importFileName, setImportFileName] = useState('')
   const [importing, setImporting] = useState(false)
   const [importFormat, setImportFormat] = useState<'simple' | 'q4'>('q4')
   const [clearBeforeImport, setClearBeforeImport] = useState(true)
@@ -124,6 +147,19 @@ export default function MappingsPage() {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+
+    const lowerName = file.name.toLowerCase()
+    setImportFileName(file.name)
+
+    if (lowerName.endsWith('.xlsx')) {
+      setWorkbookFile(file)
+      setImportFormat('q4')
+      setImportData([])
+      setImportPreview([])
+      return
+    }
+
+    setWorkbookFile(null)
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
@@ -147,17 +183,28 @@ export default function MappingsPage() {
   }
 
   const handleImport = async () => {
-    if (importData.length === 0) { toast.error('No data to import'); return }
+    const hasWorkbook = Boolean(workbookFile)
+    if (!hasWorkbook && importData.length === 0) { toast.error('No data to import'); return }
     setImporting(true)
     try {
       let res
       if (importFormat === 'q4') {
-        // Use new Q4 2025 format endpoint
-        res = await fetch('/api/admin/import-mappings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rows: importData, clearExisting: clearBeforeImport })
-        })
+        if (workbookFile) {
+          const formData = new FormData()
+          formData.append('file', workbookFile)
+          formData.append('clearExisting', String(clearBeforeImport))
+          res = await fetch('/api/admin/import-mappings', {
+            method: 'POST',
+            body: formData,
+          })
+        } else {
+          // Use legacy JSON import for CSV-based sheet rows
+          res = await fetch('/api/admin/import-mappings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rows: importData, clearExisting: clearBeforeImport })
+          })
+        }
       } else {
         // Use old simple format
         res = await fetch('/api/admin/import', {
@@ -177,9 +224,21 @@ export default function MappingsPage() {
           console.log('Import errors:', result.errors)
           toast.warning(`${result.errors.length} warnings - check console`)
         }
+        const validation = result.validation as ImportValidation | undefined
+        const warnings = result.warnings as ImportWarnings | undefined
+        if (validation?.mismatchedProfiles?.length) {
+          console.log('Workbook profile validation mismatches:', validation.mismatchedProfiles)
+          toast.warning(`${validation.mismatchedProfiles.length} workbook profile mismatches detected`)
+        }
+        if ((warnings?.unmatchedCategorySets?.length || 0) > 0 || (warnings?.mismatchedEmployees?.length || 0) > 0) {
+          console.log('Profile drift warnings:', warnings)
+          toast.warning('Some mappings do not match a saved weight profile - check console')
+        }
         setIsImportModalOpen(false)
         setImportData([])
         setImportPreview([])
+        setWorkbookFile(null)
+        setImportFileName('')
         loadData()
       }
     } catch (err) {
@@ -199,15 +258,6 @@ export default function MappingsPage() {
     const matchEmployee = filterEmployee === 'all' || m.evaluateeId === filterEmployee || m.evaluatorId === filterEmployee
     return matchSearch && matchType && matchEmployee
   })
-
-  // Group mappings by evaluatee for summary view
-  const mappingsByEvaluatee = filteredMappings.reduce((acc, m) => {
-    if (!acc[m.evaluateeId]) {
-      acc[m.evaluateeId] = { evaluatee: m.evaluatee, mappings: [] }
-    }
-    acc[m.evaluateeId].mappings.push(m)
-    return acc
-  }, {} as Record<string, { evaluatee: Mapping['evaluatee'], mappings: Mapping[] }>)
 
   if (loading) {
     return (
@@ -231,7 +281,7 @@ export default function MappingsPage() {
               </Link>
             </Button>
             <Button variant="outline" onClick={() => setIsImportModalOpen(true)}>
-              <Upload className="w-4 h-4" /> Import CSV
+              <Upload className="w-4 h-4" /> Import Workbook / CSV
             </Button>
             <Button onClick={() => { setEditingMapping(null); setFormData({ evaluatorId: '', evaluateeId: '', relationshipType: 'PEER' }); setIsModalOpen(true) }}>
               <Plus className="w-4 h-4" /> Add Mapping
@@ -367,13 +417,13 @@ export default function MappingsPage() {
       </Modal>
 
       {/* Import Modal */}
-      <Modal isOpen={isImportModalOpen} onClose={() => { setIsImportModalOpen(false); setImportData([]); setImportPreview([]) }} title="Import Mappings from CSV" size="lg">
+      <Modal isOpen={isImportModalOpen} onClose={() => { setIsImportModalOpen(false); setImportData([]); setImportPreview([]); setWorkbookFile(null); setImportFileName('') }} title="Import Mappings" size="lg">
         <div className="space-y-4">
           {/* Format Selection */}
           <div className="flex gap-4 p-4 bg-muted rounded-lg">
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="radio" checked={importFormat === 'q4'} onChange={() => setImportFormat('q4')} className="w-4 h-4 text-primary" />
-              <span className="text-foreground">Q4 2025 Format (Team Lead, Peer, Reporting columns)</span>
+              <span className="text-foreground">Workbook / Sheet Format (Sheet1 mappings, Sheet2 profiles)</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="radio" checked={importFormat === 'simple'} onChange={() => setImportFormat('simple')} className="w-4 h-4 text-primary" />
@@ -391,17 +441,30 @@ export default function MappingsPage() {
           </label>
 
           <div className="border-2 border-dashed border-input rounded-lg p-8 text-center">
-            <input type="file" accept=".csv" onChange={handleFileUpload} className="hidden" id="csv-upload" />
+            <input type="file" accept=".xlsx,.csv" onChange={handleFileUpload} className="hidden" id="csv-upload" />
             <label htmlFor="csv-upload" className="cursor-pointer">
               <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-              <p className="text-foreground font-medium">Click to upload CSV</p>
+              <p className="text-foreground font-medium">Click to upload workbook or CSV</p>
               {importFormat === 'q4' ? (
-                <p className="text-sm text-muted-foreground mt-1">Expected: Name, Designation, Department, Team Lead 1-5, Team Member/Peer 1-8, Reporting Team Member 1-11</p>
+                <p className="text-sm text-muted-foreground mt-1">Expected workbook: Sheet1 for mappings, Sheet2 for profiles. CSV is still supported for legacy row imports.</p>
               ) : (
                 <p className="text-sm text-muted-foreground mt-1">Expected: evaluator_name, evaluatee_name, relationship_type</p>
               )}
+              {importFileName && (
+                <p className="text-xs text-muted-foreground mt-2">Selected: {importFileName}</p>
+              )}
             </label>
           </div>
+
+          {workbookFile && (
+            <div className="bg-muted rounded-lg p-4 text-sm">
+              <p className="font-medium text-foreground">Workbook ready</p>
+              <p className="text-muted-foreground mt-1">
+                Sheet1 will replace/import the mapping graph, Sheet2 will upsert the 9 workbook profiles,
+                and the import will validate the expected members against the mapping-derived category sets.
+              </p>
+            </div>
+          )}
 
           {importPreview.length > 0 && (
             <div className="bg-muted rounded-lg p-4">
@@ -438,16 +501,16 @@ export default function MappingsPage() {
             <div className="flex items-start gap-2 p-3 bg-primary/10 border border-primary/20 rounded-lg">
               <AlertCircle className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
               <div className="text-sm text-foreground">
-                <p className="font-medium">Q4 2025 Format Detected</p>
-                <p className="text-muted-foreground">This will create mappings based on Team Lead, Peer, and Reporting Team Member columns. C-Level evaluators (Hamiz, Brad, Daniyal) will be assigned automatically. HR staff will evaluate all employees.</p>
+                <p className="font-medium">Workbook Mapping Rules</p>
+                <p className="text-muted-foreground">Team Lead columns become Team Lead except Hamiz, who maps to the Hamiz/C-Level bucket. Reporting Team Members become Direct Reports, HR and Dept constants are synced automatically, and Hamiz, Daniyal, Brad, and Maryam do not receive incoming evaluators.</p>
               </div>
             </div>
           )}
 
           <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => { setIsImportModalOpen(false); setImportData([]); setImportPreview([]) }}>Cancel</Button>
-            <Button onClick={handleImport} disabled={importing || importData.length === 0}>
-              {importing ? 'Importing...' : `Import ${importData.length} Rows`}
+            <Button variant="outline" onClick={() => { setIsImportModalOpen(false); setImportData([]); setImportPreview([]); setWorkbookFile(null); setImportFileName('') }}>Cancel</Button>
+            <Button onClick={handleImport} disabled={importing || (!workbookFile && importData.length === 0)}>
+              {importing ? 'Importing...' : workbookFile ? 'Import Workbook' : `Import ${importData.length} Rows`}
             </Button>
           </div>
         </div>

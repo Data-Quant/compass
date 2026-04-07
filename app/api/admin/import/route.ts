@@ -7,6 +7,8 @@ import {
   createLogicalEvaluatorMapping,
   shouldSkipMappingParticipants,
 } from '@/lib/evaluation-mappings'
+import { getMappingConstraint } from '@/lib/evaluation-profile-rules'
+import { syncConstantEvaluatorMappingsForUsers } from '@/lib/evaluation-constants'
 
 // POST - Import users or mappings from CSV data
 export async function POST(request: NextRequest) {
@@ -153,6 +155,7 @@ async function importMappings(data: any[]) {
     skipped: 0,
     errors: [] as string[],
   }
+  const touchedUserIds = new Set<string>()
 
   for (let i = 0; i < data.length; i++) {
     const row = data[i]
@@ -224,17 +227,46 @@ async function importMappings(data: any[]) {
         continue
       }
 
-      await createLogicalEvaluatorMapping(prisma, {
-        evaluatorId: evaluator.id,
-        evaluateeId: evaluatee.id,
-        relationshipType: normalizedType as RelationshipType,
-      })
+      const usersById = new Map([
+        [evaluator.id, evaluator],
+        [evaluatee.id, evaluatee],
+      ])
+      const constraint = getMappingConstraint(
+        {
+          evaluatorId: evaluator.id,
+          evaluateeId: evaluatee.id,
+          relationshipType: normalizedType as RelationshipType,
+        },
+        usersById
+      )
+
+      if (constraint.blocked) {
+        results.skipped++
+        results.errors.push(`Row ${rowNum}: ${constraint.reason}`)
+        continue
+      }
+
+      await createLogicalEvaluatorMapping(
+        prisma,
+        {
+          evaluatorId: evaluator.id,
+          evaluateeId: evaluatee.id,
+          relationshipType: normalizedType as RelationshipType,
+        },
+        {
+          skipManagementMirror: constraint.skipManagementMirror,
+        }
+      )
+      touchedUserIds.add(evaluator.id)
+      touchedUserIds.add(evaluatee.id)
       results.created++
     } catch (error) {
       console.error(`Row ${rowNum} mapping import error:`, error)
       results.errors.push(`Row ${rowNum}: Import error`)
     }
   }
+
+  await syncConstantEvaluatorMappingsForUsers(prisma, [...touchedUserIds])
 
   return NextResponse.json({ success: true, results })
 }

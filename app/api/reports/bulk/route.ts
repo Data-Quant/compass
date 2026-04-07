@@ -6,6 +6,7 @@ import { calculateRedistributedWeights } from '@/lib/config'
 import { isAdminRole } from '@/lib/permissions'
 import { getEvaluationQuestionMeta } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
+import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
 
 /**
  * Bulk reports endpoint: fetches ALL employee report summaries in 6 DB calls
@@ -104,7 +105,11 @@ export async function GET(request: NextRequest) {
 
     // ── Compute reports for every employee in-memory ──
 
-    const reports = employees.map((employee) => {
+    const reportableEmployees = employees.filter((employee) =>
+      shouldReceiveConstantEvaluations(employee)
+    )
+
+    const reports = reportableEmployees.map((employee) => {
       const employeeMappings = mappingsByEmployee.get(employee.id) || []
       const employeeEvals = evalsByEmployee.get(employee.id) || []
 
@@ -144,8 +149,7 @@ export async function GET(request: NextRequest) {
         if (custom && Object.keys(custom).length > 0) {
           dynamicWeights = custom
         } else {
-          const typesWithEvals = Array.from(evalsByType.keys())
-          dynamicWeights = calculateRedistributedWeights(typesWithEvals)
+          dynamicWeights = calculateRedistributedWeights(allMappedTypes)
         }
       }
 

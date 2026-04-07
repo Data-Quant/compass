@@ -63,6 +63,28 @@ test('getPhysicalMappingsForLogicalRelationship canonicalizes DIRECT_REPORT inpu
   )
 })
 
+test('getPhysicalMappingsForLogicalRelationship can skip the mirrored management row when needed', () => {
+  assert.deepEqual(
+    getPhysicalMappingsForLogicalRelationship(
+      {
+        evaluatorId: 'alice',
+        evaluateeId: 'bob',
+        relationshipType: 'TEAM_LEAD',
+      },
+      {
+        skipManagementMirror: true,
+      }
+    ),
+    [
+      {
+        evaluatorId: 'alice',
+        evaluateeId: 'bob',
+        relationshipType: 'TEAM_LEAD',
+      },
+    ]
+  )
+})
+
 test('getInverseRelationshipType returns mirrored relationship pairs', () => {
   assert.equal(getInverseRelationshipType('TEAM_LEAD'), 'DIRECT_REPORT')
   assert.equal(getInverseRelationshipType('DIRECT_REPORT'), 'TEAM_LEAD')

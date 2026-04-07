@@ -3,6 +3,7 @@ import { RelationshipType, normalizeRelationshipTypeForWeighting, toCategorySetK
 import { calculateRedistributedWeights } from '@/lib/config'
 import { getEvaluationQuestionMeta } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
+import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
 
 export interface ScoreBreakdown {
   relationshipType: RelationshipType
@@ -22,6 +23,15 @@ export interface EvaluationReport {
   overallScore: number
   breakdown: ScoreBreakdown[]
   qualitativeFeedback: Record<string, string[]>
+}
+
+function assertCanReceiveWeightedScore(employee: {
+  name: string
+  department?: string | null
+}) {
+  if (!shouldReceiveConstantEvaluations(employee)) {
+    throw new Error('This person does not receive incoming evaluations or reports')
+  }
 }
 
 /**
@@ -114,6 +124,8 @@ export async function calculateWeightedScore(
   if (!employee) {
     throw new Error('Employee not found')
   }
+
+  assertCanReceiveWeightedScore(employee)
 
   // Get period info
   const period = await prisma.evaluationPeriod.findUnique({

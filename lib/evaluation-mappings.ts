@@ -164,26 +164,36 @@ export function collapseAdminMappings<TUser>(
   })
 }
 
-export function getPhysicalMappingsForLogicalRelationship(input: {
-  evaluatorId: string
-  evaluateeId: string
-  relationshipType: RelationshipType
-}): PhysicalMappingRow[] {
+export function getPhysicalMappingsForLogicalRelationship(
+  input: {
+    evaluatorId: string
+    evaluateeId: string
+    relationshipType: RelationshipType
+  },
+  options: {
+    skipManagementMirror?: boolean
+  } = {}
+): PhysicalMappingRow[] {
   const managementPair = getCanonicalManagementPair(input)
 
   if (managementPair) {
-    return [
+    const rows: PhysicalMappingRow[] = [
       {
         evaluatorId: managementPair.leaderId,
         evaluateeId: managementPair.reportId,
         relationshipType: 'TEAM_LEAD' as const,
       },
-      {
+    ]
+
+    if (!options.skipManagementMirror) {
+      rows.push({
         evaluatorId: managementPair.reportId,
         evaluateeId: managementPair.leaderId,
         relationshipType: 'DIRECT_REPORT' as const,
-      },
-    ]
+      })
+    }
+
+    return rows
   }
 
   if (input.relationshipType === 'PEER') {
@@ -221,9 +231,12 @@ export async function createLogicalEvaluatorMapping(
     evaluatorId: string
     evaluateeId: string
     relationshipType: RelationshipType
-  }
+  },
+  options: {
+    skipManagementMirror?: boolean
+  } = {}
 ) {
-  const physicalMappings = getPhysicalMappingsForLogicalRelationship(input)
+  const physicalMappings = getPhysicalMappingsForLogicalRelationship(input, options)
 
   for (const mapping of physicalMappings) {
     await db.evaluatorMapping.upsert({

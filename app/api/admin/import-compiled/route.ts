@@ -2,158 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
-import { toCategorySetKey, CSV_CATEGORY_MAP, RelationshipType } from '@/types'
-
-/**
- * Standard weight profiles used by the portal.
- * The first 10 come directly from the compiled Q4 2025 spreadsheet.
- * The remaining profiles are derived from those base profiles so current
- * live mapping combinations also resolve to an explicit profile.
- */
-const WEIGHT_PROFILES: Array<{
-  csvDisplayName: string
-  weights: Record<string, number>
-}> = [
-  {
-    csvDisplayName: 'Direct Reports (Team Member), HR, Dept',
-    weights: { DIRECT_REPORT: 0.50, HR: 0.05, DEPT: 0.45 },
-  },
-  {
-    csvDisplayName: 'Team Lead, Peer, HR, Hamiz, Dept',
-    weights: { TEAM_LEAD: 0.20, PEER: 0.10, HR: 0.05, C_LEVEL: 0.35, DEPT: 0.30 },
-  },
-  {
-    csvDisplayName: 'Direct Reports (Team Member), Peer, HR, Dept',
-    weights: { DIRECT_REPORT: 0.40, PEER: 0.15, HR: 0.05, DEPT: 0.40 },
-  },
-  {
-    csvDisplayName: 'Team Lead, Direct Reports (Team Member), Peer, HR, Hamiz, Dept',
-    weights: { TEAM_LEAD: 0.15, DIRECT_REPORT: 0.25, PEER: 0.10, HR: 0.05, C_LEVEL: 0.25, DEPT: 0.20 },
-  },
-  {
-    csvDisplayName: 'Team Lead, Direct Reports (Team Member), Peer, HR, Dept',
-    weights: { TEAM_LEAD: 0.15, DIRECT_REPORT: 0.30, PEER: 0.15, HR: 0.05, DEPT: 0.35 },
-  },
-  {
-    csvDisplayName: 'Direct Reports (Team Member), Peer',
-    weights: { DIRECT_REPORT: 0.80, PEER: 0.20 },
-  },
-  {
-    csvDisplayName: 'Team Lead, Peer, HR, Hamiz',
-    weights: { TEAM_LEAD: 0.35, PEER: 0.10, HR: 0.05, C_LEVEL: 0.50 },
-  },
-  {
-    csvDisplayName: 'Team Lead, Peer, HR, Dept',
-    weights: { TEAM_LEAD: 0.35, PEER: 0.10, HR: 0.05, DEPT: 0.50 },
-  },
-  {
-    csvDisplayName: 'Direct Reports (Team Member), HR',
-    weights: { DIRECT_REPORT: 0.95, HR: 0.05 },
-  },
-  {
-    csvDisplayName: 'Direct Reports (Team Member)',
-    weights: { DIRECT_REPORT: 1.00 },
-  },
-  {
-    csvDisplayName: 'Team Lead, HR',
-    weights: { TEAM_LEAD: 0.875, HR: 0.125 },
-  },
-  {
-    csvDisplayName: 'Team Lead, Direct Reports (Team Member), Peer, HR, Hamiz',
-    weights: {
-      TEAM_LEAD: 0.1875,
-      DIRECT_REPORT: 0.3125,
-      PEER: 0.125,
-      HR: 0.0625,
-      C_LEVEL: 0.3125,
-    },
-  },
-  {
-    csvDisplayName: 'Direct Reports (Team Member), Peer, HR, Hamiz',
-    weights: {
-      DIRECT_REPORT: 0.384615,
-      PEER: 0.153846,
-      HR: 0.076923,
-      C_LEVEL: 0.384615,
-    },
-  },
-  {
-    csvDisplayName: 'Team Lead, Peer, HR',
-    weights: { TEAM_LEAD: 0.70, PEER: 0.20, HR: 0.10 },
-  },
-  {
-    csvDisplayName: 'Team Lead, Direct Reports (Team Member), Peer, HR',
-    weights: {
-      TEAM_LEAD: 0.230769,
-      DIRECT_REPORT: 0.461538,
-      PEER: 0.230769,
-      HR: 0.076923,
-    },
-  },
-  {
-    csvDisplayName: 'Team Lead, Direct Reports (Team Member), Peer, Hamiz',
-    weights: {
-      TEAM_LEAD: 0.20,
-      DIRECT_REPORT: 0.333333,
-      PEER: 0.133333,
-      C_LEVEL: 0.333333,
-    },
-  },
-  {
-    csvDisplayName: 'Team Lead, Peer',
-    weights: { TEAM_LEAD: 0.777778, PEER: 0.222222 },
-  },
-  {
-    csvDisplayName: 'Team Lead',
-    weights: { TEAM_LEAD: 1.00 },
-  },
-  {
-    csvDisplayName: 'Team Lead, Direct Reports (Team Member), Peer',
-    weights: { TEAM_LEAD: 0.25, DIRECT_REPORT: 0.50, PEER: 0.25 },
-  },
-  {
-    csvDisplayName: 'Direct Reports (Team Member), Peer, Hamiz',
-    weights: { DIRECT_REPORT: 0.416667, PEER: 0.166667, C_LEVEL: 0.416667 },
-  },
-  {
-    csvDisplayName: 'Direct Reports (Team Member), Peer, HR',
-    weights: { DIRECT_REPORT: 0.666667, PEER: 0.25, HR: 0.083333 },
-  },
-  {
-    csvDisplayName: 'Peer, HR',
-    weights: { PEER: 0.666667, HR: 0.333333 },
-  },
-  {
-    csvDisplayName: 'Peer, Hamiz',
-    weights: { PEER: 0.166667, C_LEVEL: 0.833333 },
-  },
-  {
-    csvDisplayName: 'Direct Reports (Team Member), HR, Hamiz',
-    weights: { DIRECT_REPORT: 0.454545, HR: 0.090909, C_LEVEL: 0.454545 },
-  },
-  {
-    csvDisplayName: 'HR',
-    weights: { HR: 1.00 },
-  },
-]
-
-/**
- * Convert a CSV category string like "Team Lead, Direct Reports (Team Member), Peer, HR, Hamiz, Dept"
- * to an array of RelationshipType enum values
- */
-function parseCategorySet(csvCategoryString: string): RelationshipType[] {
-  const parts = csvCategoryString.split(',').map(s => s.trim())
-  const types: RelationshipType[] = []
-  
-  for (const part of parts) {
-    const mapped = CSV_CATEGORY_MAP[part]
-    if (mapped) {
-      types.push(mapped)
-    }
-  }
-  
-  return [...new Set(types)] // deduplicate
-}
+import { parseCsvCategorySet, toSeededWeightProfiles } from '@/lib/weight-profiles'
 
 /**
  * POST - Import compiled CSV data and seed weight profiles
@@ -176,19 +25,16 @@ export async function POST(request: NextRequest) {
     if (action === 'seed-profiles') {
       const results = []
 
-      for (const profile of WEIGHT_PROFILES) {
-        const types = parseCategorySet(profile.csvDisplayName)
-        const categorySetKey = toCategorySetKey(types)
-
+      for (const profile of toSeededWeightProfiles()) {
         const saved = await prisma.weightProfile.upsert({
-          where: { categorySetKey },
+          where: { categorySetKey: profile.categorySetKey },
           update: {
-            displayName: profile.csvDisplayName,
+            displayName: profile.displayName,
             weights: profile.weights,
           },
           create: {
-            categorySetKey,
-            displayName: profile.csvDisplayName,
+            categorySetKey: profile.categorySetKey,
+            displayName: profile.displayName,
             weights: profile.weights,
           },
         })
@@ -245,7 +91,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Parse category set and create DEPT mapping (from Hamiz)
-        const types = parseCategorySet(categorySet)
+        const types = parseCsvCategorySet(categorySet)
 
         // Create a DEPT mapping if DEPT is in their category set and Hamiz exists
         if (types.includes('DEPT') && hamiz && hamiz.id !== employee.id) {

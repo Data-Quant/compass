@@ -4,6 +4,7 @@ import { RelationshipType, RELATIONSHIP_TYPE_LABELS, RATING_LABELS } from '@/typ
 import { escapeHtml } from '@/lib/sanitize'
 import { getEvaluationQuestionMeta } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
+import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
 
 export interface DetailedEvaluationSection {
   relationshipType: RelationshipType
@@ -26,6 +27,15 @@ export interface DetailedReport extends EvaluationReport {
   detailedSections: DetailedEvaluationSection[]
 }
 
+function assertReportEligibility(employee: {
+  name: string
+  department?: string | null
+}) {
+  if (!shouldReceiveConstantEvaluations(employee)) {
+    throw new Error('This person does not receive incoming evaluations or reports')
+  }
+}
+
 export async function generateDetailedReport(
   employeeId: string,
   periodId: string,
@@ -43,6 +53,8 @@ export async function generateDetailedReport(
   if (!employee || !period) {
     throw new Error('Employee or period not found')
   }
+
+  assertReportEligibility(employee)
 
   // Try to calculate score, but handle incomplete scores gracefully
   let report: EvaluationReport
@@ -153,6 +165,21 @@ export async function generateReport(
   employeeId: string,
   periodId: string
 ): Promise<EvaluationReport> {
+  const employee = await prisma.user.findUnique({
+    where: { id: employeeId },
+    select: {
+      id: true,
+      name: true,
+      department: true,
+    },
+  })
+
+  if (!employee) {
+    throw new Error('Employee not found')
+  }
+
+  assertReportEligibility(employee)
+
   // Check if report already exists
   const existingReport = await prisma.report.findUnique({
     where: {
@@ -520,9 +547,9 @@ export async function generateHRSpreadsheet(periodId: string): Promise<Buffer> {
   const worksheet = workbook.addWorksheet('Evaluation Data')
 
   // Get all employees
-  const employees = await prisma.user.findMany({
+  const employees = (await prisma.user.findMany({
     where: { role: 'EMPLOYEE' },
-  })
+  })).filter((employee) => shouldReceiveConstantEvaluations(employee))
 
   // Get period
   const period = await prisma.evaluationPeriod.findUnique({

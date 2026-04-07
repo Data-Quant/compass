@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth'
 import { generateDetailedReport, formatReportAsHTML } from '@/lib/reports'
 import { prisma } from '@/lib/db'
 import { isAdminRole } from '@/lib/permissions'
+import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,6 +28,29 @@ export async function GET(request: NextRequest) {
     // Admin can view any report, employees can only view their own
     if (!isAdminRole(user.role) && employeeId !== user.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+    }
+
+    const employee = await prisma.user.findUnique({
+      where: { id: employeeId },
+      select: {
+        id: true,
+        name: true,
+        department: true,
+      },
+    })
+
+    if (!employee) {
+      return NextResponse.json(
+        { error: 'Employee not found' },
+        { status: 404 }
+      )
+    }
+
+    if (!shouldReceiveConstantEvaluations(employee)) {
+      return NextResponse.json(
+        { error: 'This person does not receive incoming evaluations or reports' },
+        { status: 400 }
+      )
     }
 
     // Get period info
@@ -81,6 +105,29 @@ export async function POST(request: NextRequest) {
     if (!employeeId || !periodId) {
       return NextResponse.json(
         { error: 'employeeId and periodId are required' },
+        { status: 400 }
+      )
+    }
+
+    const employee = await prisma.user.findUnique({
+      where: { id: employeeId },
+      select: {
+        id: true,
+        name: true,
+        department: true,
+      },
+    })
+
+    if (!employee) {
+      return NextResponse.json(
+        { error: 'Employee not found' },
+        { status: 404 }
+      )
+    }
+
+    if (!shouldReceiveConstantEvaluations(employee)) {
+      return NextResponse.json(
+        { error: 'This person does not receive incoming evaluations or reports' },
         { status: 400 }
       )
     }

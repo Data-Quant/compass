@@ -4,8 +4,6 @@ import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import {
   C_LEVEL_EVALUATORS,
-  HAMIZ_EVALUATOR,
-  HR_EVALUATORS,
   isCLevelEvaluatorName,
 } from '@/lib/config'
 import type { RelationshipType } from '@/types'
@@ -13,6 +11,27 @@ import {
   createLogicalEvaluatorMapping,
   shouldSkipMappingParticipants,
 } from '@/lib/evaluation-mappings'
+import {
+  getMappingConstraint,
+  isNoIncomingEvaluationUser,
+} from '@/lib/evaluation-profile-rules'
+import {
+  isHREvaluatorName,
+  normalizeImportedName,
+  resolveImportedName,
+} from '@/lib/mapping-import'
+import {
+  analyzeWeightProfileAssignments,
+  type WorkbookProfileDefinition,
+} from '@/lib/weight-profiles'
+import {
+  isPeerColumnHeader,
+  isReportingTeamMemberColumnHeader,
+  isTeamLeadColumnHeader,
+  parseEvaluationWorkbook,
+  type WorkbookMappingRow,
+} from '@/lib/workbook-import'
+import { syncConstantEvaluatorMappingsForUsers } from '@/lib/evaluation-constants'
 
 interface CSVRow {
   Name: string
@@ -26,28 +45,159 @@ interface ImportResult {
   usersUpdated: number
   mappingsCreated: number
   mappingsSkipped: number
+  profilesSeeded?: number
+  constantMappingsCreated?: number
+  constantMappingsDeleted?: number
+  excludedIncomingMappingsDeleted?: number
+  validation?: {
+    matchedProfiles: number
+    mismatchedProfiles: Array<{
+      displayName: string
+      missingExpectedMembers: string[]
+      unexpectedMembers: string[]
+    }>
+  }
+  warnings?: {
+    unmatchedCategorySets: Array<{
+      categorySetKey: string
+      employeeCount: number
+      employeeNames: string[]
+      likelyMissingConstantTypes: RelationshipType[]
+    }>
+    mismatchedEmployees: Array<{
+      employeeName: string
+      categorySetKey: string
+      likelyMissingConstantTypes: RelationshipType[]
+    }>
+  }
   errors: string[]
 }
 
-const USER_NAME_ALIASES: Record<string, string> = {
-  'nohelia figuerdo': 'Nohelia Figueredo',
-  'umair asmat': 'Omair Asmat',
+type KnownUser = {
+  id: string
+  name: string
+  department: string | null
 }
 
-// Helper to normalize names for comparison
-function normalizeName(name: string): string {
-  return name.trim().toLowerCase().replace(/\s+/g, ' ')
+async function parseRequestPayload(request: NextRequest): Promise<{
+  rows: CSVRow[]
+  clearExisting: boolean
+  profileDefinitions: WorkbookProfileDefinition[]
+}> {
+  const contentType = request.headers.get('content-type') || ''
+
+  if (contentType.includes('multipart/form-data')) {
+    const formData = await request.formData()
+    const file = formData.get('file')
+    const clearExisting = String(formData.get('clearExisting') || 'true') !== 'false'
+
+    if (!(file instanceof File)) {
+      throw new Error('Workbook file is required')
+    }
+
+    const parsed = await parseEvaluationWorkbook(await file.arrayBuffer())
+    return {
+      rows: parsed.mappingRows as unknown as CSVRow[],
+      clearExisting,
+      profileDefinitions: parsed.profileDefinitions,
+    }
+  }
+
+  const body = (await request.json()) as {
+    rows: CSVRow[]
+    clearExisting: boolean
+  }
+
+  return {
+    rows: body.rows,
+    clearExisting: body.clearExisting,
+    profileDefinitions: [],
+  }
 }
 
-function resolveImportedName(name: string): string {
-  const normalized = normalizeName(name)
-  return USER_NAME_ALIASES[normalized] || name.trim()
+function getColumnValues(row: Record<string, string | undefined>, matcher: (header: string) => boolean) {
+  return Object.entries(row)
+    .filter(([header]) => matcher(header))
+    .sort(([left], [right]) => left.localeCompare(right, undefined, { numeric: true }))
+    .map(([, value]) => value?.trim() || '')
+    .filter(Boolean)
 }
 
-// Helper to check if a name matches HR evaluators
-function isHREvaluator(name: string): boolean {
-  const normalized = normalizeName(name)
-  return HR_EVALUATORS.some(hr => normalizeName(hr) === normalized)
+async function seedWorkbookProfiles(
+  profileDefinitions: WorkbookProfileDefinition[]
+) {
+  if (profileDefinitions.length === 0) {
+    return 0
+  }
+
+  for (const profile of profileDefinitions) {
+    await prisma.weightProfile.upsert({
+      where: { categorySetKey: profile.categorySetKey },
+      update: {
+        displayName: profile.displayName,
+        weights: profile.weights,
+      },
+      create: {
+        categorySetKey: profile.categorySetKey,
+        displayName: profile.displayName,
+        weights: profile.weights,
+      },
+    })
+  }
+
+  return profileDefinitions.length
+}
+
+function validateWorkbookProfiles(input: {
+  profileDefinitions: WorkbookProfileDefinition[]
+  users: Array<{ id: string; name: string; department: string | null }>
+  assignments: ReturnType<typeof analyzeWeightProfileAssignments>
+}) {
+  const actualMembersByProfile = new Map<string, string[]>()
+
+  for (const user of input.users) {
+    const assignment = input.assignments.assignments.get(user.id)
+    if (!assignment?.displayName) {
+      continue
+    }
+
+    if (!actualMembersByProfile.has(assignment.categorySetKey)) {
+      actualMembersByProfile.set(assignment.categorySetKey, [])
+    }
+    actualMembersByProfile.get(assignment.categorySetKey)!.push(user.name)
+  }
+
+  const mismatchedProfiles = input.profileDefinitions
+    .map((profile) => {
+      const expectedMembers = [...profile.expectedMembers]
+        .filter((name) => !isNoIncomingEvaluationUser({ name }))
+        .sort((a, b) => a.localeCompare(b))
+      const actualMembers = [...(actualMembersByProfile.get(profile.categorySetKey) || [])].sort(
+        (a, b) => a.localeCompare(b)
+      )
+
+      const missingExpectedMembers = expectedMembers.filter(
+        (member) => !actualMembers.includes(member)
+      )
+      const unexpectedMembers = actualMembers.filter(
+        (member) => !expectedMembers.includes(member)
+      )
+
+      return {
+        displayName: profile.displayName,
+        missingExpectedMembers,
+        unexpectedMembers,
+      }
+    })
+    .filter(
+      (profile) =>
+        profile.missingExpectedMembers.length > 0 || profile.unexpectedMembers.length > 0
+    )
+
+  return {
+    matchedProfiles: input.profileDefinitions.length - mismatchedProfiles.length,
+    mismatchedProfiles,
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -57,10 +207,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { rows, clearExisting } = await request.json() as { 
-      rows: CSVRow[]
-      clearExisting: boolean 
-    }
+    const { rows, clearExisting, profileDefinitions } = await parseRequestPayload(request)
 
     if (!Array.isArray(rows) || rows.length === 0) {
       return NextResponse.json({ error: 'No data provided' }, { status: 400 })
@@ -74,33 +221,29 @@ export async function POST(request: NextRequest) {
       errors: [],
     }
 
-    // Clear existing mappings if requested
     if (clearExisting) {
       await prisma.evaluatorMapping.deleteMany({})
     }
 
-    // First pass: Create/update all users from the CSV
-    const userMap = new Map<string, string>() // normalized name -> user id
-    const userDetailsById = new Map<string, { department: string | null }>()
+    const userMap = new Map<string, string>()
+    const userDetailsById = new Map<string, KnownUser>()
 
     for (const row of rows) {
       if (!row.Name || row.Name.trim() === '') continue
 
       const name = resolveImportedName(row.Name)
-      const normalizedName = normalizeName(name)
+      const normalizedName = normalizeImportedName(name)
       const designation = row.Designation?.trim() || null
       const department = row.Department?.trim() || null
 
       try {
-        // Try to find existing user
-        let existingUser = await prisma.user.findFirst({
+        const existingUser = await prisma.user.findFirst({
           where: {
             name: { equals: name, mode: 'insensitive' },
           },
         })
 
         if (existingUser) {
-          // Update user if designation/department changed
           if (designation || department) {
             await prisma.user.update({
               where: { id: existingUser.id },
@@ -111,23 +254,28 @@ export async function POST(request: NextRequest) {
             })
             result.usersUpdated++
           }
+
           userMap.set(normalizedName, existingUser.id)
           userDetailsById.set(existingUser.id, {
+            id: existingUser.id,
+            name: existingUser.name,
             department: department ?? existingUser.department,
           })
         } else {
-          // Create new user
           const newUser = await prisma.user.create({
             data: {
               name,
               position: designation,
               department,
-              role: isHREvaluator(name) ? 'HR' : 'EMPLOYEE',
+              role: isHREvaluatorName(name) ? 'HR' : 'EMPLOYEE',
             },
           })
+
           result.usersCreated++
           userMap.set(normalizedName, newUser.id)
           userDetailsById.set(newUser.id, {
+            id: newUser.id,
+            name: newUser.name,
             department: newUser.department,
           })
         }
@@ -137,76 +285,66 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Also ensure all C-Level and HR evaluators exist
-    for (const clName of C_LEVEL_EVALUATORS) {
-      const normalized = normalizeName(clName)
-      if (!userMap.has(normalized)) {
-        let existing = await prisma.user.findFirst({
-          where: { name: { equals: clName, mode: 'insensitive' } },
-        })
-        if (existing) {
-          userMap.set(normalized, existing.id)
-          userDetailsById.set(existing.id, {
-            department: existing.department,
-          })
-        }
-      }
+    for (const evaluatorName of C_LEVEL_EVALUATORS) {
+      const normalized = normalizeImportedName(evaluatorName)
+      if (userMap.has(normalized)) continue
+
+      const existing = await prisma.user.findFirst({
+        where: { name: { equals: evaluatorName, mode: 'insensitive' } },
+      })
+      if (!existing) continue
+
+      userMap.set(normalized, existing.id)
+      userDetailsById.set(existing.id, {
+        id: existing.id,
+        name: existing.name,
+        department: existing.department,
+      })
     }
 
-    for (const hrName of HR_EVALUATORS) {
-      const normalized = normalizeName(hrName)
-      if (!userMap.has(normalized)) {
-        let existing = await prisma.user.findFirst({
-          where: { name: { equals: hrName, mode: 'insensitive' } },
-        })
-        if (existing) {
-          userMap.set(normalized, existing.id)
-          userDetailsById.set(existing.id, {
-            department: existing.department,
-          })
-        }
-      }
-    }
-
-    // Helper to create a mapping
     async function createMapping(
       evaluatorName: string,
       evaluateeId: string,
-      relationshipType: string
-    ): Promise<boolean> {
+      relationshipType: RelationshipType
+    ) {
       const resolvedEvaluatorName = resolveImportedName(evaluatorName)
-      const evaluatorNormalized = normalizeName(resolvedEvaluatorName)
-      const evaluatorId = userMap.get(evaluatorNormalized)
+      const evaluatorNormalized = normalizeImportedName(resolvedEvaluatorName)
+      let evaluatorId = userMap.get(evaluatorNormalized)
 
       if (!evaluatorId) {
-        // Try to find user in database before creating a placeholder.
         const evaluator = await prisma.user.findFirst({
           where: { name: { contains: resolvedEvaluatorName, mode: 'insensitive' } },
         })
 
         if (evaluator) {
+          evaluatorId = evaluator.id
           userMap.set(evaluatorNormalized, evaluator.id)
           userDetailsById.set(evaluator.id, {
+            id: evaluator.id,
+            name: evaluator.name,
             department: evaluator.department,
           })
-          return createMapping(resolvedEvaluatorName, evaluateeId, relationshipType)
+        } else {
+          const createdEvaluator = await prisma.user.create({
+            data: {
+              name: resolvedEvaluatorName,
+              role: isHREvaluatorName(resolvedEvaluatorName) ? 'HR' : 'EMPLOYEE',
+              department: isCLevelEvaluatorName(resolvedEvaluatorName) ? 'Executive' : null,
+              position: isCLevelEvaluatorName(resolvedEvaluatorName)
+                ? 'C-Level Executive'
+                : null,
+            },
+          })
+
+          result.usersCreated++
+          evaluatorId = createdEvaluator.id
+          userMap.set(evaluatorNormalized, createdEvaluator.id)
+          userDetailsById.set(createdEvaluator.id, {
+            id: createdEvaluator.id,
+            name: createdEvaluator.name,
+            department: createdEvaluator.department,
+          })
         }
-
-        const createdEvaluator = await prisma.user.create({
-          data: {
-            name: resolvedEvaluatorName,
-            role: isHREvaluator(resolvedEvaluatorName) ? 'HR' : 'EMPLOYEE',
-            department: isCLevelEvaluatorName(resolvedEvaluatorName) ? 'Executive' : null,
-            position: isCLevelEvaluatorName(resolvedEvaluatorName) ? 'C-Level Executive' : null,
-          },
-        })
-
-        result.usersCreated++
-        userMap.set(evaluatorNormalized, createdEvaluator.id)
-        userDetailsById.set(createdEvaluator.id, {
-          department: createdEvaluator.department,
-        })
-        return createMapping(resolvedEvaluatorName, evaluateeId, relationshipType)
       }
 
       const evaluator = userDetailsById.get(evaluatorId)
@@ -214,120 +352,123 @@ export async function POST(request: NextRequest) {
 
       if (shouldSkipMappingParticipants([evaluator, evaluatee])) {
         result.mappingsSkipped++
-        return false
+        return
       }
 
-      await createLogicalEvaluatorMapping(prisma, {
-        evaluatorId,
-        evaluateeId,
-        relationshipType: relationshipType as RelationshipType,
-      })
+      const constraint = getMappingConstraint(
+        {
+          evaluatorId,
+          evaluateeId,
+          relationshipType,
+        },
+        userDetailsById
+      )
+
+      if (constraint.blocked) {
+        result.mappingsSkipped++
+        return
+      }
+
+      await createLogicalEvaluatorMapping(
+        prisma,
+        {
+          evaluatorId,
+          evaluateeId,
+          relationshipType,
+        },
+        {
+          skipManagementMirror: constraint.skipManagementMirror,
+        }
+      )
       result.mappingsCreated++
-      return true
     }
 
-    // Second pass: Create mappings from CSV columns
     for (const row of rows) {
       if (!row.Name || row.Name.trim() === '') continue
 
-      const evaluateeName = row.Name.trim()
-      const evaluateeNormalized = normalizeName(evaluateeName)
-      const evaluateeId = userMap.get(evaluateeNormalized)
-
+      const evaluateeName = resolveImportedName(row.Name.trim())
+      const evaluateeId = userMap.get(normalizeImportedName(evaluateeName))
       if (!evaluateeId) {
         result.errors.push(`Evaluatee not found in user map: ${evaluateeName}`)
         continue
       }
 
-      // Process Team Lead columns (Team Lead 1, Team Lead 2, etc.)
-      for (let i = 1; i <= 5; i++) {
-        const teamLeadName = row[`Team Lead ${i}`]?.trim()
-        if (teamLeadName && teamLeadName !== '') {
-          // Hamiz in a Team Lead column should map to the Hamiz/C-Level bucket.
-          if (isCLevelEvaluatorName(teamLeadName)) {
-            await createMapping(teamLeadName, evaluateeId, 'C_LEVEL')
-          } else {
-            await createMapping(teamLeadName, evaluateeId, 'TEAM_LEAD')
-          }
+      for (const teamLeadName of getColumnValues(row, isTeamLeadColumnHeader)) {
+        if (isCLevelEvaluatorName(teamLeadName)) {
+          await createMapping(teamLeadName, evaluateeId, 'C_LEVEL')
+        } else {
+          await createMapping(teamLeadName, evaluateeId, 'TEAM_LEAD')
         }
       }
 
-      // Process Peer columns (various formats in CSV)
-      const peerColumns = [
-        'Team Member/Peer 1', 'Team Member/Peer  2', 'Team Member/Peer  3', 
-        'Team Member/Peer  4', 'Team Member/ Peer 5', 'Team Member/ Peer 6',
-        'Team Member/ Peer 7', 'Team Member/ Peer 8'
-      ]
-      for (const col of peerColumns) {
-        const peerName = row[col]?.trim()
-        if (peerName && peerName !== '') {
-          await createMapping(peerName, evaluateeId, 'PEER')
-        }
+      for (const peerName of getColumnValues(row, isPeerColumnHeader)) {
+        await createMapping(peerName, evaluateeId, 'PEER')
       }
 
-      // Process Reporting Team Member columns
-      for (let i = 1; i <= 11; i++) {
-        const rtmName = row[`Reporting Team Member ${i}`]?.trim()
-        if (rtmName && rtmName !== '') {
-          await createMapping(rtmName, evaluateeId, 'DIRECT_REPORT')
-        }
-      }
-      
-      // Note: Self-evaluations are not created - they are not part of the scoring
-    }
-
-    // Third pass: HR evaluators evaluate ALL employees
-    const allEmployees = await prisma.user.findMany({
-      where: { role: 'EMPLOYEE' },
-      select: {
-        id: true,
-        department: true,
-      },
-    })
-
-    for (const hrName of HR_EVALUATORS) {
-      const hrNormalized = normalizeName(hrName)
-      const hrId = userMap.get(hrNormalized)
-
-      if (!hrId) {
-        result.errors.push(`HR evaluator not found: ${hrName}`)
-        continue
-      }
-
-      for (const employee of allEmployees) {
-        userDetailsById.set(employee.id, {
-          department: employee.department,
-        })
-
-        // HR doesn't evaluate themselves
-        if (employee.id !== hrId) {
-          await createMapping(hrName, employee.id, 'HR')
-        }
+      for (const directReportName of getColumnValues(row, isReportingTeamMemberColumnHeader)) {
+        await createMapping(directReportName, evaluateeId, 'DIRECT_REPORT')
       }
     }
 
-    // Fourth pass: Create DEPT mappings (Hamiz evaluates departments)
-    // Find Hamiz user for DEPT evaluations
-    const hamizName = HAMIZ_EVALUATOR
-    if (hamizName) {
-      const hamizNormalized = normalizeName(hamizName)
-      const hamizId = userMap.get(hamizNormalized)
+    const syncResult = await syncConstantEvaluatorMappingsForUsers(
+      prisma,
+      [...userDetailsById.keys()]
+    )
 
-      if (hamizId) {
-        for (const row of rows) {
-          if (!row.Name || row.Name.trim() === '') continue
-          
-          // Check if this employee has a Dept score in the CSV
-          const deptScore = row['Dept']?.trim()
-          if (deptScore && deptScore !== '' && !isNaN(parseFloat(deptScore))) {
-            const evaluateeNormalized = normalizeName(row.Name.trim())
-            const evaluateeId = userMap.get(evaluateeNormalized)
-            
-            if (evaluateeId && evaluateeId !== hamizId) {
-              await createMapping(hamizName, evaluateeId, 'DEPT')
-            }
-          }
-        }
+    result.constantMappingsCreated = syncResult.createdConstantMappings
+    result.constantMappingsDeleted = syncResult.deletedConstantMappings
+    result.excludedIncomingMappingsDeleted = syncResult.deletedIncomingForExcluded
+
+    if (profileDefinitions.length > 0) {
+      result.profilesSeeded = await seedWorkbookProfiles(profileDefinitions)
+
+      const users = await prisma.user.findMany({
+        where: {
+          id: { in: [...userDetailsById.keys()] },
+        },
+        select: {
+          id: true,
+          name: true,
+          department: true,
+        },
+      })
+
+      const mappings = await prisma.evaluatorMapping.findMany({
+        where: {
+          evaluateeId: { in: users.map((entry) => entry.id) },
+        },
+        select: {
+          evaluateeId: true,
+          relationshipType: true,
+        },
+      })
+
+      const savedProfiles = await prisma.weightProfile.findMany({
+        select: {
+          categorySetKey: true,
+          displayName: true,
+          weights: true,
+        },
+      })
+
+      const profileAnalysis = analyzeWeightProfileAssignments({
+        profiles: savedProfiles.map((profile) => ({
+          categorySetKey: profile.categorySetKey,
+          displayName: profile.displayName,
+          weights: profile.weights as Record<string, number>,
+        })),
+        users,
+        mappings,
+      })
+
+      result.validation = validateWorkbookProfiles({
+        profileDefinitions,
+        users,
+        assignments: profileAnalysis,
+      })
+      result.warnings = {
+        unmatchedCategorySets: profileAnalysis.unmatchedCategorySets,
+        mismatchedEmployees: profileAnalysis.mismatchedEmployees,
       }
     }
 
@@ -335,9 +476,8 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Failed to import mappings:', error)
     return NextResponse.json(
-      { error: 'Failed to import mappings' },
+      { error: error instanceof Error ? error.message : 'Failed to import mappings' },
       { status: 500 }
     )
   }
 }
-

@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth'
 import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { toCategorySetKey, RELATIONSHIP_TYPE_LABELS, RelationshipType } from '@/types'
+import { analyzeWeightProfileAssignments, buildWeightProfileDisplayName } from '@/lib/weight-profiles'
 
 /**
  * GET - List all weight profiles
@@ -18,34 +19,41 @@ export async function GET() {
       orderBy: { displayName: 'asc' },
     })
 
-    // Also get employee counts per profile
-    const mappings = await prisma.evaluatorMapping.findMany({
-      select: { evaluateeId: true, relationshipType: true },
+    const [users, mappings] = await Promise.all([
+      prisma.user.findMany({
+        select: {
+          id: true,
+          name: true,
+          department: true,
+        },
+      }),
+      prisma.evaluatorMapping.findMany({
+        select: { evaluateeId: true, relationshipType: true },
+      }),
+    ])
+
+    const diagnostics = analyzeWeightProfileAssignments({
+      profiles: profiles.map((profile) => ({
+        categorySetKey: profile.categorySetKey,
+        displayName: profile.displayName,
+        weights: profile.weights as Record<string, number>,
+      })),
+      users,
+      mappings,
     })
-
-    // Group by evaluatee to determine their category sets
-    const employeeSets = new Map<string, Set<string>>()
-    for (const m of mappings) {
-      if (m.relationshipType === 'SELF') continue
-      if (!employeeSets.has(m.evaluateeId)) {
-        employeeSets.set(m.evaluateeId, new Set())
-      }
-      employeeSets.get(m.evaluateeId)!.add(m.relationshipType)
-    }
-
-    // Count employees per category set key
-    const employeeCounts: Record<string, number> = {}
-    for (const [, types] of employeeSets) {
-      const key = toCategorySetKey([...types])
-      employeeCounts[key] = (employeeCounts[key] || 0) + 1
-    }
 
     const profilesWithCounts = profiles.map(p => ({
       ...p,
-      employeeCount: employeeCounts[p.categorySetKey] || 0,
+      employeeCount: diagnostics.employeeCounts[p.categorySetKey] || 0,
     }))
 
-    return NextResponse.json({ profiles: profilesWithCounts })
+    return NextResponse.json({
+      profiles: profilesWithCounts,
+      warnings: {
+        unmatchedCategorySets: diagnostics.unmatchedCategorySets,
+        mismatchedEmployees: diagnostics.mismatchedEmployees,
+      },
+    })
   } catch (error) {
     console.error('Failed to fetch weight profiles:', error)
     return NextResponse.json({ error: 'Failed to fetch weight profiles' }, { status: 500 })
@@ -81,9 +89,13 @@ export async function POST(request: NextRequest) {
     }
 
     const categorySetKey = toCategorySetKey(categoryTypes)
-    const name = displayName || categoryTypes
-      .map((t: string) => RELATIONSHIP_TYPE_LABELS[t as RelationshipType] || t)
-      .join(', ')
+    const normalizedTypes = categoryTypes.map((type: string) => type as RelationshipType)
+    const name =
+      displayName ||
+      buildWeightProfileDisplayName(normalizedTypes) ||
+      normalizedTypes
+        .map((t) => RELATIONSHIP_TYPE_LABELS[t] || t)
+        .join(', ')
 
     const profile = await prisma.weightProfile.upsert({
       where: { categorySetKey },

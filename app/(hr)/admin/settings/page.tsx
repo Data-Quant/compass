@@ -28,6 +28,20 @@ interface WeightProfile {
   employeeCount: number
 }
 
+interface WeightProfileWarnings {
+  unmatchedCategorySets: Array<{
+    categorySetKey: string
+    employeeCount: number
+    employeeNames: string[]
+    likelyMissingConstantTypes: RelationshipType[]
+  }>
+  mismatchedEmployees: Array<{
+    employeeName: string
+    categorySetKey: string
+    likelyMissingConstantTypes: RelationshipType[]
+  }>
+}
+
 const ALL_TYPES: RelationshipType[] = ['TEAM_LEAD', 'DIRECT_REPORT', 'PEER', 'HR', 'C_LEVEL', 'DEPT']
 const TYPE_SHORT_LABELS: Record<string, string> = {
   TEAM_LEAD: 'Lead',
@@ -40,6 +54,10 @@ const TYPE_SHORT_LABELS: Record<string, string> = {
 
 export default function SettingsPage() {
   const [profiles, setProfiles] = useState<WeightProfile[]>([])
+  const [warnings, setWarnings] = useState<WeightProfileWarnings>({
+    unmatchedCategorySets: [],
+    mismatchedEmployees: [],
+  })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [seeding, setSeeding] = useState(false)
@@ -55,6 +73,7 @@ export default function SettingsPage() {
       const response = await fetch('/api/admin/weight-profiles')
       const data = await response.json()
       setProfiles(data.profiles || [])
+      setWarnings(data.warnings || { unmatchedCategorySets: [], mismatchedEmployees: [] })
     } catch {
       toast.error('Failed to load weight profiles')
     } finally {
@@ -168,8 +187,8 @@ export default function SettingsPage() {
           <div>
             <h1 className="text-2xl font-bold text-foreground font-display">Weight Profiles</h1>
             <p className="text-muted-foreground mt-1">
-              Each employee&apos;s weight profile is determined by their set of evaluator categories.
-              Employees with the same evaluator types share the same weights.
+              Profiles are resolved dynamically from each person&apos;s incoming evaluator categories.
+              HR and Dept are constant categories, and unsupported mapping combinations are flagged below.
             </p>
           </div>
           <Button
@@ -177,9 +196,81 @@ export default function SettingsPage() {
             disabled={seeding}
           >
             <Upload className="w-4 h-4" />
-            {seeding ? 'Seeding...' : 'Seed Standard Profiles'}
+            {seeding ? 'Seeding...' : 'Seed Workbook Profiles'}
           </Button>
         </div>
+
+        {(warnings.unmatchedCategorySets.length > 0 || warnings.mismatchedEmployees.length > 0) && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6"
+          >
+            <Card className="border-amber-500/30 bg-amber-500/5">
+              <CardContent className="p-6 space-y-5">
+                <div>
+                  <h3 className="font-semibold text-foreground">Profile Drift Warnings</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    These people or category sets do not cleanly resolve to the saved workbook profile family.
+                    Fix the mappings/constants or create an additional profile if the combination is intentional.
+                  </p>
+                </div>
+
+                {warnings.unmatchedCategorySets.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="text-sm font-medium text-foreground">Unmatched Category Sets</div>
+                    <div className="space-y-2">
+                      {warnings.unmatchedCategorySets.map((warning) => (
+                        <div
+                          key={warning.categorySetKey}
+                          className="rounded-lg border border-amber-500/20 bg-background/60 p-3"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="secondary">{warning.categorySetKey}</Badge>
+                            <span className="text-sm text-muted-foreground">
+                              {warning.employeeCount} team member{warning.employeeCount === 1 ? '' : 's'}
+                            </span>
+                            {warning.likelyMissingConstantTypes.length > 0 && (
+                              <span className="text-sm text-muted-foreground">
+                                Suggested constants: {warning.likelyMissingConstantTypes.map((type) => TYPE_SHORT_LABELS[type]).join(', ')}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-foreground mt-2">
+                            {warning.employeeNames.join(', ')}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {warnings.mismatchedEmployees.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="text-sm font-medium text-foreground">Employees Needing Review</div>
+                    <div className="space-y-2">
+                      {warnings.mismatchedEmployees.map((warning) => (
+                        <div
+                          key={`${warning.employeeName}:${warning.categorySetKey}`}
+                          className="rounded-lg border border-amber-500/20 bg-background/60 p-3 text-sm"
+                        >
+                          <span className="font-medium text-foreground">{warning.employeeName}</span>
+                          <span className="text-muted-foreground"> resolves to </span>
+                          <Badge variant="secondary">{warning.categorySetKey}</Badge>
+                          {warning.likelyMissingConstantTypes.length > 0 && (
+                            <span className="text-muted-foreground">
+                              {' '}and may be missing {warning.likelyMissingConstantTypes.map((type) => TYPE_SHORT_LABELS[type]).join(', ')}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
 
         {profiles.length === 0 ? (
           <motion.div
@@ -191,7 +282,7 @@ export default function SettingsPage() {
                 <Sliders className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-foreground mb-2">No Weight Profiles</h3>
                 <p className="text-muted-foreground mb-6">
-                  Click &quot;Seed Standard Profiles&quot; to import the base and derived weight profiles used by the current evaluation setup.
+                  Click &quot;Seed Workbook Profiles&quot; to restore the workbook-driven profile set used by the current evaluation setup.
                 </p>
               </CardContent>
             </Card>
@@ -370,8 +461,8 @@ export default function SettingsPage() {
                   <ul className="text-sm text-muted-foreground space-y-1">
                     <li>Each employee is assigned evaluators from various categories (Lead, Direct Reports, Peer, HR, Hamiz, Dept).</li>
                     <li>The specific combination of categories determines which weight profile applies.</li>
-                    <li>For example, an employee with only &quot;Direct Reports&quot; and &quot;HR&quot; evaluators gets 95%/5% weighting.</li>
-                    <li>&quot;Hamiz&quot; refers to C-Level evaluation. &quot;Dept&quot; is the whole-department evaluation done by Hamiz.</li>
+                    <li>HR and Dept are treated as constants for supported evaluation profiles.</li>
+                    <li>&quot;Hamiz&quot; refers to the C-Level bucket, and &quot;Dept&quot; is the department-wide Hamiz evaluation.</li>
                     <li>Weights must sum to 100% for each profile. Click the expand arrow to edit.</li>
                   </ul>
                 </div>

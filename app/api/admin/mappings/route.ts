@@ -6,10 +6,13 @@ import type { RelationshipType } from '@/types'
 import {
   createLogicalEvaluatorMapping,
   deleteLogicalEvaluatorMappingById,
+  getPhysicalMappingsForLogicalRelationship,
   getMappingPairKey,
   shouldSkipMappingParticipants,
 } from '@/lib/evaluation-mappings'
 import { getCollapsedAdminMappings } from '@/lib/evaluation-assignments'
+import { getMappingConstraint } from '@/lib/evaluation-profile-rules'
+import { syncConstantEvaluatorMappingsForUsers } from '@/lib/evaluation-constants'
 
 // GET - List all evaluator mappings
 export async function GET(request: NextRequest) {
@@ -65,6 +68,7 @@ export async function POST(request: NextRequest) {
       },
       select: {
         id: true,
+        name: true,
         department: true,
       },
     })
@@ -80,12 +84,33 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    await prisma.$transaction(async (tx) => {
-      await createLogicalEvaluatorMapping(tx, {
+    const usersById = new Map(participants.map((participant) => [participant.id, participant]))
+    const constraint = getMappingConstraint(
+      {
         evaluatorId,
         evaluateeId,
         relationshipType: relationshipType as RelationshipType,
-      })
+      },
+      usersById
+    )
+
+    if (constraint.blocked) {
+      return NextResponse.json({ error: constraint.reason }, { status: 400 })
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await createLogicalEvaluatorMapping(
+        tx,
+        {
+          evaluatorId,
+          evaluateeId,
+          relationshipType: relationshipType as RelationshipType,
+        },
+        {
+          skipManagementMirror: constraint.skipManagementMirror,
+        }
+      )
+      await syncConstantEvaluatorMappingsForUsers(tx, [evaluatorId, evaluateeId])
     })
 
     const targetPairKey = getMappingPairKey({
@@ -129,9 +154,25 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Mapping ID is required' }, { status: 400 })
     }
 
-    const deleted = await prisma.$transaction(async (tx) =>
-      deleteLogicalEvaluatorMappingById(tx, id)
-    )
+    const deleted = await prisma.$transaction(async (tx) => {
+      const mapping = await deleteLogicalEvaluatorMappingById(tx, id)
+
+      if (mapping) {
+        const affectedEvaluateeIds = [
+          ...new Set(
+            getPhysicalMappingsForLogicalRelationship({
+              evaluatorId: mapping.evaluatorId,
+              evaluateeId: mapping.evaluateeId,
+              relationshipType: mapping.relationshipType as RelationshipType,
+            }).map((entry) => entry.evaluateeId)
+          ),
+        ]
+
+        await syncConstantEvaluatorMappingsForUsers(tx, affectedEvaluateeIds)
+      }
+
+      return mapping
+    })
 
     if (!deleted) {
       return NextResponse.json({ error: 'Mapping not found' }, { status: 404 })
@@ -166,6 +207,7 @@ export async function PUT(request: NextRequest) {
       skipped: 0,
       errors: [] as string[],
     }
+    const touchedUserIds = new Set<string>()
 
     for (const mapping of mappings) {
       try {
@@ -203,11 +245,38 @@ export async function PUT(request: NextRequest) {
           continue
         }
 
-        await createLogicalEvaluatorMapping(prisma, {
-          evaluatorId: evaluator.id,
-          evaluateeId: evaluatee.id,
-          relationshipType: mapping.relationshipType as RelationshipType,
-        })
+        const usersById = new Map([
+          [evaluator.id, evaluator],
+          [evaluatee.id, evaluatee],
+        ])
+        const constraint = getMappingConstraint(
+          {
+            evaluatorId: evaluator.id,
+            evaluateeId: evaluatee.id,
+            relationshipType: mapping.relationshipType as RelationshipType,
+          },
+          usersById
+        )
+
+        if (constraint.blocked) {
+          results.skipped++
+          results.errors.push(constraint.reason || 'Mapping violates evaluation rules')
+          continue
+        }
+
+        await createLogicalEvaluatorMapping(
+          prisma,
+          {
+            evaluatorId: evaluator.id,
+            evaluateeId: evaluatee.id,
+            relationshipType: mapping.relationshipType as RelationshipType,
+          },
+          {
+            skipManagementMirror: constraint.skipManagementMirror,
+          }
+        )
+        touchedUserIds.add(evaluator.id)
+        touchedUserIds.add(evaluatee.id)
 
         results.created++
       } catch (error) {
@@ -215,6 +284,8 @@ export async function PUT(request: NextRequest) {
         results.errors.push('Error processing mapping')
       }
     }
+
+    await syncConstantEvaluatorMappingsForUsers(prisma, [...touchedUserIds])
 
     return NextResponse.json({ success: true, results })
   } catch (error) {
