@@ -15,6 +15,11 @@ test('toCategorySetKey filters out SELF', () => {
   assert.equal(key, 'HR,PEER')
 })
 
+test('toCategorySetKey normalizes CROSS_DEPARTMENT to PEER', () => {
+  const key = toCategorySetKey(['CROSS_DEPARTMENT', 'HR'])
+  assert.equal(key, 'HR,PEER')
+})
+
 test('toCategorySetKey returns empty string for only SELF', () => {
   const key = toCategorySetKey(['SELF'])
   assert.equal(key, '')
@@ -94,6 +99,14 @@ test('calculateRedistributedWeights excludes SELF even if provided', () => {
   const types = ['PEER', 'SELF', 'HR']
   const weights = calculateRedistributedWeights(types)
   assert.ok(!('SELF' in weights), 'SELF should not appear in output')
+  const sum = Object.values(weights).reduce((a, b) => a + b, 0)
+  assert.ok(Math.abs(sum - 1.0) < 0.0001, `Sum was ${sum}`)
+})
+
+test('calculateRedistributedWeights treats CROSS_DEPARTMENT as PEER', () => {
+  const weights = calculateRedistributedWeights(['CROSS_DEPARTMENT', 'HR'])
+  assert.ok(!('CROSS_DEPARTMENT' in weights), 'CROSS_DEPARTMENT should be normalized away')
+  assert.ok('PEER' in weights, 'PEER should receive the normalized weight')
   const sum = Object.values(weights).reduce((a, b) => a + b, 0)
   assert.ok(Math.abs(sum - 1.0) < 0.0001, `Sum was ${sum}`)
 })

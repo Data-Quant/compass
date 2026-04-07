@@ -177,7 +177,7 @@ export default function SettingsPage() {
             disabled={seeding}
           >
             <Upload className="w-4 h-4" />
-            {seeding ? 'Seeding...' : 'Seed Q4 2025 Profiles'}
+            {seeding ? 'Seeding...' : 'Seed Standard Profiles'}
           </Button>
         </div>
 
@@ -191,7 +191,7 @@ export default function SettingsPage() {
                 <Sliders className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-foreground mb-2">No Weight Profiles</h3>
                 <p className="text-muted-foreground mb-6">
-                  Click &quot;Seed Q4 2025 Profiles&quot; to import the 10 weight profiles from the compiled spreadsheet.
+                  Click &quot;Seed Standard Profiles&quot; to import the base and derived weight profiles used by the current evaluation setup.
                 </p>
               </CardContent>
             </Card>

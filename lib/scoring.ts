@@ -186,9 +186,8 @@ export async function calculateWeightedScore(
           w.weightagePercentage
       })
     } else {
-      // Fallback to redistributed defaults based on types with actual evaluations
-      const typesWithEvaluations = Array.from(evaluationsByType.keys())
-      dynamicWeights = calculateRedistributedWeights(typesWithEvaluations)
+      // Keep fallback stable against late submissions by using the full mapped set.
+      dynamicWeights = calculateRedistributedWeights(allMappedTypes)
     }
   }
 
