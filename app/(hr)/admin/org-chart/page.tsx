@@ -163,7 +163,36 @@ function CompanyNode({ data, selected }: NodeProps<OrgChartNodeData>) {
   )
 }
 
-const nodeTypes = { employee: EmployeeNode, company: CompanyNode }
+function GroupNode({ data, selected }: NodeProps<OrgChartNodeData>) {
+  return (
+    <div
+      className={`min-w-[220px] rounded-[24px] border bg-[#131724]/95 px-5 py-4 text-white shadow-xl ${selected ? 'ring-2 ring-sky-400/80' : ''}`}
+      style={{ borderColor: `${data.color}88` }}
+    >
+      <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-0 !bg-slate-400" />
+      <Handle type="source" position={Position.Right} className="!h-2 !w-2 !border-0 !bg-slate-400" />
+      <div className="flex items-start gap-3">
+        <div
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-white"
+          style={{ background: data.color }}
+        >
+          <Users className="h-5 w-5" />
+        </div>
+        <div className="min-w-0">
+          <div className="text-sm font-semibold">{data.label}</div>
+          <div className="mt-1 line-clamp-3 text-xs text-slate-300">{data.subtitle}</div>
+          {data.department && (
+            <div className="mt-2 truncate text-[11px] uppercase tracking-[0.18em] text-slate-400">
+              {data.department}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const nodeTypes = { employee: EmployeeNode, company: CompanyNode, group: GroupNode }
 
 export default function OrgChartPage() {
   const [users, setUsers] = useState<OrgChartUser[]>([])
@@ -230,9 +259,51 @@ export default function OrgChartPage() {
   }, [scene.edges, selectedMappingId])
 
   const flowNodes = useMemo<FlowNode<OrgChartNodeData>[]>(() => scene.nodes.map((sceneNode) => {
-    if (sceneNode.kind === 'company') return { id: sceneNode.id, type: 'company', position: sceneNode.position, draggable: false, data: { label: COMPANY_NAME, subtitle: 'Company anchor for the hierarchy lens', color: '#64748B', department: null } }
+    if (sceneNode.kind === 'company') {
+      return {
+        id: sceneNode.id,
+        type: 'company',
+        position: sceneNode.position,
+        draggable: false,
+        data: {
+          label: sceneNode.label || COMPANY_NAME,
+          subtitle: sceneNode.subtitle || 'Company anchor for the hierarchy lens',
+          color: sceneNode.color || '#64748B',
+          department: sceneNode.department || null,
+        },
+      }
+    }
+
+    if (sceneNode.kind === 'group') {
+      return {
+        id: sceneNode.id,
+        type: 'group',
+        position: sceneNode.position,
+        draggable: false,
+        selectable: false,
+        data: {
+          label: sceneNode.label || 'Group',
+          subtitle: sceneNode.subtitle || '',
+          color: sceneNode.color || '#64748B',
+          department: sceneNode.department || null,
+        },
+      }
+    }
+
     const user = sceneNode.userId ? usersById.get(sceneNode.userId) : null
-    return { id: sceneNode.id, type: 'employee', position: sceneNode.position, draggable: viewMode !== 'focused', data: { label: user?.name || 'Unknown user', subtitle: user?.position || user?.department || 'No role information', color: user ? getUserColor(user) : '#64748B', department: user?.department || null, userId: user?.id } }
+    return {
+      id: sceneNode.id,
+      type: 'employee',
+      position: sceneNode.position,
+      draggable: viewMode !== 'focused',
+      data: {
+        label: user?.name || 'Unknown user',
+        subtitle: user?.position || user?.department || 'No role information',
+        color: user ? getUserColor(user) : '#64748B',
+        department: user?.department || null,
+        userId: user?.id,
+      },
+    }
   }), [scene.nodes, usersById, viewMode])
 
   const flowEdges = useMemo<FlowEdge[]>(() => scene.edges.map((edge) => ({

@@ -27,8 +27,12 @@ export type OrgChartMeta = {
 
 export type OrgChartLayoutNode = {
   id: string
-  kind: 'employee' | 'company'
+  kind: 'employee' | 'company' | 'group'
   userId?: string
+  label?: string
+  subtitle?: string
+  color?: string
+  department?: string | null
   position: { x: number; y: number }
 }
 
@@ -63,6 +67,10 @@ const RELATIONSHIP_TYPES: RelationshipType[] = [
   'CROSS_DEPARTMENT',
   'SELF',
 ]
+
+const HR_TEAM_NODE_ID = 'group:hr-team'
+const HR_TEAM_NODE_LABEL = 'HR Team'
+const HR_TEAM_NODE_DEPARTMENT = 'Human Resources'
 
 export const ORG_CHART_EDGE_COLORS: Record<RelationshipType, string> = {
   TEAM_LEAD: '#2563EB',
@@ -113,6 +121,44 @@ function createRelationshipEdge(mapping: OrgChartMapping): OrgChartLayoutEdge {
     relationshipType: mapping.relationshipType,
     label: ORG_CHART_EDGE_LABELS[mapping.relationshipType],
     color: ORG_CHART_EDGE_COLORS[mapping.relationshipType],
+  }
+}
+
+function buildHrTeamSubtitle(mappings: OrgChartMapping[]) {
+  const members = [...new Map(
+    mappings.map((mapping) => [mapping.evaluatorId, mapping.evaluator.name])
+  ).values()].sort((left, right) =>
+    left.localeCompare(right, undefined, { sensitivity: 'base' })
+  )
+
+  if (members.length === 0) {
+    return 'No HR members assigned'
+  }
+
+  return members.join(', ')
+}
+
+function createHrTeamNode(position: { x: number; y: number }, mappings: OrgChartMapping[]): OrgChartLayoutNode {
+  return {
+    id: HR_TEAM_NODE_ID,
+    kind: 'group',
+    position,
+    label: HR_TEAM_NODE_LABEL,
+    subtitle: buildHrTeamSubtitle(mappings),
+    color: ORG_CHART_EDGE_COLORS.HR,
+    department: HR_TEAM_NODE_DEPARTMENT,
+  }
+}
+
+function createHrPoolEdge(evaluateeId: string): OrgChartLayoutEdge {
+  return {
+    id: `synthetic:hr:${evaluateeId}`,
+    source: HR_TEAM_NODE_ID,
+    target: evaluateeId,
+    relationshipType: 'HR',
+    label: ORG_CHART_EDGE_LABELS.HR,
+    color: ORG_CHART_EDGE_COLORS.HR,
+    synthetic: true,
   }
 }
 
@@ -232,6 +278,12 @@ export function buildFocusedOrgChartScene(
     (mapping) =>
       mapping.evaluatorId === selectedUser.id || mapping.evaluateeId === selectedUser.id
   )
+  const collapsedIncomingHrMappings = filteredMappings.filter(
+    (mapping) => mapping.relationshipType === 'HR' && mapping.evaluateeId === selectedUser.id
+  )
+  const sceneMappings = filteredMappings.filter(
+    (mapping) => !(mapping.relationshipType === 'HR' && mapping.evaluateeId === selectedUser.id)
+  )
 
   const usersById = new Map(users.map((user) => [user.id, user]))
   const relationshipsByUser = new Map<
@@ -243,7 +295,7 @@ export function buildFocusedOrgChartScene(
     }
   >()
 
-  for (const mapping of filteredMappings) {
+  for (const mapping of sceneMappings) {
     const isPeer = mapping.relationshipType === 'PEER'
     const otherUserId =
       mapping.evaluatorId === selectedUser.id ? mapping.evaluateeId : mapping.evaluatorId
@@ -298,8 +350,19 @@ export function buildFocusedOrgChartScene(
 
   const visibleUserIds = new Set<string>([selectedUser.id])
 
-  createCenteredVerticalPositions(incomingOnly.length, 150, 280).forEach((position, index) => {
-    const user = sortUsersByName(incomingOnly)[index]
+  const incomingSideItems = [
+    ...(collapsedIncomingHrMappings.length > 0 ? [{ kind: 'hr-team' as const }] : []),
+    ...sortUsersByName(incomingOnly).map((user) => ({ kind: 'employee' as const, user })),
+  ]
+
+  createCenteredVerticalPositions(incomingSideItems.length, 150, 280).forEach((position, index) => {
+    const item = incomingSideItems[index]
+    if (item.kind === 'hr-team') {
+      nodes.push(createHrTeamNode(position, collapsedIncomingHrMappings))
+      return
+    }
+
+    const user = item.user
     nodes.push({
       id: user.id,
       kind: 'employee',
@@ -344,7 +407,10 @@ export function buildFocusedOrgChartScene(
 
   return {
     nodes,
-    edges: filteredMappings.map(createRelationshipEdge),
+    edges: [
+      ...sceneMappings.map(createRelationshipEdge),
+      ...(collapsedIncomingHrMappings.length > 0 ? [createHrPoolEdge(selectedUser.id)] : []),
+    ],
     visibleUserIds: [...visibleUserIds],
   }
 }
@@ -380,6 +446,7 @@ export function buildOverviewOrgChartScene(
   const visibleUsers = sortUsersByName(users.filter((user) => visibleUserIds.has(user.id)))
   const groups = getDepartmentGroups(visibleUsers)
   const nodes: OrgChartLayoutNode[] = []
+  const userNodePositions = new Map<string, { x: number; y: number }>()
 
   groups.forEach((group, groupIndex) => {
     const clusterColumn = groupIndex % 3
@@ -402,17 +469,53 @@ export function buildOverviewOrgChartScene(
           y: user.chartY ?? defaultY,
         },
       })
+      userNodePositions.set(user.id, {
+        x: user.chartX ?? defaultX,
+        y: user.chartY ?? defaultY,
+      })
     })
   })
 
+  const visibleMappings = filteredMappings.filter(
+    (mapping) =>
+      visibleUserIds.has(mapping.evaluatorId) && visibleUserIds.has(mapping.evaluateeId)
+  )
+  const hrMappings = visibleMappings.filter((mapping) => mapping.relationshipType === 'HR')
+  const nonHrMappings = visibleMappings.filter((mapping) => mapping.relationshipType !== 'HR')
+  const hrEvaluateeIds = [...new Set(hrMappings.map((mapping) => mapping.evaluateeId))]
+
+  if (hrMappings.length > 0) {
+    const hrUsers = visibleUsers.filter((user) => user.role === 'HR')
+    const hrAnchorPositions = hrUsers
+      .map((user) => userNodePositions.get(user.id))
+      .filter((position): position is { x: number; y: number } => Boolean(position))
+
+    const averageX =
+      hrAnchorPositions.length > 0
+        ? hrAnchorPositions.reduce((sum, position) => sum + position.x, 0) / hrAnchorPositions.length
+        : 180
+    const minY =
+      hrAnchorPositions.length > 0
+        ? Math.min(...hrAnchorPositions.map((position) => position.y))
+        : 140
+
+    nodes.push(
+      createHrTeamNode(
+        {
+          x: Math.round(averageX),
+          y: Math.round(minY - 140),
+        },
+        hrMappings
+      )
+    )
+  }
+
   return {
     nodes,
-    edges: filteredMappings
-      .filter(
-        (mapping) =>
-          visibleUserIds.has(mapping.evaluatorId) && visibleUserIds.has(mapping.evaluateeId)
-      )
-      .map(createRelationshipEdge),
+    edges: [
+      ...nonHrMappings.map(createRelationshipEdge),
+      ...hrEvaluateeIds.map((evaluateeId) => createHrPoolEdge(evaluateeId)),
+    ],
     visibleUserIds: [...visibleUserIds],
   }
 }
@@ -515,4 +618,3 @@ export function buildHierarchyOrgChartScene(
     visibleUserIds: users.map((user) => user.id),
   }
 }
-

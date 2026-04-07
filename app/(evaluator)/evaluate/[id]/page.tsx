@@ -41,6 +41,7 @@ export default function EvaluatePage() {
   const [questions, setQuestions] = useState<Question[]>([])
   const [relationshipType, setRelationshipType] = useState<string>('')
   const [isSubmitted, setIsSubmitted] = useState(false)
+  const [isClosedByPool, setIsClosedByPool] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [responses, setResponses] = useState<Record<string, { rating?: number; text?: string }>>({})
@@ -72,6 +73,7 @@ export default function EvaluatePage() {
       setQuestions(data.questions)
       setRelationshipType(data.relationshipType)
       setIsSubmitted(data.isSubmitted)
+      setIsClosedByPool(Boolean(data.isClosedByPool))
 
       const initialResponses: Record<string, { rating?: number; text?: string }> = {}
       data.questions.forEach((q: Question) => {
@@ -160,7 +162,12 @@ export default function EvaluatePage() {
         body: JSON.stringify({ evaluateeId, periodId, responses: responseData }),
       })
       const data = await response.json()
-      if (data.success) { setIsSubmitted(true); toast.success('Evaluation submitted successfully!'); router.push('/dashboard') }
+      if (data.success) {
+        setIsSubmitted(true)
+        setIsClosedByPool(false)
+        toast.success('Evaluation submitted successfully!')
+        router.push('/dashboard')
+      }
       else { toast.error(data.error || 'Failed to submit evaluation') }
     } catch (error: any) { toast.error(error.message || 'Failed to submit evaluation') }
     finally { setSaving(false) }
@@ -194,8 +201,14 @@ export default function EvaluatePage() {
                 </div>
               </div>
               {isSubmitted && (
-                <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-0 gap-1">
-                  <CheckCircle className="w-4 h-4" /> Submitted
+                <Badge
+                  className={`border-0 gap-1 ${
+                    isClosedByPool
+                      ? 'bg-slate-500/10 text-slate-700 dark:text-slate-300'
+                      : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                  }`}
+                >
+                  <CheckCircle className="w-4 h-4" /> {isClosedByPool ? 'Closed' : 'Submitted'}
                 </Badge>
               )}
             </div>
@@ -214,6 +227,12 @@ export default function EvaluatePage() {
               <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
                 <Clock className="w-3 h-3" />
                 Auto-saved {lastSaved.toLocaleTimeString()}
+              </div>
+            )}
+
+            {isClosedByPool && (
+              <div className="mt-4 rounded-lg border border-slate-500/20 bg-slate-500/5 px-4 py-3 text-sm text-muted-foreground">
+                Another HR team member has already submitted the HR evaluation for this employee, so this HR slot is closed.
               </div>
             )}
           </CardContent>

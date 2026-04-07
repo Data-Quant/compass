@@ -143,3 +143,122 @@ test('buildHierarchyOrgChartScene ignores C_LEVEL hierarchy edges and adds compa
   )
   assert.equal(scene.nodes.some((node) => node.id === 'company'), true)
 })
+
+test('buildFocusedOrgChartScene collapses multiple incoming HR mappings into one HR team node', () => {
+  const extendedUsers: OrgChartUser[] = [
+    ...users,
+    {
+      id: 'raveeha',
+      name: 'Raveeha Hassan',
+      department: 'Human Resources',
+      position: 'Associate',
+      role: 'HR',
+      chartX: null,
+      chartY: null,
+    },
+    {
+      id: 'ammar',
+      name: 'Ammar Hassan',
+      department: 'Quantitative Engineering',
+      position: 'Quant Lead',
+      role: 'EMPLOYEE',
+      chartX: null,
+      chartY: null,
+    },
+  ]
+
+  const extendedMappings: OrgChartMapping[] = [
+    ...mappings,
+    {
+      id: 'hr-areebah-ammar',
+      evaluatorId: 'areebah',
+      evaluateeId: 'ammar',
+      relationshipType: 'HR',
+      evaluator: extendedUsers[2],
+      evaluatee: extendedUsers[6],
+    },
+    {
+      id: 'hr-saman-ammar',
+      evaluatorId: 'saman',
+      evaluateeId: 'ammar',
+      relationshipType: 'HR',
+      evaluator: extendedUsers[3],
+      evaluatee: extendedUsers[6],
+    },
+    {
+      id: 'hr-raveeha-ammar',
+      evaluatorId: 'raveeha',
+      evaluateeId: 'ammar',
+      relationshipType: 'HR',
+      evaluator: extendedUsers[5],
+      evaluatee: extendedUsers[6],
+    },
+  ]
+
+  const scene = buildFocusedOrgChartScene(extendedUsers, extendedMappings, {
+    selectedUserId: 'ammar',
+    relationshipFilter: 'all',
+  })
+
+  assert.equal(scene.nodes.some((node) => node.id === 'group:hr-team' && node.kind === 'group'), true)
+  assert.equal(scene.edges.filter((edge) => edge.relationshipType === 'HR').length, 1)
+  assert.equal(scene.edges.find((edge) => edge.id === 'synthetic:hr:ammar')?.source, 'group:hr-team')
+})
+
+test('buildOverviewOrgChartScene collapses HR mappings into one HR team edge per employee', () => {
+  const extendedUsers: OrgChartUser[] = [
+    ...users,
+    {
+      id: 'raveeha',
+      name: 'Raveeha Hassan',
+      department: 'Human Resources',
+      position: 'Associate',
+      role: 'HR',
+      chartX: null,
+      chartY: null,
+    },
+    {
+      id: 'ammar',
+      name: 'Ammar Hassan',
+      department: 'Quantitative Engineering',
+      position: 'Quant Lead',
+      role: 'EMPLOYEE',
+      chartX: null,
+      chartY: null,
+    },
+  ]
+
+  const extendedMappings: OrgChartMapping[] = [
+    ...mappings,
+    {
+      id: 'hr-areebah-ammar',
+      evaluatorId: 'areebah',
+      evaluateeId: 'ammar',
+      relationshipType: 'HR',
+      evaluator: extendedUsers[2],
+      evaluatee: extendedUsers[6],
+    },
+    {
+      id: 'hr-saman-ammar',
+      evaluatorId: 'saman',
+      evaluateeId: 'ammar',
+      relationshipType: 'HR',
+      evaluator: extendedUsers[3],
+      evaluatee: extendedUsers[6],
+    },
+    {
+      id: 'hr-raveeha-ammar',
+      evaluatorId: 'raveeha',
+      evaluateeId: 'ammar',
+      relationshipType: 'HR',
+      evaluator: extendedUsers[5],
+      evaluatee: extendedUsers[6],
+    },
+  ]
+
+  const scene = buildOverviewOrgChartScene(extendedUsers, extendedMappings, {})
+
+  assert.equal(scene.nodes.some((node) => node.id === 'group:hr-team' && node.kind === 'group'), true)
+  assert.equal(scene.edges.filter((edge) => edge.relationshipType === 'HR').length, 1)
+  assert.equal(scene.edges.find((edge) => edge.id === 'synthetic:hr:ammar')?.target, 'ammar')
+})

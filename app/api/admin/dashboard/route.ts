@@ -5,6 +5,12 @@ import { prisma } from '@/lib/db'
 import type { RelationshipType } from '@/types'
 import { getResolvedQuestionCount } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
+import {
+  collapseAssignmentRequirementsByPool,
+  getAssignmentCompletionState,
+  getHrPoolClosedPairKeys,
+  getSubmittedEvaluationCountMap,
+} from '@/lib/evaluation-completion'
 
 export async function GET() {
   try {
@@ -21,14 +27,14 @@ export async function GET() {
       return NextResponse.json({ error: 'No active period found' }, { status: 404 })
     }
 
-    const [teamMembers, allMappings, allCompletedEvals, allReports] =
+    const [teamMembers, allMappings, submittedEvaluationPairs, allReports] =
       await Promise.all([
         prisma.user.findMany({
           select: { id: true, name: true, department: true, position: true },
         }),
         getResolvedEvaluationAssignments(period.id),
         prisma.evaluation.groupBy({
-          by: ['evaluateeId'],
+          by: ['evaluatorId', 'evaluateeId'],
           where: { periodId: period.id, submittedAt: { not: null } },
           _count: { id: true },
         }),
@@ -40,7 +46,9 @@ export async function GET() {
 
     const questionCounts = await Promise.all(
       allMappings.map(async (mapping) => ({
+        evaluatorId: mapping.evaluatorId,
         evaluateeId: mapping.evaluateeId,
+        relationshipType: mapping.relationshipType,
         total: await getResolvedQuestionCount({
           relationshipType: mapping.relationshipType as RelationshipType,
           periodId: period.id,
@@ -50,15 +58,55 @@ export async function GET() {
       }))
     )
 
+    const submittedPairCounts = getSubmittedEvaluationCountMap(
+      submittedEvaluationPairs.map((pair) => ({
+        evaluatorId: pair.evaluatorId,
+        evaluateeId: pair.evaluateeId,
+        count: pair._count.id,
+      }))
+    )
+    const hrPoolClosedPairKeys = getHrPoolClosedPairKeys(
+      allMappings,
+      new Set(submittedPairCounts.keys())
+    )
+
     const mappingsMap = new Map<string, number>()
     const totalNeededMap = new Map<string, number>()
-    for (const mapping of allMappings) {
-      mappingsMap.set(mapping.evaluateeId, (mappingsMap.get(mapping.evaluateeId) || 0) + 1)
+    const completedNeededMap = new Map<string, number>()
+    const collapsedRequirements = collapseAssignmentRequirementsByPool(
+      questionCounts.map((entry) => {
+        const assignment = {
+          evaluatorId: entry.evaluatorId,
+          evaluateeId: entry.evaluateeId,
+          relationshipType: entry.relationshipType as RelationshipType,
+        }
+        const completionState = getAssignmentCompletionState({
+          assignment,
+          questionsCount: entry.total,
+          submittedCounts: submittedPairCounts,
+          hrPoolClosedPairKeys,
+        })
+
+        return {
+          ...assignment,
+          questionsCount: entry.total,
+          isComplete: completionState.isComplete,
+        }
+      })
+    )
+
+    for (const entry of collapsedRequirements) {
+      mappingsMap.set(entry.evaluateeId, (mappingsMap.get(entry.evaluateeId) || 0) + 1)
+      totalNeededMap.set(
+        entry.evaluateeId,
+        (totalNeededMap.get(entry.evaluateeId) || 0) + entry.questionsCount
+      )
+      completedNeededMap.set(
+        entry.evaluateeId,
+        (completedNeededMap.get(entry.evaluateeId) || 0) + (entry.isComplete ? entry.questionsCount : 0)
+      )
     }
-    for (const entry of questionCounts) {
-      totalNeededMap.set(entry.evaluateeId, (totalNeededMap.get(entry.evaluateeId) || 0) + entry.total)
-    }
-    const evalsMap = new Map(allCompletedEvals.map((e) => [e.evaluateeId, e._count.id]))
+    const evalsMap = new Map(completedNeededMap.entries())
     const reportSet = new Set(allReports.map((r) => r.employeeId))
 
     const statusData = teamMembers.map((member) => {

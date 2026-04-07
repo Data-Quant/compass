@@ -3,7 +3,14 @@ import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import type { RelationshipType } from '@/types'
 import { getResolvedEvaluationQuestions, getEvaluationQuestionMeta } from '@/lib/pre-evaluation'
-import { getResolvedEvaluationAssignmentForPair } from '@/lib/evaluation-assignments'
+import {
+  getResolvedEvaluationAssignmentForPair,
+  getResolvedEvaluationAssignments,
+} from '@/lib/evaluation-assignments'
+import {
+  buildEvaluationPairKey,
+  getHrPoolClosedPairKeys,
+} from '@/lib/evaluation-completion'
 
 export async function GET(
   request: NextRequest,
@@ -59,6 +66,32 @@ export async function GET(
         leadQuestion: true,
       },
     })
+    const submittedPairs = await prisma.evaluation.groupBy({
+      by: ['evaluatorId', 'evaluateeId'],
+      where: {
+        periodId,
+        evaluateeId,
+        submittedAt: { not: null },
+      },
+      _count: { id: true },
+    })
+    const hrAssignments = await getResolvedEvaluationAssignments(periodId, {
+      evaluateeId,
+    })
+    const hrPoolClosedPairKeys = getHrPoolClosedPairKeys(
+      hrAssignments,
+      new Set(
+        submittedPairs.map((submittedPair) =>
+          buildEvaluationPairKey(submittedPair.evaluatorId, submittedPair.evaluateeId)
+        )
+      )
+    )
+    const pairKey = buildEvaluationPairKey(user.id, evaluateeId)
+    const hasOwnSubmission = evaluations.some((evaluation) => evaluation.submittedAt !== null)
+    const isClosedByPool =
+      assignment.relationshipType === 'HR' &&
+      hrPoolClosedPairKeys.has(pairKey) &&
+      !hasOwnSubmission
 
     // Map evaluations to questions
     const evaluationMap = new Map(
@@ -95,7 +128,8 @@ export async function GET(
       }),
       relationshipType: assignment.relationshipType,
       questions: questionsWithResponses,
-      isSubmitted: evaluations.some((e) => e.submittedAt !== null),
+      isSubmitted: hasOwnSubmission || isClosedByPool,
+      isClosedByPool,
     })
   } catch (error) {
     console.error('Failed to fetch evaluation data:', error)

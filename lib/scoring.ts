@@ -4,6 +4,7 @@ import { calculateRedistributedWeights } from '@/lib/config'
 import { getEvaluationQuestionMeta } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
+import { filterPooledRelationshipEvaluations } from '@/lib/evaluation-completion'
 
 export interface ScoreBreakdown {
   relationshipType: RelationshipType
@@ -207,6 +208,11 @@ export async function calculateWeightedScore(
   const breakdown: ScoreBreakdown[] = []
 
   for (const [relationshipType, typeEvaluations] of evaluationsByType.entries()) {
+    const effectiveEvaluations = filterPooledRelationshipEvaluations(
+      relationshipType,
+      typeEvaluations
+    )
+
     // Get the weight for this type
     const weight = dynamicWeights[relationshipType] ?? 0
 
@@ -217,7 +223,7 @@ export async function calculateWeightedScore(
 
     // Group by question to calculate averages
     const questionGroups = new Map<string, typeof typeEvaluations>()
-    for (const evaluation of typeEvaluations) {
+    for (const evaluation of effectiveEvaluations) {
       const questionMeta = getEvaluationQuestionMeta(evaluation)
       if (!questionMeta) {
         continue
@@ -285,7 +291,19 @@ export async function calculateWeightedScore(
 
   // Aggregate qualitative feedback
   const qualitativeFeedback: Record<string, string[]> = {}
-  for (const evaluation of evaluations) {
+  const filteredEvaluations = evaluations.filter((evaluation) => {
+    const relationshipType = evaluatorToTypeMap.get(evaluation.evaluatorId)
+    if (!relationshipType) {
+      return false
+    }
+
+    return filterPooledRelationshipEvaluations(
+      relationshipType,
+      evaluationsByType.get(relationshipType) || []
+    ).includes(evaluation)
+  })
+
+  for (const evaluation of filteredEvaluations) {
     if (evaluation.textResponse && evaluation.textResponse.trim()) {
       const questionMeta = getEvaluationQuestionMeta(evaluation)
       if (!questionMeta) continue

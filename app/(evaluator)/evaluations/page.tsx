@@ -40,6 +40,7 @@ interface Mapping {
   questionsCount: number
   completedCount: number
   isComplete: boolean
+  isClosedByPool?: boolean
 }
 
 interface IncomingAssignment {
@@ -49,6 +50,7 @@ interface IncomingAssignment {
   questionsCount: number
   completedCount: number
   isSubmitted: boolean
+  isClosedByPool?: boolean
 }
 
 interface TeamIncomingAssignments {
@@ -662,9 +664,15 @@ export default function EvaluationsPage() {
 
                             <div className="flex items-center gap-3">
                               {mapping.isComplete ? (
-                                <div className="flex items-center gap-1.5 text-emerald-500">
+                                <div
+                                  className={`flex items-center gap-1.5 ${
+                                    mapping.isClosedByPool ? 'text-slate-500' : 'text-emerald-500'
+                                  }`}
+                                >
                                   <CheckCircle2 className="h-4 w-4" />
-                                  <span className="text-xs font-medium">Complete</span>
+                                  <span className="text-xs font-medium">
+                                    {mapping.isClosedByPool ? 'Closed' : 'Complete'}
+                                  </span>
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-2">
@@ -735,12 +743,14 @@ export default function EvaluationsPage() {
                     <Badge
                       variant="secondary"
                       className={
-                        assignment.isSubmitted
+                        assignment.isClosedByPool
+                          ? 'bg-slate-500/10 text-slate-700 dark:text-slate-300'
+                          : assignment.isSubmitted
                           ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                           : 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
                       }
                     >
-                      {assignment.isSubmitted ? 'Submitted' : 'Pending'}
+                      {assignment.isClosedByPool ? 'Closed' : assignment.isSubmitted ? 'Submitted' : 'Pending'}
                     </Badge>
                   </div>
                 ))}
@@ -811,12 +821,14 @@ export default function EvaluationsPage() {
                             <Badge
                               variant="secondary"
                               className={
-                                assignment.isSubmitted
+                                assignment.isClosedByPool
+                                  ? 'bg-slate-500/10 text-slate-700 dark:text-slate-300'
+                                  : assignment.isSubmitted
                                   ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                                   : 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
                               }
                             >
-                              {assignment.isSubmitted ? 'Submitted' : 'Pending'}
+                              {assignment.isClosedByPool ? 'Closed' : assignment.isSubmitted ? 'Submitted' : 'Pending'}
                             </Badge>
                           </div>
                         ))}

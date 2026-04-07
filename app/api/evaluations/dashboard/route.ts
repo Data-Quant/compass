@@ -4,10 +4,11 @@ import { prisma } from '@/lib/db'
 import type { RelationshipType } from '@/types'
 import { getResolvedQuestionCount } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
-
-function buildPairKey(evaluatorId: string, evaluateeId: string) {
-  return `${evaluatorId}:${evaluateeId}`
-}
+import {
+  getAssignmentCompletionState,
+  getHrPoolClosedPairKeys,
+  getSubmittedEvaluationCountMap,
+} from '@/lib/evaluation-completion'
 
 export async function GET(request: NextRequest) {
   try {
@@ -82,12 +83,14 @@ export async function GET(request: NextRequest) {
       }),
     ])
 
-    const submittedCounts = new Map(
-      submittedEvaluations.map((evaluation) => [
-        buildPairKey(evaluation.evaluatorId, evaluation.evaluateeId),
-        evaluation._count.id,
-      ])
+    const submittedCounts = getSubmittedEvaluationCountMap(
+      submittedEvaluations.map((evaluation) => ({
+        evaluatorId: evaluation.evaluatorId,
+        evaluateeId: evaluation.evaluateeId,
+        count: evaluation._count.id,
+      }))
     )
+    const hrPoolClosedPairKeys = getHrPoolClosedPairKeys(assignments, new Set(submittedCounts.keys()))
 
     const outgoingAssignments = assignments.filter((assignment) => assignment.evaluatorId === user.id)
     const incomingAssignments = assignments.filter((assignment) => assignment.evaluateeId === user.id)
@@ -103,8 +106,12 @@ export async function GET(request: NextRequest) {
           evaluatorId: assignment.evaluatorId,
           evaluateeId: assignment.evaluateeId,
         })
-        const completedCount =
-          submittedCounts.get(buildPairKey(assignment.evaluatorId, assignment.evaluateeId)) || 0
+        const completionState = getAssignmentCompletionState({
+          assignment,
+          questionsCount,
+          submittedCounts,
+          hrPoolClosedPairKeys,
+        })
 
         return {
           id:
@@ -114,8 +121,9 @@ export async function GET(request: NextRequest) {
           evaluatee: assignment.evaluatee!,
           relationshipType: assignment.relationshipType,
           questionsCount,
-          completedCount,
-          isComplete: questionsCount > 0 && completedCount >= questionsCount,
+          completedCount: completionState.completedCount,
+          isComplete: completionState.isComplete,
+          isClosedByPool: completionState.isClosedByPool,
         }
       })
     )
@@ -128,8 +136,12 @@ export async function GET(request: NextRequest) {
           evaluatorId: assignment.evaluatorId,
           evaluateeId: assignment.evaluateeId,
         })
-        const completedCount =
-          submittedCounts.get(buildPairKey(assignment.evaluatorId, assignment.evaluateeId)) || 0
+        const completionState = getAssignmentCompletionState({
+          assignment,
+          questionsCount,
+          submittedCounts,
+          hrPoolClosedPairKeys,
+        })
 
         return {
           id:
@@ -139,8 +151,9 @@ export async function GET(request: NextRequest) {
           evaluator: assignment.evaluator!,
           relationshipType: assignment.relationshipType,
           questionsCount,
-          completedCount,
-          isSubmitted: questionsCount > 0 && completedCount >= questionsCount,
+          completedCount: completionState.completedCount,
+          isSubmitted: completionState.isComplete,
+          isClosedByPool: completionState.isClosedByPool,
         }
       })
     )
@@ -159,8 +172,12 @@ export async function GET(request: NextRequest) {
               evaluatorId: assignment.evaluatorId,
               evaluateeId: assignment.evaluateeId,
             })
-            const completedCount =
-              submittedCounts.get(buildPairKey(assignment.evaluatorId, assignment.evaluateeId)) || 0
+            const completionState = getAssignmentCompletionState({
+              assignment,
+              questionsCount,
+              submittedCounts,
+              hrPoolClosedPairKeys,
+            })
 
             return {
               id:
@@ -170,8 +187,9 @@ export async function GET(request: NextRequest) {
               evaluator: assignment.evaluator!,
               relationshipType: assignment.relationshipType,
               questionsCount,
-              completedCount,
-              isSubmitted: questionsCount > 0 && completedCount >= questionsCount,
+              completedCount: completionState.completedCount,
+              isSubmitted: completionState.isComplete,
+              isClosedByPool: completionState.isClosedByPool,
             }
           })
         )

@@ -44,6 +44,7 @@ interface Mapping {
   questionsCount: number
   completedCount: number
   isComplete: boolean
+  isClosedByPool?: boolean
 }
 
 interface LeaveBalance {
@@ -653,7 +654,11 @@ export default function DashboardPage() {
                           </div>
                         </div>
                         {m.isComplete ? (
-                          <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                          <CheckCircle2
+                            className={`h-4 w-4 shrink-0 ${
+                              m.isClosedByPool ? 'text-slate-500' : 'text-emerald-500'
+                            }`}
+                          />
                         ) : (
                           <Clock className="h-4 w-4 text-muted-foreground shrink-0 group-hover:text-primary transition-colors" />
                         )}

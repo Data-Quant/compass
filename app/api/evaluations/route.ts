@@ -4,12 +4,19 @@ import { prisma } from '@/lib/db'
 import { z } from 'zod'
 import type { RelationshipType } from '@/types'
 import { getResolvedEvaluationQuestions } from '@/lib/pre-evaluation'
-import { getResolvedEvaluationAssignmentForPair } from '@/lib/evaluation-assignments'
+import {
+  getResolvedEvaluationAssignmentForPair,
+  getResolvedEvaluationAssignments,
+} from '@/lib/evaluation-assignments'
 import {
   isEvaluationResponseComplete,
   normalizeEvaluationTextResponse,
   ratingRequiresExplanation,
 } from '@/lib/evaluation-response'
+import {
+  buildEvaluationPairKey,
+  getHrPoolClosedPairKeys,
+} from '@/lib/evaluation-completion'
 
 const evaluationSchema = z.object({
   evaluateeId: z.string().trim().min(1),
@@ -51,6 +58,41 @@ async function findExistingEvaluation(params: {
   })
 }
 
+async function getHrPoolSubmissionState(params: {
+  periodId: string
+  evaluateeId: string
+  evaluatorId: string
+}) {
+  const [assignments, submittedPairs] = await Promise.all([
+    getResolvedEvaluationAssignments(params.periodId, {
+      evaluateeId: params.evaluateeId,
+    }),
+    prisma.evaluation.groupBy({
+      by: ['evaluatorId', 'evaluateeId'],
+      where: {
+        periodId: params.periodId,
+        evaluateeId: params.evaluateeId,
+        submittedAt: { not: null },
+      },
+      _count: { id: true },
+    }),
+  ])
+
+  const submittedPairKeys = new Set(
+    submittedPairs.map((submittedPair) =>
+      buildEvaluationPairKey(submittedPair.evaluatorId, submittedPair.evaluateeId)
+    )
+  )
+  const hrPoolClosedPairKeys = getHrPoolClosedPairKeys(assignments, submittedPairKeys)
+  const currentPairKey = buildEvaluationPairKey(params.evaluatorId, params.evaluateeId)
+
+  return {
+    currentPairHasSubmittedEvaluation: submittedPairKeys.has(currentPairKey),
+    isClosedByAnotherHrEvaluator:
+      hrPoolClosedPairKeys.has(currentPairKey) && !submittedPairKeys.has(currentPairKey),
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const user = await getSession()
@@ -84,6 +126,21 @@ export async function POST(request: NextRequest) {
         { error: 'You are not authorized to evaluate this person' },
         { status: 403 }
       )
+    }
+
+    if (assignment.relationshipType === 'HR') {
+      const hrPoolState = await getHrPoolSubmissionState({
+        periodId: data.periodId,
+        evaluateeId: data.evaluateeId,
+        evaluatorId: user.id,
+      })
+
+      if (hrPoolState.isClosedByAnotherHrEvaluator) {
+        return NextResponse.json(
+          { error: 'An HR evaluation has already been submitted for this employee. This HR slot is closed.' },
+          { status: 409 }
+        )
+      }
     }
 
     const resolved = await getResolvedEvaluationQuestions({
@@ -224,6 +281,21 @@ export async function PUT(request: NextRequest) {
         { error: 'You are not authorized to evaluate this person' },
         { status: 403 }
       )
+    }
+
+    if (assignment.relationshipType === 'HR') {
+      const hrPoolState = await getHrPoolSubmissionState({
+        periodId,
+        evaluateeId,
+        evaluatorId: user.id,
+      })
+
+      if (hrPoolState.isClosedByAnotherHrEvaluator) {
+        return NextResponse.json(
+          { error: 'An HR evaluation has already been submitted for this employee. This HR slot is closed.' },
+          { status: 409 }
+        )
+      }
     }
 
     const resolved = await getResolvedEvaluationQuestions({

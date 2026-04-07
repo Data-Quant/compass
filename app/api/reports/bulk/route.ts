@@ -7,6 +7,7 @@ import { isAdminRole } from '@/lib/permissions'
 import { getEvaluationQuestionMeta } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
+import { filterPooledRelationshipEvaluations } from '@/lib/evaluation-completion'
 
 /**
  * Bulk reports endpoint: fetches ALL employee report summaries in 6 DB calls
@@ -166,10 +167,11 @@ export async function GET(request: NextRequest) {
         if (relType === 'SELF') continue
 
         const weight = dynamicWeights[relType] ?? 0
+        const effectiveTypeEvaluations = filterPooledRelationshipEvaluations(relType, typeEvals)
 
         // Group by question to average across evaluators
         const questionGroups = new Map<string, typeof typeEvals>()
-        for (const ev of typeEvals) {
+        for (const ev of effectiveTypeEvaluations) {
           const questionMeta = getEvaluationQuestionMeta(ev)
           if (!questionMeta) continue
           if (!questionGroups.has(questionMeta.key)) questionGroups.set(questionMeta.key, [])

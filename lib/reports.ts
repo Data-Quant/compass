@@ -5,6 +5,7 @@ import { escapeHtml } from '@/lib/sanitize'
 import { getEvaluationQuestionMeta } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
+import { filterPooledRelationshipEvaluations } from '@/lib/evaluation-completion'
 
 export interface DetailedEvaluationSection {
   relationshipType: RelationshipType
@@ -117,9 +118,19 @@ export async function generateDetailedReport(
   for (const [evaluatorId, evaluatorEvaluations] of evaluationsByEvaluator.entries()) {
     const relationshipType = evaluatorToTypeMap.get(evaluatorId)
     if (!relationshipType) continue
+    const effectiveEvaluatorEvaluations = filterPooledRelationshipEvaluations(
+      relationshipType,
+      evaluatorEvaluations
+    )
+    if (effectiveEvaluatorEvaluations.length === 0) {
+      continue
+    }
+    if (effectiveEvaluatorEvaluations[0].evaluatorId !== evaluatorId) {
+      continue
+    }
 
-    const evaluator = evaluatorEvaluations[0].evaluator
-    const categories = evaluatorEvaluations
+    const evaluator = effectiveEvaluatorEvaluations[0].evaluator
+    const categories = effectiveEvaluatorEvaluations
       .map((evaluation) => {
         const questionMeta = getEvaluationQuestionMeta(evaluation)
         if (!questionMeta) return null

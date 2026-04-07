@@ -4,6 +4,10 @@ import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { sendMail } from '@/lib/email'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
+import {
+  buildEvaluationPairKey,
+  getHrPoolClosedPairKeys,
+} from '@/lib/evaluation-completion'
 
 export async function POST(request: NextRequest) {
   try {
@@ -45,12 +49,16 @@ export async function POST(request: NextRequest) {
 
     // Create a set of completed evaluation pairs
     const completedPairs = new Set(
-      submittedEvaluations.map(e => `${e.evaluatorId}-${e.evaluateeId}`)
+      submittedEvaluations.map(e => buildEvaluationPairKey(e.evaluatorId, e.evaluateeId))
     )
+    const hrPoolClosedPairKeys = getHrPoolClosedPairKeys(mappings, completedPairs)
 
     // Find pending evaluations
     const pendingEvaluations = mappings.filter(
-      m => !completedPairs.has(`${m.evaluatorId}-${m.evaluateeId}`)
+      m => {
+        const pairKey = buildEvaluationPairKey(m.evaluatorId, m.evaluateeId)
+        return !completedPairs.has(pairKey) && !hrPoolClosedPairKeys.has(pairKey)
+      }
     )
 
     // Group by evaluator
