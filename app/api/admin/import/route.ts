@@ -71,12 +71,24 @@ async function importUsers(data: any[]) {
         typeof discordId === 'string' && discordId.trim().length > 0 ? discordId.trim() : null
       const department = row.department || row.Department || row.DEPARTMENT
       const position = row.position || row.Position || row.POSITION || row.title || row.Title
-      const role = (row.role || row.Role || row.ROLE || 'EMPLOYEE').toUpperCase()
+      const rawRole = row.role || row.Role || row.ROLE
       const normalizedRole =
-        role === 'HR' || role === 'SECURITY' || role === 'OA' ? role : 'EMPLOYEE'
+        typeof rawRole === 'string' && rawRole.trim().length > 0
+          ? (() => {
+              const role = rawRole.trim().toUpperCase()
+              return role === 'HR' || role === 'SECURITY' || role === 'OA' || role === 'EMPLOYEE'
+                ? role
+                : null
+            })()
+          : null
 
       if (!name) {
         results.errors.push(`Row ${rowNum}: Name is required`)
+        continue
+      }
+
+      if (rawRole && !normalizedRole) {
+        results.errors.push(`Row ${rowNum}: Invalid role "${rawRole}"`)
         continue
       }
 
@@ -95,7 +107,9 @@ async function importUsers(data: any[]) {
               discordId: normalizedDiscordId,
               department: department || null,
               position: position || null,
-              role: normalizedRole as 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA',
+              ...(normalizedRole
+                ? { role: normalizedRole as 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA' }
+                : {}),
             },
           })
           results.updated++
@@ -117,7 +131,9 @@ async function importUsers(data: any[]) {
             discordId: normalizedDiscordId || existingByName.discordId,
             department: department || existingByName.department,
             position: position || existingByName.position,
-            role: normalizedRole as 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA',
+            ...(normalizedRole
+              ? { role: normalizedRole as 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA' }
+              : {}),
           },
         })
         results.updated++
@@ -132,7 +148,7 @@ async function importUsers(data: any[]) {
           discordId: normalizedDiscordId,
           department: department || null,
           position: position || null,
-          role: normalizedRole as 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA',
+          role: (normalizedRole || 'EMPLOYEE') as 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA',
         },
       })
       results.created++
