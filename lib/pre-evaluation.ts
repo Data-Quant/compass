@@ -204,15 +204,19 @@ export function buildRuntimeEvaluationQuestionSet(params: {
   leadSourceLeadId?: string
   leadSourceLeadName?: string
 }) {
-  const sortedGlobalQuestions = [...params.globalQuestions].sort(
-    (first, second) => first.orderIndex - second.orderIndex
-  )
+  const sortedGlobalQuestions = [...params.globalQuestions].sort((first, second) => {
+    if (first.questionType !== second.questionType) {
+      return first.questionType === 'RATING' ? -1 : 1
+    }
+
+    return first.orderIndex - second.orderIndex
+  })
   const sortedLeadQuestions = [...(params.leadQuestions || [])].sort(
     (first, second) => first.orderIndex - second.orderIndex
   )
 
   const resolvedGlobalQuestions = sortedGlobalQuestions.map<ResolvedEvaluationQuestion>(
-    (question, index) => ({
+    (question) => ({
       id: question.id,
       sourceType: 'GLOBAL',
       relationshipType: params.relationshipType,
@@ -223,14 +227,14 @@ export function buildRuntimeEvaluationQuestionSet(params: {
         question.questionType === 'RATING'
           ? normalizeRatingDescriptions(question)
           : null,
-      orderIndex: index + 1,
+      orderIndex: question.orderIndex,
       sourceLeadId: params.globalSourceLeadId,
       sourceLeadName: params.globalSourceLeadName,
     })
   )
 
   const resolvedLeadQuestions = sortedLeadQuestions.map<ResolvedEvaluationQuestion>(
-    (question, index) => ({
+    (question) => ({
       id: question.id,
       sourceType: 'LEAD',
       relationshipType: params.relationshipType,
@@ -238,13 +242,22 @@ export function buildRuntimeEvaluationQuestionSet(params: {
       questionType: 'RATING',
       maxRating: 4,
       ratingDescriptions: normalizeRatingDescriptions(question),
-      orderIndex: resolvedGlobalQuestions.length + index + 1,
+      orderIndex: question.orderIndex,
       sourceLeadId: params.leadSourceLeadId,
       sourceLeadName: params.leadSourceLeadName,
     })
   )
 
-  return [...resolvedGlobalQuestions, ...resolvedLeadQuestions]
+  const runtimeQuestions = [
+    ...resolvedGlobalQuestions.filter((question) => question.questionType === 'RATING'),
+    ...resolvedLeadQuestions,
+    ...resolvedGlobalQuestions.filter((question) => question.questionType === 'TEXT'),
+  ]
+
+  return runtimeQuestions.map((question, index) => ({
+    ...question,
+    orderIndex: index + 1,
+  }))
 }
 
 export function resolvePrepQuestionPrefill<TQuestion extends { orderIndex: number }>(params: {

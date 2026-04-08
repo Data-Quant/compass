@@ -97,7 +97,7 @@ test('runtime lead question count adds submitted lead questions on top of the de
   )
 })
 
-test('runtime evaluation questions keep the base bank and append lead KPI questions', () => {
+test('runtime evaluation questions keep text prompts at the end after lead KPI questions are added', () => {
   const questions = buildRuntimeEvaluationQuestionSet({
     relationshipType: 'TEAM_LEAD',
     globalQuestions: [
@@ -159,18 +159,10 @@ test('runtime evaluation questions keep the base bank and append lead KPI questi
         rating4Description: 'Transforms outcomes',
       },
       {
-        id: 'global-2',
-        sourceType: 'GLOBAL',
-        questionType: 'TEXT',
-        orderIndex: 2,
-        sourceLeadName: null,
-        rating4Description: '',
-      },
-      {
         id: 'lead-1',
         sourceType: 'LEAD',
         questionType: 'RATING',
-        orderIndex: 3,
+        orderIndex: 2,
         sourceLeadName: 'Lead A',
         rating4Description: 'Sets a new benchmark',
       },
@@ -178,8 +170,16 @@ test('runtime evaluation questions keep the base bank and append lead KPI questi
         id: 'lead-2',
         sourceType: 'LEAD',
         questionType: 'RATING',
-        orderIndex: 4,
+        orderIndex: 3,
         sourceLeadName: 'Lead A',
+        rating4Description: '',
+      },
+      {
+        id: 'global-2',
+        sourceType: 'GLOBAL',
+        questionType: 'TEXT',
+        orderIndex: 4,
+        sourceLeadName: null,
         rating4Description: '',
       },
     ]

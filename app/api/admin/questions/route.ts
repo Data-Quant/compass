@@ -142,6 +142,7 @@ export async function GET(request: NextRequest) {
       where,
       orderBy: [
         { relationshipType: 'asc' },
+        { questionType: 'asc' },
         { orderIndex: 'asc' },
       ],
     })
