@@ -59,6 +59,15 @@ type RuntimeLeadQuestionInput = {
   orderIndex: number
 }
 
+type PreviousLeadQuestionPrefill<TQuestion extends { orderIndex: number }> = {
+  period: {
+    id: string
+    name: string
+  }
+  questionsSubmittedAt: Date | null
+  questions: TQuestion[]
+}
+
 export interface PreEvaluationSelectionInput {
   type: 'PRIMARY' | 'PEER' | 'CROSS_DEPARTMENT'
   evaluateeId: string
@@ -217,6 +226,48 @@ export function buildRuntimeEvaluationQuestionSet(params: {
   )
 
   return [...resolvedGlobalQuestions, ...resolvedLeadQuestions]
+}
+
+export function resolvePrepQuestionPrefill<TQuestion extends { orderIndex: number }>(params: {
+  currentQuestions: TQuestion[]
+  currentQuestionsSubmittedAt: Date | null
+  previousSubmission?: PreviousLeadQuestionPrefill<TQuestion> | null
+}) {
+  const sortedCurrentQuestions = [...params.currentQuestions].sort(
+    (first, second) => first.orderIndex - second.orderIndex
+  )
+
+  if (sortedCurrentQuestions.length > 0 || params.currentQuestionsSubmittedAt) {
+    return {
+      questions: sortedCurrentQuestions,
+      questionPrefillFrom: null,
+    }
+  }
+
+  const previousSubmission = params.previousSubmission
+  const sortedPreviousQuestions = [...(previousSubmission?.questions || [])].sort(
+    (first, second) => first.orderIndex - second.orderIndex
+  )
+
+  if (
+    !previousSubmission ||
+    !previousSubmission.questionsSubmittedAt ||
+    sortedPreviousQuestions.length === 0
+  ) {
+    return {
+      questions: sortedCurrentQuestions,
+      questionPrefillFrom: null,
+    }
+  }
+
+  return {
+    questions: sortedPreviousQuestions,
+    questionPrefillFrom: {
+      periodId: previousSubmission.period.id,
+      periodName: previousSubmission.period.name,
+      submittedAt: previousSubmission.questionsSubmittedAt,
+    },
+  }
 }
 
 export async function syncPrepStatus(db: DbClient, prepId: string) {
@@ -474,6 +525,40 @@ export async function getCurrentLeadPrep(userId: string) {
 
   if (!prep) return null
 
+  const previousSubmittedPrep =
+    prep.questions.length === 0 && !prep.questionsSubmittedAt
+      ? await prisma.preEvaluationLeadPrep.findFirst({
+          where: {
+            leadId: userId,
+            periodId: {
+              not: prep.period.id,
+            },
+            questionsSubmittedAt: {
+              not: null,
+            },
+            questions: {
+              some: {},
+            },
+          },
+          select: {
+            period: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            questionsSubmittedAt: true,
+            questions: {
+              orderBy: { orderIndex: 'asc' },
+            },
+          },
+          orderBy: [
+            { questionsSubmittedAt: 'desc' },
+            { updatedAt: 'desc' },
+          ],
+        })
+      : null
+
   const [users, directReportMappings] = await Promise.all([
     prisma.user.findMany({
       where: {
@@ -519,9 +604,16 @@ export async function getCurrentLeadPrep(userId: string) {
 
   const synced = await syncPrepStatus(prisma, prep.id)
   const effectiveStatus = synced?.status || prep.status
+  const resolvedQuestions = resolvePrepQuestionPrefill({
+    currentQuestions: prep.questions,
+    currentQuestionsSubmittedAt: prep.questionsSubmittedAt,
+    previousSubmission: previousSubmittedPrep,
+  })
 
   return {
     ...prep,
+    questions: resolvedQuestions.questions,
+    questionPrefillFrom: resolvedQuestions.questionPrefillFrom,
     status: effectiveStatus,
     editable: isPrepEditable(prep.period.reviewStartDate),
     candidateUsers: users,

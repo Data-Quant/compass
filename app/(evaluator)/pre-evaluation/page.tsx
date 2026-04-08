@@ -25,6 +25,11 @@ interface PrepResponse {
     progressCount: number
     totalSections: number
     questions: Array<{ id: string; orderIndex: number; questionText: string }>
+    questionPrefillFrom: {
+      periodId: string
+      periodName: string
+      submittedAt: string
+    } | null
     period: {
       id: string
       name: string
@@ -177,6 +182,11 @@ export default function PreEvaluationPage() {
               <p className="text-sm text-muted-foreground">
                 Submit exactly {prep.requiredQuestionCount} extra KPI questions that you will answer about your direct reports. These are added on top of the default Direct Reports question bank for your direct-report evaluations. They do not change the questions your team answers about you. If you do not submit them, runtime uses only the default Direct Reports bank.
               </p>
+              {prep.questionPrefillFrom && !prep.questionsSubmittedAt && (
+                <p className="mt-2 text-sm text-sky-300">
+                  We prefilled these from your last submitted set in {prep.questionPrefillFrom.periodName} so you can reuse or edit them before submitting this quarter.
+                </p>
+              )}
             </div>
             {prep.questionsSubmittedAt && (
               <Badge className="bg-emerald-500/10 text-emerald-600 border-0">Submitted</Badge>

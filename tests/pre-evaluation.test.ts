@@ -9,6 +9,7 @@ import {
   getLeadAuthoredQuestionBankRelationshipType,
   getRuntimeLeadQuestionCount,
   hasSubmittedLeadQuestionSet,
+  resolvePrepQuestionPrefill,
   validatePreEvaluationSelections,
 } from '../lib/pre-evaluation'
 
@@ -170,6 +171,81 @@ test('runtime evaluation questions keep the base bank and append lead KPI questi
       },
     ]
   )
+})
+
+test('current quarter draft questions take precedence over previous submitted lead questions', () => {
+  const resolved = resolvePrepQuestionPrefill({
+    currentQuestions: [
+      {
+        id: 'current-1',
+        prepId: 'prep-current',
+        orderIndex: 1,
+        questionText: 'Current draft question',
+        createdAt: new Date('2026-04-01T00:00:00.000Z'),
+        updatedAt: new Date('2026-04-01T00:00:00.000Z'),
+      },
+    ],
+    currentQuestionsSubmittedAt: null,
+    previousSubmission: {
+      period: {
+        id: 'period-prev',
+        name: 'Q4 2025',
+      },
+      questionsSubmittedAt: new Date('2026-01-01T00:00:00.000Z'),
+      questions: [
+        {
+          id: 'prev-1',
+          prepId: 'prep-prev',
+          orderIndex: 1,
+          questionText: 'Previous question 1',
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+          updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+        },
+      ],
+    },
+  })
+
+  assert.deepEqual(resolved.questions.map((question) => question.id), ['current-1'])
+  assert.equal(resolved.questionPrefillFrom, null)
+})
+
+test('empty current quarter prefill starts from the most recent submitted lead questions', () => {
+  const resolved = resolvePrepQuestionPrefill({
+    currentQuestions: [],
+    currentQuestionsSubmittedAt: null,
+    previousSubmission: {
+      period: {
+        id: 'period-prev',
+        name: 'Q4 2025',
+      },
+      questionsSubmittedAt: new Date('2026-01-01T00:00:00.000Z'),
+      questions: [
+        {
+          id: 'prev-2',
+          prepId: 'prep-prev',
+          orderIndex: 2,
+          questionText: 'Previous question 2',
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+          updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+        },
+        {
+          id: 'prev-1',
+          prepId: 'prep-prev',
+          orderIndex: 1,
+          questionText: 'Previous question 1',
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+          updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+        },
+      ],
+    },
+  })
+
+  assert.deepEqual(resolved.questions.map((question) => question.id), ['prev-1', 'prev-2'])
+  assert.deepEqual(resolved.questionPrefillFrom, {
+    periodId: 'period-prev',
+    periodName: 'Q4 2025',
+    submittedAt: new Date('2026-01-01T00:00:00.000Z'),
+  })
 })
 
 test('derivePreEvaluationStatus completes once lead questions are submitted', () => {
