@@ -121,6 +121,21 @@ test('buildFocusedOrgChartScene keeps multiple team leads visible for one employ
   assert.equal(scene.visibleUserIds.includes('noha'), true)
 })
 
+test('buildFocusedOrgChartScene leaves enough vertical space between stacked incoming cards', () => {
+  const scene = buildFocusedOrgChartScene(users, mappings, {
+    selectedUserId: 'areebah',
+    relationshipFilter: 'all',
+  })
+
+  const incomingNodes = scene.nodes
+    .filter((node) => node.id === 'brad' || node.id === 'hamiz')
+    .sort((left, right) => left.position.y - right.position.y)
+
+  assert.equal(incomingNodes.length, 2)
+  assert.equal(incomingNodes[0].position.x, incomingNodes[1].position.x)
+  assert.ok(incomingNodes[1].position.y - incomingNodes[0].position.y >= 160)
+})
+
 test('buildOverviewOrgChartScene isolates a selected neighborhood without losing its edges', () => {
   const scene = buildOverviewOrgChartScene(users, mappings, {
     isolateUserId: 'areebah',
@@ -133,6 +148,16 @@ test('buildOverviewOrgChartScene isolates a selected neighborhood without losing
   assert.equal(scene.edges.length, 5)
 })
 
+test('buildOverviewOrgChartScene spaces default department cards far enough apart to avoid overlap', () => {
+  const scene = buildOverviewOrgChartScene(users, mappings, {})
+  const hrNodes = scene.nodes
+    .filter((node) => node.id === 'areebah' || node.id === 'saman')
+    .sort((left, right) => left.position.x - right.position.x)
+
+  assert.equal(hrNodes.length, 2)
+  assert.ok(hrNodes[1].position.x - hrNodes[0].position.x >= 220)
+})
+
 test('buildHierarchyOrgChartScene ignores C_LEVEL hierarchy edges and adds company edges for top-level leaders', () => {
   const scene = buildHierarchyOrgChartScene(users, mappings)
 
@@ -142,6 +167,17 @@ test('buildHierarchyOrgChartScene ignores C_LEVEL hierarchy edges and adds compa
     3
   )
   assert.equal(scene.nodes.some((node) => node.id === 'company'), true)
+})
+
+test('buildHierarchyOrgChartScene leaves enough horizontal space between leaders on the same level', () => {
+  const scene = buildHierarchyOrgChartScene(users, mappings)
+  const topLevelNodes = scene.nodes
+    .filter((node) => node.id === 'brad' || node.id === 'hamiz' || node.id === 'noha')
+    .sort((left, right) => left.position.x - right.position.x)
+
+  assert.equal(topLevelNodes.length, 3)
+  assert.ok(topLevelNodes[1].position.x - topLevelNodes[0].position.x >= 220)
+  assert.ok(topLevelNodes[2].position.x - topLevelNodes[1].position.x >= 220)
 })
 
 test('buildFocusedOrgChartScene collapses multiple incoming HR mappings into one HR team node', () => {

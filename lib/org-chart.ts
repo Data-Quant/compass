@@ -71,6 +71,29 @@ const RELATIONSHIP_TYPES: RelationshipType[] = [
 const HR_TEAM_NODE_ID = 'group:hr-team'
 const HR_TEAM_NODE_LABEL = 'HR Team'
 const HR_TEAM_NODE_DEPARTMENT = 'Human Resources'
+const FOCUSED_CENTER_X = 600
+const FOCUSED_CENTER_Y = 320
+const FOCUSED_SIDE_X = {
+  incoming: 180,
+  outgoing: 1020,
+}
+const FOCUSED_TOP_Y = 90
+const FOCUSED_BOTTOM_Y = 560
+const FOCUSED_VERTICAL_GAP = 160
+const FOCUSED_HORIZONTAL_GAP = 240
+const OVERVIEW_CLUSTER_COLUMNS = 3
+const OVERVIEW_CLUSTER_CENTER_X = 280
+const OVERVIEW_CLUSTER_CENTER_Y = 210
+const OVERVIEW_CLUSTER_X_GAP = 620
+const OVERVIEW_CLUSTER_Y_GAP = 420
+const OVERVIEW_NODE_COLUMN_GAP = 228
+const OVERVIEW_NODE_ROW_GAP = 136
+const OVERVIEW_HR_TEAM_OFFSET_Y = 180
+const HIERARCHY_CENTER_X = 700
+const HIERARCHY_COMPANY_Y = 48
+const HIERARCHY_LEVEL_START_Y = 190
+const HIERARCHY_LEVEL_GAP = 220
+const HIERARCHY_NODE_GAP = 236
 
 export const ORG_CHART_EDGE_COLORS: Record<RelationshipType, string> = {
   TEAM_LEAD: '#2563EB',
@@ -344,7 +367,7 @@ export function buildFocusedOrgChartScene(
       id: selectedUser.id,
       kind: 'employee',
       userId: selectedUser.id,
-      position: { x: 520, y: 280 },
+      position: { x: FOCUSED_CENTER_X, y: FOCUSED_CENTER_Y },
     },
   ]
 
@@ -355,7 +378,12 @@ export function buildFocusedOrgChartScene(
     ...sortUsersByName(incomingOnly).map((user) => ({ kind: 'employee' as const, user })),
   ]
 
-  createCenteredVerticalPositions(incomingSideItems.length, 150, 280).forEach((position, index) => {
+  createCenteredVerticalPositions(
+    incomingSideItems.length,
+    FOCUSED_SIDE_X.incoming,
+    FOCUSED_CENTER_Y,
+    FOCUSED_VERTICAL_GAP
+  ).forEach((position, index) => {
     const item = incomingSideItems[index]
     if (item.kind === 'hr-team') {
       nodes.push(createHrTeamNode(position, collapsedIncomingHrMappings))
@@ -372,7 +400,12 @@ export function buildFocusedOrgChartScene(
     visibleUserIds.add(user.id)
   })
 
-  createCenteredHorizontalPositions(bidirectional.length, 520, 80).forEach((position, index) => {
+  createCenteredHorizontalPositions(
+    bidirectional.length,
+    FOCUSED_CENTER_X,
+    FOCUSED_TOP_Y,
+    FOCUSED_HORIZONTAL_GAP
+  ).forEach((position, index) => {
     const user = sortUsersByName(bidirectional)[index]
     nodes.push({
       id: user.id,
@@ -383,7 +416,12 @@ export function buildFocusedOrgChartScene(
     visibleUserIds.add(user.id)
   })
 
-  createCenteredVerticalPositions(outgoingOnly.length, 890, 280).forEach((position, index) => {
+  createCenteredVerticalPositions(
+    outgoingOnly.length,
+    FOCUSED_SIDE_X.outgoing,
+    FOCUSED_CENTER_Y,
+    FOCUSED_VERTICAL_GAP
+  ).forEach((position, index) => {
     const user = sortUsersByName(outgoingOnly)[index]
     nodes.push({
       id: user.id,
@@ -394,7 +432,12 @@ export function buildFocusedOrgChartScene(
     visibleUserIds.add(user.id)
   })
 
-  createCenteredHorizontalPositions(peerOnly.length, 520, 520).forEach((position, index) => {
+  createCenteredHorizontalPositions(
+    peerOnly.length,
+    FOCUSED_CENTER_X,
+    FOCUSED_BOTTOM_Y,
+    FOCUSED_HORIZONTAL_GAP
+  ).forEach((position, index) => {
     const user = sortUsersByName(peerOnly)[index]
     nodes.push({
       id: user.id,
@@ -449,16 +492,16 @@ export function buildOverviewOrgChartScene(
   const userNodePositions = new Map<string, { x: number; y: number }>()
 
   groups.forEach((group, groupIndex) => {
-    const clusterColumn = groupIndex % 3
-    const clusterRow = Math.floor(groupIndex / 3)
-    const clusterCenterX = 220 + clusterColumn * 360
-    const clusterCenterY = 180 + clusterRow * 280
+    const clusterColumn = groupIndex % OVERVIEW_CLUSTER_COLUMNS
+    const clusterRow = Math.floor(groupIndex / OVERVIEW_CLUSTER_COLUMNS)
+    const clusterCenterX = OVERVIEW_CLUSTER_CENTER_X + clusterColumn * OVERVIEW_CLUSTER_X_GAP
+    const clusterCenterY = OVERVIEW_CLUSTER_CENTER_Y + clusterRow * OVERVIEW_CLUSTER_Y_GAP
 
     group.users.forEach((user, userIndex) => {
       const row = Math.floor(userIndex / 3)
       const col = userIndex % 3
-      const defaultX = clusterCenterX + (col - 1) * 112
-      const defaultY = clusterCenterY + row * 100
+      const defaultX = clusterCenterX + (col - 1) * OVERVIEW_NODE_COLUMN_GAP
+      const defaultY = clusterCenterY + row * OVERVIEW_NODE_ROW_GAP
 
       nodes.push({
         id: user.id,
@@ -503,7 +546,7 @@ export function buildOverviewOrgChartScene(
       createHrTeamNode(
         {
           x: Math.round(averageX),
-          y: Math.round(minY - 140),
+          y: Math.round(minY - OVERVIEW_HR_TEAM_OFFSET_Y),
         },
         hrMappings
       )
@@ -578,13 +621,18 @@ export function buildHierarchyOrgChartScene(
     {
       id: 'company',
       kind: 'company',
-      position: { x: 520, y: 40 },
+      position: { x: HIERARCHY_CENTER_X, y: HIERARCHY_COMPANY_Y },
     },
   ]
 
   for (const level of orderedLevels) {
     const levelUsers = sortUsersByName(usersByLevel.get(level) || [])
-    const positions = createCenteredHorizontalPositions(levelUsers.length, 520, 140 + level * 160)
+    const positions = createCenteredHorizontalPositions(
+      levelUsers.length,
+      HIERARCHY_CENTER_X,
+      HIERARCHY_LEVEL_START_Y + (level - 1) * HIERARCHY_LEVEL_GAP,
+      HIERARCHY_NODE_GAP
+    )
 
     levelUsers.forEach((user, index) => {
       nodes.push({

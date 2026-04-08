@@ -127,7 +127,7 @@ function RelationshipBadge({ type }: { type: RelationshipType }) {
 function EmployeeNode({ data, selected }: NodeProps<OrgChartNodeData>) {
   return (
     <div
-      className={`min-w-[188px] rounded-2xl border bg-[#111318]/95 px-4 py-3 text-left shadow-xl ${selected ? 'ring-2 ring-sky-400/80' : ''}`}
+      className={`min-w-[204px] rounded-2xl border bg-[#111318]/95 px-4 py-3 text-left shadow-xl ${selected ? 'ring-2 ring-sky-400/80' : ''}`}
       style={{ borderColor: `${data.color}88` }}
     >
       <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-0 !bg-slate-400" />
@@ -150,7 +150,7 @@ function EmployeeNode({ data, selected }: NodeProps<OrgChartNodeData>) {
 
 function CompanyNode({ data, selected }: NodeProps<OrgChartNodeData>) {
   return (
-    <div className={`min-w-[220px] rounded-[24px] border border-slate-700 bg-slate-900/95 px-5 py-4 text-white shadow-xl ${selected ? 'ring-2 ring-sky-400/80' : ''}`}>
+    <div className={`min-w-[236px] rounded-[24px] border border-slate-700 bg-slate-900/95 px-5 py-4 text-white shadow-xl ${selected ? 'ring-2 ring-sky-400/80' : ''}`}>
       <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 !border-0 !bg-slate-400" />
       <div className="flex items-center gap-3">
         <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-700"><Building2 className="h-5 w-5 text-white" /></div>
@@ -166,7 +166,7 @@ function CompanyNode({ data, selected }: NodeProps<OrgChartNodeData>) {
 function GroupNode({ data, selected }: NodeProps<OrgChartNodeData>) {
   return (
     <div
-      className={`min-w-[220px] rounded-[24px] border bg-[#131724]/95 px-5 py-4 text-white shadow-xl ${selected ? 'ring-2 ring-sky-400/80' : ''}`}
+      className={`min-w-[236px] rounded-[24px] border bg-[#131724]/95 px-5 py-4 text-white shadow-xl ${selected ? 'ring-2 ring-sky-400/80' : ''}`}
       style={{ borderColor: `${data.color}88` }}
     >
       <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-0 !bg-slate-400" />
@@ -327,7 +327,12 @@ export default function OrgChartPage() {
 
   useEffect(() => {
     if (!flowRef.current || flowNodes.length === 0) return
-    const frame = window.requestAnimationFrame(() => flowRef.current?.fitView({ padding: viewMode === 'focused' ? 0.3 : 0.18, duration: 350 }))
+    const frame = window.requestAnimationFrame(() =>
+      flowRef.current?.fitView({
+        padding: viewMode === 'focused' ? 0.24 : 0.12,
+        duration: 350,
+      })
+    )
     return () => window.cancelAnimationFrame(frame)
   }, [flowEdges, flowNodes, viewMode])
 
@@ -660,7 +665,7 @@ export default function OrgChartPage() {
           </CardHeader>
 
           <CardContent className="p-0">
-            <div className="h-[72vh] min-h-[720px]">
+            <div className="h-[76vh] min-h-[780px]">
               {nodes.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-center">
                   <div><Network className="mx-auto h-10 w-10 text-muted-foreground" /><p className="mt-4 text-sm font-medium">No graph to show for this filter</p><p className="mt-2 text-sm text-muted-foreground">Try another relationship filter, clear the search, or select a different person.</p></div>
