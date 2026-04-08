@@ -9,14 +9,52 @@ import {
   saveDraftQuestions,
   syncPrepStatus,
 } from '@/lib/pre-evaluation'
+import { normalizeRatingDescriptions } from '@/lib/rating-descriptions'
 
-const draftSchema = z.object({
-  questions: z.array(z.string().max(1000)).max(PRE_EVALUATION_QUESTION_COUNT),
+const leadQuestionSchema = z.object({
+  questionText: z.string().max(1000),
+  ratingDescriptions: z
+    .object({
+      1: z.string().max(1000).optional(),
+      2: z.string().max(1000).optional(),
+      3: z.string().max(1000).optional(),
+      4: z.string().max(1000).optional(),
+    })
+    .partial()
+    .optional(),
 })
 
 const submitSchema = z.object({
-  questions: z.array(z.string().trim().min(1).max(1000)).length(PRE_EVALUATION_QUESTION_COUNT),
+  questions: z
+    .array(z.union([z.string().trim().min(1).max(1000), leadQuestionSchema]))
+    .length(PRE_EVALUATION_QUESTION_COUNT),
 })
+
+const draftSchema = z.object({
+  questions: z
+    .array(z.union([z.string().max(1000), leadQuestionSchema]))
+    .max(PRE_EVALUATION_QUESTION_COUNT),
+})
+
+function normalizeQuestions(
+  questions: Array<string | z.infer<typeof leadQuestionSchema>>
+) {
+  return questions.map((question, index) => {
+    if (typeof question === 'string') {
+      return {
+        orderIndex: index + 1,
+        questionText: question,
+        ratingDescriptions: normalizeRatingDescriptions(),
+      }
+    }
+
+    return {
+      orderIndex: index + 1,
+      questionText: question.questionText,
+      ratingDescriptions: normalizeRatingDescriptions(question.ratingDescriptions),
+    }
+  })
+}
 
 async function getPrep(prepId: string) {
   return prisma.preEvaluationLeadPrep.findUnique({
@@ -67,10 +105,7 @@ export async function PUT(
 
     await saveDraftQuestions(
       prep.id,
-      parsed.data.questions.map((questionText, index) => ({
-        orderIndex: index + 1,
-        questionText,
-      }))
+      normalizeQuestions(parsed.data.questions)
     )
 
     const questions = await prisma.preEvaluationLeadQuestion.findMany({
@@ -125,10 +160,7 @@ export async function POST(
     await prisma.$transaction(async (tx) => {
       await saveDraftQuestions(
         prep.id,
-        parsed.data.questions.map((questionText, index) => ({
-          orderIndex: index + 1,
-          questionText,
-        })),
+        normalizeQuestions(parsed.data.questions),
         tx
       )
 

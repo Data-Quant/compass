@@ -20,7 +20,13 @@ import {
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { RELATIONSHIP_TYPE_LABELS, RelationshipType } from '@/types'
+import { RATING_LABELS, RELATIONSHIP_TYPE_LABELS, RelationshipType } from '@/types'
+import {
+  createEmptyRatingDescriptions,
+  hasAnyRatingDescriptions,
+  normalizeRatingDescriptions,
+  type RatingDescriptions,
+} from '@/lib/rating-descriptions'
 import {
   ArrowRight,
   CheckCircle2,
@@ -39,7 +45,16 @@ interface GlobalQuestion {
   questionType: 'RATING' | 'TEXT'
   relationshipType: RelationshipType
   maxRating: number
+  rating1Description?: string | null
+  rating2Description?: string | null
+  rating3Description?: string | null
+  rating4Description?: string | null
   orderIndex: number
+}
+
+type LeadQuestionInput = {
+  questionText: string
+  ratingDescriptions: RatingDescriptions
 }
 
 interface PeriodOption {
@@ -73,6 +88,10 @@ interface LeadQuestionSet {
     id: string
     orderIndex: number
     questionText: string
+    rating1Description?: string | null
+    rating2Description?: string | null
+    rating3Description?: string | null
+    rating4Description?: string | null
   }>
 }
 
@@ -85,9 +104,15 @@ interface LeadQuestionResponse {
 }
 
 function buildLeadQuestionInputs(count: number, questions: LeadQuestionSet['questions'] = []) {
-  const next = Array.from({ length: count }, () => '')
+  const next = Array.from({ length: count }, () => ({
+    questionText: '',
+    ratingDescriptions: createEmptyRatingDescriptions(),
+  }))
   questions.forEach((question) => {
-    next[question.orderIndex - 1] = question.questionText
+    next[question.orderIndex - 1] = {
+      questionText: question.questionText,
+      ratingDescriptions: normalizeRatingDescriptions(question),
+    }
   })
   return next
 }
@@ -128,12 +153,13 @@ export default function QuestionsPage() {
   const [questionToDelete, setQuestionToDelete] = useState<GlobalQuestion | null>(null)
   const [isLeadQuestionModalOpen, setIsLeadQuestionModalOpen] = useState(false)
   const [selectedLeadQuestionSet, setSelectedLeadQuestionSet] = useState<LeadQuestionSet | null>(null)
-  const [leadQuestionInputs, setLeadQuestionInputs] = useState<string[]>([])
+  const [leadQuestionInputs, setLeadQuestionInputs] = useState<LeadQuestionInput[]>([])
   const [formData, setFormData] = useState({
     questionText: '',
     questionType: 'RATING',
     relationshipType: 'PEER',
     maxRating: 4,
+    ratingDescriptions: createEmptyRatingDescriptions(),
   })
   const [saving, setSaving] = useState(false)
   const [savingLeadQuestions, setSavingLeadQuestions] = useState(false)
@@ -273,6 +299,7 @@ export default function QuestionsPage() {
         questionType: question.questionType,
         relationshipType: question.relationshipType,
         maxRating: question.maxRating,
+        ratingDescriptions: normalizeRatingDescriptions(question),
       })
     } else {
       setSelectedQuestion(null)
@@ -281,6 +308,7 @@ export default function QuestionsPage() {
         questionType: 'RATING',
         relationshipType: 'PEER',
         maxRating: 4,
+        ratingDescriptions: createEmptyRatingDescriptions(),
       })
     }
     setIsModalOpen(true)
@@ -348,8 +376,11 @@ export default function QuestionsPage() {
   const handleLeadQuestionSave = async (submit = false) => {
     if (!selectedLeadQuestionSet) return
 
-    const trimmedQuestions = leadQuestionInputs.map((question) => question.trim())
-    if (submit && trimmedQuestions.some((question) => !question)) {
+    const normalizedQuestions = leadQuestionInputs.map((question) => ({
+      questionText: question.questionText.trim(),
+      ratingDescriptions: question.ratingDescriptions,
+    }))
+    if (submit && normalizedQuestions.some((question) => !question.questionText)) {
       toast.error(`Submit exactly ${requiredLeadQuestionCount} non-empty questions`)
       return
     }
@@ -359,7 +390,7 @@ export default function QuestionsPage() {
       const response = await fetch(`/api/admin/pre-evaluations/${selectedLeadQuestionSet.id}/questions`, {
         method: submit ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ questions: trimmedQuestions }),
+        body: JSON.stringify({ questions: normalizedQuestions }),
       })
       const data = await response.json()
       if (!response.ok) {
@@ -474,6 +505,29 @@ export default function QuestionsPage() {
                             </Badge>
                           )}
                         </div>
+                        {question.questionType === 'RATING' &&
+                          hasAnyRatingDescriptions(question) && (
+                            <div className="mt-4 grid gap-2 md:grid-cols-2">
+                              {[1, 2, 3, 4].map((rating) => {
+                                const description =
+                                  normalizeRatingDescriptions(question)[rating as 1 | 2 | 3 | 4]
+
+                                if (!description) return null
+
+                                return (
+                                  <div
+                                    key={`${question.id}-rating-${rating}`}
+                                    className="rounded-lg border bg-muted/20 px-3 py-2"
+                                  >
+                                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                      Rating {rating} · {RATING_LABELS[rating].label}
+                                    </p>
+                                    <p className="mt-1 text-sm text-foreground">{description}</p>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
                       </div>
                       <div className="flex gap-1 flex-shrink-0">
                         <Button
@@ -725,6 +779,28 @@ export default function QuestionsPage() {
                                   )}
                                 </div>
                                 <p className="mt-1 text-sm text-foreground">{question.questionText}</p>
+                                {hasAnyRatingDescriptions(question) && (
+                                  <div className="mt-3 grid gap-2 md:grid-cols-2">
+                                    {[1, 2, 3, 4].map((rating) => {
+                                      const description =
+                                        normalizeRatingDescriptions(question)[rating as 1 | 2 | 3 | 4]
+
+                                      if (!description) return null
+
+                                      return (
+                                        <div
+                                          key={`${question.id}-rating-${rating}`}
+                                          className="rounded-md border bg-muted/20 px-3 py-2"
+                                        >
+                                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                                            Rating {rating} · {RATING_LABELS[rating].label}
+                                          </p>
+                                          <p className="mt-1 text-sm text-foreground">{description}</p>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -803,6 +879,32 @@ export default function QuestionsPage() {
               </Select>
             </div>
           </div>
+          {formData.questionType === 'RATING' && (
+            <div className="grid gap-3 md:grid-cols-2">
+              {[1, 2, 3, 4].map((rating) => (
+                <div key={`global-rating-description-${rating}`}>
+                  <Label htmlFor={`global-rating-description-${rating}`} className="mb-1">
+                    Rating {rating} meaning
+                  </Label>
+                  <Textarea
+                    id={`global-rating-description-${rating}`}
+                    rows={2}
+                    value={formData.ratingDescriptions[rating as 1 | 2 | 3 | 4]}
+                    onChange={(event) =>
+                      setFormData({
+                        ...formData,
+                        ratingDescriptions: {
+                          ...formData.ratingDescriptions,
+                          [rating]: event.target.value,
+                        },
+                      })
+                    }
+                    placeholder={`What does a ${rating} mean for this question?`}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
           <div className="flex justify-end gap-3 pt-4">
             <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>
               Cancel
@@ -837,15 +939,47 @@ export default function QuestionsPage() {
               <Textarea
                 id={`lead-question-${index}`}
                 rows={3}
-                value={question}
+                value={question.questionText}
                 onChange={(event) =>
                   setLeadQuestionInputs((current) =>
                     current.map((value, valueIndex) =>
-                      valueIndex === index ? event.target.value : value
+                      valueIndex === index
+                        ? { ...value, questionText: event.target.value }
+                        : value
                     )
                   )
                 }
               />
+              <div className="grid gap-3 md:grid-cols-2">
+                {[1, 2, 3, 4].map((rating) => (
+                  <div key={`lead-question-${index}-rating-${rating}`} className="space-y-2">
+                    <Label htmlFor={`lead-question-${index}-rating-${rating}`}>
+                      Rating {rating} meaning
+                    </Label>
+                    <Textarea
+                      id={`lead-question-${index}-rating-${rating}`}
+                      rows={2}
+                      value={question.ratingDescriptions[rating as 1 | 2 | 3 | 4]}
+                      onChange={(event) =>
+                        setLeadQuestionInputs((current) =>
+                          current.map((value, valueIndex) =>
+                            valueIndex === index
+                              ? {
+                                  ...value,
+                                  ratingDescriptions: {
+                                    ...value.ratingDescriptions,
+                                    [rating]: event.target.value,
+                                  },
+                                }
+                              : value
+                          )
+                        )
+                      }
+                      placeholder={`What does a ${rating} mean for this KPI?`}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
 

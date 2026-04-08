@@ -1,6 +1,11 @@
 import type { Prisma, PreEvaluationLeadPrep, PreEvaluationLeadQuestion, QuestionType } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import type { RelationshipType } from '@/types'
+import {
+  normalizeRatingDescriptions,
+  toRatingDescriptionFields,
+  type RatingDescriptions,
+} from '@/lib/rating-descriptions'
 
 export const PRE_EVALUATION_QUESTION_COUNT = 2
 
@@ -13,6 +18,7 @@ export interface ResolvedEvaluationQuestion {
   questionText: string
   questionType: QuestionType
   maxRating: number
+  ratingDescriptions: RatingDescriptions | null
   orderIndex: number
   sourceLeadId?: string
   sourceLeadName?: string
@@ -50,12 +56,20 @@ type RuntimeGlobalQuestionInput = {
   questionText: string
   questionType: QuestionType
   maxRating: number
+  rating1Description?: string | null
+  rating2Description?: string | null
+  rating3Description?: string | null
+  rating4Description?: string | null
   orderIndex: number
 }
 
 type RuntimeLeadQuestionInput = {
   id: string
   questionText: string
+  rating1Description?: string | null
+  rating2Description?: string | null
+  rating3Description?: string | null
+  rating4Description?: string | null
   orderIndex: number
 }
 
@@ -205,6 +219,10 @@ export function buildRuntimeEvaluationQuestionSet(params: {
       questionText: question.questionText,
       questionType: question.questionType,
       maxRating: question.maxRating,
+      ratingDescriptions:
+        question.questionType === 'RATING'
+          ? normalizeRatingDescriptions(question)
+          : null,
       orderIndex: index + 1,
       sourceLeadId: params.globalSourceLeadId,
       sourceLeadName: params.globalSourceLeadName,
@@ -219,6 +237,7 @@ export function buildRuntimeEvaluationQuestionSet(params: {
       questionText: question.questionText,
       questionType: 'RATING',
       maxRating: 4,
+      ratingDescriptions: normalizeRatingDescriptions(question),
       orderIndex: resolvedGlobalQuestions.length + index + 1,
       sourceLeadId: params.leadSourceLeadId,
       sourceLeadName: params.leadSourceLeadName,
@@ -785,7 +804,11 @@ export function getEvaluationQuestionMeta(
 
 export async function saveDraftQuestions(
   prepId: string,
-  questions: Array<{ orderIndex: number; questionText: string }>,
+  questions: Array<{
+    orderIndex: number
+    questionText: string
+    ratingDescriptions?: RatingDescriptions | null
+  }>,
   db: DbClient = prisma
 ) {
   await db.preEvaluationLeadQuestion.deleteMany({
@@ -796,6 +819,7 @@ export async function saveDraftQuestions(
     .map((question) => ({
       orderIndex: question.orderIndex,
       questionText: question.questionText.trim(),
+      ratingDescriptions: question.ratingDescriptions,
     }))
     .filter((question) => question.questionText)
 
@@ -805,6 +829,7 @@ export async function saveDraftQuestions(
         prepId,
         orderIndex: question.orderIndex,
         questionText: question.questionText,
+        ...toRatingDescriptionFields(question.ratingDescriptions),
       })),
     })
   }

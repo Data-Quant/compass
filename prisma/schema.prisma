@@ -330,6 +330,10 @@ model EvaluationQuestion {
   questionText     String
   questionType     QuestionType     @default(RATING)
   maxRating        Int              @default(4)
+  rating1Description String?
+  rating2Description String?
+  rating3Description String?
+  rating4Description String?
   orderIndex       Int
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
@@ -431,6 +435,10 @@ model PreEvaluationLeadQuestion {
   prepId        String
   orderIndex    Int
   questionText  String
+  rating1Description String?
+  rating2Description String?
+  rating3Description String?
+  rating4Description String?
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
 

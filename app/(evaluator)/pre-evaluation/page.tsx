@@ -13,6 +13,17 @@ import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/composed/EmptyState'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { ClipboardList, Save, Send, AlertTriangle, ArrowRight } from 'lucide-react'
+import {
+  createEmptyRatingDescriptions,
+  normalizeRatingDescriptions,
+  type RatingDescriptions,
+} from '@/lib/rating-descriptions'
+import { RATING_LABELS } from '@/types'
+
+type LeadQuestionInput = {
+  questionText: string
+  ratingDescriptions: RatingDescriptions
+}
 
 interface PrepResponse {
   prep: {
@@ -24,7 +35,15 @@ interface PrepResponse {
     requiredQuestionCount: number
     progressCount: number
     totalSections: number
-    questions: Array<{ id: string; orderIndex: number; questionText: string }>
+    questions: Array<{
+      id: string
+      orderIndex: number
+      questionText: string
+      rating1Description?: string | null
+      rating2Description?: string | null
+      rating3Description?: string | null
+      rating4Description?: string | null
+    }>
     questionPrefillFrom: {
       periodId: string
       periodName: string
@@ -42,13 +61,16 @@ interface PrepResponse {
 }
 
 function buildEmptyQuestionSet(count: number) {
-  return Array.from({ length: count }, () => '')
+  return Array.from({ length: count }, () => ({
+    questionText: '',
+    ratingDescriptions: createEmptyRatingDescriptions(),
+  }))
 }
 
 export default function PreEvaluationPage() {
   const [prep, setPrep] = useState<PrepResponse['prep']>(null)
   const [loading, setLoading] = useState(true)
-  const [questionInputs, setQuestionInputs] = useState<string[]>([])
+  const [questionInputs, setQuestionInputs] = useState<LeadQuestionInput[]>([])
   const [savingQuestions, setSavingQuestions] = useState(false)
   const [submittingQuestions, setSubmittingQuestions] = useState(false)
 
@@ -61,7 +83,10 @@ export default function PreEvaluationPage() {
       if (data.prep) {
         const nextQuestions = buildEmptyQuestionSet(data.prep.requiredQuestionCount)
         data.prep.questions.forEach((question) => {
-          nextQuestions[question.orderIndex - 1] = question.questionText
+          nextQuestions[question.orderIndex - 1] = {
+            questionText: question.questionText,
+            ratingDescriptions: normalizeRatingDescriptions(question),
+          }
         })
         setQuestionInputs(nextQuestions)
       } else {
@@ -79,12 +104,17 @@ export default function PreEvaluationPage() {
   }, [])
 
   const progressValue = prep ? Math.round((prep.progressCount / prep.totalSections) * 100) : 0
-  const hasValidQuestions = questionInputs.length > 0 && questionInputs.every((question) => question.trim())
+  const hasValidQuestions =
+    questionInputs.length > 0 &&
+    questionInputs.every((question) => question.questionText.trim())
 
   const saveQuestions = async (submit = false) => {
     if (!prep) return
 
-    const trimmedQuestions = questionInputs.map((question) => question.trim())
+    const normalizedQuestions = questionInputs.map((question) => ({
+      questionText: question.questionText.trim(),
+      ratingDescriptions: question.ratingDescriptions,
+    }))
     if (submit && !hasValidQuestions) {
       toast.error(`Submit exactly ${prep.requiredQuestionCount} non-empty questions`)
       return
@@ -97,7 +127,7 @@ export default function PreEvaluationPage() {
         {
           method: submit ? 'POST' : 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ questions: trimmedQuestions }),
+          body: JSON.stringify({ questions: normalizedQuestions }),
         }
       )
       const data = await response.json()
@@ -199,16 +229,51 @@ export default function PreEvaluationPage() {
                 <Label>Question {index + 1}</Label>
                 <Textarea
                   rows={3}
-                  value={question}
+                  value={question.questionText}
                   disabled={readOnly || Boolean(prep.questionsSubmittedAt)}
                   onChange={(event) =>
                     setQuestionInputs((current) =>
                       current.map((value, valueIndex) =>
-                        valueIndex === index ? event.target.value : value
+                        valueIndex === index
+                          ? { ...value, questionText: event.target.value }
+                          : value
                       )
                     )
                   }
                 />
+                <div className="grid gap-3 md:grid-cols-2">
+                  {[1, 2, 3, 4].map((rating) => (
+                    <div key={`question-${index}-rating-${rating}`} className="space-y-2">
+                      <Label>
+                        Rating {rating} meaning
+                        <span className="ml-1 text-xs text-muted-foreground">
+                          ({RATING_LABELS[rating].label})
+                        </span>
+                      </Label>
+                      <Textarea
+                        rows={2}
+                        value={question.ratingDescriptions[rating as 1 | 2 | 3 | 4]}
+                        disabled={readOnly || Boolean(prep.questionsSubmittedAt)}
+                        onChange={(event) =>
+                          setQuestionInputs((current) =>
+                            current.map((value, valueIndex) =>
+                              valueIndex === index
+                                ? {
+                                    ...value,
+                                    ratingDescriptions: {
+                                      ...value.ratingDescriptions,
+                                      [rating]: event.target.value,
+                                    },
+                                  }
+                                : value
+                            )
+                          )
+                        }
+                        placeholder={`What does a ${rating} mean for this KPI?`}
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>

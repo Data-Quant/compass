@@ -106,6 +106,10 @@ test('runtime evaluation questions keep the base bank and append lead KPI questi
         questionText: 'Direct report default question 1',
         questionType: 'RATING',
         maxRating: 4,
+        rating4Description: 'Transforms outcomes',
+        rating3Description: 'Exceeds role goals',
+        rating2Description: 'Meets role expectations',
+        rating1Description: 'Below the required bar',
         orderIndex: 1,
       },
       {
@@ -120,6 +124,10 @@ test('runtime evaluation questions keep the base bank and append lead KPI questi
       {
         id: 'lead-1',
         questionText: 'Lead add-on 1',
+        rating4Description: 'Sets a new benchmark',
+        rating3Description: 'Strong KPI delivery',
+        rating2Description: 'Solid KPI delivery',
+        rating1Description: 'Needs improvement on KPI',
         orderIndex: 1,
       },
       {
@@ -139,6 +147,7 @@ test('runtime evaluation questions keep the base bank and append lead KPI questi
       questionType: question.questionType,
       orderIndex: question.orderIndex,
       sourceLeadName: question.sourceLeadName || null,
+      rating4Description: question.ratingDescriptions?.[4] || '',
     })),
     [
       {
@@ -147,6 +156,7 @@ test('runtime evaluation questions keep the base bank and append lead KPI questi
         questionType: 'RATING',
         orderIndex: 1,
         sourceLeadName: null,
+        rating4Description: 'Transforms outcomes',
       },
       {
         id: 'global-2',
@@ -154,6 +164,7 @@ test('runtime evaluation questions keep the base bank and append lead KPI questi
         questionType: 'TEXT',
         orderIndex: 2,
         sourceLeadName: null,
+        rating4Description: '',
       },
       {
         id: 'lead-1',
@@ -161,6 +172,7 @@ test('runtime evaluation questions keep the base bank and append lead KPI questi
         questionType: 'RATING',
         orderIndex: 3,
         sourceLeadName: 'Lead A',
+        rating4Description: 'Sets a new benchmark',
       },
       {
         id: 'lead-2',
@@ -168,6 +180,7 @@ test('runtime evaluation questions keep the base bank and append lead KPI questi
         questionType: 'RATING',
         orderIndex: 4,
         sourceLeadName: 'Lead A',
+        rating4Description: '',
       },
     ]
   )

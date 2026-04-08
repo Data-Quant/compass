@@ -9,6 +9,7 @@ import {
   hasSubmittedLeadQuestionSet,
   PRE_EVALUATION_QUESTION_COUNT,
 } from '@/lib/pre-evaluation'
+import { toRatingDescriptionFields } from '@/lib/rating-descriptions'
 
 // GET - List all evaluation questions
 export async function GET(request: NextRequest) {
@@ -163,7 +164,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { relationshipType, questionText, questionType, maxRating } = await request.json()
+    const {
+      relationshipType,
+      questionText,
+      questionType,
+      maxRating,
+      ratingDescriptions,
+    } = await request.json()
 
     if (!relationshipType || !questionText) {
       return NextResponse.json(
@@ -193,6 +200,9 @@ export async function POST(request: NextRequest) {
         questionText,
         questionType: questionType || 'RATING',
         maxRating: maxRating || 4,
+        ...(questionType === 'RATING' || !questionType
+          ? toRatingDescriptionFields(ratingDescriptions)
+          : toRatingDescriptionFields(null)),
         orderIndex,
       },
     })
@@ -215,7 +225,14 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { id, questionText, questionType, maxRating, orderIndex } = await request.json()
+    const {
+      id,
+      questionText,
+      questionType,
+      maxRating,
+      orderIndex,
+      ratingDescriptions,
+    } = await request.json()
 
     if (!id || !questionText) {
       return NextResponse.json(
@@ -230,6 +247,9 @@ export async function PUT(request: NextRequest) {
         questionText,
         questionType: questionType || 'RATING',
         maxRating: maxRating || 4,
+        ...(questionType === 'RATING' || !questionType
+          ? toRatingDescriptionFields(ratingDescriptions)
+          : toRatingDescriptionFields(null)),
         orderIndex: orderIndex || undefined,
       },
     })

@@ -26,6 +26,7 @@ interface Question {
   questionText: string
   questionType: string
   maxRating: number
+  ratingDescriptions: Partial<Record<1 | 2 | 3 | 4, string>> | null
   orderIndex: number
   ratingValue: number | null
   textResponse: string | null
@@ -276,7 +277,7 @@ export default function EvaluatePage() {
                               {RATING_LABELS[rating].label}
                             </div>
                             <div className="text-xs text-muted-foreground mt-1 hidden md:block">
-                              {RATING_LABELS[rating].description}
+                              {question.ratingDescriptions?.[rating as 1 | 2 | 3 | 4] || RATING_LABELS[rating].description}
                             </div>
                           </button>
                         ))}

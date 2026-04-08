@@ -8,10 +8,46 @@ import {
   syncPrepStatus,
   getCurrentLeadPrep,
 } from '@/lib/pre-evaluation'
+import { normalizeRatingDescriptions } from '@/lib/rating-descriptions'
+
+const leadQuestionSchema = z.object({
+  questionText: z.string().trim().min(1).max(1000),
+  ratingDescriptions: z
+    .object({
+      1: z.string().max(1000).optional(),
+      2: z.string().max(1000).optional(),
+      3: z.string().max(1000).optional(),
+      4: z.string().max(1000).optional(),
+    })
+    .partial()
+    .optional(),
+})
 
 const submitSchema = z.object({
-  questions: z.array(z.string().trim().min(1).max(1000)).length(PRE_EVALUATION_QUESTION_COUNT),
+  questions: z
+    .array(z.union([z.string().trim().min(1).max(1000), leadQuestionSchema]))
+    .length(PRE_EVALUATION_QUESTION_COUNT),
 })
+
+function normalizeQuestions(
+  questions: Array<string | z.infer<typeof leadQuestionSchema>>
+) {
+  return questions.map((question, index) => {
+    if (typeof question === 'string') {
+      return {
+        orderIndex: index + 1,
+        questionText: question,
+        ratingDescriptions: normalizeRatingDescriptions(),
+      }
+    }
+
+    return {
+      orderIndex: index + 1,
+      questionText: question.questionText,
+      ratingDescriptions: normalizeRatingDescriptions(question.ratingDescriptions),
+    }
+  })
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -52,10 +88,7 @@ export async function POST(request: NextRequest) {
     await prisma.$transaction(async (tx) => {
       await saveDraftQuestions(
         prep.id,
-        parsed.data.questions.map((questionText, index) => ({
-          orderIndex: index + 1,
-          questionText,
-        })),
+        normalizeQuestions(parsed.data.questions),
         tx
       )
 
