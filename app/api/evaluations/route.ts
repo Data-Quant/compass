@@ -17,6 +17,12 @@ import {
   buildEvaluationPairKey,
   getHrPoolClosedPairKeys,
 } from '@/lib/evaluation-completion'
+import {
+  buildEvaluationResponseKey,
+  countFourRatingsForResponses,
+  getEvaluatorFourRatingQuota,
+  validateFourRatingQuota,
+} from '@/lib/evaluation-rating-quota'
 
 const evaluationSchema = z.object({
   evaluateeId: z.string().trim().min(1),
@@ -194,6 +200,37 @@ export async function POST(request: NextRequest) {
             error: ratingRequiresExplanation(response.ratingValue)
               ? `Explanation is required for ratings of 1 or 4 on "${allowedQuestion.questionText}".`
               : `A rating is required for "${allowedQuestion.questionText}".`,
+          },
+          { status: 400 }
+        )
+      }
+    }
+
+    if (assignment.relationshipType !== 'HR') {
+      const currentSubmissionResponseKeys = new Set(
+        data.responses.map((response) =>
+          buildEvaluationResponseKey(
+            data.evaluateeId,
+            response.questionSource,
+            response.questionId
+          )
+        )
+      )
+      const fourRatingQuota = await getEvaluatorFourRatingQuota({
+        periodId: data.periodId,
+        evaluatorId: user.id,
+        excludeResponseKeys: currentSubmissionResponseKeys,
+      })
+      const quotaValidation = validateFourRatingQuota({
+        totalQuestions: fourRatingQuota.totalQuestions,
+        usedFourRatings: fourRatingQuota.usedFourRatings,
+        pendingFourRatings: countFourRatingsForResponses(data.responses),
+      })
+
+      if (quotaValidation.wouldExceed) {
+        return NextResponse.json(
+          {
+            error: `Ratings of 4 are capped at ${quotaValidation.maxAllowedFourRatings} across your ${fourRatingQuota.totalQuestions} assigned evaluation questions this period. You have already used ${fourRatingQuota.usedFourRatings}.`,
           },
           { status: 400 }
         )

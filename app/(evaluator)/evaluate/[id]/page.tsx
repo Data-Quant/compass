@@ -33,6 +33,13 @@ interface Question {
   submittedAt: Date | null
 }
 
+interface FourRatingQuota {
+  totalQuestions: number
+  usedFourRatings: number
+  maxAllowedFourRatings: number
+  remainingFourRatings: number
+}
+
 export default function EvaluatePage() {
   const router = useRouter()
   const params = useParams()
@@ -43,6 +50,7 @@ export default function EvaluatePage() {
   const [relationshipType, setRelationshipType] = useState<string>('')
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [isClosedByPool, setIsClosedByPool] = useState(false)
+  const [fourRatingQuota, setFourRatingQuota] = useState<FourRatingQuota | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [responses, setResponses] = useState<Record<string, { rating?: number; text?: string }>>({})
@@ -75,6 +83,7 @@ export default function EvaluatePage() {
       setRelationshipType(data.relationshipType)
       setIsSubmitted(data.isSubmitted)
       setIsClosedByPool(Boolean(data.isClosedByPool))
+      setFourRatingQuota(data.fourRatingQuota || null)
 
       const initialResponses: Record<string, { rating?: number; text?: string }> = {}
       data.questions.forEach((q: Question) => {
@@ -183,6 +192,23 @@ export default function EvaluatePage() {
   ).length
   const totalQuestions = questions.length
   const progress = totalQuestions > 0 ? Math.round((completedQuestions / totalQuestions) * 100) : 0
+  const selectedFourCount = questions.filter(
+    (question) =>
+      question.questionType === 'RATING' && responses[question.id]?.rating === 4
+  ).length
+  const currentFourUsage =
+    (fourRatingQuota?.usedFourRatings || 0) + selectedFourCount
+  const canSelectFour = (questionId: string) => {
+    if (!fourRatingQuota) {
+      return true
+    }
+
+    if (responses[questionId]?.rating === 4) {
+      return true
+    }
+
+    return selectedFourCount < fourRatingQuota.remainingFourRatings
+  }
 
   if (loading) {
     return <div className="p-6 sm:p-8 max-w-7xl mx-auto"><LoadingScreen message="Loading evaluation..." variant="section" /></div>
@@ -231,6 +257,18 @@ export default function EvaluatePage() {
               </div>
             )}
 
+            {!isSubmitted && fourRatingQuota && (
+              <div className="mt-4 rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-3 text-sm">
+                <p className="font-medium text-foreground">
+                  4-rating allowance: {currentFourUsage}/{fourRatingQuota.maxAllowedFourRatings}
+                </p>
+                <p className="mt-1 text-muted-foreground">
+                  Ratings of 4 are capped at 10% of your {fourRatingQuota.totalQuestions} assigned
+                  evaluation questions this period.
+                </p>
+              </div>
+            )}
+
             {isClosedByPool && (
               <div className="mt-4 rounded-lg border border-slate-500/20 bg-slate-500/5 px-4 py-3 text-sm text-muted-foreground">
                 Another HR team member has already submitted the HR evaluation for this employee, so this HR slot is closed.
@@ -265,12 +303,12 @@ export default function EvaluatePage() {
                             key={rating}
                             type="button"
                             onClick={() => handleRatingChange(question.id, rating)}
-                            disabled={isSubmitted}
+                            disabled={isSubmitted || (rating === 4 && !canSelectFour(question.id))}
                             className={`p-4 rounded-xl border-2 transition-all ${
                               responses[question.id]?.rating === rating
                                 ? 'border-primary bg-primary/10 shadow-lg shadow-primary/20'
                                 : 'border-border hover:border-primary/50 bg-card'
-                            } ${isSubmitted ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                            } ${isSubmitted ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} disabled:cursor-not-allowed disabled:opacity-50`}
                           >
                             <div className="text-3xl font-bold text-foreground mb-1">{rating}</div>
                             <div className="text-xs font-semibold text-primary">

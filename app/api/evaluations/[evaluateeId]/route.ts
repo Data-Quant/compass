@@ -11,6 +11,7 @@ import {
   buildEvaluationPairKey,
   getHrPoolClosedPairKeys,
 } from '@/lib/evaluation-completion'
+import { getEvaluatorFourRatingQuota } from '@/lib/evaluation-rating-quota'
 
 export async function GET(
   request: NextRequest,
@@ -43,12 +44,21 @@ export async function GET(
       )
     }
 
-    const resolved = await getResolvedEvaluationQuestions({
-      relationshipType: assignment.relationshipType as RelationshipType,
-      periodId,
-      evaluatorId: user.id,
-      evaluateeId,
-    })
+    const [resolved, fourRatingQuota] = await Promise.all([
+      getResolvedEvaluationQuestions({
+        relationshipType: assignment.relationshipType as RelationshipType,
+        periodId,
+        evaluatorId: user.id,
+        evaluateeId,
+      }),
+      assignment.relationshipType === 'HR'
+        ? Promise.resolve(null)
+        : getEvaluatorFourRatingQuota({
+            periodId,
+            evaluatorId: user.id,
+          }),
+    ])
+    
 
     if (resolved.error) {
       return NextResponse.json({ error: resolved.error }, { status: 400 })
@@ -130,6 +140,7 @@ export async function GET(
       questions: questionsWithResponses,
       isSubmitted: hasOwnSubmission || isClosedByPool,
       isClosedByPool,
+      fourRatingQuota,
     })
   } catch (error) {
     console.error('Failed to fetch evaluation data:', error)
