@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
@@ -31,8 +31,23 @@ import {
   Palmtree,
   User,
   MessageSquare,
-  FileText
+  FileText,
+  Eye
 } from 'lucide-react'
+
+interface LeaveBalance {
+  casualDays: number
+  sickDays: number
+  annualDays: number
+  casualUsed: number
+  sickUsed: number
+  annualUsed: number
+  remaining: {
+    casual: number
+    sick: number
+    annual: number
+  }
+}
 
 interface LeaveRequest {
   id: string
@@ -140,6 +155,11 @@ export default function HRLeavePage() {
   const [creating, setCreating] = useState(false)
   const [removingId, setRemovingId] = useState<string | null>(null)
   const [sendingReminders, setSendingReminders] = useState(false)
+  const [isBalanceModalOpen, setIsBalanceModalOpen] = useState(false)
+  const [balanceEmployeeId, setBalanceEmployeeId] = useState('')
+  const [balanceYear, setBalanceYear] = useState(new Date().getFullYear())
+  const [selectedBalance, setSelectedBalance] = useState<LeaveBalance | null>(null)
+  const [loadingBalance, setLoadingBalance] = useState(false)
   const [createForm, setCreateForm] = useState({
     employeeId: '',
     leaveType: 'SICK' as 'CASUAL' | 'SICK' | 'ANNUAL',
@@ -160,6 +180,17 @@ export default function HRLeavePage() {
   useEffect(() => {
     if (!loading) loadRequests()
   }, [filter])
+
+  useEffect(() => {
+    if (!isBalanceModalOpen || !balanceEmployeeId) {
+      if (!balanceEmployeeId) {
+        setSelectedBalance(null)
+      }
+      return
+    }
+
+    void loadLeaveBalance(balanceEmployeeId, balanceYear)
+  }, [isBalanceModalOpen, balanceEmployeeId, balanceYear])
 
   const loadRequests = async () => {
     try {
@@ -187,6 +218,23 @@ export default function HRLeavePage() {
       setUsers(data.users || [])
     } catch {
       toast.error('Failed to load team members')
+    }
+  }
+
+  const loadLeaveBalance = async (employeeId: string, year: number) => {
+    setLoadingBalance(true)
+    try {
+      const res = await fetch(`/api/leave/balance?employeeId=${employeeId}&year=${year}`)
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Failed to load leave balance')
+      }
+      setSelectedBalance(data.balance || null)
+    } catch (error) {
+      setSelectedBalance(null)
+      toast.error(error instanceof Error ? error.message : 'Failed to load leave balance')
+    } finally {
+      setLoadingBalance(false)
     }
   }
 
@@ -349,6 +397,24 @@ export default function HRLeavePage() {
     return calculateLeaveDuration(startDate, endDate, isHalfDay)
   }
 
+  const openBalanceModal = (employeeId = balanceEmployeeId, year = balanceYear) => {
+    setBalanceEmployeeId(employeeId)
+    setBalanceYear(year)
+    setIsBalanceModalOpen(true)
+  }
+
+  const selectedBalanceEmployee = useMemo(
+    () => users.find((user) => user.id === balanceEmployeeId) || null,
+    [users, balanceEmployeeId]
+  )
+
+  const totalRemainingLeave = selectedBalance
+    ? selectedBalance.remaining.casual + selectedBalance.remaining.sick + selectedBalance.remaining.annual
+    : 0
+
+  const formatLeaveValue = (value: number) =>
+    Number.isInteger(value) ? value.toString() : value.toFixed(1)
+
   // Filter counts
   const pendingCount = requests.filter(r => r.status === 'PENDING' || r.status === 'LEAD_APPROVED').length
 
@@ -368,6 +434,13 @@ export default function HRLeavePage() {
             <p className="text-muted-foreground">Approve, add, or remove leave entries.</p>
           </div>
           <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => openBalanceModal()}
+            >
+              <Eye className="w-4 h-4" />
+              View Leave Balance
+            </Button>
             <Button
               variant="outline"
               onClick={handleSendTransitionPlanReminders}
@@ -533,6 +606,20 @@ export default function HRLeavePage() {
                         <Button
                           size="sm"
                           variant="outline"
+                          onClick={() =>
+                            openBalanceModal(
+                              request.employee.id,
+                              parseInputDateAsLocal(toDateKey(request.startDate))?.getFullYear() ??
+                                new Date().getFullYear()
+                            )
+                          }
+                        >
+                          <Eye className="w-4 h-4" />
+                          Balance
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
                           onClick={() => handleRemoveLeave(request)}
                           disabled={removingId === request.id}
                           className="text-red-600 border-red-200 hover:bg-red-50 dark:border-red-900/40 dark:hover:bg-red-500/10"
@@ -595,6 +682,153 @@ export default function HRLeavePage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={isBalanceModalOpen}
+        onClose={() => setIsBalanceModalOpen(false)}
+        title="Employee Leave Balance"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_140px] gap-4">
+            <div>
+              <Label className="mb-2">Team Member</Label>
+              <Select
+                value={balanceEmployeeId || '__none__'}
+                onValueChange={(value) => setBalanceEmployeeId(value === '__none__' ? '' : value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select team member..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Select team member...</SelectItem>
+                  {users.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.name}{u.department ? ` (${u.department})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="leave-balance-year" className="mb-2">Year</Label>
+              <Input
+                id="leave-balance-year"
+                type="number"
+                min={2020}
+                max={2100}
+                value={balanceYear}
+                onChange={(e) => setBalanceYear(Number(e.target.value) || new Date().getFullYear())}
+              />
+            </div>
+          </div>
+
+          {!balanceEmployeeId ? (
+            <Card>
+              <CardContent className="p-6 text-center text-muted-foreground">
+                Select a team member to view their leave balance.
+              </CardContent>
+            </Card>
+          ) : loadingBalance ? (
+            <Card>
+              <CardContent className="p-6">
+                <LoadingScreen message="Loading leave balance..." variant="section" />
+              </CardContent>
+            </Card>
+          ) : selectedBalance ? (
+            <>
+              <Card className="border-border/80 bg-muted/20">
+                <CardContent className="p-5 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-lg font-semibold text-foreground">
+                      {selectedBalanceEmployee?.name || 'Selected employee'}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {selectedBalanceEmployee?.department || 'No department'} • {balanceYear} balance snapshot
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-muted-foreground">Total Remaining</p>
+                    <p className="text-3xl font-bold text-foreground">{formatLeaveValue(totalRemainingLeave)}</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {[
+                  {
+                    key: 'casual',
+                    label: 'Casual',
+                    total: selectedBalance.casualDays,
+                    used: selectedBalance.casualUsed,
+                    remaining: selectedBalance.remaining.casual,
+                    config: LEAVE_TYPE_CONFIG.CASUAL,
+                  },
+                  {
+                    key: 'sick',
+                    label: 'Sick',
+                    total: selectedBalance.sickDays,
+                    used: selectedBalance.sickUsed,
+                    remaining: selectedBalance.remaining.sick,
+                    config: LEAVE_TYPE_CONFIG.SICK,
+                  },
+                  {
+                    key: 'annual',
+                    label: 'Annual',
+                    total: selectedBalance.annualDays,
+                    used: selectedBalance.annualUsed,
+                    remaining: selectedBalance.remaining.annual,
+                    config: LEAVE_TYPE_CONFIG.ANNUAL,
+                  },
+                ].map((item) => {
+                  const Icon = item.config.icon
+                  return (
+                    <Card key={item.key}>
+                      <CardContent className="p-5 space-y-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-lg ${item.config.bg} flex items-center justify-center`}>
+                            <Icon className={`w-5 h-5 ${item.config.color}`} />
+                          </div>
+                          <div>
+                            <p className="font-medium text-foreground">{item.label}</p>
+                            <p className="text-xs text-muted-foreground">{balanceYear} allowance</p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-sm">
+                          <div className="rounded-lg bg-muted/50 p-3">
+                            <p className="text-muted-foreground">Total</p>
+                            <p className="mt-1 text-lg font-semibold text-foreground">{formatLeaveValue(item.total)}</p>
+                          </div>
+                          <div className="rounded-lg bg-muted/50 p-3">
+                            <p className="text-muted-foreground">Used</p>
+                            <p className="mt-1 text-lg font-semibold text-foreground">{formatLeaveValue(item.used)}</p>
+                          </div>
+                          <div className="rounded-lg bg-muted/50 p-3">
+                            <p className="text-muted-foreground">Remaining</p>
+                            <p className="mt-1 text-lg font-semibold text-foreground">{formatLeaveValue(item.remaining)}</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+            </>
+          ) : (
+            <Card>
+              <CardContent className="p-6 text-center text-muted-foreground">
+                No leave balance data found.
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="flex justify-end">
+            <Button variant="outline" onClick={() => setIsBalanceModalOpen(false)}>
+              Close
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       <Modal
