@@ -56,6 +56,7 @@ export async function GET(
         : getEvaluatorFourRatingQuota({
             periodId,
             evaluatorId: user.id,
+            relationshipType: assignment.relationshipType,
           }),
     ])
     

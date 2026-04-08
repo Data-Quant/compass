@@ -1,6 +1,9 @@
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
-import type { RelationshipType } from '@/types'
+import {
+  normalizeRelationshipTypeForWeighting,
+  type RelationshipType,
+} from '@/types'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import { buildEvaluationPairKey } from '@/lib/evaluation-completion'
 import { getResolvedQuestionCount } from '@/lib/pre-evaluation'
@@ -35,10 +38,14 @@ export function countFourRatingsForResponses(
   return responses.filter((response) => response.ratingValue === 4).length
 }
 
+export function getFourRatingQuotaScopeType(relationshipType: RelationshipType) {
+  return normalizeRelationshipTypeForWeighting(relationshipType)
+}
+
 export function shouldCountAssignmentTowardsFourRatingQuota(params: {
   assignment: AssignmentLike
 }) {
-  return params.assignment.relationshipType !== 'HR'
+  return getFourRatingQuotaScopeType(params.assignment.relationshipType) !== 'HR'
 }
 
 export function validateFourRatingQuota(params: {
@@ -59,10 +66,12 @@ export function validateFourRatingQuota(params: {
 export async function getEvaluatorFourRatingQuota(params: {
   periodId: string
   evaluatorId: string
+  relationshipType: RelationshipType
   excludeResponseKeys?: ReadonlySet<string>
   db?: DbClient
 }) {
   const db = params.db || prisma
+  const quotaRelationshipType = getFourRatingQuotaScopeType(params.relationshipType)
 
   const [assignments, submittedFourRatings] = await Promise.all([
     getResolvedEvaluationAssignments(params.periodId, { db }),
@@ -84,6 +93,7 @@ export async function getEvaluatorFourRatingQuota(params: {
   const activeAssignments = assignments.filter(
     (assignment) =>
       assignment.evaluatorId === params.evaluatorId &&
+      getFourRatingQuotaScopeType(assignment.relationshipType) === quotaRelationshipType &&
       shouldCountAssignmentTowardsFourRatingQuota({
         assignment,
       })
@@ -107,7 +117,7 @@ export async function getEvaluatorFourRatingQuota(params: {
       .filter((assignment) => assignment.evaluatorId === params.evaluatorId)
       .map((assignment) => [
         buildEvaluationPairKey(assignment.evaluatorId, assignment.evaluateeId),
-        assignment.relationshipType,
+        getFourRatingQuotaScopeType(assignment.relationshipType),
       ] as const)
   )
   const usedFourRatings = submittedFourRatings.filter((evaluation) => {
@@ -117,7 +127,7 @@ export async function getEvaluatorFourRatingQuota(params: {
       buildEvaluationPairKey(params.evaluatorId, evaluation.evaluateeId)
     )
 
-    if (!questionId || pairRelationshipType === 'HR') {
+    if (!questionId || pairRelationshipType !== quotaRelationshipType) {
       return false
     }
 
@@ -128,6 +138,7 @@ export async function getEvaluatorFourRatingQuota(params: {
   const maxAllowedFourRatings = getMaxAllowedFourRatings(totalQuestions)
 
   return {
+    quotaRelationshipType,
     totalQuestions,
     usedFourRatings,
     maxAllowedFourRatings,

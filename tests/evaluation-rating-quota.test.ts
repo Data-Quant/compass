@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   buildEvaluationResponseKey,
   countFourRatingsForResponses,
+  getFourRatingQuotaScopeType,
   getMaxAllowedFourRatings,
   shouldCountAssignmentTowardsFourRatingQuota,
   validateFourRatingQuota,
@@ -28,6 +29,13 @@ test('countFourRatingsForResponses counts only rating value 4 responses', () => 
   )
 })
 
+test('getFourRatingQuotaScopeType groups cross-department evaluations under the peer quota bucket', () => {
+  assert.equal(getFourRatingQuotaScopeType('TEAM_LEAD'), 'TEAM_LEAD')
+  assert.equal(getFourRatingQuotaScopeType('DIRECT_REPORT'), 'DIRECT_REPORT')
+  assert.equal(getFourRatingQuotaScopeType('PEER'), 'PEER')
+  assert.equal(getFourRatingQuotaScopeType('CROSS_DEPARTMENT'), 'PEER')
+})
+
 test('shouldCountAssignmentTowardsFourRatingQuota excludes HR assignments from the quota entirely', () => {
   assert.equal(
     shouldCountAssignmentTowardsFourRatingQuota({
@@ -49,6 +57,17 @@ test('shouldCountAssignmentTowardsFourRatingQuota excludes HR assignments from t
       },
     }),
     false
+  )
+
+  assert.equal(
+    shouldCountAssignmentTowardsFourRatingQuota({
+      assignment: {
+        evaluatorId: 'peer-a',
+        evaluateeId: 'ammar',
+        relationshipType: 'CROSS_DEPARTMENT',
+      },
+    }),
+    true
   )
 
   assert.equal(

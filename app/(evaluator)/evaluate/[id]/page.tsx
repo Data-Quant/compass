@@ -5,7 +5,11 @@ import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
-import { RATING_LABELS } from '@/types'
+import {
+  RELATIONSHIP_TYPE_LABELS,
+  RATING_LABELS,
+  type RelationshipType,
+} from '@/types'
 import {
   isEvaluationResponseComplete,
   ratingRequiresExplanation,
@@ -34,6 +38,7 @@ interface Question {
 }
 
 interface FourRatingQuota {
+  quotaRelationshipType: RelationshipType
   totalQuestions: number
   usedFourRatings: number
   maxAllowedFourRatings: number
@@ -198,6 +203,9 @@ export default function EvaluatePage() {
   ).length
   const currentFourUsage =
     (fourRatingQuota?.usedFourRatings || 0) + selectedFourCount
+  const fourRatingQuotaLabel = fourRatingQuota
+    ? RELATIONSHIP_TYPE_LABELS[fourRatingQuota.quotaRelationshipType]
+    : null
   const canSelectFour = (questionId: string) => {
     if (!fourRatingQuota) {
       return true
@@ -260,11 +268,11 @@ export default function EvaluatePage() {
             {!isSubmitted && fourRatingQuota && (
               <div className="mt-4 rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-3 text-sm">
                 <p className="font-medium text-foreground">
-                  4-rating allowance: {currentFourUsage}/{fourRatingQuota.maxAllowedFourRatings}
+                  4-rating allowance for {fourRatingQuotaLabel}: {currentFourUsage}/{fourRatingQuota.maxAllowedFourRatings}
                 </p>
                 <p className="mt-1 text-muted-foreground">
-                  Ratings of 4 are capped at 10% of your {fourRatingQuota.totalQuestions} assigned
-                  evaluation questions this period.
+                  Ratings of 4 are capped at 10% of your {fourRatingQuota.totalQuestions}{' '}
+                  {fourRatingQuotaLabel?.toLowerCase()} evaluation questions this period.
                 </p>
               </div>
             )}

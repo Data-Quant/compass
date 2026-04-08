@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { z } from 'zod'
-import type { RelationshipType } from '@/types'
+import {
+  RELATIONSHIP_TYPE_LABELS,
+  type RelationshipType,
+} from '@/types'
 import { getResolvedEvaluationQuestions } from '@/lib/pre-evaluation'
 import {
   getResolvedEvaluationAssignmentForPair,
@@ -219,6 +222,7 @@ export async function POST(request: NextRequest) {
       const fourRatingQuota = await getEvaluatorFourRatingQuota({
         periodId: data.periodId,
         evaluatorId: user.id,
+        relationshipType: assignment.relationshipType,
         excludeResponseKeys: currentSubmissionResponseKeys,
       })
       const quotaValidation = validateFourRatingQuota({
@@ -230,7 +234,7 @@ export async function POST(request: NextRequest) {
       if (quotaValidation.wouldExceed) {
         return NextResponse.json(
           {
-            error: `Ratings of 4 are capped at ${quotaValidation.maxAllowedFourRatings} across your ${fourRatingQuota.totalQuestions} assigned evaluation questions this period. You have already used ${fourRatingQuota.usedFourRatings}.`,
+            error: `Ratings of 4 are capped at ${quotaValidation.maxAllowedFourRatings} across your ${fourRatingQuota.totalQuestions} ${RELATIONSHIP_TYPE_LABELS[fourRatingQuota.quotaRelationshipType].toLowerCase()} evaluation questions this period. You have already used ${fourRatingQuota.usedFourRatings} in this category.`,
           },
           { status: 400 }
         )
