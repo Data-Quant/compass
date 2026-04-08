@@ -22,15 +22,27 @@ export const DEFAULT_WEIGHTAGES: Record<RelationshipType, number> = {
   PEER: 0.10,
   HR: 0.05,
   DEPT: 0.15,
-  CROSS_DEPARTMENT: 0.00,
-  SELF: 0.00, // Self-evaluation typically not included in weighted score
+  CROSS_DEPARTMENT: 0.0,
+  SELF: 0.0, // Self-evaluation typically not included in weighted score
 }
 
 export const RATING_LABELS: Record<number, { label: string; description: string }> = {
-  4: { label: 'Exceptional', description: 'Transformed the business — significantly exceeded expectations and drove transformational impact' },
-  3: { label: 'Exceeds', description: 'Went above and beyond — consistently delivered beyond role requirements' },
-  2: { label: 'Meets', description: 'Did their job well — fully met all expectations and delivered quality work' },
-  1: { label: 'Below', description: 'Needs improvement — did not consistently meet expectations; development required' },
+  4: {
+    label: 'Transforming The Business',
+    description: 'Drove transformational impact and significantly exceeded expectations.',
+  },
+  3: {
+    label: 'Exceeds Expectations',
+    description: 'Consistently delivered above role expectations and went beyond the brief.',
+  },
+  2: {
+    label: 'Meets Expectations',
+    description: 'Fully met expectations and delivered solid work at the expected level.',
+  },
+  1: {
+    label: 'Does Not Meet Expectations',
+    description: 'Did not consistently meet expectations and needs meaningful improvement.',
+  },
 }
 
 export const RELATIONSHIP_TYPE_LABELS: Record<RelationshipType, string> = {
@@ -59,15 +71,15 @@ export function toCategorySetKey(types: string[]): string {
 }
 
 /**
- * CSV category name → RelationshipType mapping
+ * CSV category name -> RelationshipType mapping
  */
 export const CSV_CATEGORY_MAP: Record<string, RelationshipType> = {
-  'Lead': 'TEAM_LEAD',
+  Lead: 'TEAM_LEAD',
   'Team Lead': 'TEAM_LEAD',
   'Direct Reports (Team Member)': 'DIRECT_REPORT',
-  'Peer': 'PEER',
+  Peer: 'PEER',
   'Cross Department': 'CROSS_DEPARTMENT',
-  'HR': 'HR',
-  'Hamiz': 'C_LEVEL',
-  'Dept': 'DEPT',
+  HR: 'HR',
+  Hamiz: 'C_LEVEL',
+  Dept: 'DEPT',
 }

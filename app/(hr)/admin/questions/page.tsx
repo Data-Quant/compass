@@ -520,7 +520,7 @@ export default function QuestionsPage() {
                                     className="rounded-lg border bg-muted/20 px-3 py-2"
                                   >
                                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                                      Rating {rating} · {RATING_LABELS[rating].label}
+                                      {RATING_LABELS[rating].label} ({rating})
                                     </p>
                                     <p className="mt-1 text-sm text-foreground">{description}</p>
                                   </div>
@@ -793,7 +793,7 @@ export default function QuestionsPage() {
                                           className="rounded-md border bg-muted/20 px-3 py-2"
                                         >
                                           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                                            Rating {rating} · {RATING_LABELS[rating].label}
+                                            {RATING_LABELS[rating].label} ({rating})
                                           </p>
                                           <p className="mt-1 text-sm text-foreground">{description}</p>
                                         </div>
@@ -884,7 +884,7 @@ export default function QuestionsPage() {
               {[1, 2, 3, 4].map((rating) => (
                 <div key={`global-rating-description-${rating}`}>
                   <Label htmlFor={`global-rating-description-${rating}`} className="mb-1">
-                    Rating {rating} meaning
+                    {RATING_LABELS[rating].label} ({rating})
                   </Label>
                   <Textarea
                     id={`global-rating-description-${rating}`}
@@ -899,7 +899,7 @@ export default function QuestionsPage() {
                         },
                       })
                     }
-                    placeholder={`What does a ${rating} mean for this question?`}
+                    placeholder={`Describe what "${RATING_LABELS[rating].label}" means for this question.`}
                   />
                 </div>
               ))}
@@ -954,7 +954,7 @@ export default function QuestionsPage() {
                 {[1, 2, 3, 4].map((rating) => (
                   <div key={`lead-question-${index}-rating-${rating}`} className="space-y-2">
                     <Label htmlFor={`lead-question-${index}-rating-${rating}`}>
-                      Rating {rating} meaning
+                      {RATING_LABELS[rating].label} ({rating})
                     </Label>
                     <Textarea
                       id={`lead-question-${index}-rating-${rating}`}
@@ -975,7 +975,7 @@ export default function QuestionsPage() {
                           )
                         )
                       }
-                      placeholder={`What does a ${rating} mean for this KPI?`}
+                      placeholder={`Describe what "${RATING_LABELS[rating].label}" means for this KPI.`}
                     />
                   </div>
                 ))}

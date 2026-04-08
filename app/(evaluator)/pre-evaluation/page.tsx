@@ -245,10 +245,8 @@ export default function PreEvaluationPage() {
                   {[1, 2, 3, 4].map((rating) => (
                     <div key={`question-${index}-rating-${rating}`} className="space-y-2">
                       <Label>
-                        Rating {rating} meaning
-                        <span className="ml-1 text-xs text-muted-foreground">
-                          ({RATING_LABELS[rating].label})
-                        </span>
+                        {RATING_LABELS[rating].label}
+                        <span className="ml-1 text-xs text-muted-foreground">({rating})</span>
                       </Label>
                       <Textarea
                         rows={2}
@@ -269,7 +267,7 @@ export default function PreEvaluationPage() {
                             )
                           )
                         }
-                        placeholder={`What does a ${rating} mean for this KPI?`}
+                        placeholder={`Describe what "${RATING_LABELS[rating].label}" means for this KPI.`}
                       />
                     </div>
                   ))}
