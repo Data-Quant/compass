@@ -19,6 +19,7 @@ const EMPLOYEE_NAV_ITEMS = [
   { label: 'Leave', href: '/leave' },
   { label: 'Projects', href: '/projects' },
   { label: 'Device Support', href: '/device-support' },
+  { label: 'Office', href: '/office' },
   { label: 'Profile', href: '/profile' },
 ]
 
@@ -52,6 +53,7 @@ const ADMIN_NAV_GROUPS = [
       { label: 'Device Tickets', href: '/admin/device-tickets' },
       { label: 'Assets', href: '/admin/assets' },
       { label: 'Payroll', href: '/admin/payroll' },
+      { label: 'Subscription Management', href: '/admin/subscriptions' },
     ],
   },
   {
@@ -105,6 +107,7 @@ test('employee nav includes all required sections', () => {
   assert.ok(labels.includes('Evaluations'), 'Missing Evaluations')
   assert.ok(labels.includes('Leave'), 'Missing Leave')
   assert.ok(labels.includes('Projects'), 'Missing Projects')
+  assert.ok(labels.includes('Office'), 'Missing Office')
   assert.ok(labels.includes('Profile'), 'Missing Profile')
 })
 
@@ -160,13 +163,14 @@ test('admin nav People group includes Users', () => {
   assert.ok(labels.includes('Users'), 'Missing Users')
 })
 
-test('admin nav Operations group includes Leave, Assets, and Payroll', () => {
+test('admin nav Operations group includes Leave, Assets, Payroll, and Subscriptions', () => {
   const opsGroup = ADMIN_NAV_GROUPS.find((g) => g.label === 'Operations')
   assert.ok(opsGroup, 'Operations group not found')
   const labels = opsGroup!.items.map((i) => i.label)
   assert.ok(labels.includes('Leave'), 'Missing Leave')
   assert.ok(labels.includes('Assets'), 'Missing Assets')
   assert.ok(labels.includes('Payroll'), 'Missing Payroll')
+  assert.ok(labels.includes('Subscription Management'), 'Missing Subscription Management')
 })
 
 test('admin nav Onboarding group includes all onboarding routes', () => {

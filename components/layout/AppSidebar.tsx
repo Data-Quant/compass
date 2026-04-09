@@ -93,16 +93,6 @@ export const SECURITY_SIDEBAR: SidebarConfig = {
   groups: [],
 }
 
-export const EXECUTION_SIDEBAR: SidebarConfig = {
-  items: [
-    { label: 'Home', href: '/execution', icon: Home },
-    { label: 'Subscription Management', href: '/execution/subscriptions', icon: Wallet },
-    { label: 'Office', href: '/office', icon: Building2 },
-    { label: 'Profile', href: '/profile', icon: User },
-  ],
-  groups: [],
-}
-
 // ─── Admin sidebar config ────────────────────────────────────────────────────
 
 export const ADMIN_SIDEBAR: SidebarConfig = {
@@ -139,6 +129,7 @@ export const ADMIN_SIDEBAR: SidebarConfig = {
         { label: 'Device Tickets', href: '/admin/device-tickets', icon: Monitor },
         { label: 'Assets', href: '/admin/assets', icon: PackageSearch },
         { label: 'Payroll', href: '/admin/payroll', icon: Wallet },
+        { label: 'Subscription Management', href: '/admin/subscriptions', icon: Wallet },
         { label: 'Office', href: '/office', icon: Building2 },
       ],
     },
@@ -183,8 +174,6 @@ function SidebarNavItem({
         ? pathname === '/dashboard'
         : item.href === '/security'
           ? pathname === '/security'
-        : item.href === '/execution'
-          ? pathname === '/execution'
         : pathname.startsWith(item.href)
 
   const Icon = item.icon
@@ -289,6 +278,21 @@ interface AppSidebarProps {
 export function AppSidebar({ config, collapsed, onToggle, userRole, className }: AppSidebarProps) {
   const pathname = usePathname()
   const { branding } = useCompanyBranding()
+  const topLevelItems = [...config.items]
+
+  if (userRole === 'EXECUTION' && !topLevelItems.some((item) => item.href === '/execution/subscriptions')) {
+    const executionItem: NavItem = {
+      label: 'Subscription Management',
+      href: '/execution/subscriptions',
+      icon: Wallet,
+    }
+    const profileIndex = topLevelItems.findIndex((item) => item.href === '/profile')
+    if (profileIndex >= 0) {
+      topLevelItems.splice(profileIndex, 0, executionItem)
+    } else {
+      topLevelItems.push(executionItem)
+    }
+  }
 
   return (
     <aside
@@ -323,7 +327,7 @@ export function AppSidebar({ config, collapsed, onToggle, userRole, className }:
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-1">
         {/* Top-level items */}
-        {config.items.map((item) => (
+        {topLevelItems.map((item) => (
           <SidebarNavItem
             key={item.href}
             item={item}
@@ -406,32 +410,6 @@ export function AppSidebar({ config, collapsed, onToggle, userRole, className }:
               <>
                 <Shield className="h-[18px] w-[18px] shrink-0" />
                 {!collapsed && <span>Security Console</span>}
-              </>
-            )}
-          </Link>
-        )}
-
-        {(userRole === 'EXECUTION' || userRole === 'HR') && (
-          <Link
-            href={pathname.startsWith('/execution') ? '/dashboard' : '/execution'}
-            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-            title={
-              collapsed
-                ? pathname.startsWith('/execution')
-                  ? 'Employee View'
-                  : 'Execution Console'
-                : undefined
-            }
-          >
-            {pathname.startsWith('/execution') ? (
-              <>
-                <Eye className="h-[18px] w-[18px] shrink-0" />
-                {!collapsed && <span>Employee View</span>}
-              </>
-            ) : (
-              <>
-                <Wallet className="h-[18px] w-[18px] shrink-0" />
-                {!collapsed && <span>Execution Console</span>}
               </>
             )}
           </Link>
