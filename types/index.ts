@@ -7,7 +7,8 @@ export type RelationshipType =
   | 'DEPT'
   | 'CROSS_DEPARTMENT'
   | 'SELF'
-export type UserRole = 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA'
+export type UserRole = 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA' | 'EXECUTION'
+export type SubscriptionStatus = 'ACTIVE' | 'CANCELED'
 export type QuestionType = 'RATING' | 'TEXT'
 export type EmailStatus = 'PENDING' | 'SENT' | 'FAILED'
 

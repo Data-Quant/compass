@@ -15,6 +15,12 @@ enum UserRole {
   HR
   SECURITY
   OA
+  EXECUTION
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
 }
 
 enum RelationshipType {
@@ -302,10 +308,49 @@ model User {
   preEvaluationSelectionsAsEvaluatee PreEvaluationEvaluateeSelection[] @relation("PreEvaluationSelectionEvaluatee")
   preEvaluationSelectionsAsSuggestedEvaluator PreEvaluationEvaluateeSelection[] @relation("PreEvaluationSelectionSuggestedEvaluator")
   preEvaluationSelectionsReviewed PreEvaluationEvaluateeSelection[] @relation("PreEvaluationSelectionReviewedBy")
+  subscriptionOwnerships SubscriptionOwner[]
 
   @@index([name])
   @@index([email])
   @@index([benefitCategoryId])
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  name                 String
+  team                 String?
+  usersText            String?
+  paymentMethodText    String?
+  purpose              String?
+  costText             String?
+  subscriptionTypeText String?
+  billedToText         String?
+  renewalText          String?
+  noticePeriodText     String?
+  personInChargeText   String?
+  lastPaymentText      String?
+  notes                String?
+  sourceSheet          String?
+  status               SubscriptionStatus @default(ACTIVE)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  ownerLinks SubscriptionOwner[]
+
+  @@index([status])
+  @@index([team])
+}
+
+model SubscriptionOwner {
+  subscriptionId String
+  userId         String
+  createdAt      DateTime @default(now())
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([subscriptionId, userId])
+  @@index([userId])
 }
 
 model EvaluatorMapping {

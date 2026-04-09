@@ -6,7 +6,7 @@ import { isAdminRole } from '@/lib/permissions'
 import { ensurePayrollMasterDefaults } from '@/lib/payroll/settings'
 import { isPlutusEmail } from '@/lib/onboarding'
 
-const VALID_USER_ROLES = ['EMPLOYEE', 'HR', 'SECURITY', 'OA'] as const
+const VALID_USER_ROLES = ['EMPLOYEE', 'HR', 'SECURITY', 'OA', 'EXECUTION'] as const
 
 type PayrollProfilePayload = {
   payrollDepartmentId?: string | null

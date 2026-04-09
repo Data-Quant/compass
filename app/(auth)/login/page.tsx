@@ -819,6 +819,14 @@ export default function LoginPage() {
                                         O&amp;A
                                       </Badge>
                                     )}
+                                    {user.role === 'EXECUTION' && (
+                                      <Badge
+                                        variant="secondary"
+                                        className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-0 text-[10px] uppercase tracking-wider"
+                                      >
+                                        Execution
+                                      </Badge>
+                                    )}
                                     <ChevronRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-foreground transition-colors" />
                                   </div>
                                 </div>

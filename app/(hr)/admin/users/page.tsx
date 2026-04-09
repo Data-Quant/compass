@@ -39,7 +39,7 @@ interface User {
   discordId: string | null
   department: string | null
   position: string | null
-  role: 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA'
+  role: 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA' | 'EXECUTION'
   onboardingCompleted: boolean
   benefitCategoryId: string | null
   benefitCategory?: {
@@ -589,14 +589,15 @@ export default function UsersPage() {
                   <SelectTrigger className="min-w-[140px]">
                     <SelectValue placeholder="All Roles" />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">All Roles</SelectItem>
-                    <SelectItem value="EMPLOYEE">Employee</SelectItem>
-                    <SelectItem value="HR">HR</SelectItem>
-                    <SelectItem value="SECURITY">Security</SelectItem>
-                    <SelectItem value="OA">O&amp;A</SelectItem>
-                  </SelectContent>
-                </Select>
+                    <SelectContent>
+                      <SelectItem value="__all__">All Roles</SelectItem>
+                      <SelectItem value="EMPLOYEE">Employee</SelectItem>
+                      <SelectItem value="HR">HR</SelectItem>
+                      <SelectItem value="SECURITY">Security</SelectItem>
+                      <SelectItem value="OA">O&amp;A</SelectItem>
+                      <SelectItem value="EXECUTION">Execution</SelectItem>
+                    </SelectContent>
+                  </Select>
                 <Select value={filterDepartment || '__all__'} onValueChange={(v) => setFilterDepartment(v === '__all__' ? '' : v)}>
                   <SelectTrigger className="min-w-[140px]">
                     <SelectValue placeholder="All Departments" />
@@ -657,12 +658,14 @@ export default function UsersPage() {
                     <TableCell className="px-6 py-4 text-sm text-muted-foreground">{user.department || '—'}</TableCell>
                     <TableCell className="px-6 py-4">
                       <Badge
-                        variant={user.role === 'HR' || user.role === 'OA' ? 'default' : 'secondary'}
+                        variant={user.role === 'HR' || user.role === 'OA' || user.role === 'EXECUTION' ? 'default' : 'secondary'}
                         className={
                           user.role === 'HR'
                             ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-0'
                             : user.role === 'OA'
                               ? 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border-0'
+                            : user.role === 'EXECUTION'
+                              ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-0'
                             : user.role === 'SECURITY'
                               ? 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-0'
                               : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-0'
@@ -769,6 +772,7 @@ export default function UsersPage() {
                 <SelectItem value="HR">HR</SelectItem>
                 <SelectItem value="SECURITY">Security</SelectItem>
                 <SelectItem value="OA">O&amp;A</SelectItem>
+                <SelectItem value="EXECUTION">Execution</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1187,4 +1191,3 @@ export default function UsersPage() {
     </div>
   )
 }
-

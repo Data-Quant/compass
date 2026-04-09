@@ -81,6 +81,14 @@ export function AppNavbar({ user, onLogout, badge, navLinks = [] }: AppNavbarPro
       variant: 'primary',
     })
   }
+  if (user?.role === 'EXECUTION') {
+    defaultLinks.push({
+      href: '/execution',
+      label: 'Execution',
+      icon: <Settings className="w-4 h-4" />,
+      variant: 'primary',
+    })
+  }
 
   const links = navLinks.length > 0 ? navLinks : defaultLinks
 

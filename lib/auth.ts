@@ -10,7 +10,7 @@ export type SafeUser = {
   discordId: string | null
   department: string | null
   position: string | null
-  role: 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA'
+  role: 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA' | 'EXECUTION'
   onboardingCompleted: boolean
   benefitCategoryId: string | null
   createdAt: Date

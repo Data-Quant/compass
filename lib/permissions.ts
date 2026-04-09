@@ -1,4 +1,4 @@
-export type AppUserRole = 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA'
+export type AppUserRole = 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA' | 'EXECUTION'
 
 // "Admin" means HR-only access to /admin and /api/admin/*.
 export function isAdminRole(role: string | null | undefined): role is 'HR' {
@@ -29,4 +29,8 @@ export function canManageOnboarding(role: string | null | undefined): boolean {
 
 export function canCompleteSecurityChecklist(role: string | null | undefined): boolean {
   return role === 'HR' || role === 'SECURITY'
+}
+
+export function canManageSubscriptions(role: string | null | undefined): boolean {
+  return role === 'HR' || role === 'EXECUTION'
 }

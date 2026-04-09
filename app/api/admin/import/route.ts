@@ -76,7 +76,7 @@ async function importUsers(data: any[]) {
         typeof rawRole === 'string' && rawRole.trim().length > 0
           ? (() => {
               const role = rawRole.trim().toUpperCase()
-              return role === 'HR' || role === 'SECURITY' || role === 'OA' || role === 'EMPLOYEE'
+              return role === 'HR' || role === 'SECURITY' || role === 'OA' || role === 'EXECUTION' || role === 'EMPLOYEE'
                 ? role
                 : null
             })()
@@ -108,7 +108,7 @@ async function importUsers(data: any[]) {
               department: department || null,
               position: position || null,
               ...(normalizedRole
-                ? { role: normalizedRole as 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA' }
+                ? { role: normalizedRole as 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA' | 'EXECUTION' }
                 : {}),
             },
           })
@@ -132,7 +132,7 @@ async function importUsers(data: any[]) {
             department: department || existingByName.department,
             position: position || existingByName.position,
             ...(normalizedRole
-              ? { role: normalizedRole as 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA' }
+              ? { role: normalizedRole as 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA' | 'EXECUTION' }
               : {}),
           },
         })
@@ -148,7 +148,7 @@ async function importUsers(data: any[]) {
           discordId: normalizedDiscordId,
           department: department || null,
           position: position || null,
-          role: (normalizedRole || 'EMPLOYEE') as 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA',
+          role: (normalizedRole || 'EMPLOYEE') as 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA' | 'EXECUTION',
         },
       })
       results.created++

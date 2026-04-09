@@ -93,6 +93,16 @@ export const SECURITY_SIDEBAR: SidebarConfig = {
   groups: [],
 }
 
+export const EXECUTION_SIDEBAR: SidebarConfig = {
+  items: [
+    { label: 'Home', href: '/execution', icon: Home },
+    { label: 'Subscription Management', href: '/execution/subscriptions', icon: Wallet },
+    { label: 'Office', href: '/office', icon: Building2 },
+    { label: 'Profile', href: '/profile', icon: User },
+  ],
+  groups: [],
+}
+
 // ─── Admin sidebar config ────────────────────────────────────────────────────
 
 export const ADMIN_SIDEBAR: SidebarConfig = {
@@ -173,6 +183,8 @@ function SidebarNavItem({
         ? pathname === '/dashboard'
         : item.href === '/security'
           ? pathname === '/security'
+        : item.href === '/execution'
+          ? pathname === '/execution'
         : pathname.startsWith(item.href)
 
   const Icon = item.icon
@@ -394,6 +406,32 @@ export function AppSidebar({ config, collapsed, onToggle, userRole, className }:
               <>
                 <Shield className="h-[18px] w-[18px] shrink-0" />
                 {!collapsed && <span>Security Console</span>}
+              </>
+            )}
+          </Link>
+        )}
+
+        {(userRole === 'EXECUTION' || userRole === 'HR') && (
+          <Link
+            href={pathname.startsWith('/execution') ? '/dashboard' : '/execution'}
+            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            title={
+              collapsed
+                ? pathname.startsWith('/execution')
+                  ? 'Employee View'
+                  : 'Execution Console'
+                : undefined
+            }
+          >
+            {pathname.startsWith('/execution') ? (
+              <>
+                <Eye className="h-[18px] w-[18px] shrink-0" />
+                {!collapsed && <span>Employee View</span>}
+              </>
+            ) : (
+              <>
+                <Wallet className="h-[18px] w-[18px] shrink-0" />
+                {!collapsed && <span>Execution Console</span>}
               </>
             )}
           </Link>
