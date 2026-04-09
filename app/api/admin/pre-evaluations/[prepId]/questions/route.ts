@@ -4,7 +4,6 @@ import { getSession } from '@/lib/auth'
 import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import {
-  isPrepEditable,
   PRE_EVALUATION_QUESTION_COUNT,
   saveDraftQuestions,
   syncPrepStatus,
@@ -87,12 +86,6 @@ export async function PUT(
     if (!prep) {
       return NextResponse.json({ error: 'Pre-evaluation prep not found' }, { status: 404 })
     }
-    if (!isPrepEditable(prep.period.reviewStartDate)) {
-      return NextResponse.json(
-        { error: 'This pre-evaluation task is no longer editable' },
-        { status: 403 }
-      )
-    }
 
     const body = await request.json()
     const parsed = draftSchema.safeParse(body)
@@ -137,12 +130,6 @@ export async function POST(
     const prep = await getPrep(prepId)
     if (!prep) {
       return NextResponse.json({ error: 'Pre-evaluation prep not found' }, { status: 404 })
-    }
-    if (!isPrepEditable(prep.period.reviewStartDate)) {
-      return NextResponse.json(
-        { error: 'This pre-evaluation task is no longer editable' },
-        { status: 403 }
-      )
     }
 
     const body = await request.json()

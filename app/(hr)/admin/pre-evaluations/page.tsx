@@ -9,6 +9,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Modal } from '@/components/ui/modal'
 import { Progress } from '@/components/ui/progress'
 import {
   Select,
@@ -18,9 +20,17 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 import { EmptyState } from '@/components/composed/EmptyState'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { UserAvatar } from '@/components/composed/UserAvatar'
+import {
+  createEmptyRatingDescriptions,
+  hasAnyRatingDescriptions,
+  normalizeRatingDescriptions,
+  type RatingDescriptions,
+} from '@/lib/rating-descriptions'
+import { RATING_LABELS } from '@/types'
 import {
   ArrowRight,
   Bell,
@@ -32,6 +42,8 @@ import {
   Undo2,
   Users,
 } from 'lucide-react'
+
+const OVERRIDE_QUESTION_COUNT = 2
 
 interface PeriodOption {
   id: string
@@ -94,10 +106,19 @@ interface Prep {
     id: string
     orderIndex: number
     questionText: string
+    rating1Description?: string | null
+    rating2Description?: string | null
+    rating3Description?: string | null
+    rating4Description?: string | null
   }>
   evaluateeSelections: Selection[]
   overriddenBy: ReviewActor | null
   resetBy: ReviewActor | null
+}
+
+type LeadQuestionInput = {
+  questionText: string
+  ratingDescriptions: RatingDescriptions
 }
 
 interface PreEvaluationResponse {
@@ -152,6 +173,22 @@ function isPreEvaluationWindowOpen(reviewStartDate: string) {
   return evaluationStart > today
 }
 
+function buildOverrideQuestionInputs(questions: Prep['questions'] = []) {
+  const next = Array.from({ length: OVERRIDE_QUESTION_COUNT }, () => ({
+    questionText: '',
+    ratingDescriptions: createEmptyRatingDescriptions(),
+  }))
+
+  questions.forEach((question) => {
+    next[question.orderIndex - 1] = {
+      questionText: question.questionText,
+      ratingDescriptions: normalizeRatingDescriptions(question),
+    }
+  })
+
+  return next
+}
+
 export default function AdminPreEvaluationsPage() {
   const searchParams = useSearchParams()
   const [data, setData] = useState<PreEvaluationResponse | null>(null)
@@ -162,6 +199,9 @@ export default function AdminPreEvaluationsPage() {
   const [activeActionKey, setActiveActionKey] = useState<string | null>(null)
   const [prepNotes, setPrepNotes] = useState<Record<string, string>>({})
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
+  const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false)
+  const [selectedOverridePrep, setSelectedOverridePrep] = useState<Prep | null>(null)
+  const [overrideQuestionInputs, setOverrideQuestionInputs] = useState<LeadQuestionInput[]>([])
 
   const loadData = async (periodId?: string) => {
     try {
@@ -266,20 +306,43 @@ export default function AdminPreEvaluationsPage() {
     }
   }
 
-  const handleOverride = async (prepId: string) => {
-    setActiveActionKey(`override:${prepId}`)
+  const openOverrideModal = (prep: Prep) => {
+    setSelectedOverridePrep(prep)
+    setOverrideQuestionInputs(buildOverrideQuestionInputs(prep.questions))
+    setIsOverrideModalOpen(true)
+  }
+
+  const handleOverride = async () => {
+    if (!selectedOverridePrep) return
+
+    const normalizedQuestions = overrideQuestionInputs.map((question) => ({
+      questionText: question.questionText.trim(),
+      ratingDescriptions: question.ratingDescriptions,
+    }))
+
+    if (normalizedQuestions.some((question) => !question.questionText)) {
+      toast.error(`HR must submit exactly ${OVERRIDE_QUESTION_COUNT} non-empty questions`)
+      return
+    }
+
+    setActiveActionKey(`override:${selectedOverridePrep.id}`)
     try {
-      const response = await fetch(`/api/admin/pre-evaluations/${prepId}/override`, {
+      const response = await fetch(`/api/admin/pre-evaluations/${selectedOverridePrep.id}/override`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ note: prepNotes[prepId]?.trim() || undefined }),
+        body: JSON.stringify({
+          note: prepNotes[selectedOverridePrep.id]?.trim() || undefined,
+          questions: normalizedQuestions,
+        }),
       })
       const result = await response.json()
       if (!response.ok) {
         toast.error(result.error || 'Failed to override prep')
         return
       }
-      toast.success('Overdue prep overridden')
+      toast.success('HR override saved for this prep')
+      setIsOverrideModalOpen(false)
+      setSelectedOverridePrep(null)
       await loadData(selectedPeriodId)
     } catch {
       toast.error('Failed to override prep')
@@ -547,11 +610,11 @@ export default function AdminPreEvaluationsPage() {
                           </Button>
                           <Button
                             size="sm"
-                            onClick={() => handleOverride(prep.id)}
+                            onClick={() => openOverrideModal(prep)}
                             disabled={activeActionKey === `override:${prep.id}`}
                           >
                             <ShieldAlert className="h-4 w-4" />
-                            {activeActionKey === `override:${prep.id}` ? 'Overriding...' : 'Override'}
+                            {activeActionKey === `override:${prep.id}` ? 'Saving...' : 'Override'}
                           </Button>
                         </div>
                         <Input
@@ -603,6 +666,28 @@ export default function AdminPreEvaluationsPage() {
                               <div key={question.id} className="rounded-lg border bg-muted/30 px-4 py-3">
                                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Question {question.orderIndex}</p>
                                 <p className="mt-1 text-sm text-foreground">{question.questionText}</p>
+                                {hasAnyRatingDescriptions(question) && (
+                                  <div className="mt-3 grid gap-2 md:grid-cols-2">
+                                    {[1, 2, 3, 4].map((rating) => {
+                                      const description =
+                                        normalizeRatingDescriptions(question)[rating as 1 | 2 | 3 | 4]
+
+                                      if (!description) return null
+
+                                      return (
+                                        <div
+                                          key={`${question.id}-rating-${rating}`}
+                                          className="rounded-md border bg-muted/20 px-3 py-2"
+                                        >
+                                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                                            {RATING_LABELS[rating as 1 | 2 | 3 | 4].label} ({rating})
+                                          </p>
+                                          <p className="mt-1 text-sm text-foreground">{description}</p>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -784,6 +869,118 @@ export default function AdminPreEvaluationsPage() {
           </TabsContent>
         </Tabs>
       )}
+
+      <Modal
+        isOpen={isOverrideModalOpen}
+        onClose={() => {
+          setIsOverrideModalOpen(false)
+          setSelectedOverridePrep(null)
+        }}
+        title={
+          selectedOverridePrep
+            ? `Override ${selectedOverridePrep.lead.name}'s Pre-Evaluation`
+            : 'Override Pre-Evaluation'
+        }
+      >
+        {selectedOverridePrep && (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              HR can complete or revise this lead&apos;s KPI question set on their behalf. Saving here updates the active cycle immediately.
+            </p>
+
+            <div className="space-y-2">
+              <Label htmlFor="override-note">Override Note</Label>
+              <Textarea
+                id="override-note"
+                rows={2}
+                value={prepNotes[selectedOverridePrep.id] || ''}
+                onChange={(event) =>
+                  setPrepNotes((current) => ({
+                    ...current,
+                    [selectedOverridePrep.id]: event.target.value,
+                  }))
+                }
+                placeholder="Optional note about why HR is overriding this prep"
+              />
+            </div>
+
+            {overrideQuestionInputs.map((question, index) => (
+              <div key={`override-question-${index}`} className="space-y-3 rounded-lg border p-4">
+                <div className="space-y-2">
+                  <Label htmlFor={`override-question-${index}`}>Question {index + 1}</Label>
+                  <Textarea
+                    id={`override-question-${index}`}
+                    rows={3}
+                    value={question.questionText}
+                    onChange={(event) =>
+                      setOverrideQuestionInputs((current) =>
+                        current.map((value, valueIndex) =>
+                          valueIndex === index
+                            ? { ...value, questionText: event.target.value }
+                            : value
+                        )
+                      )
+                    }
+                  />
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  {[1, 2, 3, 4].map((rating) => (
+                    <div key={`override-question-${index}-rating-${rating}`} className="space-y-2">
+                      <Label htmlFor={`override-question-${index}-rating-${rating}`}>
+                        {RATING_LABELS[rating as 1 | 2 | 3 | 4].label} ({rating})
+                      </Label>
+                      <Textarea
+                        id={`override-question-${index}-rating-${rating}`}
+                        rows={2}
+                        value={question.ratingDescriptions[rating as 1 | 2 | 3 | 4]}
+                        onChange={(event) =>
+                          setOverrideQuestionInputs((current) =>
+                            current.map((value, valueIndex) =>
+                              valueIndex === index
+                                ? {
+                                    ...value,
+                                    ratingDescriptions: {
+                                      ...value.ratingDescriptions,
+                                      [rating]: event.target.value,
+                                    },
+                                  }
+                                : value
+                            )
+                          )
+                        }
+                        placeholder={`Describe what "${RATING_LABELS[rating as 1 | 2 | 3 | 4].label}" means for this KPI.`}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setIsOverrideModalOpen(false)
+                  setSelectedOverridePrep(null)
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void handleOverride()}
+                disabled={activeActionKey === `override:${selectedOverridePrep.id}`}
+              >
+                {activeActionKey === `override:${selectedOverridePrep.id}`
+                  ? 'Saving...'
+                  : 'Save on Behalf'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }
