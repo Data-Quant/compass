@@ -156,6 +156,10 @@ const REVIEW_BADGES: Record<Selection['reviewStatus'], { label: string; classNam
   REJECTED: { label: 'Rejected', className: 'bg-red-500/10 text-red-600 dark:text-red-400' },
 }
 
+function getReviewActionKey(selectionId: string, reviewStatus: 'APPROVED' | 'REJECTED') {
+  return `review:${selectionId}:${reviewStatus}`
+}
+
 function formatDateTime(value: string | null) {
   if (!value) return 'Not yet'
   return new Date(value).toLocaleString()
@@ -351,15 +355,22 @@ export default function AdminPreEvaluationsPage() {
     }
   }
 
-  const handleReview = async (selectionId: string, reviewStatus: 'APPROVED' | 'REJECTED') => {
-    setActiveActionKey(`review:${selectionId}:${reviewStatus}`)
+  const handleReview = async (
+    selectionId: string,
+    reviewStatus: 'APPROVED' | 'REJECTED',
+    options?: {
+      currentStatus?: Selection['reviewStatus']
+      fallbackReviewNote?: string | null
+    }
+  ) => {
+    setActiveActionKey(getReviewActionKey(selectionId, reviewStatus))
     try {
       const response = await fetch(`/api/admin/pre-evaluations/selections/${selectionId}/review`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           reviewStatus,
-          reviewNote: reviewNotes[selectionId]?.trim() || undefined,
+          reviewNote: reviewNotes[selectionId]?.trim() || options?.fallbackReviewNote || undefined,
         }),
       })
       const result = await response.json()
@@ -367,7 +378,13 @@ export default function AdminPreEvaluationsPage() {
         toast.error(result.error || 'Failed to review selection')
         return
       }
-      toast.success(`Selection ${reviewStatus === 'APPROVED' ? 'approved' : 'rejected'}`)
+      const outcome =
+        reviewStatus === 'REJECTED' && options?.currentStatus === 'APPROVED'
+          ? 'removed'
+          : reviewStatus === 'APPROVED'
+            ? 'approved'
+            : 'rejected'
+      toast.success(`Selection ${outcome}`)
       await loadData(selectedPeriodId)
     } catch {
       toast.error('Failed to review selection')
@@ -731,6 +748,8 @@ export default function AdminPreEvaluationsPage() {
                             <div className="space-y-3">
                               {peerSelections.map((selection) => {
                                 const reviewBadge = REVIEW_BADGES[selection.reviewStatus]
+                                const approveKey = getReviewActionKey(selection.id, 'APPROVED')
+                                const rejectKey = getReviewActionKey(selection.id, 'REJECTED')
                                 return (
                                   <div key={selection.id} className="rounded-lg border bg-muted/30 p-3 space-y-2">
                                     <div className="flex items-center justify-between gap-2">
@@ -745,6 +764,43 @@ export default function AdminPreEvaluationsPage() {
                                     {selection.reviewNote && (
                                       <p className="text-xs text-muted-foreground">Note: {selection.reviewNote}</p>
                                     )}
+                                    <div className="flex flex-wrap justify-end gap-2 pt-1">
+                                      {selection.reviewStatus !== 'APPROVED' && (
+                                        <Button
+                                          size="sm"
+                                          onClick={() =>
+                                            handleReview(selection.id, 'APPROVED', {
+                                              currentStatus: selection.reviewStatus,
+                                              fallbackReviewNote: selection.reviewNote,
+                                            })
+                                          }
+                                          disabled={activeActionKey === approveKey || activeActionKey === rejectKey}
+                                        >
+                                          {activeActionKey === approveKey ? 'Approving...' : 'Approve'}
+                                        </Button>
+                                      )}
+                                      {selection.reviewStatus !== 'REJECTED' && (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() =>
+                                            handleReview(selection.id, 'REJECTED', {
+                                              currentStatus: selection.reviewStatus,
+                                              fallbackReviewNote: selection.reviewNote,
+                                            })
+                                          }
+                                          disabled={activeActionKey === approveKey || activeActionKey === rejectKey}
+                                        >
+                                          {activeActionKey === rejectKey
+                                            ? selection.reviewStatus === 'APPROVED'
+                                              ? 'Removing...'
+                                              : 'Rejecting...'
+                                            : selection.reviewStatus === 'APPROVED'
+                                              ? 'Remove'
+                                              : 'Reject'}
+                                        </Button>
+                                      )}
+                                    </div>
                                   </div>
                                 )
                               })}
@@ -763,6 +819,8 @@ export default function AdminPreEvaluationsPage() {
                             <div className="space-y-3">
                               {crossSelections.map((selection) => {
                                 const reviewBadge = REVIEW_BADGES[selection.reviewStatus]
+                                const approveKey = getReviewActionKey(selection.id, 'APPROVED')
+                                const rejectKey = getReviewActionKey(selection.id, 'REJECTED')
                                 return (
                                   <div key={selection.id} className="rounded-lg border bg-muted/30 p-3 space-y-2">
                                     <div className="flex items-center justify-between gap-2">
@@ -777,6 +835,43 @@ export default function AdminPreEvaluationsPage() {
                                     {selection.reviewNote && (
                                       <p className="text-xs text-muted-foreground">Note: {selection.reviewNote}</p>
                                     )}
+                                    <div className="flex flex-wrap justify-end gap-2 pt-1">
+                                      {selection.reviewStatus !== 'APPROVED' && (
+                                        <Button
+                                          size="sm"
+                                          onClick={() =>
+                                            handleReview(selection.id, 'APPROVED', {
+                                              currentStatus: selection.reviewStatus,
+                                              fallbackReviewNote: selection.reviewNote,
+                                            })
+                                          }
+                                          disabled={activeActionKey === approveKey || activeActionKey === rejectKey}
+                                        >
+                                          {activeActionKey === approveKey ? 'Approving...' : 'Approve'}
+                                        </Button>
+                                      )}
+                                      {selection.reviewStatus !== 'REJECTED' && (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() =>
+                                            handleReview(selection.id, 'REJECTED', {
+                                              currentStatus: selection.reviewStatus,
+                                              fallbackReviewNote: selection.reviewNote,
+                                            })
+                                          }
+                                          disabled={activeActionKey === approveKey || activeActionKey === rejectKey}
+                                        >
+                                          {activeActionKey === rejectKey
+                                            ? selection.reviewStatus === 'APPROVED'
+                                              ? 'Removing...'
+                                              : 'Rejecting...'
+                                            : selection.reviewStatus === 'APPROVED'
+                                              ? 'Remove'
+                                              : 'Reject'}
+                                        </Button>
+                                      )}
+                                    </div>
                                   </div>
                                 )
                               })}
@@ -803,8 +898,8 @@ export default function AdminPreEvaluationsPage() {
             ) : (
               additionalEvaluatorSelections.map(({ prep, selection }) => {
                 const reviewBadge = REVIEW_BADGES[selection.reviewStatus]
-                const approveKey = `review:${selection.id}:APPROVED`
-                const rejectKey = `review:${selection.id}:REJECTED`
+                const approveKey = getReviewActionKey(selection.id, 'APPROVED')
+                const rejectKey = getReviewActionKey(selection.id, 'REJECTED')
 
                 return (
                   <Card key={selection.id}>
@@ -846,19 +941,39 @@ export default function AdminPreEvaluationsPage() {
                           placeholder="Optional review note"
                         />
                         <div className="flex flex-wrap gap-2">
-                          <Button
-                            variant="outline"
-                            onClick={() => handleReview(selection.id, 'REJECTED')}
-                            disabled={activeActionKey === approveKey || activeActionKey === rejectKey}
-                          >
-                            {activeActionKey === rejectKey ? 'Rejecting...' : 'Reject'}
-                          </Button>
-                          <Button
-                            onClick={() => handleReview(selection.id, 'APPROVED')}
-                            disabled={activeActionKey === approveKey || activeActionKey === rejectKey}
-                          >
-                            {activeActionKey === approveKey ? 'Approving...' : 'Approve'}
-                          </Button>
+                          {selection.reviewStatus !== 'REJECTED' && (
+                            <Button
+                              variant="outline"
+                              onClick={() =>
+                                handleReview(selection.id, 'REJECTED', {
+                                  currentStatus: selection.reviewStatus,
+                                  fallbackReviewNote: selection.reviewNote,
+                                })
+                              }
+                              disabled={activeActionKey === approveKey || activeActionKey === rejectKey}
+                            >
+                              {activeActionKey === rejectKey
+                                ? selection.reviewStatus === 'APPROVED'
+                                  ? 'Removing...'
+                                  : 'Rejecting...'
+                                : selection.reviewStatus === 'APPROVED'
+                                  ? 'Remove'
+                                  : 'Reject'}
+                            </Button>
+                          )}
+                          {selection.reviewStatus !== 'APPROVED' && (
+                            <Button
+                              onClick={() =>
+                                handleReview(selection.id, 'APPROVED', {
+                                  currentStatus: selection.reviewStatus,
+                                  fallbackReviewNote: selection.reviewNote,
+                                })
+                              }
+                              disabled={activeActionKey === approveKey || activeActionKey === rejectKey}
+                            >
+                              {activeActionKey === approveKey ? 'Approving...' : 'Approve'}
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </CardContent>
