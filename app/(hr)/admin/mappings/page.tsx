@@ -502,7 +502,7 @@ export default function MappingsPage() {
               <AlertCircle className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
               <div className="text-sm text-foreground">
                 <p className="font-medium">Workbook Mapping Rules</p>
-                <p className="text-muted-foreground">Team Lead columns become Team Lead except Hamiz, who maps to the Hamiz/C-Level bucket. Reporting Team Members become Direct Reports, HR and Dept constants are synced automatically, and Hamiz, Daniyal, Brad, and Maryam do not receive incoming evaluators.</p>
+                <p className="text-muted-foreground">Team Lead columns become Team Lead except Hamiz, who maps to the Hamiz/C-Level bucket. Reporting Team Members become Direct Reports, HR and Dept constants are synced automatically, and Hamiz, Daniyal, Brad, Maryam, and Richard do not receive incoming evaluators.</p>
               </div>
             </div>
           )}

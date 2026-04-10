@@ -21,6 +21,7 @@ export const NO_INCOMING_EVALUATION_NAMES = [
   'Daniyal Awan',
   'Brad Herman',
   'Maryam Khalil',
+  'Richard Reizes',
 ]
 
 export function normalizeEvaluationRuleName(name: string | null | undefined) {

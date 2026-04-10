@@ -9,6 +9,7 @@ import {
 test('no-incoming evaluator names are recognized case-insensitively', () => {
   assert.equal(isNoIncomingEvaluationName('Brad Herman'), true)
   assert.equal(isNoIncomingEvaluationName(' maryam   khalil '), true)
+  assert.equal(isNoIncomingEvaluationName('Richard Reizes'), true)
   assert.equal(isNoIncomingEvaluationName('Amal Majjout'), false)
 })
 
@@ -61,6 +62,10 @@ test('excluded people cannot receive incoming management or peer evaluations', (
 test('constant evaluators are disabled for excluded names and 3E users', () => {
   assert.equal(
     shouldReceiveConstantEvaluations({ name: 'Hamiz Awan', department: 'Executive' }),
+    false
+  )
+  assert.equal(
+    shouldReceiveConstantEvaluations({ name: 'Richard Reizes', department: 'Executive' }),
     false
   )
   assert.equal(
