@@ -5,6 +5,16 @@ import { prisma } from '@/lib/db'
 import { isAdminRole } from '@/lib/permissions'
 import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
 
+async function resolveEvaluationPeriod(periodId: string) {
+  return periodId === 'active'
+    ? prisma.evaluationPeriod.findFirst({
+        where: { isActive: true },
+      })
+    : prisma.evaluationPeriod.findUnique({
+        where: { id: periodId },
+      })
+}
+
 export async function GET(request: NextRequest) {
   try {
     const user = await getSession()
@@ -54,9 +64,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get period info
-    const period = await prisma.evaluationPeriod.findUnique({
-      where: { id: periodId },
-    })
+    const period = await resolveEvaluationPeriod(periodId)
 
     if (!period) {
       return NextResponse.json(
@@ -66,7 +74,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Generate detailed report (works even with incomplete scores)
-    const detailedReport = await generateDetailedReport(employeeId, periodId, anonymize)
+    const detailedReport = await generateDetailedReport(employeeId, period.id, anonymize)
 
     // Return HTML format for viewing/printing
     if (format === 'html') {
@@ -132,19 +140,28 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const report = await generateDetailedReport(employeeId, periodId)
+    const period = await resolveEvaluationPeriod(periodId)
+
+    if (!period) {
+      return NextResponse.json(
+        { error: 'Period not found' },
+        { status: 404 }
+      )
+    }
+
+    const report = await generateDetailedReport(employeeId, period.id)
 
     // Persist/refresh report so dashboard "Reports Ready" reflects current generation runs.
     await prisma.report.upsert({
       where: {
         employeeId_periodId: {
           employeeId,
-          periodId,
+          periodId: period.id,
         },
       },
       create: {
         employeeId,
-        periodId,
+        periodId: period.id,
         overallScore: report.overallScore,
         breakdownJson: report as any,
         generatedAt: new Date(),
