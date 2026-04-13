@@ -5,10 +5,12 @@ import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { useLayoutUser } from '@/components/layout/SidebarLayout'
+import { Modal } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Table,
   TableBody,
@@ -22,6 +24,7 @@ import { UserAvatar } from '@/components/composed/UserAvatar'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { ShimmerButton } from '@/components/magicui/shimmer-button'
 import {
+  AlertCircle,
   Users,
   Calendar,
   FileText,
@@ -33,11 +36,239 @@ import {
   ArrowRight,
   ClipboardList,
   ArrowUpDown,
+  Loader2,
 } from 'lucide-react'
+import { RATING_LABELS, RELATIONSHIP_TYPE_LABELS, type RelationshipType } from '@/types'
 
 const stagger = {
   container: { hidden: {}, visible: { transition: { staggerChildren: 0.06 } } },
   item: { hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0 } },
+}
+
+type EmployeeRow = {
+  id: string
+  name: string
+  department: string | null
+  position: string | null
+  inboundCompletionRate?: number
+  completionRate?: number
+  inboundCompletedQuestions?: number
+  completedEvaluations?: number
+  inboundTotalQuestions?: number
+  totalNeeded?: number
+  outboundCompletionRate?: number
+  outboundCompletedQuestions?: number
+  outboundTotalQuestions?: number
+  reportGenerated?: boolean
+}
+
+type ActivityResponse = {
+  key: string
+  questionText: string
+  questionType: 'RATING' | 'TEXT'
+  questionSource: 'GLOBAL' | 'LEAD'
+  ratingValue: number | null
+  textResponse: string | null
+  submittedAt: string | null
+  updatedAt: string | null
+  isArchived: boolean
+}
+
+type ActivityAssignment = {
+  id: string
+  relationshipType: RelationshipType
+  source: string
+  partner?: {
+    id: string
+    name: string
+    department: string | null
+    position: string | null
+  }
+  questionsCount: number
+  savedResponseCount: number
+  submittedResponseCount: number
+  completedResponseCount: number
+  status: 'NOT_STARTED' | 'IN_PROGRESS' | 'SUBMITTED' | 'CLOSED_BY_POOL'
+  isClosedByPool: boolean
+  submittedAt: string | null
+  lastSavedAt: string | null
+  questionWarning: string | null
+  responses: ActivityResponse[]
+}
+
+type PerformanceDetail = {
+  period: {
+    id: string
+    name: string
+    startDate: string
+    endDate: string
+    reviewStartDate: string
+    isActive: boolean
+  }
+  employee: {
+    id: string
+    name: string
+    department: string | null
+    position: string | null
+  }
+  outgoing: ActivityAssignment[]
+  incoming: ActivityAssignment[]
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return null
+  return new Date(value).toLocaleString()
+}
+
+function getActivityStatusBadge(status: ActivityAssignment['status']) {
+  switch (status) {
+    case 'SUBMITTED':
+      return 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20'
+    case 'IN_PROGRESS':
+      return 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+    case 'CLOSED_BY_POOL':
+      return 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20'
+    default:
+      return 'bg-muted text-muted-foreground border-border'
+  }
+}
+
+function getActivityStatusLabel(status: ActivityAssignment['status']) {
+  switch (status) {
+    case 'SUBMITTED':
+      return 'Submitted'
+    case 'IN_PROGRESS':
+      return 'Draft Saved'
+    case 'CLOSED_BY_POOL':
+      return 'Closed by HR Pool'
+    default:
+      return 'Not Started'
+  }
+}
+
+function ActivityList({
+  items,
+  emptyState,
+  direction,
+}: {
+  items: ActivityAssignment[]
+  emptyState: string
+  direction: 'incoming' | 'outgoing'
+}) {
+  if (items.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-border/70 px-4 py-8 text-center text-sm text-muted-foreground">
+        {emptyState}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {items.map((item) => {
+        const partnerLabel = direction === 'outgoing' ? 'Evaluatee' : 'Evaluator'
+        const savedSummary =
+          item.status === 'SUBMITTED' || item.status === 'CLOSED_BY_POOL'
+            ? `${item.completedResponseCount}/${item.questionsCount} completed`
+            : `${item.savedResponseCount}/${item.questionsCount} saved`
+
+        return (
+          <div key={item.id} className="rounded-2xl border border-border/70 bg-card/60 p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                    {partnerLabel}
+                  </span>
+                  <Badge variant="outline" className="border-border/70">
+                    {RELATIONSHIP_TYPE_LABELS[item.relationshipType]}
+                  </Badge>
+                  <Badge variant="outline" className={getActivityStatusBadge(item.status)}>
+                    {getActivityStatusLabel(item.status)}
+                  </Badge>
+                </div>
+                <div>
+                  <p className="font-medium text-foreground">{item.partner?.name || 'Unknown user'}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {item.partner?.position || 'No role info'}
+                    {item.partner?.department ? ` | ${item.partner.department}` : ''}
+                  </p>
+                </div>
+              </div>
+              <div className="text-sm text-muted-foreground space-y-1 lg:text-right">
+                <p>{savedSummary}</p>
+                {item.submittedAt ? <p>Submitted: {formatDateTime(item.submittedAt)}</p> : null}
+                {!item.submittedAt && item.lastSavedAt ? (
+                  <p>Last saved: {formatDateTime(item.lastSavedAt)}</p>
+                ) : null}
+              </div>
+            </div>
+
+            {item.questionWarning ? (
+              <div className="mt-4 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+                {item.questionWarning}
+              </div>
+            ) : null}
+
+            {item.responses.length > 0 ? (
+              <details className="mt-4 rounded-xl border border-border/60 bg-background/40">
+                <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-foreground">
+                  View saved answers ({item.responses.length})
+                </summary>
+                <div className="border-t border-border/60 px-4 py-3 space-y-3">
+                  {item.responses.map((response) => (
+                    <div key={response.key} className="rounded-lg border border-border/60 bg-card/80 p-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium text-foreground">{response.questionText}</p>
+                        <Badge variant="outline" className="border-border/60">
+                          {response.questionType === 'RATING' ? 'Rating' : 'Text'}
+                        </Badge>
+                        {response.questionSource === 'LEAD' ? (
+                          <Badge variant="outline" className="border-purple-500/20 text-purple-500">
+                            Lead Question
+                          </Badge>
+                        ) : null}
+                        {response.isArchived ? (
+                          <Badge variant="outline" className="border-amber-500/20 text-amber-500">
+                            Archived
+                          </Badge>
+                        ) : null}
+                      </div>
+                      {response.ratingValue ? (
+                        <p className="mt-2 text-sm text-foreground">
+                          <span className="font-medium">
+                            {response.ratingValue} - {RATING_LABELS[response.ratingValue].label}
+                          </span>
+                        </p>
+                      ) : null}
+                      {response.textResponse ? (
+                        <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
+                          {response.textResponse}
+                        </p>
+                      ) : null}
+                      {response.submittedAt || response.updatedAt ? (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {response.submittedAt
+                            ? `Submitted ${formatDateTime(response.submittedAt)}`
+                            : `Saved ${formatDateTime(response.updatedAt)}`}
+                        </p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            ) : (
+              <p className="mt-4 text-sm text-muted-foreground">
+                {item.status === 'CLOSED_BY_POOL'
+                  ? 'This assignment was closed because another HR teammate completed the pooled HR evaluation.'
+                  : 'No saved answers yet for this assignment.'}
+              </p>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 function ProgressCell({
@@ -69,9 +300,14 @@ export default function AdminPerformanceOverviewPage() {
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [nameSortDirection, setNameSortDirection] = useState<'asc' | 'desc'>('asc')
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [selectedEmployee, setSelectedEmployee] = useState<EmployeeRow | null>(null)
+  const [detailData, setDetailData] = useState<PerformanceDetail | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailError, setDetailError] = useState<string | null>(null)
 
   const sortedEmployees = useMemo(() => {
-    const employees = [...(dashboardData?.employees || [])]
+    const employees = [...((dashboardData?.employees || []) as EmployeeRow[])]
     employees.sort((left, right) => {
       const comparison = left.name.localeCompare(right.name, undefined, { sensitivity: 'base' })
       return nameSortDirection === 'asc' ? comparison : -comparison
@@ -133,6 +369,35 @@ export default function AdminPerformanceOverviewPage() {
       toast.error('Failed to generate reports')
     } finally {
       setGenerating(false)
+    }
+  }
+
+  const openEmployeeDetail = async (employee: EmployeeRow) => {
+    setSelectedEmployee(employee)
+    setDetailOpen(true)
+    setDetailLoading(true)
+    setDetailError(null)
+    setDetailData(null)
+
+    try {
+      const response = await fetch(
+        `/api/admin/performance/${employee.id}?periodId=${dashboardData?.period?.id || ''}`
+      )
+      const data = await response.json()
+
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Failed to load employee evaluation activity')
+      }
+
+      setDetailData(data)
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to load employee evaluation activity'
+      setDetailError(message)
+      setDetailData(null)
+      toast.error(message)
+    } finally {
+      setDetailLoading(false)
     }
   }
 
@@ -304,13 +569,19 @@ export default function AdminPerformanceOverviewPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedEmployees.map((employee: any) => (
+                {sortedEmployees.map((employee) => (
                   <TableRow key={employee.id} className="border-b transition-colors hover:bg-muted/50">
                     <TableCell className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-3">
                         <UserAvatar name={employee.name} size="sm" />
                         <div>
-                          <div className="font-medium text-foreground">{employee.name}</div>
+                          <button
+                            type="button"
+                            onClick={() => openEmployeeDetail(employee)}
+                            className="font-medium text-foreground transition-colors hover:text-primary hover:underline"
+                          >
+                            {employee.name}
+                          </button>
                           {employee.position && <div className="text-sm text-muted-foreground">{employee.position}</div>}
                         </div>
                       </div>
@@ -350,6 +621,130 @@ export default function AdminPerformanceOverviewPage() {
           </CardContent>
         </Card>
       </motion.div>
+
+      <Modal
+        isOpen={detailOpen}
+        onClose={() => {
+          setDetailOpen(false)
+          setSelectedEmployee(null)
+          setDetailData(null)
+          setDetailError(null)
+        }}
+        title={
+          detailData?.employee?.name || selectedEmployee?.name
+            ? `${detailData?.employee?.name || selectedEmployee?.name} Evaluation Activity`
+            : 'Evaluation Activity'
+        }
+        size="xl"
+      >
+        {detailLoading ? (
+          <div className="flex items-center justify-center py-16 text-muted-foreground">
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+            Loading evaluation activity...
+          </div>
+        ) : detailError ? (
+          <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+            {detailError}
+          </div>
+        ) : detailData ? (
+          <div className="space-y-6">
+            <div className="rounded-2xl border border-border/70 bg-muted/30 p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="text-lg font-semibold text-foreground">{detailData.employee.name}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {detailData.employee.position || 'No role info'}
+                    {detailData.employee.department ? ` | ${detailData.employee.department}` : ''}
+                  </p>
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  <p>{detailData.period.name}</p>
+                  <p>
+                    {new Date(detailData.period.startDate).toLocaleDateString()} -{' '}
+                    {new Date(detailData.period.endDate).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-xl border border-border/70 bg-card/80 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                    Assigned
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-foreground">
+                    {detailData.outgoing.length}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border/70 bg-card/80 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                    Assigned Submitted
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-foreground">
+                    {detailData.outgoing.filter((item) => item.status === 'SUBMITTED').length}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border/70 bg-card/80 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                    Received
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-foreground">
+                    {detailData.incoming.length}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border/70 bg-card/80 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                    Received Submitted
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-foreground">
+                    {
+                      detailData.incoming.filter(
+                        (item) =>
+                          item.status === 'SUBMITTED' || item.status === 'CLOSED_BY_POOL'
+                      ).length
+                    }
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <Tabs key={detailData.employee.id} defaultValue="outgoing" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="outgoing">
+                  What They Did ({detailData.outgoing.length})
+                </TabsTrigger>
+                <TabsTrigger value="incoming">
+                  What Others Gave ({detailData.incoming.length})
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="outgoing" className="space-y-4 pt-2">
+                <div className="flex items-start gap-2 rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <p>
+                    This shows each evaluation assigned to {detailData.employee.name}, whether it is untouched, saved as a draft, submitted, or closed by the pooled HR rule. Expand a row to inspect the saved answers.
+                  </p>
+                </div>
+                <ActivityList
+                  items={detailData.outgoing}
+                  direction="outgoing"
+                  emptyState="No evaluation assignments were resolved for this employee in the selected period."
+                />
+              </TabsContent>
+              <TabsContent value="incoming" className="space-y-4 pt-2">
+                <div className="flex items-start gap-2 rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <p>
+                    This shows every evaluator currently mapped to {detailData.employee.name} for the selected period, along with any submitted or saved answers we have on file.
+                  </p>
+                </div>
+                <ActivityList
+                  items={detailData.incoming}
+                  direction="incoming"
+                  emptyState="No incoming evaluations were resolved for this employee in the selected period."
+                />
+              </TabsContent>
+            </Tabs>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   )
 }
