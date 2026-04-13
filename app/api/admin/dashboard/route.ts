@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db'
 import type { RelationshipType } from '@/types'
 import { getResolvedQuestionCount } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
+import { isThreeEDepartment } from '@/lib/company-branding'
 import {
   collapseAssignmentRequirementsByPool,
   getAssignmentCompletionState,
@@ -27,7 +28,7 @@ export async function GET() {
       return NextResponse.json({ error: 'No active period found' }, { status: 404 })
     }
 
-    const [teamMembers, allMappings, submittedEvaluationPairs, allReports] =
+    const [allTeamMembers, allMappings, submittedEvaluationPairs, allReports] =
       await Promise.all([
         prisma.user.findMany({
           select: { id: true, name: true, department: true, position: true },
@@ -43,6 +44,10 @@ export async function GET() {
           select: { employeeId: true },
         }),
       ])
+
+    const teamMembers = allTeamMembers.filter(
+      (member) => !isThreeEDepartment(member.department)
+    )
 
     const questionCounts = await Promise.all(
       allMappings.map(async (mapping) => ({

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
@@ -32,6 +32,7 @@ import {
   Eye,
   ArrowRight,
   ClipboardList,
+  ArrowUpDown,
 } from 'lucide-react'
 
 const stagger = {
@@ -67,6 +68,16 @@ export default function AdminPerformanceOverviewPage() {
   const [preEvaluationData, setPreEvaluationData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
+  const [nameSortDirection, setNameSortDirection] = useState<'asc' | 'desc'>('asc')
+
+  const sortedEmployees = useMemo(() => {
+    const employees = [...(dashboardData?.employees || [])]
+    employees.sort((left, right) => {
+      const comparison = left.name.localeCompare(right.name, undefined, { sensitivity: 'base' })
+      return nameSortDirection === 'asc' ? comparison : -comparison
+    })
+    return employees
+  }, [dashboardData?.employees, nameSortDirection])
 
   useEffect(() => {
     if (user) {
@@ -262,10 +273,25 @@ export default function AdminPerformanceOverviewPage() {
         <Card>
           <CardContent className="p-0">
             <div className="px-6 py-4 border-b border-border">
-              <h2 className="text-lg font-display font-semibold text-foreground">Employee Progress</h2>
-              <p className="text-sm text-muted-foreground mt-1">
-                Track both how much of each employee&apos;s inbound review set is complete and how much of their own evaluator workload they have finished.
-              </p>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className="text-lg font-display font-semibold text-foreground">Employee Progress</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Track both how much of each employee&apos;s inbound review set is complete and how much of their own evaluator workload they have finished.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setNameSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'))
+                  }
+                  className="gap-2 self-start"
+                >
+                  <ArrowUpDown className="h-4 w-4" />
+                  Sort names {nameSortDirection === 'asc' ? 'A-Z' : 'Z-A'}
+                </Button>
+              </div>
             </div>
             <Table>
               <TableHeader>
@@ -278,7 +304,7 @@ export default function AdminPerformanceOverviewPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {dashboardData?.employees?.map((employee: any) => (
+                {sortedEmployees.map((employee: any) => (
                   <TableRow key={employee.id} className="border-b transition-colors hover:bg-muted/50">
                     <TableCell className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-3">

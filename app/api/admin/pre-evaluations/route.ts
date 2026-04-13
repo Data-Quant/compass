@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth'
 import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { derivePreEvaluationStatus } from '@/lib/pre-evaluation'
+import { isThreeEDepartment } from '@/lib/company-branding'
 
 export async function GET(request: NextRequest) {
   try {
@@ -122,7 +123,9 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    const normalizedPreps = preps.map((prep) => ({
+    const visiblePreps = preps.filter((prep) => !isThreeEDepartment(prep.lead.department))
+
+    const normalizedPreps = visiblePreps.map((prep) => ({
       ...prep,
       status: derivePreEvaluationStatus(prep),
     }))
