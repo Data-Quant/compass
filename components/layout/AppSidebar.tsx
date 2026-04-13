@@ -112,6 +112,7 @@ export const ADMIN_SIDEBAR: SidebarConfig = {
       label: 'Performance',
       defaultOpen: true,
       items: [
+        { label: 'Overview', href: '/admin/performance', icon: BarChart3 },
         { label: 'Periods', href: '/admin/periods', icon: CalendarDays },
         { label: 'Pre-Evaluation', href: '/admin/pre-evaluations', icon: ClipboardCheck },
         { label: 'Questions', href: '/admin/questions', icon: HelpCircle },

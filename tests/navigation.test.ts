@@ -38,6 +38,7 @@ const ADMIN_NAV_GROUPS = [
   {
     label: 'Performance',
     items: [
+      { label: 'Overview', href: '/admin/performance' },
       { label: 'Periods', href: '/admin/periods' },
       { label: 'Questions', href: '/admin/questions' },
       { label: 'Mappings', href: '/admin/mappings' },
@@ -149,6 +150,7 @@ test('admin nav Performance group includes all PE management tools', () => {
   const perfGroup = ADMIN_NAV_GROUPS.find((g) => g.label === 'Performance')
   assert.ok(perfGroup, 'Performance group not found')
   const labels = perfGroup!.items.map((i) => i.label)
+  assert.ok(labels.includes('Overview'), 'Missing Overview')
   assert.ok(labels.includes('Periods'), 'Missing Periods')
   assert.ok(labels.includes('Questions'), 'Missing Questions')
   assert.ok(labels.includes('Mappings'), 'Missing Mappings')
