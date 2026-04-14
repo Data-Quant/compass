@@ -4,6 +4,7 @@ import { formatReportAsHTML, generateDetailedReport } from './reports'
 import { escapeHtml } from '@/lib/sanitize'
 import { calculateLeaveDuration } from '@/lib/leave-utils'
 import { safeRecordLeaveAuditEvent } from '@/lib/leave-audit'
+import { calculateWfhDays } from '@/lib/wfh-utils'
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -61,6 +62,18 @@ async function getHrRecipientEmails() {
     select: { email: true },
   })
   return hrUsers.map((u) => u.email).filter(Boolean) as string[]
+}
+
+async function getExecutionRecipientEmails() {
+  const executionUsers = await prisma.user.findMany({
+    where: {
+      role: 'EXECUTION',
+      email: { not: null },
+    },
+    select: { email: true },
+  })
+
+  return executionUsers.map((u) => u.email).filter(Boolean) as string[]
 }
 
 function getOnboardingExecutionRecipients() {
@@ -403,6 +416,142 @@ export async function sendLeaveRequestNotification(requestId: string) {
     })
     return { success: false, error: error.message }
   }
+}
+
+export async function sendWfhRequestNotification(requestId: string) {
+  const wfhRequest = await prisma.wfhRequest.findUnique({
+    where: { id: requestId },
+    include: {
+      employee: true,
+    },
+  })
+
+  if (!wfhRequest) {
+    throw new Error('WFH request not found')
+  }
+
+  const employee = wfhRequest.employee
+  const startDateValue = new Date(wfhRequest.startDate)
+  const endDateValue = new Date(wfhRequest.endDate)
+  const startDate = startDateValue.toLocaleDateString()
+  const endDate = endDateValue.toLocaleDateString()
+  const daysCount = calculateWfhDays(startDateValue, endDateValue)
+  const durationLabel = getLeaveDurationLabel(daysCount)
+  const subject = `WFH Request: ${employee.name} (${startDate} to ${endDate})`
+
+  const hrEmails = await getHrRecipientEmails()
+  const executionEmails = await getExecutionRecipientEmails()
+  const fallbackRecipients = parseRecipientList(
+    process.env.WFH_FALLBACK_RECIPIENTS || 'hr@plutus21.com,execution@plutus21.com'
+  )
+
+  const recipients = mergeRecipientEmails(hrEmails, executionEmails, fallbackRecipients)
+  if (recipients.length === 0) {
+    return { success: false, message: 'No recipients configured for WFH request notification' }
+  }
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #0F766E;">WFH Request Submitted</h2>
+
+      <div style="background: #F8FAFC; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>Employee:</strong> ${escapeHtml(employee.name)}</p>
+        <p><strong>Department:</strong> ${escapeHtml(employee.department) || 'N/A'}</p>
+        <p><strong>Start Date:</strong> ${startDate}</p>
+        <p><strong>End Date:</strong> ${endDate}</p>
+        <p><strong>Duration (working days):</strong> ${durationLabel}</p>
+        <p><strong>Reason:</strong> ${escapeHtml(wfhRequest.reason)}</p>
+      </div>
+
+      ${wfhRequest.workPlan?.trim() ? `
+        <div style="background: #ECFEFF; padding: 15px; border-radius: 8px; margin: 20px 0;">
+          <h4 style="margin: 0 0 10px; color: #155E75;">Work Plan / Availability:</h4>
+          <p style="margin: 0; color: #155E75;">${escapeHtml(wfhRequest.workPlan)}</p>
+        </div>
+      ` : ''}
+
+      <p style="color: #64748B; font-size: 14px;">
+        Please review this WFH request in Compass.
+      </p>
+    </div>
+  `
+
+  const info = await transporter.sendMail({
+    from: `P21 Compass <${FROM_EMAIL}>`,
+    to: recipients.join(', '),
+    subject,
+    html: htmlContent,
+  })
+
+  return { success: true, messageId: info.messageId, recipients }
+}
+
+export async function sendWfhApprovalNotification(
+  requestId: string,
+  status: 'approved' | 'rejected',
+  approverName: string,
+  comment?: string
+) {
+  const wfhRequest = await prisma.wfhRequest.findUnique({
+    where: { id: requestId },
+    include: {
+      employee: true,
+    },
+  })
+
+  if (!wfhRequest || !wfhRequest.employee.email) {
+    return { success: false, message: 'WFH request or employee email not found' }
+  }
+
+  const employee = wfhRequest.employee
+  const employeeEmail = employee.email as string
+  const startDateValue = new Date(wfhRequest.startDate)
+  const endDateValue = new Date(wfhRequest.endDate)
+  const startDate = startDateValue.toLocaleDateString()
+  const endDate = endDateValue.toLocaleDateString()
+  const daysCount = calculateWfhDays(startDateValue, endDateValue)
+  const durationLabel = getLeaveDurationLabel(daysCount)
+  const isApproved = status === 'approved'
+  const subject = `WFH Request ${isApproved ? 'Approved' : 'Rejected'}: ${startDate} - ${endDate}`
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: ${isApproved ? '#059669' : '#DC2626'};">
+        WFH Request ${isApproved ? 'Approved' : 'Rejected'}
+      </h2>
+
+      <p>Hello ${escapeHtml(employee.name)},</p>
+      <p>
+        Your work-from-home request has been <strong>${isApproved ? 'approved' : 'rejected'}</strong>.
+      </p>
+
+      <div style="background: #F8FAFC; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>Start Date:</strong> ${startDate}</p>
+        <p><strong>End Date:</strong> ${endDate}</p>
+        <p><strong>Duration (working days):</strong> ${durationLabel}</p>
+        <p><strong>Reason:</strong> ${escapeHtml(wfhRequest.reason)}</p>
+        ${wfhRequest.workPlan?.trim() ? `<p><strong>Work Plan:</strong> ${escapeHtml(wfhRequest.workPlan)}</p>` : ''}
+      </div>
+
+      <div style="background: ${isApproved ? '#ECFDF5' : '#FEF2F2'}; padding: 15px; border-radius: 8px; margin: 20px 0;">
+        <p style="margin: 0;"><strong>Reviewed by:</strong> ${escapeHtml(approverName)}</p>
+        ${comment ? `<p style="margin: 10px 0 0;"><strong>Comment:</strong> ${escapeHtml(comment)}</p>` : ''}
+      </div>
+
+      <p style="color: #64748B; font-size: 14px;">
+        You can view the latest status in Compass.
+      </p>
+    </div>
+  `
+
+  const info = await transporter.sendMail({
+    from: `P21 Compass <${FROM_EMAIL}>`,
+    to: employeeEmail,
+    subject,
+    html: htmlContent,
+  })
+
+  return { success: true, messageId: info.messageId, recipient: employeeEmail }
 }
 
 export async function sendLeaveApprovalNotification(

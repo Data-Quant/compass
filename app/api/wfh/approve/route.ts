@@ -5,6 +5,7 @@ import { LeaveStatus, Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { isAdminRole } from '@/lib/permissions'
 import { wfhRequiresLeadApproval } from '@/lib/wfh-utils'
+import { sendWfhApprovalNotification } from '@/lib/email'
 
 const wfhApprovalSchema = z.object({
   requestId: z.string().trim().min(1),
@@ -87,6 +88,12 @@ export async function POST(request: NextRequest) {
         },
       })
 
+      try {
+        await sendWfhApprovalNotification(requestId, 'rejected', user.name, comment)
+      } catch (error) {
+        console.error('Failed to send WFH rejection notification:', error)
+      }
+
       return NextResponse.json({ success: true, status: 'REJECTED' })
     }
 
@@ -141,6 +148,14 @@ export async function POST(request: NextRequest) {
         },
         data: updateData,
       })
+
+      if (newStatus === 'APPROVED') {
+        try {
+          await sendWfhApprovalNotification(requestId, 'approved', user.name, comment)
+        } catch (error) {
+          console.error('Failed to send WFH approval notification:', error)
+        }
+      }
 
       return NextResponse.json({ success: true, status: newStatus })
     }

@@ -4,6 +4,7 @@ import { getSession } from '@/lib/auth'
 import { z } from 'zod'
 import { isAdminRole } from '@/lib/permissions'
 import { normalizeLeaveTimeZone } from '@/lib/leave-timezone'
+import { sendWfhApprovalNotification, sendWfhRequestNotification } from '@/lib/email'
 import {
   calculateWfhDays,
   canRequestWfh,
@@ -251,6 +252,25 @@ export async function POST(request: NextRequest) {
         },
       })
     })
+
+    if (!(isOnBehalfRequest && isHR && !requiresLeadApproval)) {
+      try {
+        await sendWfhRequestNotification(wfhRequest.id)
+      } catch (error) {
+        console.error('Failed to send WFH request notification:', error)
+      }
+    } else {
+      try {
+        await sendWfhApprovalNotification(
+          wfhRequest.id,
+          'approved',
+          user.name,
+          'Entered by HR on behalf of employee'
+        )
+      } catch (error) {
+        console.error('Failed to send immediate WFH approval notification:', error)
+      }
+    }
 
     return NextResponse.json({ success: true, request: wfhRequest })
   } catch (error) {
