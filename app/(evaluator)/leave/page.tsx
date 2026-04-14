@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Edit3,
   Eye,
+  Home,
   Palmtree,
   Plus,
   Search,
@@ -40,6 +41,8 @@ import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { Textarea } from '@/components/ui/textarea'
 import { calculateLeaveDuration } from '@/lib/leave-utils'
 import { detectBrowserLeaveTimeZone } from '@/lib/leave-timezone'
+import { isThreeEDepartment } from '@/lib/company-branding'
+import { calculateWfhDays, hasWfhEnded } from '@/lib/wfh-utils'
 
 interface LeaveBalance {
   casualDays: number
@@ -98,6 +101,25 @@ interface CalendarEvent {
   endDate: string
   status: string
   isCurrentUser: boolean
+}
+
+interface WfhRequest {
+  id: string
+  startDate: string
+  endDate: string
+  reason: string
+  workPlan?: string | null
+  status: string
+  leadApprovedBy?: string | null
+  hrApprovedBy?: string | null
+  rejectionReason?: string | null
+  createdAt: string
+  employee?: {
+    id: string
+    name: string
+    department: string | null
+    position: string | null
+  }
 }
 
 interface User {
@@ -190,14 +212,19 @@ export default function LeavePage() {
   const [requests, setRequests] = useState<LeaveRequest[]>([])
   const [approvalQueue, setApprovalQueue] = useState<ApprovalRequest[]>([])
   const [approvalProcessingId, setApprovalProcessingId] = useState<string | null>(null)
+  const [wfhRequests, setWfhRequests] = useState<WfhRequest[]>([])
+  const [wfhApprovalQueue, setWfhApprovalQueue] = useState<WfhRequest[]>([])
+  const [wfhApprovalProcessingId, setWfhApprovalProcessingId] = useState<string | null>(null)
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isWfhModalOpen, setIsWfhModalOpen] = useState(false)
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isDayEventsModalOpen, setIsDayEventsModalOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [wfhSubmitting, setWfhSubmitting] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [selectedRequest, setSelectedRequest] = useState<LeaveRequest | null>(null)
   const [selectedDayDate, setSelectedDayDate] = useState<Date | null>(null)
@@ -244,6 +271,13 @@ export default function LeavePage() {
     additionalNotifyIds: [] as string[],
   })
 
+  const [wfhFormData, setWfhFormData] = useState({
+    startDate: '',
+    endDate: '',
+    reason: '',
+    workPlan: '',
+  })
+
   useEffect(() => {
     if (layoutUser) setUser(layoutUser)
     loadData()
@@ -257,22 +291,28 @@ export default function LeavePage() {
 
   const loadData = async () => {
     try {
-      const [balanceRes, requestsRes, usersRes, approvalsRes] = await Promise.all([
+      const [balanceRes, requestsRes, usersRes, approvalsRes, wfhRequestsRes, wfhApprovalsRes] = await Promise.all([
         fetch('/api/leave/balance'),
         fetch('/api/leave/requests?employeeId=me'),
         fetch('/api/auth/login'),
         fetch('/api/leave/requests?forApproval=true'),
+        fetch('/api/wfh/requests?employeeId=me'),
+        fetch('/api/wfh/requests?forApproval=true'),
       ])
 
       const balanceData = await balanceRes.json()
       const requestsData = await requestsRes.json()
       const usersData = await usersRes.json()
       const approvalsData = await approvalsRes.json()
+      const wfhRequestsData = await wfhRequestsRes.json()
+      const wfhApprovalsData = await wfhApprovalsRes.json()
 
       setBalance(balanceData.balance)
       setRequests(requestsData.requests || [])
       setUsers(usersData.users || [])
       setApprovalQueue(approvalsData.requests || [])
+      setWfhRequests(wfhRequestsData.requests || [])
+      setWfhApprovalQueue(wfhApprovalsData.requests || [])
     } catch (error) {
       toast.error('Failed to load data')
     } finally {
@@ -302,6 +342,28 @@ export default function LeavePage() {
     }
   }
 
+  const handleWfhApprovalDecision = async (requestId: string, action: 'approve' | 'reject') => {
+    setWfhApprovalProcessingId(requestId)
+    try {
+      const res = await fetch('/api/wfh/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId, action }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to process WFH request')
+      }
+
+      toast.success(action === 'approve' ? 'WFH approved' : 'WFH rejected')
+      await loadData()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to process WFH request')
+    } finally {
+      setWfhApprovalProcessingId(null)
+    }
+  }
+
   const loadCalendarEvents = async () => {
     try {
       const res = await fetch(`/api/leave/calendar?month=${currentMonth}&year=${currentYear}`)
@@ -316,10 +378,15 @@ export default function LeavePage() {
   const cancellableStatuses = new Set(['PENDING', 'LEAD_APPROVED', 'HR_APPROVED', 'APPROVED'])
   const canCancelRequest = (request: LeaveRequest) =>
     cancellableStatuses.has(request.status) && !hasLeaveEnded(request.endDate)
+  const canCancelWfhRequest = (request: WfhRequest) =>
+    cancellableStatuses.has(request.status) && !hasWfhEnded(new Date(request.endDate))
   const availableNotifyUsers = useMemo(
     () => users.filter((u) => u.id !== user?.id),
     [users, user?.id]
   )
+  const isThreeEUser = useMemo(() => isThreeEDepartment(user?.department), [user?.department])
+  const showMyWfhCard = isThreeEUser || wfhRequests.length > 0
+  const showWfhSection = showMyWfhCard || wfhApprovalQueue.length > 0
   const filterNotifyUsers = (searchTerm: string) => {
     const normalized = searchTerm.trim().toLowerCase()
     if (!normalized) return availableNotifyUsers
@@ -661,6 +728,63 @@ export default function LeavePage() {
     const startDate = new Date(start)
     const endDate = new Date(end)
     return calculateLeaveDuration(startDate, endDate, isHalfDay)
+  }
+
+  const handleWfhSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setWfhSubmitting(true)
+
+    try {
+      const res = await fetch('/api/wfh/requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          startDate: wfhFormData.startDate,
+          endDate: wfhFormData.endDate,
+          requestTimezone: detectBrowserLeaveTimeZone(),
+          reason: wfhFormData.reason,
+          workPlan: wfhFormData.workPlan || undefined,
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to submit WFH request')
+      }
+
+      toast.success('WFH request submitted')
+      setIsWfhModalOpen(false)
+      setWfhFormData({
+        startDate: '',
+        endDate: '',
+        reason: '',
+        workPlan: '',
+      })
+      await loadData()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to submit WFH request')
+    } finally {
+      setWfhSubmitting(false)
+    }
+  }
+
+  const handleCancelWfh = async (requestId: string) => {
+    if (!confirm('Are you sure you want to cancel this WFH request?')) return
+
+    try {
+      const res = await fetch(`/api/wfh/requests?id=${requestId}`, {
+        method: 'DELETE',
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to cancel WFH request')
+      }
+
+      toast.success('WFH request cancelled')
+      await loadData()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to cancel WFH request')
+    }
   }
 
   const clearSelection = () => {
@@ -1179,6 +1303,177 @@ export default function LeavePage() {
             )}
           </div>
         </div>
+
+        {showWfhSection && (
+          <div className="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
+            {showMyWfhCard && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="glass rounded-card border border-border overflow-hidden"
+              >
+                <Card>
+                  <CardContent className="p-0">
+                    <div className="p-4 border-b border-border flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="font-display font-semibold text-foreground">My WFH Requests</h3>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Separate from leave balances. Available for 3E team members only.
+                        </p>
+                      </div>
+                      {isThreeEUser && (
+                        <Button variant="default" size="icon" onClick={() => setIsWfhModalOpen(true)}>
+                          <Plus className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+
+                    <div className="max-h-[400px] overflow-y-auto">
+                      {wfhRequests.length === 0 ? (
+                        <div className="p-6 text-center">
+                          <Home className="w-10 h-10 text-muted-foreground/30 mx-auto mb-2" />
+                          <p className="text-sm text-muted-foreground">
+                            {isThreeEUser ? 'No WFH requests yet' : 'No WFH requests'}
+                          </p>
+                          {isThreeEUser && (
+                            <p className="text-xs text-muted-foreground mt-1">Use the plus button to submit one.</p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="divide-y divide-border">
+                          {wfhRequests.map((request) => {
+                            const statusConfig = STATUS_CONFIG[request.status] || STATUS_CONFIG.PENDING
+                            const days = calculateWfhDays(new Date(request.startDate), new Date(request.endDate))
+
+                            return (
+                              <div key={request.id} className="p-3 hover:bg-muted/50 transition-colors">
+                                <div className="flex items-start gap-3">
+                                  <div className="w-8 h-8 rounded-lg bg-sky-100 dark:bg-sky-500/10 flex items-center justify-center flex-shrink-0">
+                                    <Home className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-0.5">
+                                      <span className="text-sm font-medium text-foreground">Work From Home</span>
+                                      <Badge variant="secondary" className={`${statusConfig.bg} ${statusConfig.color} border-0`}>
+                                        {statusConfig.label}
+                                      </Badge>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                      {formatApiDate(request.startDate, { month: 'short', day: 'numeric' })}
+                                      {' - '}
+                                      {formatApiDate(request.endDate, { month: 'short', day: 'numeric' })}
+                                      {' - '}{getDurationLabel(days)}
+                                    </p>
+                                    <p className="text-sm text-foreground mt-2">{request.reason}</p>
+                                    {request.workPlan && (
+                                      <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">
+                                        Work plan: {request.workPlan}
+                                      </p>
+                                    )}
+
+                                    {canCancelWfhRequest(request) && (
+                                      <div className="flex gap-3 mt-2 flex-wrap">
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="text-[10px] text-red-600 hover:text-red-700 h-auto p-0"
+                                          onClick={() => handleCancelWfh(request.id)}
+                                        >
+                                          Cancel request
+                                        </Button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+
+            {wfhApprovalQueue.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.25 }}
+                className="glass rounded-card border border-border overflow-hidden"
+              >
+                <Card>
+                  <CardContent className="p-0">
+                    <div className="p-4 border-b border-border">
+                      <h3 className="font-display font-semibold text-foreground">WFH Approval Queue</h3>
+                      <p className="text-xs text-muted-foreground mt-1">Requests waiting for your review</p>
+                    </div>
+                    <div className="divide-y divide-border">
+                      {wfhApprovalQueue.map((request) => {
+                        const statusConfig = STATUS_CONFIG[request.status] || STATUS_CONFIG.PENDING
+                        const days = calculateWfhDays(new Date(request.startDate), new Date(request.endDate))
+                        const processing = wfhApprovalProcessingId === request.id
+
+                        return (
+                          <div key={request.id} className="p-3">
+                            <div className="flex items-start gap-3">
+                              <div className="w-8 h-8 rounded-lg bg-sky-100 dark:bg-sky-500/10 flex items-center justify-center flex-shrink-0">
+                                <Home className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-medium text-foreground">{request.employee?.name || 'Team member'}</span>
+                                  <Badge variant="secondary" className={`${statusConfig.bg} ${statusConfig.color} border-0`}>
+                                    {statusConfig.label}
+                                  </Badge>
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {request.employee?.department || 'No department'} • {formatApiDate(request.startDate, { month: 'short', day: 'numeric' })}
+                                  {' - '}
+                                  {formatApiDate(request.endDate, { month: 'short', day: 'numeric' })}
+                                  {' • '}{getDurationLabel(days)}
+                                </p>
+                                <p className="text-sm text-foreground mt-2">{request.reason}</p>
+                                {request.workPlan && (
+                                  <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">
+                                    Work plan: {request.workPlan}
+                                  </p>
+                                )}
+
+                                <div className="flex gap-2 mt-3">
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleWfhApprovalDecision(request.id, 'approve')}
+                                    disabled={processing}
+                                    className="bg-emerald-600 hover:bg-emerald-700"
+                                  >
+                                    <CheckCircle2 className="w-4 h-4" />
+                                    {processing ? 'Working...' : 'Approve'}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => handleWfhApprovalDecision(request.id, 'reject')}
+                                    disabled={processing}
+                                  >
+                                    <XCircle className="w-4 h-4" />
+                                    Reject
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+          </div>
+        )}
       {/* Apply Leave Modal */}
       <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); clearSelection(); }} title="Apply for Leave" size="lg">
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -1451,6 +1746,100 @@ export default function LeavePage() {
               disabled={submitting}
             >
               {submitting ? 'Submitting...' : 'Submit Request'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        isOpen={isWfhModalOpen}
+        onClose={() => {
+          setIsWfhModalOpen(false)
+          setWfhFormData({
+            startDate: '',
+            endDate: '',
+            reason: '',
+            workPlan: '',
+          })
+        }}
+        title="Request Work From Home"
+        size="lg"
+      >
+        <form onSubmit={handleWfhSubmit} className="space-y-4">
+          <div className="rounded-lg border border-sky-500/20 bg-sky-50/60 dark:bg-sky-500/10 p-3">
+            <p className="text-sm text-sky-900 dark:text-sky-200">
+              WFH requests are separate from leave. They do not consume your leave balance.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="wfh-start-date" className="mb-2">Start Date</Label>
+              <Input
+                id="wfh-start-date"
+                type="date"
+                required
+                value={wfhFormData.startDate}
+                onChange={(e) => setWfhFormData((prev) => ({ ...prev, startDate: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label htmlFor="wfh-end-date" className="mb-2">End Date</Label>
+              <Input
+                id="wfh-end-date"
+                type="date"
+                required
+                min={wfhFormData.startDate}
+                value={wfhFormData.endDate}
+                onChange={(e) => setWfhFormData((prev) => ({ ...prev, endDate: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="wfh-reason" className="mb-2">Reason</Label>
+            <Textarea
+              id="wfh-reason"
+              required
+              rows={2}
+              value={wfhFormData.reason}
+              onChange={(e) => setWfhFormData((prev) => ({ ...prev, reason: e.target.value }))}
+              placeholder="Why are you requesting WFH for these dates?"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="wfh-work-plan" className="mb-2">
+              Work Plan
+              <span className="text-muted-foreground font-normal ml-1">(optional)</span>
+            </Label>
+            <Textarea
+              id="wfh-work-plan"
+              rows={3}
+              value={wfhFormData.workPlan}
+              onChange={(e) => setWfhFormData((prev) => ({ ...prev, workPlan: e.target.value }))}
+              placeholder="Outline your expected availability, meetings, or key deliverables."
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setIsWfhModalOpen(false)
+                setWfhFormData({
+                  startDate: '',
+                  endDate: '',
+                  reason: '',
+                  workPlan: '',
+                })
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={wfhSubmitting}>
+              {wfhSubmitting ? 'Submitting...' : 'Submit WFH Request'}
             </Button>
           </div>
         </form>

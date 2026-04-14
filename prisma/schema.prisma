@@ -264,6 +264,7 @@ model User {
   leaveRequests       LeaveRequest[]     @relation("LeaveEmployee")
   leaveCovering       LeaveRequest[]     @relation("LeaveCover")
   leaveAuditEvents    LeaveAuditEvent[]  @relation("LeaveAuditActor")
+  wfhRequests         WfhRequest[]       @relation("WfhEmployee")
   
   // Device management relations
   deviceTickets       DeviceTicket[]     @relation("DeviceTicketEmployee")
@@ -652,6 +653,38 @@ model LeaveBalance {
   
   @@unique([employeeId, year])
   @@index([employeeId])
+}
+
+model WfhRequest {
+  id              String      @id @default(cuid())
+  employeeId      String
+  requestTimezone String      @default("Asia/Karachi")
+  startDate       DateTime
+  endDate         DateTime
+  reason          String
+  workPlan        String?
+  status          LeaveStatus @default(PENDING)
+
+  leadApprovedBy  String?
+  leadApprovedAt  DateTime?
+  leadComment     String?
+
+  hrApprovedBy    String?
+  hrApprovedAt    DateTime?
+  hrComment       String?
+
+  rejectedBy      String?
+  rejectedAt      DateTime?
+  rejectionReason String?
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  employee        User        @relation("WfhEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@index([status])
+  @@index([startDate, endDate])
 }
 
 // Weight profiles - maps a set of evaluator categories to their weights
