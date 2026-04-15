@@ -71,6 +71,7 @@ interface LeaveRequest {
   transitionPlan: string
   status: string
   coverPerson?: { id: string; name: string }
+  coverPeople?: Array<{ id: string; name: string }>
   additionalNotifyIds?: string[]
   leadApprovedBy?: string
   hrApprovedBy?: string
@@ -231,7 +232,9 @@ export default function LeavePage() {
   const [selectedDayEvents, setSelectedDayEvents] = useState<CalendarEvent[]>([])
   const [departmentFilter, setDepartmentFilter] = useState<string>('ALL')
   const [reminderNoticeShown, setReminderNoticeShown] = useState(false)
+  const [coverSearch, setCoverSearch] = useState('')
   const [notifySearch, setNotifySearch] = useState('')
+  const [editCoverSearch, setEditCoverSearch] = useState('')
   const [editNotifySearch, setEditNotifySearch] = useState('')
 
   // Calendar state
@@ -252,7 +255,7 @@ export default function LeavePage() {
     endDate: '',
     reason: '',
     transitionPlan: '',
-    coverPersonId: '',
+    coverPersonIds: [] as string[],
     additionalNotifyIds: [] as string[],
   })
 
@@ -267,7 +270,7 @@ export default function LeavePage() {
     endDate: '',
     reason: '',
     transitionPlan: '',
-    coverPersonId: '',
+    coverPersonIds: [] as string[],
     additionalNotifyIds: [] as string[],
   })
 
@@ -400,10 +403,25 @@ export default function LeavePage() {
     () => filterNotifyUsers(notifySearch),
     [availableNotifyUsers, notifySearch]
   )
+  const filteredCoverUsers = useMemo(
+    () => filterNotifyUsers(coverSearch),
+    [availableNotifyUsers, coverSearch]
+  )
+  const filteredEditCoverUsers = useMemo(
+    () => filterNotifyUsers(editCoverSearch),
+    [availableNotifyUsers, editCoverSearch]
+  )
   const filteredEditNotifyUsers = useMemo(
     () => filterNotifyUsers(editNotifySearch),
     [availableNotifyUsers, editNotifySearch]
   )
+
+  const getRequestCoverPeople = (request: LeaveRequest) =>
+    Array.isArray(request.coverPeople) && request.coverPeople.length > 0
+      ? request.coverPeople
+      : request.coverPerson
+        ? [request.coverPerson]
+        : []
 
   const calendarDepartments = useMemo(() => {
     const values = new Set<string>()
@@ -576,7 +594,7 @@ export default function LeavePage() {
         unavailableEndTime: isHalfDay ? formData.unavailableEndTime : undefined,
         reason: formData.reason,
         transitionPlan: formData.transitionPlan || undefined,
-        coverPersonId: formData.coverPersonId || undefined,
+        coverPersonIds: formData.coverPersonIds,
         additionalNotifyIds: formData.additionalNotifyIds,
       }
 
@@ -602,7 +620,7 @@ export default function LeavePage() {
           endDate: '',
           reason: '',
           transitionPlan: '',
-          coverPersonId: '',
+          coverPersonIds: [],
           additionalNotifyIds: [],
         })
         loadData()
@@ -624,6 +642,7 @@ export default function LeavePage() {
 
   const openEditModal = (request: LeaveRequest) => {
     setSelectedRequest(request)
+    setEditCoverSearch('')
     setEditNotifySearch('')
     setEditFormData({
       id: request.id,
@@ -636,7 +655,7 @@ export default function LeavePage() {
       endDate: toDateKey(request.endDate),
       reason: request.reason || '',
       transitionPlan: request.transitionPlan || '',
-      coverPersonId: request.coverPerson?.id || '',
+      coverPersonIds: getRequestCoverPeople(request).map((coverPerson) => coverPerson.id),
       additionalNotifyIds: Array.isArray(request.additionalNotifyIds) ? request.additionalNotifyIds : [],
     })
     setIsEditModalOpen(true)
@@ -680,7 +699,7 @@ export default function LeavePage() {
           endDate,
           reason: editFormData.reason,
           transitionPlan: editFormData.transitionPlan || undefined,
-          coverPersonId: editFormData.coverPersonId || undefined,
+          coverPersonIds: editFormData.coverPersonIds,
           additionalNotifyIds: editFormData.additionalNotifyIds,
         }),
       })
@@ -790,6 +809,7 @@ export default function LeavePage() {
   const clearSelection = () => {
     setSelectedRange({ start: null, end: null })
     setSelectingEnd(false)
+    setCoverSearch('')
     setNotifySearch('')
     setFormData({
       ...formData,
@@ -1665,28 +1685,46 @@ export default function LeavePage() {
             />
           </div>
 
-          {/* Cover Person */}
           <div>
-            <Label htmlFor="coverPerson" className="mb-2">
-              Cover Person
+            <Label className="mb-2">
+              Cover People
               <span className="text-muted-foreground font-normal ml-1">(optional)</span>
             </Label>
             <p className="text-xs text-muted-foreground mb-2">
-              If selected, the cover person will be notified by email.
+              Selected cover teammates will be notified by email.
             </p>
-            <Select value={formData.coverPersonId || '__none__'} onValueChange={(v) => setFormData({ ...formData, coverPersonId: v === '__none__' ? '' : v })}>
-              <SelectTrigger id="coverPerson">
-                <SelectValue placeholder="Select who will cover your tasks..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">No cover person</SelectItem>
-                {users.filter(u => u.id !== user?.id).map((u) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.name} {u.department ? `(${u.department})` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="relative mb-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                value={coverSearch}
+                onChange={(e) => setCoverSearch(e.target.value)}
+                placeholder="Search cover teammates by name or department..."
+                className="pl-10"
+              />
+            </div>
+            <div className="max-h-32 overflow-y-auto border border-input rounded-md p-2 bg-muted space-y-1.5">
+              {filteredCoverUsers.map((u) => (
+                <label key={u.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted/80 rounded px-2 py-1.5">
+                  <Checkbox
+                    checked={formData.coverPersonIds.includes(u.id)}
+                    onCheckedChange={(checked) => {
+                      const ids = checked === true
+                        ? [...formData.coverPersonIds, u.id]
+                        : formData.coverPersonIds.filter((id) => id !== u.id)
+                      setFormData((prev) => ({ ...prev, coverPersonIds: ids }))
+                    }}
+                  />
+                  <span className="text-sm text-foreground">{u.name}</span>
+                  {u.department && <span className="text-xs text-muted-foreground">({u.department})</span>}
+                </label>
+              ))}
+              {availableNotifyUsers.length === 0 && (
+                <p className="text-xs text-muted-foreground py-2">No other team members</p>
+              )}
+              {availableNotifyUsers.length > 0 && filteredCoverUsers.length === 0 && (
+                <p className="text-xs text-muted-foreground py-2">No matches found</p>
+              )}
+            </div>
           </div>
 
           {/* Additional notify (email only, not approval) */}
@@ -1991,9 +2029,9 @@ export default function LeavePage() {
             </div>
 
             <div>
-              <Label className="text-muted-foreground">Cover Person</Label>
+              <Label className="text-muted-foreground">Cover People</Label>
               <p className="text-sm text-foreground mt-1">
-                {selectedRequest.coverPerson?.name || 'None selected'}
+                {getRequestCoverPeople(selectedRequest).map((coverPerson) => coverPerson.name).join(', ') || 'None selected'}
               </p>
             </div>
 
@@ -2225,29 +2263,45 @@ export default function LeavePage() {
           </div>
 
           <div>
-            <Label htmlFor="edit-cover-person" className="mb-2">
-              Cover Person
+            <Label className="mb-2">
+              Cover People
               <span className="text-muted-foreground font-normal ml-1">(optional)</span>
             </Label>
             <p className="text-xs text-muted-foreground mb-2">
-              If selected, the cover person will be notified by email.
+              Selected cover teammates will be notified by email.
             </p>
-            <Select
-              value={editFormData.coverPersonId || '__none__'}
-              onValueChange={(v) => setEditFormData((prev) => ({ ...prev, coverPersonId: v === '__none__' ? '' : v }))}
-            >
-              <SelectTrigger id="edit-cover-person">
-                <SelectValue placeholder="Select who will cover your tasks..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">No cover person</SelectItem>
-                {users.filter((u) => u.id !== user?.id).map((u) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.name} {u.department ? `(${u.department})` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="relative mb-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                value={editCoverSearch}
+                onChange={(e) => setEditCoverSearch(e.target.value)}
+                placeholder="Search cover teammates by name or department..."
+                className="pl-10"
+              />
+            </div>
+            <div className="max-h-32 overflow-y-auto border border-input rounded-md p-2 bg-muted space-y-1.5">
+              {filteredEditCoverUsers.map((u) => (
+                <label key={u.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted/80 rounded px-2 py-1.5">
+                  <Checkbox
+                    checked={editFormData.coverPersonIds.includes(u.id)}
+                    onCheckedChange={(checked) => {
+                      const ids = checked === true
+                        ? [...editFormData.coverPersonIds, u.id]
+                        : editFormData.coverPersonIds.filter((id) => id !== u.id)
+                      setEditFormData((prev) => ({ ...prev, coverPersonIds: ids }))
+                    }}
+                  />
+                  <span className="text-sm text-foreground">{u.name}</span>
+                  {u.department && <span className="text-xs text-muted-foreground">({u.department})</span>}
+                </label>
+              ))}
+              {availableNotifyUsers.length === 0 && (
+                <p className="text-xs text-muted-foreground py-2">No other team members</p>
+              )}
+              {availableNotifyUsers.length > 0 && filteredEditCoverUsers.length === 0 && (
+                <p className="text-xs text-muted-foreground py-2">No matches found</p>
+              )}
+            </div>
           </div>
 
           <div>
@@ -2294,6 +2348,7 @@ export default function LeavePage() {
               type="button"
               variant="outline"
               onClick={() => {
+                setEditCoverSearch('')
                 setEditNotifySearch('')
                 setIsEditModalOpen(false)
               }}

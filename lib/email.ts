@@ -5,6 +5,7 @@ import { escapeHtml } from '@/lib/sanitize'
 import { calculateLeaveDuration } from '@/lib/leave-utils'
 import { safeRecordLeaveAuditEvent } from '@/lib/leave-audit'
 import { calculateWfhDays } from '@/lib/wfh-utils'
+import { normalizeCoverPersonIds } from '@/lib/leave-cover'
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -311,16 +312,29 @@ export async function sendLeaveRequestNotification(requestId: string) {
       .map(u => u.email!)
   }
 
-  // Cover person should receive the same request notification when assigned.
-  const coverPersonEmail = leaveRequest.coverPerson?.email || null
+  const coverPersonIds = normalizeCoverPersonIds(
+    leaveRequest.coverPersonIds,
+    leaveRequest.coverPerson?.id ?? null,
+    employee.id
+  )
+  const coverPeople = coverPersonIds.length > 0
+    ? await prisma.user.findMany({
+        where: { id: { in: coverPersonIds } },
+        select: { id: true, name: true, email: true },
+      })
+    : []
+  const coverPersonEmails = coverPeople
+    .filter((coverPerson) => coverPerson.email)
+    .map((coverPerson) => coverPerson.email!)
+  const coverPersonNames = coverPeople.map((coverPerson) => coverPerson.name)
 
-  // Build recipient list: HR + configured fallback + leads + optional additional + cover person (deduplicated)
+  // Build recipient list: HR + configured fallback + leads + optional additional + cover people (deduplicated)
   const recipients = [...new Set([
     ...hrEmails,
     ...fallbackRecipients,
     ...leadEmails,
     ...additionalEmails,
-    ...(coverPersonEmail ? [coverPersonEmail] : []),
+    ...coverPersonEmails,
   ])]
   if (recipients.length === 0) {
     await safeRecordLeaveAuditEvent({
@@ -353,7 +367,7 @@ export async function sendLeaveRequestNotification(requestId: string) {
         <p><strong>Duration (working days):</strong> ${durationLabel}</p>
         ${getHalfDayDetailsHtml(leaveRequest)}
         <p><strong>Reason:</strong> ${escapeHtml(leaveRequest.reason)}</p>
-        ${leaveRequest.coverPerson ? `<p><strong>Cover Person:</strong> ${escapeHtml(leaveRequest.coverPerson.name)}</p>` : ''}
+        ${coverPersonNames.length > 0 ? `<p><strong>Cover People:</strong> ${escapeHtml(coverPersonNames.join(', '))}</p>` : ''}
       </div>
 
       ${transitionPlan ? `

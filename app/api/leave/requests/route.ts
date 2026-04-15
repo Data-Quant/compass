@@ -13,6 +13,7 @@ import {
 import { normalizeLeaveTimeZone } from '@/lib/leave-timezone'
 import { isAdminRole } from '@/lib/permissions'
 import { removeLeaveCalendarEvent, syncLeaveCalendarEvent } from '@/lib/google-calendar'
+import { getPrimaryCoverPersonId, normalizeCoverPersonIds } from '@/lib/leave-cover'
 
 const LEAVE_TYPES = ['CASUAL', 'SICK', 'ANNUAL'] as const
 const LEAVE_STATUSES = ['PENDING', 'LEAD_APPROVED', 'HR_APPROVED', 'APPROVED', 'REJECTED', 'CANCELLED'] as const
@@ -114,16 +115,57 @@ function applyLeavePayloadValidations<T extends z.ZodTypeAny>(schema: T) {
 const leaveRequestCreateSchema = applyLeavePayloadValidations(leaveRequestPayloadBaseSchema.extend({
   employeeId: optionalIdSchema,
   coverPersonId: optionalIdSchema,
+  coverPersonIds: z.array(z.string().trim().min(1)).max(10).optional(),
   additionalNotifyIds: z.array(z.string().trim().min(1)).max(20).optional(),
 }))
 
 const leaveRequestUpdateSchema = applyLeavePayloadValidations(leaveRequestPayloadBaseSchema.extend({
   id: z.string().trim().min(1),
   coverPersonId: optionalIdSchema,
+  coverPersonIds: z.array(z.string().trim().min(1)).max(10).optional(),
   additionalNotifyIds: z.array(z.string().trim().min(1)).max(20).optional(),
 }))
 
 const leaveStatusSchema = z.enum(LEAVE_STATUSES)
+
+async function attachCoverPeople<T extends {
+  coverPersonIds?: unknown
+  coverPerson?: { id: string; name: string } | null
+}>(requests: T[]) {
+  const allCoverIds = [...new Set(
+    requests.flatMap((request) =>
+      normalizeCoverPersonIds(request.coverPersonIds, request.coverPerson?.id ?? null)
+    )
+  )]
+
+  if (allCoverIds.length === 0) {
+    return requests.map((request) => ({
+      ...request,
+      coverPeople: request.coverPerson ? [request.coverPerson] : [],
+    }))
+  }
+
+  const coverUsers = await prisma.user.findMany({
+    where: { id: { in: allCoverIds } },
+    select: { id: true, name: true },
+  })
+  const coverUserById = new Map(coverUsers.map((user) => [user.id, user]))
+
+  return requests.map((request) => {
+    const coverPeople = normalizeCoverPersonIds(request.coverPersonIds, request.coverPerson?.id ?? null)
+      .map((coverId) => coverUserById.get(coverId))
+      .filter((coverPerson): coverPerson is { id: string; name: string } => Boolean(coverPerson))
+
+    return {
+      ...request,
+      coverPeople: coverPeople.length > 0
+        ? coverPeople
+        : request.coverPerson
+          ? [request.coverPerson]
+          : [],
+    }
+  })
+}
 
 // GET - List leave requests
 export async function GET(request: NextRequest) {
@@ -177,7 +219,7 @@ export async function GET(request: NextRequest) {
         orderBy: [{ startDate: 'asc' }, { createdAt: 'asc' }],
       })
 
-      return NextResponse.json({ requests })
+      return NextResponse.json({ requests: await attachCoverPeople(requests) })
     }
     
     // Build where clause
@@ -253,7 +295,7 @@ export async function GET(request: NextRequest) {
         orderBy: { createdAt: 'desc' },
       })
 
-      return NextResponse.json({ requests })
+      return NextResponse.json({ requests: await attachCoverPeople(requests) })
     }
     
     const requests = await prisma.leaveRequest.findMany({
@@ -269,7 +311,7 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' },
     })
     
-    return NextResponse.json({ requests })
+    return NextResponse.json({ requests: await attachCoverPeople(requests) })
   } catch (error) {
     console.error('Failed to fetch leave requests:', error)
     return NextResponse.json({ error: 'Failed to fetch requests' }, { status: 500 })
@@ -306,6 +348,7 @@ export async function POST(request: NextRequest) {
       transitionPlan,
       requestTimezone,
       coverPersonId,
+      coverPersonIds,
       additionalNotifyIds,
       employeeId,
     } = parsed.data
@@ -319,8 +362,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Only HR can create leave for another employee' }, { status: 403 })
     }
 
-    if (coverPersonId && coverPersonId === targetEmployeeId) {
-      return NextResponse.json({ error: 'Cover person cannot be the same as the employee' }, { status: 400 })
+    const requestedCoverIds = normalizeCoverPersonIds(coverPersonIds, coverPersonId, null)
+    if (requestedCoverIds.includes(targetEmployeeId)) {
+      return NextResponse.json({ error: 'Cover people cannot include the employee' }, { status: 400 })
     }
 
     // Full-day leave requires lead approval when an upstream TEAM_LEAD exists.
@@ -335,8 +379,8 @@ export async function POST(request: NextRequest) {
     const requiresLeadApproval = leaveRequiresLeadApproval(leaveType, isHalfDay, superiorLeadCount)
 
     // Ensure employee exists when HR enters leave on behalf.
-    if (isOnBehalfRequest || coverPersonId) {
-      const idsToCheck = [targetEmployeeId, coverPersonId].filter(Boolean) as string[]
+    if (isOnBehalfRequest || requestedCoverIds.length > 0) {
+      const idsToCheck = [targetEmployeeId, ...requestedCoverIds] as string[]
       const users = await prisma.user.findMany({
         where: { id: { in: idsToCheck } },
         select: { id: true },
@@ -345,8 +389,9 @@ export async function POST(request: NextRequest) {
       if (!found.has(targetEmployeeId)) {
         return NextResponse.json({ error: 'Employee not found' }, { status: 404 })
       }
-      if (coverPersonId && !found.has(coverPersonId)) {
-        return NextResponse.json({ error: 'Cover person not found' }, { status: 404 })
+      const missingCoverId = requestedCoverIds.find((coverId) => !found.has(coverId))
+      if (missingCoverId) {
+        return NextResponse.json({ error: 'One or more cover people were not found' }, { status: 404 })
       }
     }
     
@@ -397,6 +442,8 @@ export async function POST(request: NextRequest) {
     const validNotifyIds = Array.isArray(additionalNotifyIds)
       ? [...new Set(additionalNotifyIds.filter((id) => id !== targetEmployeeId))]
       : []
+    const normalizedCoverIds = normalizeCoverPersonIds(requestedCoverIds, null, targetEmployeeId)
+    const primaryCoverPersonId = getPrimaryCoverPersonId(normalizedCoverIds)
 
     const safeTransitionPlan = transitionPlan?.trim() || ''
     const normalizedRequestTimezone = normalizeLeaveTimeZone(requestTimezone)
@@ -421,7 +468,8 @@ export async function POST(request: NextRequest) {
               endDate: end,
               reason,
               transitionPlan: safeTransitionPlan || 'Entered by HR on behalf of employee',
-              coverPersonId: coverPersonId || null,
+              coverPersonId: primaryCoverPersonId,
+              coverPersonIds: normalizedCoverIds.length > 0 ? normalizedCoverIds : Prisma.JsonNull,
               ...(validNotifyIds.length > 0 && { additionalNotifyIds: validNotifyIds }),
               status: 'HR_APPROVED',
               hrApprovedBy: user.id,
@@ -466,7 +514,8 @@ export async function POST(request: NextRequest) {
             endDate: end,
             reason,
             transitionPlan: safeTransitionPlan || 'Entered by HR on behalf of employee',
-            coverPersonId: coverPersonId || null,
+            coverPersonId: primaryCoverPersonId,
+            coverPersonIds: normalizedCoverIds.length > 0 ? normalizedCoverIds : Prisma.JsonNull,
             ...(validNotifyIds.length > 0 && { additionalNotifyIds: validNotifyIds }),
             status: 'APPROVED',
             hrApprovedBy: user.id,
@@ -497,7 +546,8 @@ export async function POST(request: NextRequest) {
           endDate: end,
           reason,
           transitionPlan: safeTransitionPlan,
-          coverPersonId: coverPersonId || null,
+          coverPersonId: primaryCoverPersonId,
+          coverPersonIds: normalizedCoverIds.length > 0 ? normalizedCoverIds : Prisma.JsonNull,
           ...(validNotifyIds.length > 0 && { additionalNotifyIds: validNotifyIds }),
           status: 'PENDING',
         },
@@ -511,6 +561,7 @@ export async function POST(request: NextRequest) {
         },
       })
     })
+    const [requestWithCoverPeople] = await attachCoverPeople([leaveRequest])
     
     // Send approval request notifications unless this entry is already fully approved.
     if (!(isOnBehalfRequest && isHR && !requiresLeadApproval)) {
@@ -527,7 +578,7 @@ export async function POST(request: NextRequest) {
       console.error('Failed to sync leave request with Google Calendar:', e)
     }
     
-    return NextResponse.json({ success: true, request: leaveRequest })
+    return NextResponse.json({ success: true, request: requestWithCoverPeople })
   } catch (error) {
     console.error('Failed to create leave request:', error)
     return NextResponse.json({ error: 'Failed to create request' }, { status: 500 })
@@ -565,6 +616,7 @@ export async function PUT(request: NextRequest) {
       transitionPlan,
       requestTimezone,
       coverPersonId,
+      coverPersonIds,
       additionalNotifyIds,
     } = parsed.data
     const isHR = isAdminRole(user.role)
@@ -592,17 +644,18 @@ export async function PUT(request: NextRequest) {
     }
 
     const targetEmployeeId = existing.employeeId
-    if (coverPersonId && coverPersonId === targetEmployeeId) {
-      return NextResponse.json({ error: 'Cover person cannot be the same as the employee' }, { status: 400 })
+    const requestedCoverIds = normalizeCoverPersonIds(coverPersonIds, coverPersonId, null)
+    if (requestedCoverIds.includes(targetEmployeeId)) {
+      return NextResponse.json({ error: 'Cover people cannot include the employee' }, { status: 400 })
     }
 
-    if (coverPersonId) {
-      const coverUser = await prisma.user.findUnique({
-        where: { id: coverPersonId },
+    if (requestedCoverIds.length > 0) {
+      const coverUsers = await prisma.user.findMany({
+        where: { id: { in: requestedCoverIds } },
         select: { id: true },
       })
-      if (!coverUser) {
-        return NextResponse.json({ error: 'Cover person not found' }, { status: 404 })
+      if (coverUsers.length !== requestedCoverIds.length) {
+        return NextResponse.json({ error: 'One or more cover people were not found' }, { status: 404 })
       }
     }
     const start = new Date(startDate)
@@ -643,6 +696,8 @@ export async function PUT(request: NextRequest) {
     const validNotifyIds = Array.isArray(additionalNotifyIds)
       ? [...new Set(additionalNotifyIds.filter((notifyId) => notifyId !== targetEmployeeId))]
       : []
+    const normalizedCoverIds = normalizeCoverPersonIds(requestedCoverIds, null, targetEmployeeId)
+    const primaryCoverPersonId = getPrimaryCoverPersonId(normalizedCoverIds)
     const normalizedRequestTimezone = normalizeLeaveTimeZone(requestTimezone || existing.requestTimezone)
 
     const updated = await prisma.leaveRequest.update({
@@ -658,7 +713,8 @@ export async function PUT(request: NextRequest) {
         endDate: end,
         reason,
         transitionPlan: transitionPlan?.trim() || '',
-        coverPersonId: coverPersonId || null,
+        coverPersonId: primaryCoverPersonId,
+        coverPersonIds: normalizedCoverIds.length > 0 ? normalizedCoverIds : Prisma.JsonNull,
         additionalNotifyIds: validNotifyIds.length > 0 ? validNotifyIds : Prisma.JsonNull,
         // Editing resets approval flow so leads/HR review latest details.
         status: 'PENDING',
@@ -681,6 +737,7 @@ export async function PUT(request: NextRequest) {
         },
       },
     })
+    const [updatedWithCoverPeople] = await attachCoverPeople([updated])
 
     try {
       await sendLeaveRequestNotification(updated.id)
@@ -694,7 +751,7 @@ export async function PUT(request: NextRequest) {
       console.error('Failed to sync updated leave request with Google Calendar:', e)
     }
 
-    return NextResponse.json({ success: true, request: updated })
+    return NextResponse.json({ success: true, request: updatedWithCoverPeople })
   } catch (error) {
     console.error('Failed to update leave request:', error)
     return NextResponse.json({ error: 'Failed to update request' }, { status: 500 })

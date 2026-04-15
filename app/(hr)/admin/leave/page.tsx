@@ -71,6 +71,7 @@ interface LeaveRequest {
     position: string | null
   }
   coverPerson?: { id: string; name: string }
+  coverPeople?: Array<{ id: string; name: string }>
   leadApprovedBy?: string
   leadApprovedAt?: string
   hrApprovedBy?: string
@@ -163,6 +164,13 @@ const formatApiDate = (value: string, options?: Intl.DateTimeFormatOptions) => {
   if (!parsed) return value
   return parsed.toLocaleDateString('en-US', options)
 }
+
+const getRequestCoverPeople = (request: LeaveRequest) =>
+  Array.isArray(request.coverPeople) && request.coverPeople.length > 0
+    ? request.coverPeople
+    : request.coverPerson
+      ? [request.coverPerson]
+      : []
 
 export default function HRLeavePage() {
   const [requests, setRequests] = useState<LeaveRequest[]>([])
@@ -730,10 +738,10 @@ export default function HRLeavePage() {
                             <p className="text-sm text-amber-800 dark:text-amber-300">{request.transitionPlan}</p>
                           </div>
                           
-                          {request.coverPerson && (
+                          {getRequestCoverPeople(request).length > 0 && (
                             <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
                               <User className="w-3 h-3" />
-                              Cover: {request.coverPerson.name}
+                              Cover: {getRequestCoverPeople(request).map((coverPerson) => coverPerson.name).join(', ')}
                             </p>
                           )}
                           

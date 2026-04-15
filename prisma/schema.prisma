@@ -586,6 +586,7 @@ model LeaveRequest {
   reason          String
   transitionPlan  String      // Tasks and handover details
   coverPersonId   String?     // Who covers their tasks
+  coverPersonIds  Json?       // Array of cover person user IDs (first item mirrors coverPersonId)
   additionalNotifyIds Json?   // Array of user IDs to CC on email (notification only, not approval)
   status          LeaveStatus @default(PENDING)
   

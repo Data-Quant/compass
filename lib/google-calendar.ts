@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db'
 import { C_LEVEL_EVALUATORS } from '@/lib/config'
 import { safeRecordLeaveAuditEvent } from '@/lib/leave-audit'
 import { normalizeLeaveTimeZone } from '@/lib/leave-timezone'
+import { normalizeCoverPersonIds } from '@/lib/leave-cover'
 
 type GoogleCalendarConfig = {
   clientId: string
@@ -335,10 +336,27 @@ async function collectLeaveAttendeeEmails(leaveRequestId: string) {
       : Promise.resolve(new Set<string>()),
   ])
 
+  const coverPersonIds = normalizeCoverPersonIds(
+    leaveRequest.coverPersonIds,
+    leaveRequest.coverPerson?.id ?? null,
+    leaveRequest.employeeId
+  )
+  const coverPeople = coverPersonIds.length > 0
+    ? await prisma.user.findMany({
+        where: {
+          id: { in: coverPersonIds },
+          email: { not: null },
+        },
+        select: { email: true },
+      })
+    : []
+
   const allEmails = new Set<string>()
 
   if (isValidEmail(leaveRequest.employee.email)) allEmails.add(leaveRequest.employee.email.toLowerCase())
-  if (isValidEmail(leaveRequest.coverPerson?.email)) allEmails.add(leaveRequest.coverPerson.email.toLowerCase())
+  for (const coverPerson of coverPeople) {
+    if (isValidEmail(coverPerson.email)) allEmails.add(coverPerson.email.toLowerCase())
+  }
   for (const user of hrUsers) {
     if (isValidEmail(user.email)) allEmails.add(user.email.toLowerCase())
   }
