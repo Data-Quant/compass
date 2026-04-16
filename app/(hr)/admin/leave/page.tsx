@@ -199,6 +199,12 @@ export default function HRLeavePage() {
   const [balanceYear, setBalanceYear] = useState(new Date().getFullYear())
   const [selectedBalance, setSelectedBalance] = useState<LeaveBalance | null>(null)
   const [loadingBalance, setLoadingBalance] = useState(false)
+  const [savingBalance, setSavingBalance] = useState(false)
+  const [balanceForm, setBalanceForm] = useState({
+    casualDays: '',
+    sickDays: '',
+    annualDays: '',
+  })
   const [createForm, setCreateForm] = useState({
     employeeId: '',
     leaveType: 'SICK' as 'CASUAL' | 'SICK' | 'ANNUAL',
@@ -241,6 +247,23 @@ export default function HRLeavePage() {
 
     void loadLeaveBalance(balanceEmployeeId, balanceYear)
   }, [isBalanceModalOpen, balanceEmployeeId, balanceYear])
+
+  useEffect(() => {
+    if (!selectedBalance) {
+      setBalanceForm({
+        casualDays: '',
+        sickDays: '',
+        annualDays: '',
+      })
+      return
+    }
+
+    setBalanceForm({
+      casualDays: selectedBalance.casualDays.toString(),
+      sickDays: selectedBalance.sickDays.toString(),
+      annualDays: selectedBalance.annualDays.toString(),
+    })
+  }, [selectedBalance])
 
   const loadRequests = async () => {
     try {
@@ -348,6 +371,50 @@ export default function HRLeavePage() {
     setSelectedWfhRequest(request)
     setWfhActionModal({ open: true, action })
     setWfhComment('')
+  }
+
+  const handleSaveBalance = async () => {
+    if (!balanceEmployeeId) {
+      toast.error('Select a team member first')
+      return
+    }
+
+    const parsedTotals = {
+      casualDays: Number(balanceForm.casualDays),
+      sickDays: Number(balanceForm.sickDays),
+      annualDays: Number(balanceForm.annualDays),
+    }
+
+    for (const [label, value] of Object.entries(parsedTotals)) {
+      if (!Number.isInteger(value) || value < 0) {
+        toast.error(`${label.replace('Days', '')} allocation must be a whole number 0 or higher`)
+        return
+      }
+    }
+
+    setSavingBalance(true)
+    try {
+      const res = await fetch('/api/leave/balance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employeeId: balanceEmployeeId,
+          year: balanceYear,
+          ...parsedTotals,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Failed to update leave allocation')
+      }
+
+      toast.success('Leave allocation updated')
+      await loadLeaveBalance(balanceEmployeeId, balanceYear)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update leave allocation')
+    } finally {
+      setSavingBalance(false)
+    }
   }
 
   const resetCreateForm = () => {
@@ -616,7 +683,7 @@ export default function HRLeavePage() {
               onClick={() => openBalanceModal()}
             >
               <Eye className="w-4 h-4" />
-              View Leave Balance
+              Manage Leave Balance
             </Button>
             <Button
               variant="outline"
@@ -1125,6 +1192,68 @@ export default function HRLeavePage() {
                     <p className="text-sm text-muted-foreground">Total Remaining</p>
                     <p className="text-3xl font-bold text-foreground">{formatLeaveValue(totalRemainingLeave)}</p>
                   </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-border/80 bg-muted/20">
+                <CardContent className="p-5 space-y-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-base font-semibold text-foreground">Edit Yearly Allocation</p>
+                      <p className="text-sm text-muted-foreground">
+                        Defaults start at the standard company allocation. HR can override this employee&apos;s totals for contract-specific leave.
+                      </p>
+                    </div>
+                    <Button onClick={handleSaveBalance} disabled={savingBalance}>
+                      {savingBalance ? 'Saving...' : 'Save Allocation'}
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <Label htmlFor="casual-allocation" className="mb-2">Casual Total</Label>
+                      <Input
+                        id="casual-allocation"
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={balanceForm.casualDays}
+                        onChange={(e) =>
+                          setBalanceForm((prev) => ({ ...prev, casualDays: e.target.value }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="sick-allocation" className="mb-2">Sick Total</Label>
+                      <Input
+                        id="sick-allocation"
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={balanceForm.sickDays}
+                        onChange={(e) =>
+                          setBalanceForm((prev) => ({ ...prev, sickDays: e.target.value }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="annual-allocation" className="mb-2">Annual Total</Label>
+                      <Input
+                        id="annual-allocation"
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={balanceForm.annualDays}
+                        onChange={(e) =>
+                          setBalanceForm((prev) => ({ ...prev, annualDays: e.target.value }))
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-muted-foreground">
+                    Used leave stays intact. Totals cannot be set below already-used leave for the selected year.
+                  </p>
                 </CardContent>
               </Card>
 

@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getSession } from '@/lib/auth'
 import { isAdminRole } from '@/lib/permissions'
+import { z } from 'zod'
+
+const leaveBalanceUpdateSchema = z.object({
+  employeeId: z.string().trim().min(1),
+  year: z.coerce.number().int().min(2020).max(2100),
+  casualDays: z.coerce.number().int().min(0).optional(),
+  sickDays: z.coerce.number().int().min(0).optional(),
+  annualDays: z.coerce.number().int().min(0).optional(),
+})
 
 // GET - Get leave balance for current user or specified employee
 export async function GET(request: NextRequest) {
@@ -75,10 +84,41 @@ export async function POST(request: NextRequest) {
     }
     
     const body = await request.json()
-    const { employeeId, year, casualDays, sickDays, annualDays } = body
-    
-    if (!employeeId || !year) {
-      return NextResponse.json({ error: 'Employee ID and year required' }, { status: 400 })
+    const parsed = leaveBalanceUpdateSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Invalid leave balance update payload', details: parsed.error.errors },
+        { status: 400 }
+      )
+    }
+
+    const { employeeId, year, casualDays, sickDays, annualDays } = parsed.data
+
+    const existingBalance = await prisma.leaveBalance.findUnique({
+      where: {
+        employeeId_year: {
+          employeeId,
+          year,
+        },
+      },
+    })
+
+    const nextTotals = {
+      casualDays: casualDays ?? existingBalance?.casualDays ?? 10,
+      sickDays: sickDays ?? existingBalance?.sickDays ?? 6,
+      annualDays: annualDays ?? existingBalance?.annualDays ?? 14,
+    }
+
+    if (existingBalance) {
+      if (nextTotals.casualDays < existingBalance.casualUsed) {
+        return NextResponse.json({ error: 'Casual allocation cannot be lower than already-used casual leave' }, { status: 400 })
+      }
+      if (nextTotals.sickDays < existingBalance.sickUsed) {
+        return NextResponse.json({ error: 'Sick allocation cannot be lower than already-used sick leave' }, { status: 400 })
+      }
+      if (nextTotals.annualDays < existingBalance.annualUsed) {
+        return NextResponse.json({ error: 'Annual allocation cannot be lower than already-used annual leave' }, { status: 400 })
+      }
     }
     
     const balance = await prisma.leaveBalance.upsert({
@@ -89,16 +129,16 @@ export async function POST(request: NextRequest) {
         },
       },
       update: {
-        casualDays: casualDays ?? undefined,
-        sickDays: sickDays ?? undefined,
-        annualDays: annualDays ?? undefined,
+        casualDays: nextTotals.casualDays,
+        sickDays: nextTotals.sickDays,
+        annualDays: nextTotals.annualDays,
       },
       create: {
         employeeId,
         year,
-        casualDays: casualDays ?? 10,
-        sickDays: sickDays ?? 6,
-        annualDays: annualDays ?? 14,
+        casualDays: nextTotals.casualDays,
+        sickDays: nextTotals.sickDays,
+        annualDays: nextTotals.annualDays,
       },
     })
     
