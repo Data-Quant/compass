@@ -8,6 +8,8 @@ import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
+import { CompanyBrandLockup } from '@/components/brand/CompanyBrandLockup'
+import { useCompanyBranding } from '@/components/providers/company-branding-provider'
 import { BackgroundBeams } from '@/components/aceternity/background-beams'
 import { ShimmerButton } from '@/components/magicui/shimmer-button'
 import { Lock, Eye, EyeOff, Mail } from 'lucide-react'
@@ -122,7 +124,15 @@ function CompassHero({ size = 120 }: { size?: number }) {
   )
 }
 
-function SplashScreen({ onComplete }: { onComplete: () => void }) {
+function SplashScreen({
+  onComplete,
+  platformName,
+  companyName,
+}: {
+  onComplete: () => void
+  platformName: string
+  companyName: string
+}) {
   useEffect(() => {
     const timer = setTimeout(onComplete, 2200)
     return () => clearTimeout(timer)
@@ -148,14 +158,48 @@ function SplashScreen({ onComplete }: { onComplete: () => void }) {
 
       <div className="relative flex flex-col items-center">
         <CompassHero size={130} />
-        <motion.span
-          className="mt-10 text-2xl font-display tracking-tight text-foreground"
-          initial={{ opacity: 0, filter: 'blur(8px)', y: 12 }}
+        <motion.div
+          className="mt-10 flex items-center gap-4"
+          initial={{ opacity: 0, filter: 'blur(10px)', y: 16 }}
           animate={{ opacity: 1, filter: 'blur(0px)', y: 0 }}
-          transition={{ delay: 1.1, duration: 0.5, ease: ease.smooth }}
+          transition={{ delay: 1.1, duration: 0.6, ease: ease.smooth }}
         >
-          Compass
-        </motion.span>
+          <motion.div
+            initial={{ scale: 0.7, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 1.2, duration: 0.4, ...ease.spring }}
+          >
+            <CompanyBrandLockup
+              size={36}
+              className="text-[#2F80ED] dark:text-foreground"
+            />
+          </motion.div>
+
+          <motion.div
+            className="h-7 w-px bg-border/60"
+            initial={{ scaleY: 0 }}
+            animate={{ scaleY: 1 }}
+            transition={{ delay: 1.4, duration: 0.3 }}
+          />
+
+          <motion.span
+            className="text-2xl font-display tracking-tight text-foreground"
+            initial={{ opacity: 0, filter: 'blur(8px)', x: -8 }}
+            animate={{ opacity: 1, filter: 'blur(0px)', x: 0 }}
+            transition={{ delay: 1.5, duration: 0.5, ease: ease.smooth }}
+          >
+            {platformName}
+          </motion.span>
+        </motion.div>
+
+        <motion.p
+          className="mt-3 text-sm text-muted-foreground tracking-wide"
+          initial={{ opacity: 0, filter: 'blur(8px)' }}
+          animate={{ opacity: 1, filter: 'blur(0px)' }}
+          transition={{ delay: 1.9, duration: 0.5, ease: ease.smooth }}
+        >
+          {companyName} Performance Platform
+        </motion.p>
       </div>
     </motion.div>
   )
@@ -166,6 +210,7 @@ function SplashScreen({ onComplete }: { onComplete: () => void }) {
  * ──────────────────────────────────────────── */
 export default function LoginPage() {
   const router = useRouter()
+  const { branding } = useCompanyBranding()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -233,7 +278,13 @@ export default function LoginPage() {
   return (
     <>
       <AnimatePresence>
-        {splashVisible && <SplashScreen onComplete={handleSplashComplete} />}
+        {splashVisible && (
+          <SplashScreen
+            onComplete={handleSplashComplete}
+            platformName={branding.platformName}
+            companyName={branding.companyName}
+          />
+        )}
       </AnimatePresence>
 
       <motion.div
@@ -270,8 +321,10 @@ export default function LoginPage() {
               transition={{ delay: 0.2, duration: 0.5, ease: ease.smooth }}
               className="flex items-center gap-4"
             >
+              <CompanyBrandLockup size={36} className="text-[#2F80ED] dark:text-foreground" />
+              <div className="h-7 w-px bg-border/60" />
               <span className="text-xl font-display tracking-tight text-foreground">
-                Compass
+                {branding.platformName}
               </span>
             </motion.div>
 
@@ -300,7 +353,8 @@ export default function LoginPage() {
                 transition={{ duration: 0.34, ease: ease.smooth }}
                 className="text-lg text-muted-foreground leading-relaxed"
               >
-                Performance reviews, leave management, and team collaboration — everything you need to thrive.
+                Performance reviews, leave management, and team collaboration -
+                everything you need to thrive at {branding.companyName}.
               </motion.p>
             </div>
 
@@ -324,7 +378,15 @@ export default function LoginPage() {
               className="w-full max-w-md"
             >
               <div className="lg:hidden text-center mb-8">
-                <span className="text-xl font-display tracking-tight">Compass</span>
+                <div className="flex items-center justify-center gap-3 mb-4">
+                  <CompanyBrandLockup size={32} className="text-[#2F80ED] dark:text-foreground" />
+                  <span className="text-xl font-display tracking-tight">
+                    {branding.platformName}
+                  </span>
+                </div>
+                <p className="text-muted-foreground text-sm">
+                  {branding.companyName} Performance Platform
+                </p>
               </div>
 
               <Card className="rounded-card border-border/50 shadow-premium">
