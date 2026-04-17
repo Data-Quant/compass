@@ -303,7 +303,7 @@ export default function HRLeavePage() {
 
   const loadUsers = async () => {
     try {
-      const res = await fetch('/api/auth/login')
+      const res = await fetch('/api/users')
       const data = await res.json()
       setUsers(data.users || [])
     } catch {

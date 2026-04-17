@@ -1,28 +1,23 @@
+import { prisma } from '@/lib/db'
+
 const WINDOW_MS = 15 * 60 * 1000 // 15 minutes
 const DEFAULT_MAX_ATTEMPTS = 10
 
-const attempts = new Map<string, { count: number; resetAt: number }>()
+// Opportunistic cleanup sampling: roughly 1% of calls also prune expired rows.
+const CLEANUP_SAMPLE_RATE = 0.01
 
-// Periodic cleanup every 5 minutes to prevent memory leaks
-const cleanupInterval = setInterval(() => {
-  const now = Date.now()
-  for (const [key, value] of attempts) {
-    if (now > value.resetAt) {
-      attempts.delete(key)
-    }
-  }
-}, 5 * 60 * 1000)
-
-cleanupInterval.unref?.()
+export interface RateLimitResult {
+  allowed: boolean
+  remaining: number
+  resetAt: Date
+}
 
 export function normalizeClientIp(rawValue: string | null | undefined): string {
   if (!rawValue) return 'unknown'
 
-  // x-forwarded-for may contain a comma-separated list. Use the first client IP.
   const firstValue = rawValue.split(',')[0].trim()
   if (!firstValue) return 'unknown'
 
-  // Strip IPv4 port suffix if present (e.g. "203.0.113.10:1234").
   const ipv4WithPort = firstValue.match(/^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/)
   if (ipv4WithPort) {
     return ipv4WithPort[1]
@@ -31,20 +26,61 @@ export function normalizeClientIp(rawValue: string | null | undefined): string {
   return firstValue
 }
 
-export function checkRateLimit(key: string, maxAttempts = DEFAULT_MAX_ATTEMPTS): { allowed: boolean; remaining: number } {
-  const now = Date.now()
-  const record = attempts.get(key)
+interface RateLimitRow {
+  count: number
+  resetAt: Date
+}
 
-  if (!record || now > record.resetAt) {
-    attempts.set(key, { count: 1, resetAt: now + WINDOW_MS })
-    return { allowed: true, remaining: maxAttempts - 1 }
+// Single atomic UPSERT via Postgres. ON CONFLICT branch either:
+//  - resets the counter to 1 if the window has expired, or
+//  - increments the existing counter within the active window.
+export async function checkRateLimit(
+  key: string,
+  maxAttempts = DEFAULT_MAX_ATTEMPTS
+): Promise<RateLimitResult> {
+  const nextReset = new Date(Date.now() + WINDOW_MS)
+
+  try {
+    const rows = await prisma.$queryRaw<RateLimitRow[]>`
+      INSERT INTO "RateLimit" ("key", "count", "resetAt")
+      VALUES (${key}, 1, ${nextReset})
+      ON CONFLICT ("key") DO UPDATE SET
+        "count" = CASE
+          WHEN "RateLimit"."resetAt" < NOW() THEN 1
+          ELSE "RateLimit"."count" + 1
+        END,
+        "resetAt" = CASE
+          WHEN "RateLimit"."resetAt" < NOW() THEN EXCLUDED."resetAt"
+          ELSE "RateLimit"."resetAt"
+        END
+      RETURNING "count", "resetAt"
+    `
+
+    const row = rows[0]
+    if (!row) {
+      // Should not happen; fail open to avoid locking out legitimate users.
+      return { allowed: true, remaining: maxAttempts, resetAt: nextReset }
+    }
+
+    // Opportunistic cleanup — fire-and-forget to keep the table small.
+    if (Math.random() < CLEANUP_SAMPLE_RATE) {
+      prisma.$executeRaw`DELETE FROM "RateLimit" WHERE "resetAt" < NOW()`.catch(() => {})
+    }
+
+    return {
+      allowed: row.count <= maxAttempts,
+      remaining: Math.max(0, maxAttempts - row.count),
+      resetAt: row.resetAt,
+    }
+  } catch (error) {
+    // If the DB is down, fail open: better to let a legitimate user log in than
+    // lock out everyone. The upstream endpoint still validates credentials.
+    console.error('[rate-limit] DB error, failing open:', error)
+    return { allowed: true, remaining: maxAttempts, resetAt: nextReset }
   }
+}
 
-  record.count++
-
-  if (record.count > maxAttempts) {
-    return { allowed: false, remaining: 0 }
-  }
-
-  return { allowed: true, remaining: maxAttempts - record.count }
+export function retryAfterSeconds(resetAt: Date): number {
+  const seconds = Math.ceil((resetAt.getTime() - Date.now()) / 1000)
+  return seconds > 0 ? seconds : 1
 }

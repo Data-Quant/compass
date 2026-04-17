@@ -297,7 +297,7 @@ export default function LeavePage() {
       const [balanceRes, requestsRes, usersRes, approvalsRes, wfhRequestsRes, wfhApprovalsRes] = await Promise.all([
         fetch('/api/leave/balance'),
         fetch('/api/leave/requests?employeeId=me'),
-        fetch('/api/auth/login'),
+        fetch('/api/users'),
         fetch('/api/leave/requests?forApproval=true'),
         fetch('/api/wfh/requests?employeeId=me'),
         fetch('/api/wfh/requests?forApproval=true'),

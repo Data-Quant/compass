@@ -226,6 +226,15 @@ enum OnboardingModuleStatus {
   COMPLETED
 }
 
+// Standalone counter table used by lib/rate-limit.ts. Not related to any other model.
+model RateLimit {
+  key      String   @id
+  count    Int
+  resetAt  DateTime
+
+  @@index([resetAt])
+}
+
 model User {
   id           String   @id @default(cuid())
   name         String

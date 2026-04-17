@@ -81,7 +81,7 @@ export function AssetsManagerWorkspace({
 
   const loadUsers = async () => {
     try {
-      const res = await fetch('/api/auth/login')
+      const res = await fetch('/api/users')
       const data = (await res.json()) as LoginUserResponse
       const mapped = (data.users || []).map((user) => ({
         id: user.id,

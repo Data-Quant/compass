@@ -88,7 +88,7 @@ export default function MappingsPage() {
 
   const loadData = async () => {
     try {
-      const [mappingsRes, usersRes] = await Promise.all([fetch('/api/admin/mappings'), fetch('/api/auth/login')])
+      const [mappingsRes, usersRes] = await Promise.all([fetch('/api/admin/mappings'), fetch('/api/users')])
       const mappingsData = await mappingsRes.json()
       const usersData = await usersRes.json()
       setMappings(mappingsData.mappings || [])

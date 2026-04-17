@@ -47,7 +47,7 @@ export function AssetDetailWorkspace({ assetId, listHref }: AssetDetailWorkspace
     try {
       const [assetRes, usersRes] = await Promise.all([
         fetch(`/api/assets/${assetId}`),
-        fetch('/api/auth/login'),
+        fetch('/api/users'),
       ])
       const [assetData, usersData] = await Promise.all([assetRes.json(), usersRes.json()])
 

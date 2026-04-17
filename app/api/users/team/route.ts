@@ -53,7 +53,6 @@ export async function GET() {
         teamMembers: directReportMappings.map(({ evaluatee }) => ({
           id: evaluatee.id,
           name: evaluatee.name,
-          email: evaluatee.email || evaluatee.payrollProfile?.officialEmail || null,
           discordId: evaluatee.discordId,
           department: evaluatee.department,
           position: evaluatee.position,
@@ -98,7 +97,6 @@ export async function GET() {
     const teamMembers = members.map((member) => ({
       id: member.id,
       name: member.name,
-      email: member.email || member.payrollProfile?.officialEmail || null,
       discordId: member.discordId,
       department: member.department,
       position: member.position,

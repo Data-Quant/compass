@@ -30,7 +30,6 @@ import {
   Shield,
   PackageSearch,
   Users,
-  Mail,
   MessageCircle,
   ClipboardList,
 } from 'lucide-react'
@@ -89,7 +88,6 @@ interface MyEquipmentItem {
 interface TeamMember {
   id: string
   name: string
-  email: string | null
   discordId: string | null
   department: string | null
   position: string | null
@@ -792,10 +790,6 @@ export default function DashboardPage() {
                         <UserAvatar name={member.name} size="xs" />
                       </div>
                       <div className="mt-2 space-y-1">
-                        <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                          <Mail className="h-3 w-3 shrink-0" />
-                          <span className="truncate">{member.email || 'Email not set'}</span>
-                        </p>
                         <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                           <MessageCircle className="h-3 w-3 shrink-0" />
                           <span className="font-mono text-[11px] text-foreground/90">

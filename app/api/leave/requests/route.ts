@@ -10,6 +10,7 @@ import {
   isValidLeaveDateRange,
   leaveRequiresLeadApproval,
 } from '@/lib/leave-utils'
+import { stripHtml } from '@/lib/sanitize'
 import { normalizeLeaveTimeZone } from '@/lib/leave-timezone'
 import { isAdminRole } from '@/lib/permissions'
 import { removeLeaveCalendarEvent, syncLeaveCalendarEvent } from '@/lib/google-calendar'
@@ -26,7 +27,13 @@ const optionalIdSchema = z.preprocess(
 
 const optionalTransitionPlanSchema = z.preprocess(
   (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
-  z.string().trim().max(6000).optional().nullable()
+  z
+    .string()
+    .trim()
+    .max(6000)
+    .optional()
+    .nullable()
+    .transform((value) => (typeof value === 'string' ? stripHtml(value) : value))
 )
 
 const optionalTimeSchema = z.preprocess(
@@ -53,7 +60,12 @@ const leaveRequestPayloadBaseSchema = z.object({
   unavailableEndTime: optionalTimeSchema,
   startDate: z.coerce.date(),
   endDate: z.coerce.date(),
-  reason: z.string().trim().min(1).max(4000),
+  reason: z
+    .string()
+    .trim()
+    .min(1)
+    .max(4000)
+    .transform((value) => stripHtml(value)),
   transitionPlan: optionalTransitionPlanSchema,
 })
 
@@ -247,6 +259,10 @@ export async function GET(request: NextRequest) {
         }
       }
       where.employeeId = employeeId
+    } else if (!forApproval && !isAdminRole(user.role)) {
+      // No filter + not asking for approval + not admin => scope to self.
+      // Prevents any authenticated user from fetching every leave record (which included medical reasons, HR notes, etc.).
+      where.employeeId = user.id
     }
     
     if (status) {

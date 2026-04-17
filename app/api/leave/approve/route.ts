@@ -7,11 +7,17 @@ import { z } from 'zod'
 import { calculateLeaveDuration, leaveRequiresLeadApproval } from '@/lib/leave-utils'
 import { isAdminRole } from '@/lib/permissions'
 import { removeLeaveCalendarEvent, syncLeaveCalendarEvent } from '@/lib/google-calendar'
+import { stripHtml } from '@/lib/sanitize'
 
 const leaveApprovalSchema = z.object({
   requestId: z.string().trim().min(1),
   action: z.enum(['approve', 'reject']),
-  comment: z.string().trim().max(2000).optional(),
+  comment: z
+    .string()
+    .trim()
+    .max(2000)
+    .optional()
+    .transform((value) => (typeof value === 'string' ? stripHtml(value) : value)),
 })
 
 // POST - Approve or reject a leave request

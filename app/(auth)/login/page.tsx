@@ -7,42 +7,10 @@ import { toast } from 'sonner'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { BackgroundBeams } from '@/components/aceternity/background-beams'
 import { ShimmerButton } from '@/components/magicui/shimmer-button'
-import { UserAvatar } from '@/components/composed/UserAvatar'
-import { CompanyBrandLockup } from '@/components/brand/CompanyBrandLockup'
-import { useCompanyBranding } from '@/components/providers/company-branding-provider'
-import {
-  Search,
-  Users,
-  AlertCircle,
-  ChevronRight,
-  ArrowLeft,
-  Lock,
-  Eye,
-  EyeOff,
-} from 'lucide-react'
-import {
-  type CompanyView,
-  userMatchesCompanyView,
-} from '@/lib/company-branding'
-
-interface User {
-  id: string
-  name: string
-  department?: string
-  position?: string
-  role: string
-  hasPassword?: boolean
-}
-
-const companyOptions: Array<{ value: CompanyView; label: string }> = [
-  { value: 'plutus', label: 'Plutus' },
-  { value: '3e', label: '3E' },
-]
+import { Lock, Eye, EyeOff, Mail } from 'lucide-react'
 
 /* ─── Design-system easing curves ─── */
 const ease = {
@@ -51,13 +19,14 @@ const ease = {
   out: [0.16, 1, 0.3, 1] as [number, number, number, number],
 }
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
 /* ────────────────────────────────────────────
  * Animated Compass SVG – plays once on splash
  * ──────────────────────────────────────────── */
 function CompassHero({ size = 120 }: { size?: number }) {
   return (
     <div className="relative" style={{ width: size, height: size }}>
-      {/* Outer ring with draw-on stroke */}
       <motion.svg
         viewBox="0 0 120 120"
         className="absolute inset-0 w-full h-full"
@@ -78,8 +47,6 @@ function CompassHero({ size = 120 }: { size?: number }) {
           animate={{ strokeDashoffset: 0 }}
           transition={{ duration: 1.5, ease: 'easeInOut', delay: 0.2 }}
         />
-
-        {/* Cardinal ticks */}
         {[0, 90, 180, 270].map((angle) => (
           <motion.line
             key={angle}
@@ -93,8 +60,6 @@ function CompassHero({ size = 120 }: { size?: number }) {
             transition={{ delay: 0.8 + angle / 1000 }}
           />
         ))}
-
-        {/* Minor ticks */}
         {[45, 135, 225, 315].map((angle) => (
           <motion.line
             key={angle}
@@ -108,7 +73,6 @@ function CompassHero({ size = 120 }: { size?: number }) {
             transition={{ delay: 1 + angle / 1000 }}
           />
         ))}
-
         <defs>
           <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="hsl(var(--primary))" />
@@ -118,7 +82,6 @@ function CompassHero({ size = 120 }: { size?: number }) {
         </defs>
       </motion.svg>
 
-      {/* Needle group - oscillation settling like a real compass */}
       <motion.svg
         viewBox="0 0 120 120"
         className="absolute inset-0 w-full h-full"
@@ -126,21 +89,14 @@ function CompassHero({ size = 120 }: { size?: number }) {
         animate={{ rotate: [null, 30, -15, 8, -3, 0] }}
         transition={{ duration: 2, ease: 'easeOut', delay: 0.5 }}
       >
-        {/* North needle */}
         <polygon
           points="60,18 56.5,58 63.5,58"
           fill="url(#needleN)"
           style={{ filter: 'drop-shadow(0 2px 4px rgba(99, 102, 241, 0.3))' }}
         />
-        {/* South needle */}
-        <polygon
-          points="60,102 56.5,62 63.5,62"
-          fill="url(#needleS)"
-        />
-        {/* Center pivot */}
+        <polygon points="60,102 56.5,62 63.5,62" fill="url(#needleS)" />
         <circle cx="60" cy="60" r="4.5" fill="hsl(var(--primary))" style={{ filter: 'drop-shadow(0 0 6px rgba(99, 102, 241, 0.4))' }} />
         <circle cx="60" cy="60" r="2" fill="hsl(var(--background))" />
-
         <defs>
           <linearGradient id="needleN" x1="0%" y1="100%" x2="0%" y2="0%">
             <stop offset="0%" stopColor="hsl(var(--primary))" />
@@ -153,7 +109,6 @@ function CompassHero({ size = 120 }: { size?: number }) {
         </defs>
       </motion.svg>
 
-      {/* Subtle glow pulse */}
       <motion.div
         className="absolute inset-0 rounded-full"
         style={{
@@ -167,26 +122,9 @@ function CompassHero({ size = 120 }: { size?: number }) {
   )
 }
 
-/* ────────────────────────────────────────────
- * Splash / Greeting Screen
- *
- * Design-system principles applied:
- *  - Sequential revelation (compass → logo → text → dots)
- *  - Blur-to-clear text animation
- *  - No skeleton loaders
- *  - Confident emptiness with generous spacing
- * ──────────────────────────────────────────── */
-function SplashScreen({
-  onComplete,
-  platformName,
-  companyName,
-}: {
-  onComplete: () => void
-  platformName: string
-  companyName: string
-}) {
+function SplashScreen({ onComplete }: { onComplete: () => void }) {
   useEffect(() => {
-    const timer = setTimeout(onComplete, 2800)
+    const timer = setTimeout(onComplete, 2200)
     return () => clearTimeout(timer)
   }, [onComplete])
 
@@ -196,7 +134,6 @@ function SplashScreen({
       exit={{ opacity: 0, filter: 'blur(8px)', scale: 0.98 }}
       transition={{ duration: 0.5, ease: ease.smooth }}
     >
-      {/* Ambient radial glow */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <motion.div
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full"
@@ -210,76 +147,15 @@ function SplashScreen({
       </div>
 
       <div className="relative flex flex-col items-center">
-        {/* 1. Compass animation (first to appear) */}
         <CompassHero size={130} />
-
-        {/* 2. Logo + Platform Name (sequential reveal) */}
-        <motion.div
-          className="flex items-center gap-4 mt-10"
-          initial={{ opacity: 0, filter: 'blur(10px)', y: 16 }}
+        <motion.span
+          className="mt-10 text-2xl font-display tracking-tight text-foreground"
+          initial={{ opacity: 0, filter: 'blur(8px)', y: 12 }}
           animate={{ opacity: 1, filter: 'blur(0px)', y: 0 }}
-          transition={{ delay: 1.1, duration: 0.6, ease: ease.smooth }}
+          transition={{ delay: 1.1, duration: 0.5, ease: ease.smooth }}
         >
-          {/* Inline SVG - never fails to load */}
-          <motion.div
-            initial={{ scale: 0.7, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 1.2, duration: 0.4, ...ease.spring }}
-          >
-            <CompanyBrandLockup
-              size={36}
-              className="text-[#2F80ED] dark:text-foreground"
-            />
-          </motion.div>
-
-          <motion.div
-            className="h-7 w-px bg-border/60"
-            initial={{ scaleY: 0 }}
-            animate={{ scaleY: 1 }}
-            transition={{ delay: 1.4, duration: 0.3 }}
-          />
-
-          <motion.span
-            className="text-2xl font-display tracking-tight text-foreground"
-            initial={{ opacity: 0, filter: 'blur(8px)', x: -8 }}
-            animate={{ opacity: 1, filter: 'blur(0px)', x: 0 }}
-            transition={{ delay: 1.5, duration: 0.5, ease: ease.smooth }}
-          >
-            {platformName}
-          </motion.span>
-        </motion.div>
-
-        {/* 3. Tagline (blur-to-clear) */}
-        <motion.p
-          className="mt-3 text-sm text-muted-foreground tracking-wide"
-          initial={{ opacity: 0, filter: 'blur(8px)' }}
-          animate={{ opacity: 1, filter: 'blur(0px)' }}
-          transition={{ delay: 1.9, duration: 0.5, ease: ease.smooth }}
-        >
-          {companyName} Performance Platform
-        </motion.p>
-
-        {/* 4. Subtle loading indicator */}
-        <motion.div
-          className="flex gap-1.5 mt-8"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 2.2 }}
-        >
-          {[0, 1, 2].map((i) => (
-            <motion.div
-              key={i}
-              className="w-1 h-1 rounded-full bg-muted-foreground/40"
-              animate={{ opacity: [0.3, 0.8, 0.3] }}
-              transition={{
-                duration: 1,
-                repeat: Infinity,
-                delay: i * 0.15,
-                ease: 'easeInOut',
-              }}
-            />
-          ))}
-        </motion.div>
+          Compass
+        </motion.span>
       </div>
     </motion.div>
   )
@@ -289,99 +165,52 @@ function SplashScreen({
  * Main Login Page
  * ──────────────────────────────────────────── */
 export default function LoginPage() {
-  const { selectedCompany, setSelectedCompany, branding } = useCompanyBranding()
-  const [users, setUsers] = useState<User[]>([])
-  const [usersLoadError, setUsersLoadError] = useState<string | null>(null)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [loading, setLoading] = useState(true)
+  const router = useRouter()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [loggingIn, setLoggingIn] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [showSplash, setShowSplash] = useState(true)
-  const [selectedUser, setSelectedUser] = useState<User | null>(null)
-  const [password, setPassword] = useState('')
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const router = useRouter()
+  const [csrfToken, setCsrfToken] = useState('')
 
   useEffect(() => {
     setMounted(true)
 
-    const loadUsers = async () => {
-      try {
-        const res = await fetch('/api/auth/login')
-        const data = await res.json()
-
-        if (!res.ok || data.error) {
-          const message = data.error || 'Failed to load users'
-          setUsers([])
-          setUsersLoadError(message)
-          toast.error(message)
-          return
-        }
-
-        setUsers(Array.isArray(data.users) ? data.users : [])
-        setUsersLoadError(null)
-      } catch {
-        setUsers([])
-        setUsersLoadError('Failed to load users')
-        toast.error('Failed to load users')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadUsers()
+    // Fetch a CSRF token; the endpoint also sets a matching cookie.
+    fetch('/api/auth/csrf')
+      .then((r) => r.json())
+      .then((data: { token?: string }) => {
+        if (data?.token) setCsrfToken(data.token)
+      })
+      .catch(() => {
+        // If CSRF bootstrap fails the user will see a 403 on submit; don't block the UI here.
+      })
   }, [])
-
-  useEffect(() => {
-    if (!selectedUser) return
-
-    if (!userMatchesCompanyView(selectedUser, selectedCompany)) {
-      setSelectedUser(null)
-      setPassword('')
-      setNewPassword('')
-      setConfirmPassword('')
-    }
-  }, [selectedCompany, selectedUser])
 
   const handleSplashComplete = useCallback(() => {
     setShowSplash(false)
   }, [])
 
-  const handleSelectUser = (userId: string) => {
-    if (loggingIn) return
-    const user = users.find((u) => u.id === userId)
-    if (!user) {
-      toast.error('User not found')
-      return
-    }
-    setSelectedUser(user)
-    setPassword('')
-    setNewPassword('')
-    setConfirmPassword('')
-  }
-
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedUser) return
+    if (loggingIn) return
     setLoggingIn(true)
     try {
-      const body = selectedUser.hasPassword
-        ? { name: selectedUser.name, password }
-        : { name: selectedUser.name, newPassword, confirmPassword }
       const response = await fetch('/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+        }),
       })
       const data = await response.json()
       if (data.success) {
-        toast.success(
-          selectedUser.hasPassword
-            ? `Welcome back, ${selectedUser.name.split(' ')[0]}`
-            : `Account set up. Welcome, ${selectedUser.name.split(' ')[0]}!`
-        )
+        toast.success('Welcome back')
         router.push('/dashboard')
       } else if (response.status === 429) {
         toast.error('Too many login attempts. Please try again later.')
@@ -395,55 +224,18 @@ export default function LoginPage() {
     }
   }
 
-  const handleBack = () => {
-    setSelectedUser(null)
-    setPassword('')
-    setNewPassword('')
-    setConfirmPassword('')
-  }
-
-  const isSetup = selectedUser && !selectedUser.hasPassword
-  const canSubmitSignIn = selectedUser?.hasPassword && password.length > 0
-  const canSubmitSetup =
-    selectedUser &&
-    !selectedUser.hasPassword &&
-    newPassword.length >= 6 &&
-    newPassword === confirmPassword
-
-  const normalizedSearchTerm = searchTerm.trim().toLowerCase()
-  const filteredUsers = users.filter((user) => {
-    if (!userMatchesCompanyView(user, selectedCompany)) {
-      return false
-    }
-
-    if (!normalizedSearchTerm) {
-      return true
-    }
-
-    return (
-      user.name.toLowerCase().includes(normalizedSearchTerm) ||
-      user.department?.toLowerCase().includes(normalizedSearchTerm)
-    )
-  })
+  const canSubmit =
+    EMAIL_REGEX.test(email.trim()) && password.length > 0 && csrfToken.length > 0
 
   if (!mounted) return null
-
-  const splashVisible = showSplash || loading
+  const splashVisible = showSplash
 
   return (
     <>
-      {/* Splash overlay */}
-        <AnimatePresence>
-          {splashVisible && (
-            <SplashScreen
-              onComplete={handleSplashComplete}
-              platformName={branding.platformName}
-              companyName={branding.companyName}
-            />
-        )}
+      <AnimatePresence>
+        {splashVisible && <SplashScreen onComplete={handleSplashComplete} />}
       </AnimatePresence>
 
-      {/* Main login UI — blur-to-clear entrance per design system */}
       <motion.div
         className="min-h-screen relative overflow-hidden bg-background"
         initial={{ opacity: 0, filter: 'blur(12px)' }}
@@ -453,16 +245,13 @@ export default function LoginPage() {
         }}
         transition={{ duration: 0.6, ease: ease.smooth }}
       >
-        {/* Aceternity Background Beams */}
         <BackgroundBeams className="opacity-40 dark:opacity-20" />
 
-        {/* Gradient overlays */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-gradient-radial from-indigo-500/10 via-transparent to-transparent dark:from-indigo-500/5" />
           <div className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-gradient-radial from-purple-500/10 via-transparent to-transparent dark:from-purple-500/5" />
         </div>
 
-        {/* Theme toggle */}
         <div className="absolute top-6 right-6 z-10">
           <ThemeToggle />
         </div>
@@ -475,21 +264,17 @@ export default function LoginPage() {
             transition={{ duration: 0.6, ease: ease.smooth }}
             className="hidden lg:flex lg:w-1/2 flex-col justify-between p-12"
           >
-            {/* Top: Logo lockup */}
             <motion.div
               initial={{ opacity: 0, filter: 'blur(8px)', y: 12 }}
               animate={{ opacity: 1, filter: 'blur(0px)', y: 0 }}
               transition={{ delay: 0.2, duration: 0.5, ease: ease.smooth }}
               className="flex items-center gap-4"
             >
-              <CompanyBrandLockup size={36} className="text-[#2F80ED] dark:text-foreground" />
-              <div className="h-7 w-px bg-border/60" />
               <span className="text-xl font-display tracking-tight text-foreground">
-                {branding.platformName}
+                Compass
               </span>
             </motion.div>
 
-            {/* Center: Hero copy */}
             <div className="max-w-md">
               <motion.div
                 initial={{ opacity: 0, y: 16 }}
@@ -510,19 +295,15 @@ export default function LoginPage() {
                 <span className="text-foreground">your growth</span>
               </motion.h1>
               <motion.p
-                key={`hero-company-${branding.companyName}`}
                 initial={{ opacity: 0, x: -48, filter: 'blur(8px)' }}
                 animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
-                exit={{ opacity: 0, x: 48, filter: 'blur(8px)' }}
                 transition={{ duration: 0.34, ease: ease.smooth }}
                 className="text-lg text-muted-foreground leading-relaxed"
               >
-                Performance reviews, leave management, and team collaboration —
-                everything you need to thrive at {branding.companyName}.
+                Performance reviews, leave management, and team collaboration — everything you need to thrive.
               </motion.p>
             </div>
 
-            {/* Bottom: Signature */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -542,320 +323,84 @@ export default function LoginPage() {
               transition={{ duration: 0.5, delay: 0.2, ease: ease.smooth }}
               className="w-full max-w-md"
             >
-              {/* Mobile branding */}
               <div className="lg:hidden text-center mb-8">
-                <div className="flex items-center justify-center gap-3 mb-4">
-                  <CompanyBrandLockup size={32} className="text-[#2F80ED] dark:text-foreground" />
-                  <span className="text-xl font-display tracking-tight">
-                    {branding.platformName}
-                  </span>
-                </div>
-                <AnimatePresence mode="wait" initial={false}>
-                  <motion.p
-                    key={`mobile-brand-${branding.companyName}`}
-                    initial={{ opacity: 0, x: -32, filter: 'blur(6px)' }}
-                    animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
-                    exit={{ opacity: 0, x: 32, filter: 'blur(6px)' }}
-                    transition={{ duration: 0.28, ease: ease.smooth }}
-                    className="text-muted-foreground text-sm"
-                  >
-                    {branding.companyName} Performance Platform
-                  </motion.p>
-                </AnimatePresence>
+                <span className="text-xl font-display tracking-tight">Compass</span>
               </div>
 
               <Card className="rounded-card border-border/50 shadow-premium">
                 <CardContent className="p-8">
-                  <AnimatePresence mode="wait">
-                    {selectedUser ? (
-                      /* ── Sign-in / password setup ── */
-                      <motion.div
-                        key="signin"
-                        initial={{ opacity: 0, filter: 'blur(6px)', x: 20 }}
-                        animate={{ opacity: 1, filter: 'blur(0px)', x: 0 }}
-                        exit={{ opacity: 0, filter: 'blur(6px)', x: -20 }}
-                        transition={{ duration: 0.3, ease: ease.smooth }}
-                      >
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={handleBack}
-                          className="mb-6 gap-2 -ml-2 text-muted-foreground hover:text-foreground"
+                  <div className="mb-8">
+                    <h2 className="text-2xl font-display text-foreground mb-2">
+                      Welcome back
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      Sign in with your work email and password
+                    </p>
+                  </div>
+
+                  <form onSubmit={handleSignIn}>
+                    <div className="mb-4 space-y-2">
+                      <Label htmlFor="email" className="flex items-center gap-1 text-muted-foreground">
+                        <Mail className="w-3.5 h-3.5" />
+                        Email
+                      </Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="you@company.com"
+                        autoComplete="email"
+                        autoFocus
+                      />
+                    </div>
+
+                    <div className="mb-6 space-y-2">
+                      <Label htmlFor="password" className="flex items-center gap-1 text-muted-foreground">
+                        <Lock className="w-3.5 h-3.5" />
+                        Password
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          id="password"
+                          type={showPassword ? 'text' : 'password'}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder="Enter your password"
+                          autoComplete="current-password"
+                          className="pr-12"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                         >
-                          <ArrowLeft className="w-4 h-4" />
-                          Back
-                        </Button>
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
 
-                        <div className="flex items-center gap-4 mb-6">
-                          <UserAvatar name={selectedUser.name} size="lg" />
-                          <div>
-                            <h2 className="text-xl font-medium text-foreground">
-                              {selectedUser.name}
-                            </h2>
-                            {selectedUser.department && (
-                              <p className="text-sm text-muted-foreground">
-                                {selectedUser.department}
-                              </p>
-                            )}
-                          </div>
-                        </div>
+                    <ShimmerButton
+                      type="submit"
+                      disabled={loggingIn || !canSubmit}
+                      className="w-full disabled:opacity-50"
+                    >
+                      {loggingIn ? (
+                        <>
+                          <div className="w-4 h-4 spinner" />
+                          Signing in...
+                        </>
+                      ) : (
+                        'Sign In'
+                      )}
+                    </ShimmerButton>
+                  </form>
 
-                        <form onSubmit={handleSignIn}>
-                          {isSetup ? (
-                            <>
-                              <p className="text-sm text-muted-foreground mb-4">
-                                Set up your password to sign in.
-                              </p>
-                              <div className="mb-4 space-y-2">
-                                <Label htmlFor="new-password" className="flex items-center gap-1 text-muted-foreground">
-                                  <Lock className="w-3.5 h-3.5" />
-                                  New password
-                                </Label>
-                                <div className="relative">
-                                  <Input
-                                    id="new-password"
-                                    type={showPassword ? 'text' : 'password'}
-                                    value={newPassword}
-                                    onChange={(e) => setNewPassword(e.target.value)}
-                                    placeholder="At least 6 characters"
-                                    autoFocus
-                                    className="pr-12"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                                  >
-                                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                  </button>
-                                </div>
-                              </div>
-                              <div className="mb-6 space-y-2">
-                                <Label htmlFor="confirm-password" className="text-muted-foreground">
-                                  Confirm password
-                                </Label>
-                                <Input
-                                  id="confirm-password"
-                                  type={showPassword ? 'text' : 'password'}
-                                  value={confirmPassword}
-                                  onChange={(e) => setConfirmPassword(e.target.value)}
-                                  placeholder="Re-enter password"
-                                />
-                                {confirmPassword && newPassword !== confirmPassword && (
-                                  <p className="text-xs text-destructive">
-                                    Passwords do not match
-                                  </p>
-                                )}
-                              </div>
-                            </>
-                          ) : (
-                            <div className="mb-6 space-y-2">
-                              <Label htmlFor="password" className="flex items-center gap-1 text-muted-foreground">
-                                <Lock className="w-3.5 h-3.5" />
-                                Password
-                              </Label>
-                              <div className="relative">
-                                <Input
-                                  id="password"
-                                  type={showPassword ? 'text' : 'password'}
-                                  value={password}
-                                  onChange={(e) => setPassword(e.target.value)}
-                                  placeholder="Enter your password"
-                                  autoFocus
-                                  className="pr-12"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => setShowPassword(!showPassword)}
-                                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                                >
-                                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                </button>
-                              </div>
-                            </div>
-                          )}
-
-                          <ShimmerButton
-                            type="submit"
-                            disabled={loggingIn || (isSetup ? !canSubmitSetup : !canSubmitSignIn)}
-                            className="w-full disabled:opacity-50"
-                          >
-                            {loggingIn ? (
-                              <>
-                                <div className="w-4 h-4 spinner" />
-                                {isSetup ? 'Setting up...' : 'Signing in...'}
-                              </>
-                            ) : isSetup ? (
-                              'Set password & sign in'
-                            ) : (
-                              'Sign In'
-                            )}
-                          </ShimmerButton>
-                        </form>
-
-                        {!isSetup && (
-                          <p className="text-xs text-center text-muted-foreground mt-6">
-                            Forgot your password? Contact HR.
-                          </p>
-                        )}
-                      </motion.div>
-                    ) : (
-                      /* ── User selection ── */
-                      <motion.div
-                        key="users"
-                        initial={{ opacity: 0, filter: 'blur(6px)', x: -20 }}
-                        animate={{ opacity: 1, filter: 'blur(0px)', x: 0 }}
-                        exit={{ opacity: 0, filter: 'blur(6px)', x: 20 }}
-                        transition={{ duration: 0.3, ease: ease.smooth }}
-                      >
-                        <div className="mb-8">
-                          <h2 className="text-2xl font-display text-foreground mb-2">
-                            Welcome back
-                          </h2>
-                          <p className="text-sm text-muted-foreground">
-                            Select your company and name to continue
-                          </p>
-                        </div>
-
-                        <div className="mb-4">
-                          <Label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                            Company
-                          </Label>
-                          <div className="mt-3 grid grid-cols-2 gap-2">
-                            {companyOptions.map((option) => {
-                              const isActive = selectedCompany === option.value
-
-                              return (
-                                <Button
-                                  key={option.value}
-                                  type="button"
-                                  variant={isActive ? 'default' : 'outline'}
-                                  className="justify-center"
-                                  onClick={() => setSelectedCompany(option.value)}
-                                >
-                                  {option.label}
-                                </Button>
-                              )
-                            })}
-                          </div>
-                        </div>
-
-                        {/* Search */}
-                        <div className="relative mb-6">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                          <Input
-                            type="text"
-                            placeholder="Search by name or department..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-10"
-                          />
-                        </div>
-
-                        {/* Users list */}
-                        <div className="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
-                          {usersLoadError ? (
-                            <div className="text-center py-12">
-                              <AlertCircle className="w-10 h-10 text-destructive/40 mx-auto mb-3" />
-                              <p className="text-sm text-destructive">{usersLoadError}</p>
-                              <p className="text-xs text-muted-foreground mt-2">
-                                Open <span className="font-mono">/api/auth/login</span> to inspect the backend response.
-                              </p>
-                            </div>
-                          ) : filteredUsers.length === 0 ? (
-                            <div className="text-center py-12">
-                              <Users className="w-10 h-10 text-muted-foreground/20 mx-auto mb-3" />
-                              <p className="text-sm text-muted-foreground">
-                                No users found
-                              </p>
-                            </div>
-                          ) : (
-                            filteredUsers.map((user, index) => (
-                              <motion.button
-                                key={user.id}
-                                onClick={() => handleSelectUser(user.id)}
-                                disabled={loggingIn}
-                                initial={{ opacity: 0, y: 8 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: index * 0.03, duration: 0.3, ease: ease.smooth }}
-                                className="w-full px-4 py-3 text-left bg-card hover:bg-muted/60 rounded-xl transition-all duration-200 border border-transparent hover:border-border group disabled:opacity-60"
-                              >
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-3">
-                                    <UserAvatar name={user.name} size="sm" />
-                                    <div>
-                                      <div className="text-sm font-medium text-foreground">
-                                        {user.name}
-                                      </div>
-                                      {user.department && (
-                                        <div className="text-xs text-muted-foreground">
-                                          {user.department}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    {user.role === 'HR' && (
-                                      <Badge
-                                        variant="secondary"
-                                        className="bg-purple-500/10 text-purple-600 dark:text-purple-400 border-0 text-[10px] uppercase tracking-wider"
-                                      >
-                                        HR
-                                      </Badge>
-                                    )}
-                                    {user.role === 'SECURITY' && (
-                                      <Badge
-                                        variant="secondary"
-                                        className="bg-muted text-muted-foreground border-0 text-[10px] uppercase tracking-wider"
-                                      >
-                                        Security
-                                      </Badge>
-                                    )}
-                                    {user.role === 'OA' && (
-                                      <Badge
-                                        variant="secondary"
-                                        className="bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border-0 text-[10px] uppercase tracking-wider"
-                                      >
-                                        O&amp;A
-                                      </Badge>
-                                    )}
-                                    {user.role === 'EXECUTION' && (
-                                      <Badge
-                                        variant="secondary"
-                                        className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-0 text-[10px] uppercase tracking-wider"
-                                      >
-                                        Execution
-                                      </Badge>
-                                    )}
-                                    <ChevronRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-foreground transition-colors" />
-                                  </div>
-                                </div>
-                              </motion.button>
-                            ))
-                          )}
-                        </div>
-
-                        <div className="mt-6 pt-6 border-t border-border">
-                          <p className="text-[11px] text-center text-muted-foreground/60 uppercase tracking-wider">
-                            {filteredUsers.length} visible users &bull; {branding.companyName}
-                          </p>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                  <p className="text-xs text-center text-muted-foreground mt-6">
+                    First time signing in or forgot your password? Contact HR.
+                  </p>
                 </CardContent>
               </Card>
-
-              {/* Mobile signature */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 1 }}
-                className="lg:hidden flex items-center justify-center gap-2 mt-8 text-xs text-muted-foreground/40"
-              >
-                <span>Crafted by</span>
-                <span className="font-medium text-muted-foreground/60">AHK</span>
-              </motion.div>
             </motion.div>
           </div>
         </div>

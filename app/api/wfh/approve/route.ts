@@ -6,11 +6,17 @@ import { z } from 'zod'
 import { isAdminRole } from '@/lib/permissions'
 import { wfhRequiresLeadApproval } from '@/lib/wfh-utils'
 import { sendWfhApprovalNotification } from '@/lib/email'
+import { stripHtml } from '@/lib/sanitize'
 
 const wfhApprovalSchema = z.object({
   requestId: z.string().trim().min(1),
   action: z.enum(['approve', 'reject']),
-  comment: z.string().trim().max(2000).optional(),
+  comment: z
+    .string()
+    .trim()
+    .max(2000)
+    .optional()
+    .transform((value) => (typeof value === 'string' ? stripHtml(value) : value)),
 })
 
 // POST - Approve or reject a WFH request

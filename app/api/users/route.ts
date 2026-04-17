@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
+import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 
 export async function GET(request: NextRequest) {
@@ -15,6 +16,7 @@ export async function GET(request: NextRequest) {
         { payrollProfile: { is: { isPayrollActive: true } } },
       ],
     }
+    const includeRole = isAdminRole(user.role)
 
     const users = await prisma.user.findMany({
       where: q
@@ -36,7 +38,7 @@ export async function GET(request: NextRequest) {
         name: true,
         department: true,
         position: true,
-        role: true,
+        role: includeRole,
       },
       orderBy: { name: 'asc' },
     })

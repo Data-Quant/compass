@@ -13,6 +13,7 @@ import {
   WFH_STATUSES,
   wfhRequiresLeadApproval,
 } from '@/lib/wfh-utils'
+import { stripHtml } from '@/lib/sanitize'
 
 const optionalIdSchema = z.preprocess(
   (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
@@ -21,7 +22,13 @@ const optionalIdSchema = z.preprocess(
 
 const optionalTextSchema = z.preprocess(
   (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
-  z.string().trim().max(6000).optional().nullable()
+  z
+    .string()
+    .trim()
+    .max(6000)
+    .optional()
+    .nullable()
+    .transform((value) => (typeof value === 'string' ? stripHtml(value) : value))
 )
 
 const optionalTimeZoneSchema = z.preprocess(
@@ -32,7 +39,12 @@ const optionalTimeZoneSchema = z.preprocess(
 const wfhRequestSchema = z.object({
   startDate: z.coerce.date(),
   endDate: z.coerce.date(),
-  reason: z.string().trim().min(1).max(4000),
+  reason: z
+    .string()
+    .trim()
+    .min(1)
+    .max(4000)
+    .transform((value) => stripHtml(value)),
   workPlan: optionalTextSchema,
   requestTimezone: optionalTimeZoneSchema,
 })
