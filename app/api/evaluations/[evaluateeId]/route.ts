@@ -8,8 +8,9 @@ import {
   getResolvedEvaluationAssignments,
 } from '@/lib/evaluation-assignments'
 import {
-  buildEvaluationPairKey,
+  getAssignmentCompletionState,
   getHrPoolClosedPairKeys,
+  getSubmittedEvaluationCountMap,
 } from '@/lib/evaluation-completion'
 import { getEvaluatorFourRatingQuota } from '@/lib/evaluation-rating-quota'
 
@@ -86,23 +87,27 @@ export async function GET(
       },
       _count: { id: true },
     })
+    const submittedCounts = getSubmittedEvaluationCountMap(
+      submittedPairs.map((submittedPair) => ({
+        evaluatorId: submittedPair.evaluatorId,
+        evaluateeId: submittedPair.evaluateeId,
+        count: submittedPair._count.id,
+      }))
+    )
     const hrAssignments = await getResolvedEvaluationAssignments(periodId, {
       evaluateeId,
     })
     const hrPoolClosedPairKeys = getHrPoolClosedPairKeys(
       hrAssignments,
-      new Set(
-        submittedPairs.map((submittedPair) =>
-          buildEvaluationPairKey(submittedPair.evaluatorId, submittedPair.evaluateeId)
-        )
-      )
+      new Set(submittedCounts.keys())
     )
-    const pairKey = buildEvaluationPairKey(user.id, evaluateeId)
-    const hasOwnSubmission = evaluations.some((evaluation) => evaluation.submittedAt !== null)
-    const isClosedByPool =
-      assignment.relationshipType === 'HR' &&
-      hrPoolClosedPairKeys.has(pairKey) &&
-      !hasOwnSubmission
+    const completionState = getAssignmentCompletionState({
+      assignment,
+      questionsCount: resolved.questions.length,
+      submittedCounts,
+      hrPoolClosedPairKeys,
+    })
+    const isClosedByPool = completionState.isClosedByPool
 
     // Map evaluations to questions
     const evaluationMap = new Map(
@@ -139,7 +144,7 @@ export async function GET(
       }),
       relationshipType: assignment.relationshipType,
       questions: questionsWithResponses,
-      isSubmitted: hasOwnSubmission || isClosedByPool,
+      isSubmitted: completionState.isComplete,
       isClosedByPool,
       fourRatingQuota,
     })

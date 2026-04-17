@@ -129,3 +129,22 @@ test('non-HR pooled filtering leaves other relationship types untouched', () => 
 
   assert.deepEqual(filterPooledRelationshipEvaluations('TEAM_LEAD', evaluations), evaluations)
 })
+
+test('partial submitted rows do not mark a non-HR evaluation complete', () => {
+  const submittedCounts = new Map([[buildEvaluationPairKey('peer-a', 'imam'), 8]])
+
+  const state = getAssignmentCompletionState({
+    assignment: {
+      evaluatorId: 'peer-a',
+      evaluateeId: 'imam',
+      relationshipType: 'PEER',
+    },
+    questionsCount: 10,
+    submittedCounts,
+    hrPoolClosedPairKeys: new Set(),
+  })
+
+  assert.equal(state.completedCount, 8)
+  assert.equal(state.isClosedByPool, false)
+  assert.equal(state.isComplete, false)
+})
