@@ -73,10 +73,19 @@ export async function checkRateLimit(
       resetAt: row.resetAt,
     }
   } catch (error) {
-    // If the DB is down, fail open: better to let a legitimate user log in than
-    // lock out everyone. The upstream endpoint still validates credentials.
-    console.error('[rate-limit] DB error, failing open:', error)
-    return { allowed: true, remaining: maxAttempts, resetAt: nextReset }
+    // Re-throw so callers explicitly decide fail-open vs fail-closed.
+    // Security-sensitive endpoints (login) should fail closed; the rest of the
+    // app is already unusable when Postgres is down, so this does not change
+    // availability in practice.
+    console.error('[rate-limit] DB error:', error)
+    throw new RateLimitUnavailableError('Rate limit backend unavailable')
+  }
+}
+
+export class RateLimitUnavailableError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'RateLimitUnavailableError'
   }
 }
 

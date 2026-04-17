@@ -4,6 +4,7 @@ import { setSession } from '@/lib/auth'
 import {
   checkRateLimit,
   normalizeClientIp,
+  RateLimitUnavailableError,
   retryAfterSeconds,
 } from '@/lib/rate-limit'
 import { verifyCsrfToken } from '@/lib/csrf'
@@ -27,18 +28,40 @@ function rateLimitResponse(resetAt: Date) {
   )
 }
 
+function logLoginFailure(reason: string, context: { ip: string; email?: string }) {
+  // Structured warning so it's grep-able in Vercel logs for auth-abuse triage.
+  console.warn('[login-fail]', JSON.stringify({ reason, ...context, at: new Date().toISOString() }))
+}
+
 export async function POST(request: NextRequest) {
+  const ip = normalizeClientIp(
+    request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip')
+  )
+
   try {
     if (!verifyCsrfToken(request)) {
+      logLoginFailure('csrf_invalid', { ip })
       return NextResponse.json({ error: 'Invalid request' }, { status: 403 })
     }
 
-    const ip = normalizeClientIp(
-      request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip')
-    )
-    const ipKey = `login:ip:${ip}`
-    const ipLimit = await checkRateLimit(ipKey, 20)
+    // Fail-closed: if the rate-limit backend is unavailable, reject login
+    // rather than letting attempts through uncounted. Other endpoints that
+    // call checkRateLimit may choose to fail open; login must not.
+    let ipLimit
+    try {
+      ipLimit = await checkRateLimit(`login:ip:${ip}`, 20)
+    } catch (err) {
+      if (err instanceof RateLimitUnavailableError) {
+        logLoginFailure('rate_limit_unavailable', { ip })
+        return NextResponse.json(
+          { error: 'Authentication temporarily unavailable. Please try again shortly.' },
+          { status: 503, headers: { 'Retry-After': '30' } }
+        )
+      }
+      throw err
+    }
     if (!ipLimit.allowed) {
+      logLoginFailure('ip_rate_limited', { ip })
       return rateLimitResponse(ipLimit.resetAt)
     }
 
@@ -52,9 +75,22 @@ export async function POST(request: NextRequest) {
     }
 
     const normalizedEmail = email.trim().toLowerCase()
-    const accountKey = `login:account:${normalizedEmail}`
-    const accountLimit = await checkRateLimit(accountKey, 10)
+
+    let accountLimit
+    try {
+      accountLimit = await checkRateLimit(`login:account:${normalizedEmail}`, 10)
+    } catch (err) {
+      if (err instanceof RateLimitUnavailableError) {
+        logLoginFailure('rate_limit_unavailable', { ip, email: normalizedEmail })
+        return NextResponse.json(
+          { error: 'Authentication temporarily unavailable. Please try again shortly.' },
+          { status: 503, headers: { 'Retry-After': '30' } }
+        )
+      }
+      throw err
+    }
     if (!accountLimit.allowed) {
+      logLoginFailure('account_rate_limited', { ip, email: normalizedEmail })
       return rateLimitResponse(accountLimit.resetAt)
     }
 
@@ -76,11 +112,13 @@ export async function POST(request: NextRequest) {
     if (!user || !user.passwordHash) {
       // Equal-time path to reduce user enumeration via response timing.
       await bcrypt.compare(password, '$2a$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinv')
+      logLoginFailure(user ? 'no_password_set' : 'unknown_email', { ip, email: normalizedEmail })
       return invalidResponse
     }
 
     const isValid = await bcrypt.compare(password, user.passwordHash)
     if (!isValid) {
+      logLoginFailure('bad_password', { ip, email: normalizedEmail })
       return invalidResponse
     }
 
