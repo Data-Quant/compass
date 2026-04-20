@@ -5,12 +5,23 @@ import {
   generateCsrfToken,
 } from '@/lib/csrf'
 
+export const dynamic = 'force-dynamic'
+
 // Issues a CSRF token as a non-HttpOnly cookie so the client can read it
 // and echo it back in the x-csrf-token header on state-changing requests.
 export async function GET() {
   const token = generateCsrfToken()
 
-  const response = NextResponse.json({ token })
+  const response = NextResponse.json(
+    { token },
+    {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        Pragma: 'no-cache',
+        Expires: '0',
+      },
+    }
+  )
   response.cookies.set(CSRF_COOKIE_NAME, token, {
     path: '/',
     sameSite: 'lax',

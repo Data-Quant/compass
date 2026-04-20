@@ -219,19 +219,32 @@ export default function LoginPage() {
   const [showSplash, setShowSplash] = useState(true)
   const [csrfToken, setCsrfToken] = useState('')
 
+  const loadCsrfToken = useCallback(async () => {
+    const response = await fetch('/api/auth/csrf', {
+      cache: 'no-store',
+      credentials: 'same-origin',
+    })
+    if (!response.ok) {
+      throw new Error('Failed to initialize secure login')
+    }
+
+    const data = (await response.json()) as { token?: string }
+    if (!data?.token) {
+      throw new Error('Failed to initialize secure login')
+    }
+
+    setCsrfToken(data.token)
+    return data.token
+  }, [])
+
   useEffect(() => {
     setMounted(true)
 
     // Fetch a CSRF token; the endpoint also sets a matching cookie.
-    fetch('/api/auth/csrf')
-      .then((r) => r.json())
-      .then((data: { token?: string }) => {
-        if (data?.token) setCsrfToken(data.token)
-      })
-      .catch(() => {
+    loadCsrfToken().catch(() => {
         // If CSRF bootstrap fails the user will see a 403 on submit; don't block the UI here.
       })
-  }, [])
+  }, [loadCsrfToken])
 
   const handleSplashComplete = useCallback(() => {
     setShowSplash(false)
@@ -242,18 +255,28 @@ export default function LoginPage() {
     if (loggingIn) return
     setLoggingIn(true)
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-csrf-token': csrfToken,
-        },
-        body: JSON.stringify({
-          email: email.trim(),
-          password,
-        }),
-      })
-      const data = await response.json()
+      const submitLogin = async (token: string) =>
+        fetch('/api/auth/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-csrf-token': token,
+          },
+          body: JSON.stringify({
+            email: email.trim(),
+            password,
+          }),
+        })
+
+      let response = await submitLogin(csrfToken)
+      let data = await response.json()
+
+      if (response.status === 403 && data.error === 'Invalid request') {
+        const freshToken = await loadCsrfToken()
+        response = await submitLogin(freshToken)
+        data = await response.json()
+      }
+
       if (data.success) {
         toast.success('Welcome back')
         router.push('/dashboard')
