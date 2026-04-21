@@ -64,6 +64,11 @@ enum PreEvaluationEvaluateeType {
   CROSS_DEPARTMENT
 }
 
+enum EvaluationPeriodOverrideAction {
+  ADD
+  REMOVE
+}
+
 enum EmailStatus {
   PENDING
   SENT
@@ -318,6 +323,9 @@ model User {
   preEvaluationSelectionsAsEvaluatee PreEvaluationEvaluateeSelection[] @relation("PreEvaluationSelectionEvaluatee")
   preEvaluationSelectionsAsSuggestedEvaluator PreEvaluationEvaluateeSelection[] @relation("PreEvaluationSelectionSuggestedEvaluator")
   preEvaluationSelectionsReviewed PreEvaluationEvaluateeSelection[] @relation("PreEvaluationSelectionReviewedBy")
+  evaluationPeriodOverridesAsEvaluator EvaluationPeriodAssignmentOverride[] @relation("EvaluationPeriodOverrideEvaluator")
+  evaluationPeriodOverridesAsEvaluatee EvaluationPeriodAssignmentOverride[] @relation("EvaluationPeriodOverrideEvaluatee")
+  evaluationPeriodOverridesCreated EvaluationPeriodAssignmentOverride[] @relation("EvaluationPeriodOverrideCreatedBy")
   subscriptionOwnerships SubscriptionOwner[]
 
   @@index([name])
@@ -417,6 +425,7 @@ model EvaluationPeriod {
   reports                 Report[]
   evaluations             Evaluation[]
   preEvaluationPreps      PreEvaluationLeadPrep[]
+  assignmentOverrides     EvaluationPeriodAssignmentOverride[]
   preEvaluationTriggeredBy User?                    @relation("PreEvaluationTriggeredBy", fields: [preEvaluationTriggeredById], references: [id], onDelete: SetNull)
 
   @@index([isActive])
@@ -449,6 +458,30 @@ model Evaluation {
   @@index([evaluateeId])
   @@index([periodId])
   @@index([leadQuestionId])
+}
+
+model EvaluationPeriodAssignmentOverride {
+  id               String                         @id @default(cuid())
+  periodId         String
+  evaluatorId      String
+  evaluateeId      String
+  relationshipType RelationshipType
+  action           EvaluationPeriodOverrideAction
+  note             String?
+  createdById      String?
+  createdAt        DateTime                       @default(now())
+  updatedAt        DateTime                       @updatedAt
+
+  period           EvaluationPeriod               @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  evaluator        User                           @relation("EvaluationPeriodOverrideEvaluator", fields: [evaluatorId], references: [id], onDelete: Cascade)
+  evaluatee        User                           @relation("EvaluationPeriodOverrideEvaluatee", fields: [evaluateeId], references: [id], onDelete: Cascade)
+  createdBy        User?                          @relation("EvaluationPeriodOverrideCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([periodId, evaluatorId, evaluateeId, relationshipType])
+  @@index([periodId])
+  @@index([evaluatorId])
+  @@index([evaluateeId])
+  @@index([action])
 }
 
 model PreEvaluationLeadPrep {

@@ -11,6 +11,15 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -23,6 +32,7 @@ import { StatsCard } from '@/components/composed/StatsCard'
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { ShimmerButton } from '@/components/magicui/shimmer-button'
+import { isThreeEDepartment } from '@/lib/company-branding'
 import {
   AlertCircle,
   Users,
@@ -37,6 +47,9 @@ import {
   ClipboardList,
   ArrowUpDown,
   Loader2,
+  ShieldAlert,
+  Undo2,
+  UserPlus,
 } from 'lucide-react'
 import { RATING_LABELS, RELATIONSHIP_TYPE_LABELS, type RelationshipType } from '@/types'
 
@@ -76,6 +89,8 @@ type ActivityResponse = {
 
 type ActivityAssignment = {
   id: string
+  evaluatorId: string
+  evaluateeId: string
   relationshipType: RelationshipType
   source: string
   partner?: {
@@ -96,6 +111,38 @@ type ActivityAssignment = {
   responses: ActivityResponse[]
 }
 
+type PeriodOverride = {
+  id: string
+  action: 'ADD' | 'REMOVE'
+  relationshipType: RelationshipType
+  note: string | null
+  createdAt: string
+  createdBy: {
+    id: string
+    name: string
+  } | null
+  direction: 'incoming' | 'outgoing'
+  evaluator: {
+    id: string
+    name: string
+    department: string | null
+    position: string | null
+  }
+  evaluatee: {
+    id: string
+    name: string
+    department: string | null
+    position: string | null
+  }
+}
+
+type UserOption = {
+  id: string
+  name: string
+  department: string | null
+  position: string | null
+}
+
 type PerformanceDetail = {
   period: {
     id: string
@@ -113,6 +160,7 @@ type PerformanceDetail = {
   }
   outgoing: ActivityAssignment[]
   incoming: ActivityAssignment[]
+  periodOverrides: PeriodOverride[]
 }
 
 function formatDateTime(value: string | null | undefined) {
@@ -150,10 +198,14 @@ function ActivityList({
   items,
   emptyState,
   direction,
+  onExcludeForPeriod,
+  excludeBusyKey,
 }: {
   items: ActivityAssignment[]
   emptyState: string
   direction: 'incoming' | 'outgoing'
+  onExcludeForPeriod?: (item: ActivityAssignment) => void
+  excludeBusyKey?: string | null
 }) {
   if (items.length === 0) {
     return (
@@ -195,11 +247,29 @@ function ActivityList({
                   </p>
                 </div>
               </div>
-              <div className="text-sm text-muted-foreground space-y-1 lg:text-right">
-                <p>{savedSummary}</p>
-                {item.submittedAt ? <p>Submitted: {formatDateTime(item.submittedAt)}</p> : null}
-                {!item.submittedAt && item.lastSavedAt ? (
-                  <p>Last saved: {formatDateTime(item.lastSavedAt)}</p>
+              <div className="space-y-2 lg:text-right">
+                <div className="text-sm text-muted-foreground space-y-1">
+                  <p>{savedSummary}</p>
+                  {item.submittedAt ? <p>Submitted: {formatDateTime(item.submittedAt)}</p> : null}
+                  {!item.submittedAt && item.lastSavedAt ? (
+                    <p>Last saved: {formatDateTime(item.lastSavedAt)}</p>
+                  ) : null}
+                </div>
+                {onExcludeForPeriod && item.source !== 'PERIOD_OVERRIDE' ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onExcludeForPeriod(item)}
+                    disabled={excludeBusyKey === item.id}
+                    className="gap-2"
+                  >
+                    {excludeBusyKey === item.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <ShieldAlert className="h-3.5 w-3.5" />
+                    )}
+                    Exclude This Period
+                  </Button>
                 ) : null}
               </div>
             </div>
@@ -305,6 +375,13 @@ export default function AdminPerformanceOverviewPage() {
   const [detailData, setDetailData] = useState<PerformanceDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
+  const [directoryUsers, setDirectoryUsers] = useState<UserOption[]>([])
+  const [directoryLoading, setDirectoryLoading] = useState(false)
+  const [overrideBusyKey, setOverrideBusyKey] = useState<string | null>(null)
+  const [newOverrideEvaluatorId, setNewOverrideEvaluatorId] = useState('')
+  const [newOverrideRelationshipType, setNewOverrideRelationshipType] =
+    useState<RelationshipType>('TEAM_LEAD')
+  const [newOverrideNote, setNewOverrideNote] = useState('')
 
   const sortedEmployees = useMemo(() => {
     const employees = [...((dashboardData?.employees || []) as EmployeeRow[])]
@@ -314,6 +391,15 @@ export default function AdminPerformanceOverviewPage() {
     })
     return employees
   }, [dashboardData?.employees, nameSortDirection])
+
+  const availableEvaluatorOptions = useMemo(() => {
+    return directoryUsers.filter((candidate) => {
+      if (!detailData) return false
+      if (candidate.id === detailData.employee.id) return false
+      if (isThreeEDepartment(candidate.department)) return false
+      return true
+    })
+  }, [detailData, directoryUsers])
 
   useEffect(() => {
     if (user) {
@@ -341,6 +427,40 @@ export default function AdminPerformanceOverviewPage() {
     } catch {
       // silent
     }
+  }
+
+  const loadDirectoryUsers = async () => {
+    if (directoryLoading || directoryUsers.length > 0) {
+      return
+    }
+
+    setDirectoryLoading(true)
+    try {
+      const response = await fetch('/api/users')
+      const data = await response.json()
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Failed to load user directory')
+      }
+      setDirectoryUsers((data.users || []) as UserOption[])
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load user directory'
+      toast.error(message)
+    } finally {
+      setDirectoryLoading(false)
+    }
+  }
+
+  const loadEmployeeDetail = async (employeeId: string) => {
+    const response = await fetch(
+      `/api/admin/performance/${employeeId}?periodId=${dashboardData?.period?.id || ''}`
+    )
+    const data = await response.json()
+
+    if (!response.ok || data.error) {
+      throw new Error(data.error || 'Failed to load employee evaluation activity')
+    }
+
+    return data as PerformanceDetail
   }
 
   const handleGenerateReports = async () => {
@@ -378,17 +498,13 @@ export default function AdminPerformanceOverviewPage() {
     setDetailLoading(true)
     setDetailError(null)
     setDetailData(null)
+    setNewOverrideEvaluatorId('')
+    setNewOverrideRelationshipType('TEAM_LEAD')
+    setNewOverrideNote('')
+    void loadDirectoryUsers()
 
     try {
-      const response = await fetch(
-        `/api/admin/performance/${employee.id}?periodId=${dashboardData?.period?.id || ''}`
-      )
-      const data = await response.json()
-
-      if (!response.ok || data.error) {
-        throw new Error(data.error || 'Failed to load employee evaluation activity')
-      }
-
+      const data = await loadEmployeeDetail(employee.id)
       setDetailData(data)
     } catch (error) {
       const message =
@@ -398,6 +514,117 @@ export default function AdminPerformanceOverviewPage() {
       toast.error(message)
     } finally {
       setDetailLoading(false)
+    }
+  }
+
+  const refreshDetail = async () => {
+    if (!selectedEmployee) return
+
+    setDetailLoading(true)
+    setDetailError(null)
+    try {
+      const data = await loadEmployeeDetail(selectedEmployee.id)
+      setDetailData(data)
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to load employee evaluation activity'
+      setDetailError(message)
+      toast.error(message)
+    } finally {
+      setDetailLoading(false)
+    }
+  }
+
+  const handleExcludeAssignment = async (item: ActivityAssignment) => {
+    if (!detailData) return
+
+    setOverrideBusyKey(item.id)
+    try {
+      const response = await fetch('/api/admin/performance/overrides', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          periodId: detailData.period.id,
+          evaluatorId: item.evaluatorId,
+          evaluateeId: item.evaluateeId,
+          relationshipType: item.relationshipType,
+          action: 'REMOVE',
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Failed to exclude assignment for this period')
+      }
+
+      toast.success('Period-only exclusion saved')
+      await Promise.all([refreshDetail(), loadDashboard()])
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to exclude assignment for this period'
+      toast.error(message)
+    } finally {
+      setOverrideBusyKey(null)
+    }
+  }
+
+  const handleAddIncomingOverride = async () => {
+    if (!detailData || !newOverrideEvaluatorId) {
+      toast.error('Select an evaluator first')
+      return
+    }
+
+    const busyKey = `add:${newOverrideEvaluatorId}:${newOverrideRelationshipType}`
+    setOverrideBusyKey(busyKey)
+    try {
+      const response = await fetch('/api/admin/performance/overrides', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          periodId: detailData.period.id,
+          evaluatorId: newOverrideEvaluatorId,
+          evaluateeId: detailData.employee.id,
+          relationshipType: newOverrideRelationshipType,
+          action: 'ADD',
+          note: newOverrideNote.trim() || undefined,
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Failed to add evaluator for this period')
+      }
+
+      setNewOverrideEvaluatorId('')
+      setNewOverrideRelationshipType('TEAM_LEAD')
+      setNewOverrideNote('')
+      toast.success('Period-only evaluator added')
+      await Promise.all([refreshDetail(), loadDashboard()])
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to add evaluator for this period'
+      toast.error(message)
+    } finally {
+      setOverrideBusyKey(null)
+    }
+  }
+
+  const handleUndoOverride = async (overrideId: string) => {
+    setOverrideBusyKey(`undo:${overrideId}`)
+    try {
+      const response = await fetch(`/api/admin/performance/overrides/${overrideId}`, {
+        method: 'DELETE',
+      })
+      const data = await response.json()
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Failed to undo period override')
+      }
+
+      toast.success('Period override removed')
+      await Promise.all([refreshDetail(), loadDashboard()])
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to undo period override'
+      toast.error(message)
+    } finally {
+      setOverrideBusyKey(null)
     }
   }
 
@@ -706,6 +933,95 @@ export default function AdminPerformanceOverviewPage() {
               </div>
             </div>
 
+            <div className="rounded-2xl border border-border/70 bg-card/60 p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert className="h-4 w-4 text-primary" />
+                    <p className="font-semibold text-foreground">Current-period evaluator changes</p>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Use this when HR needs to adjust live evaluations without touching the permanent mappings. If an evaluator is excluded here, any answers they already submitted for that pairing stop counting for this period too.
+                  </p>
+                </div>
+              </div>
+
+              {detailData.periodOverrides.length > 0 ? (
+                <div className="mt-4 space-y-3">
+                  {detailData.periodOverrides.map((override) => {
+                    const partner =
+                      override.direction === 'outgoing'
+                        ? override.evaluatee
+                        : override.evaluator
+
+                    return (
+                      <div
+                        key={override.id}
+                        className="rounded-xl border border-border/70 bg-background/40 p-4"
+                      >
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge
+                                variant="outline"
+                                className={
+                                  override.action === 'ADD'
+                                    ? 'border-green-500/20 text-green-600 dark:text-green-400'
+                                    : 'border-amber-500/20 text-amber-600 dark:text-amber-400'
+                                }
+                              >
+                                {override.action === 'ADD' ? 'Added for this period' : 'Excluded for this period'}
+                              </Badge>
+                              <Badge variant="outline" className="border-border/70">
+                                {RELATIONSHIP_TYPE_LABELS[override.relationshipType]}
+                              </Badge>
+                              <Badge variant="outline" className="border-border/70">
+                                {override.direction === 'outgoing' ? 'They evaluate' : 'They are evaluated by'}
+                              </Badge>
+                            </div>
+                            <div>
+                              <p className="font-medium text-foreground">{partner.name}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {partner.position || 'No role info'}
+                                {partner.department ? ` | ${partner.department}` : ''}
+                              </p>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Saved {formatDateTime(override.createdAt)}
+                              {override.createdBy ? ` by ${override.createdBy.name}` : ''}
+                            </p>
+                            {override.note ? (
+                              <p className="rounded-lg border border-border/60 bg-card/80 px-3 py-2 text-sm text-muted-foreground">
+                                {override.note}
+                              </p>
+                            ) : null}
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleUndoOverride(override.id)}
+                            disabled={overrideBusyKey === `undo:${override.id}`}
+                            className="gap-2 self-start"
+                          >
+                            {overrideBusyKey === `undo:${override.id}` ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Undo2 className="h-3.5 w-3.5" />
+                            )}
+                            Undo
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="mt-4 rounded-xl border border-dashed border-border/70 px-4 py-6 text-sm text-muted-foreground">
+                  No period-only evaluator changes have been added for this employee yet.
+                </div>
+              )}
+            </div>
+
             <Tabs key={detailData.employee.id} defaultValue="outgoing" className="w-full">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="outgoing">
@@ -725,6 +1041,8 @@ export default function AdminPerformanceOverviewPage() {
                 <ActivityList
                   items={detailData.outgoing}
                   direction="outgoing"
+                  onExcludeForPeriod={handleExcludeAssignment}
+                  excludeBusyKey={overrideBusyKey}
                   emptyState="No evaluation assignments were resolved for this employee in the selected period."
                 />
               </TabsContent>
@@ -735,9 +1053,107 @@ export default function AdminPerformanceOverviewPage() {
                     This shows every evaluator currently mapped to {detailData.employee.name} for the selected period, along with any submitted or saved answers we have on file.
                   </p>
                 </div>
+                <div className="rounded-2xl border border-border/70 bg-card/60 p-4">
+                  <div className="flex items-center gap-2">
+                    <UserPlus className="h-4 w-4 text-primary" />
+                    <p className="font-semibold text-foreground">Add evaluator for this period</p>
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    This creates a current-period-only evaluator link for {detailData.employee.name}. The permanent mapping stays unchanged.
+                  </p>
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="period-override-evaluator">Evaluator</Label>
+                      <Select
+                        value={newOverrideEvaluatorId || '__none__'}
+                        onValueChange={(value) =>
+                          setNewOverrideEvaluatorId(value === '__none__' ? '' : value)
+                        }
+                      >
+                        <SelectTrigger id="period-override-evaluator">
+                          <SelectValue
+                            placeholder={
+                              directoryLoading ? 'Loading team members...' : 'Select evaluator'
+                            }
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">Select evaluator</SelectItem>
+                          {availableEvaluatorOptions.map((candidate) => (
+                            <SelectItem key={candidate.id} value={candidate.id}>
+                              {candidate.name}
+                              {candidate.department ? ` (${candidate.department})` : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="period-override-relationship">Relationship type</Label>
+                      <Select
+                        value={newOverrideRelationshipType}
+                        onValueChange={(value) =>
+                          setNewOverrideRelationshipType(value as RelationshipType)
+                        }
+                      >
+                        <SelectTrigger id="period-override-relationship">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(
+                            [
+                              'TEAM_LEAD',
+                              'DIRECT_REPORT',
+                              'PEER',
+                              'HR',
+                              'C_LEVEL',
+                              'DEPT',
+                              'CROSS_DEPARTMENT',
+                            ] as RelationshipType[]
+                          ).map((type) => (
+                            <SelectItem key={type} value={type}>
+                              {RELATIONSHIP_TYPE_LABELS[type]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="mt-4 space-y-2">
+                    <Label htmlFor="period-override-note">Note for HR team</Label>
+                    <Textarea
+                      id="period-override-note"
+                      value={newOverrideNote}
+                      onChange={(event) => setNewOverrideNote(event.target.value)}
+                      placeholder="Optional note, e.g. maternity leave cover or temporary reviewer change"
+                      rows={3}
+                    />
+                  </div>
+                  <div className="mt-4 flex justify-end">
+                    <Button
+                      onClick={handleAddIncomingOverride}
+                      disabled={
+                        !newOverrideEvaluatorId ||
+                        overrideBusyKey ===
+                          `add:${newOverrideEvaluatorId}:${newOverrideRelationshipType}`
+                      }
+                      className="gap-2"
+                    >
+                      {overrideBusyKey ===
+                      `add:${newOverrideEvaluatorId}:${newOverrideRelationshipType}` ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <UserPlus className="h-4 w-4" />
+                      )}
+                      Add evaluator
+                    </Button>
+                  </div>
+                </div>
                 <ActivityList
                   items={detailData.incoming}
                   direction="incoming"
+                  onExcludeForPeriod={handleExcludeAssignment}
+                  excludeBusyKey={overrideBusyKey}
                   emptyState="No incoming evaluations were resolved for this employee in the selected period."
                 />
               </TabsContent>

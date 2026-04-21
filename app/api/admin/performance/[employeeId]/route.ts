@@ -142,9 +142,12 @@ async function buildAssignmentDetail(params: {
 
   return {
     id:
+      assignment.overrideId ||
       assignment.mappingId ||
       assignment.selectionId ||
       `${assignment.evaluatorId}:${assignment.evaluateeId}:${assignment.relationshipType}`,
+    evaluatorId: assignment.evaluatorId,
+    evaluateeId: assignment.evaluateeId,
     relationshipType: assignment.relationshipType,
     source: assignment.source,
     partner:
@@ -161,6 +164,49 @@ async function buildAssignmentDetail(params: {
     lastSavedAt,
     questionWarning: resolvedQuestions.error || null,
     responses: [...currentResponses, ...archivedResponses],
+  }
+}
+
+type PeriodOverrideWithUsers = Prisma.EvaluationPeriodAssignmentOverrideGetPayload<{
+  include: {
+    evaluator: {
+      select: { id: true; name: true; department: true; position: true }
+    }
+    evaluatee: {
+      select: { id: true; name: true; department: true; position: true }
+    }
+    createdBy: {
+      select: { id: true; name: true }
+    }
+  }
+}>
+
+function serializePeriodOverride(
+  override: PeriodOverrideWithUsers,
+  employeeId: string
+) {
+  return {
+    id: override.id,
+    action: override.action,
+    relationshipType: override.relationshipType,
+    note: override.note,
+    createdAt: override.createdAt,
+    createdBy: override.createdBy
+      ? { id: override.createdBy.id, name: override.createdBy.name }
+      : null,
+    direction: override.evaluatorId === employeeId ? 'outgoing' : 'incoming',
+    evaluator: {
+      id: override.evaluator.id,
+      name: override.evaluator.name,
+      department: override.evaluator.department,
+      position: override.evaluator.position,
+    },
+    evaluatee: {
+      id: override.evaluatee.id,
+      name: override.evaluatee.name,
+      department: override.evaluatee.department,
+      position: override.evaluatee.position,
+    },
   }
 }
 
@@ -220,7 +266,7 @@ export async function GET(
       return NextResponse.json({ error: 'Employee not found' }, { status: 404 })
     }
 
-    const [assignments, submittedEvaluationPairs, evaluations] = await Promise.all([
+    const [assignments, submittedEvaluationPairs, evaluations, periodOverrides] = await Promise.all([
       getResolvedEvaluationAssignments(period.id, { includeUsers: true }),
       prisma.evaluation.groupBy({
         by: ['evaluatorId', 'evaluateeId'],
@@ -240,6 +286,24 @@ export async function GET(
           leadQuestion: true,
         },
         orderBy: [{ submittedAt: 'desc' }, { updatedAt: 'desc' }],
+      }),
+      prisma.evaluationPeriodAssignmentOverride.findMany({
+        where: {
+          periodId: period.id,
+          OR: [{ evaluatorId: employeeId }, { evaluateeId: employeeId }],
+        },
+        include: {
+          evaluator: {
+            select: { id: true, name: true, department: true, position: true },
+          },
+          evaluatee: {
+            select: { id: true, name: true, department: true, position: true },
+          },
+          createdBy: {
+            select: { id: true, name: true },
+          },
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       }),
     ])
 
@@ -324,6 +388,9 @@ export async function GET(
       employee,
       outgoing: sortDetails(outgoing),
       incoming: sortDetails(incoming),
+      periodOverrides: periodOverrides.map((override) =>
+        serializePeriodOverride(override, employeeId)
+      ),
     })
   } catch (error) {
     console.error('Failed to fetch performance detail:', error)

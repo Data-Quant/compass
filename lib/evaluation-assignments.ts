@@ -16,6 +16,36 @@ export type AssignmentSource =
   | 'PERMANENT_MAPPING'
   | 'PRE_EVALUATION_PEER'
   | 'PRE_EVALUATION_CROSS_DEPARTMENT'
+  | 'PERIOD_OVERRIDE'
+
+export type PeriodAssignmentOverrideAction = 'ADD' | 'REMOVE'
+
+type RawMappingAssignment = {
+  id: string
+  evaluatorId: string
+  evaluateeId: string
+  relationshipType: RelationshipType
+  evaluator?: UserSummary
+  evaluatee?: UserSummary
+}
+
+type ApprovedSelectionAssignment = {
+  id: string
+  evaluateeId: string
+  suggestedEvaluatorId: string
+  suggestedEvaluator?: UserSummary
+  evaluatee?: UserSummary
+}
+
+export type PeriodAssignmentOverrideInput = {
+  id: string
+  evaluatorId: string
+  evaluateeId: string
+  relationshipType: RelationshipType
+  action: PeriodAssignmentOverrideAction
+  evaluator?: UserSummary
+  evaluatee?: UserSummary
+}
 
 export interface ResolvedEvaluationAssignment {
   evaluatorId: string
@@ -24,6 +54,7 @@ export interface ResolvedEvaluationAssignment {
   source: AssignmentSource
   mappingId?: string
   selectionId?: string
+  overrideId?: string
   evaluator?: UserSummary
   evaluatee?: UserSummary
 }
@@ -34,6 +65,117 @@ function buildAssignmentKey(
   relationshipType: RelationshipType
 ) {
   return `${evaluatorId}:${evaluateeId}:${relationshipType}`
+}
+
+export function resolveEvaluationAssignments(params: {
+  rawMappings: RawMappingAssignment[]
+  approvedPeerSelections: ApprovedSelectionAssignment[]
+  approvedCrossSelections: ApprovedSelectionAssignment[]
+  periodOverrides?: PeriodAssignmentOverrideInput[]
+}) {
+  const { rawMappings, approvedPeerSelections, approvedCrossSelections } = params
+  const periodOverrides = params.periodOverrides || []
+
+  const approvedCrossDepartmentKeys = new Set(
+    approvedCrossSelections.map((selection) =>
+      buildAssignmentKey(
+        selection.suggestedEvaluatorId,
+        selection.evaluateeId,
+        'CROSS_DEPARTMENT'
+      )
+    )
+  )
+
+  const removedKeys = new Set(
+    periodOverrides
+      .filter((override) => override.action === 'REMOVE')
+      .map((override) =>
+        buildAssignmentKey(
+          override.evaluatorId,
+          override.evaluateeId,
+          override.relationshipType
+        )
+      )
+  )
+
+  const assignments: ResolvedEvaluationAssignment[] = []
+  const seen = new Set<string>()
+
+  for (const mapping of rawMappings) {
+    if (
+      mapping.relationshipType === 'CROSS_DEPARTMENT' &&
+      !approvedCrossDepartmentKeys.has(
+        buildAssignmentKey(mapping.evaluatorId, mapping.evaluateeId, 'CROSS_DEPARTMENT')
+      )
+    ) {
+      continue
+    }
+
+    const key = buildAssignmentKey(
+      mapping.evaluatorId,
+      mapping.evaluateeId,
+      mapping.relationshipType
+    )
+    if (removedKeys.has(key) || seen.has(key)) {
+      continue
+    }
+
+    seen.add(key)
+    assignments.push({
+      evaluatorId: mapping.evaluatorId,
+      evaluateeId: mapping.evaluateeId,
+      relationshipType: mapping.relationshipType,
+      source:
+        mapping.relationshipType === 'CROSS_DEPARTMENT'
+          ? 'PRE_EVALUATION_CROSS_DEPARTMENT'
+          : 'PERMANENT_MAPPING',
+      mappingId: mapping.id,
+      evaluator: mapping.evaluator,
+      evaluatee: mapping.evaluatee,
+    })
+  }
+
+  for (const selection of approvedPeerSelections) {
+    const key = buildAssignmentKey(selection.suggestedEvaluatorId, selection.evaluateeId, 'PEER')
+    if (removedKeys.has(key) || seen.has(key)) {
+      continue
+    }
+
+    seen.add(key)
+    assignments.push({
+      evaluatorId: selection.suggestedEvaluatorId,
+      evaluateeId: selection.evaluateeId,
+      relationshipType: 'PEER',
+      source: 'PRE_EVALUATION_PEER',
+      selectionId: selection.id,
+      evaluator: selection.suggestedEvaluator,
+      evaluatee: selection.evaluatee,
+    })
+  }
+
+  for (const override of periodOverrides.filter((item) => item.action === 'ADD')) {
+    const key = buildAssignmentKey(
+      override.evaluatorId,
+      override.evaluateeId,
+      override.relationshipType
+    )
+    if (removedKeys.has(key) || seen.has(key)) {
+      continue
+    }
+
+    seen.add(key)
+    assignments.push({
+      evaluatorId: override.evaluatorId,
+      evaluateeId: override.evaluateeId,
+      relationshipType: override.relationshipType,
+      source: 'PERIOD_OVERRIDE',
+      overrideId: override.id,
+      evaluator: override.evaluator,
+      evaluatee: override.evaluatee,
+    })
+  }
+
+  return assignments
 }
 
 export async function getResolvedEvaluationAssignments(
@@ -62,7 +204,20 @@ export async function getResolvedEvaluationAssignments(
   if (options.evaluateeId) selectionWhere.evaluateeId = options.evaluateeId
   if (options.evaluatorId) selectionWhere.suggestedEvaluatorId = options.evaluatorId
 
-  const [rawMappings, approvedPeerSelections, approvedCrossSelections] = await Promise.all([
+  const overrideWhere: Prisma.EvaluationPeriodAssignmentOverrideWhereInput = {
+    periodId,
+  }
+  if (options.evaluatorId && options.evaluateeId) {
+    overrideWhere.evaluatorId = options.evaluatorId
+    overrideWhere.evaluateeId = options.evaluateeId
+  } else if (options.evaluatorId) {
+    overrideWhere.evaluatorId = options.evaluatorId
+  } else if (options.evaluateeId) {
+    overrideWhere.evaluateeId = options.evaluateeId
+  }
+
+  const [rawMappings, approvedPeerSelections, approvedCrossSelections, periodOverrides] =
+    await Promise.all([
     db.evaluatorMapping.findMany({
       where: mappingWhere,
       ...(includeUsers
@@ -123,69 +278,63 @@ export async function getResolvedEvaluationAssignments(
         : {}),
       orderBy: { reviewedAt: 'desc' },
     }),
+    db.evaluationPeriodAssignmentOverride.findMany({
+      where: overrideWhere,
+      ...(includeUsers
+        ? {
+            include: {
+              evaluator: {
+                select: { id: true, name: true, department: true, position: true },
+              },
+              evaluatee: {
+                select: { id: true, name: true, department: true, position: true },
+              },
+            },
+          }
+        : {}),
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    }),
   ])
 
-  const approvedCrossDepartmentKeys = new Set(
-    approvedCrossSelections.map((selection) =>
-      buildAssignmentKey(
-        selection.suggestedEvaluatorId!,
-        selection.evaluateeId,
-        'CROSS_DEPARTMENT'
-      )
-    )
-  )
-
-  const assignments: ResolvedEvaluationAssignment[] = []
-  const seen = new Set<string>()
-
-  for (const mapping of rawMappings) {
-    const relationshipType = mapping.relationshipType as RelationshipType
-
-    if (
-      relationshipType === 'CROSS_DEPARTMENT' &&
-      !approvedCrossDepartmentKeys.has(
-        buildAssignmentKey(mapping.evaluatorId, mapping.evaluateeId, 'CROSS_DEPARTMENT')
-      )
-    ) {
-      continue
-    }
-
-    const key = buildAssignmentKey(mapping.evaluatorId, mapping.evaluateeId, relationshipType)
-    if (seen.has(key)) {
-      continue
-    }
-
-    seen.add(key)
-    assignments.push({
+  return resolveEvaluationAssignments({
+    rawMappings: rawMappings.map((mapping) => ({
+      id: mapping.id,
       evaluatorId: mapping.evaluatorId,
       evaluateeId: mapping.evaluateeId,
-      relationshipType,
-      source: relationshipType === 'CROSS_DEPARTMENT' ? 'PRE_EVALUATION_CROSS_DEPARTMENT' : 'PERMANENT_MAPPING',
-      mappingId: mapping.id,
+      relationshipType: mapping.relationshipType as RelationshipType,
       evaluator: 'evaluator' in mapping ? (mapping.evaluator as UserSummary) : undefined,
       evaluatee: 'evaluatee' in mapping ? (mapping.evaluatee as UserSummary) : undefined,
-    })
-  }
-
-  for (const selection of approvedPeerSelections) {
-    const key = buildAssignmentKey(selection.suggestedEvaluatorId!, selection.evaluateeId, 'PEER')
-    if (seen.has(key)) {
-      continue
-    }
-
-    seen.add(key)
-    assignments.push({
-      evaluatorId: selection.suggestedEvaluatorId!,
+    })),
+    approvedPeerSelections: approvedPeerSelections.map((selection) => ({
+      id: selection.id,
       evaluateeId: selection.evaluateeId,
-      relationshipType: 'PEER',
-      source: 'PRE_EVALUATION_PEER',
-      selectionId: selection.id,
-      evaluator: 'suggestedEvaluator' in selection ? (selection.suggestedEvaluator as UserSummary) : undefined,
+      suggestedEvaluatorId: selection.suggestedEvaluatorId!,
+      suggestedEvaluator:
+        'suggestedEvaluator' in selection
+          ? (selection.suggestedEvaluator as UserSummary)
+          : undefined,
       evaluatee: 'evaluatee' in selection ? (selection.evaluatee as UserSummary) : undefined,
-    })
-  }
-
-  return assignments
+    })),
+    approvedCrossSelections: approvedCrossSelections.map((selection) => ({
+      id: selection.id,
+      evaluateeId: selection.evaluateeId,
+      suggestedEvaluatorId: selection.suggestedEvaluatorId!,
+      suggestedEvaluator:
+        'suggestedEvaluator' in selection
+          ? (selection.suggestedEvaluator as UserSummary)
+          : undefined,
+      evaluatee: 'evaluatee' in selection ? (selection.evaluatee as UserSummary) : undefined,
+    })),
+    periodOverrides: periodOverrides.map((override) => ({
+      id: override.id,
+      evaluatorId: override.evaluatorId,
+      evaluateeId: override.evaluateeId,
+      relationshipType: override.relationshipType as RelationshipType,
+      action: override.action as PeriodAssignmentOverrideAction,
+      evaluator: 'evaluator' in override ? (override.evaluator as UserSummary) : undefined,
+      evaluatee: 'evaluatee' in override ? (override.evaluatee as UserSummary) : undefined,
+    })),
+  })
 }
 
 export async function getResolvedEvaluationAssignmentForPair(
