@@ -6,6 +6,7 @@ import { getEvaluationQuestionMeta } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
 import { filterPooledRelationshipEvaluations } from '@/lib/evaluation-completion'
+import { applyAuthoritativeDeptPoolEvaluations } from '@/lib/dept-evaluation-pool'
 import {
   buildAssignmentLookup,
   resolveEvaluationRelationshipTypeForRow,
@@ -100,6 +101,49 @@ export async function generateDetailedReport(
     evaluateeId: employeeId,
     includeUsers: true,
   })
+  const deptEvaluatorIds = [...new Set(
+    mappings
+      .filter((mapping) => mapping.relationshipType === 'DEPT')
+      .map((mapping) => mapping.evaluatorId)
+  )]
+  const [deptEvaluatorAssignments, deptEvaluatorEvaluations] = await Promise.all([
+    Promise.all(
+      deptEvaluatorIds.map(async (evaluatorId) => [
+        evaluatorId,
+        await getResolvedEvaluationAssignments(periodId, {
+          evaluatorId,
+          includeUsers: true,
+        }),
+      ] as const)
+    ),
+    Promise.all(
+      deptEvaluatorIds.map(async (evaluatorId) => [
+        evaluatorId,
+        await prisma.evaluation.findMany({
+          where: {
+            periodId,
+            evaluatorId,
+          },
+          include: {
+            question: true,
+            leadQuestion: true,
+            evaluator: true,
+          },
+        }),
+      ] as const)
+    ),
+  ])
+  const deptAssignmentsByEvaluator = new Map(deptEvaluatorAssignments)
+  const deptEvaluationsByEvaluator = new Map(deptEvaluatorEvaluations)
+  const effectiveEvaluations = applyAuthoritativeDeptPoolEvaluations({
+    evaluateeId: employeeId,
+    evaluations,
+    assignments: mappings,
+    getAssignmentsForEvaluator: (evaluatorId) =>
+      deptAssignmentsByEvaluator.get(evaluatorId) || [],
+    getEvaluationsForEvaluator: (evaluatorId) =>
+      deptEvaluationsByEvaluator.get(evaluatorId) || [],
+  })
 
   // Group evaluations by evaluator and relationship type
   const assignmentLookup = buildAssignmentLookup(
@@ -110,7 +154,7 @@ export async function generateDetailedReport(
     }))
   )
   const evaluationsByEvaluator = new Map<string, typeof evaluations>()
-  for (const evaluation of evaluations) {
+  for (const evaluation of effectiveEvaluations) {
     const relationshipType = resolveEvaluationRelationshipTypeForRow({
       evaluation,
       assignmentLookup,
