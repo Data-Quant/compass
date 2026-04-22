@@ -609,10 +609,12 @@ export async function generateHRSpreadsheet(periodId: string): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook()
   const worksheet = workbook.addWorksheet('Evaluation Data')
 
-  // Get all employees
-  const employees = (await prisma.user.findMany({
-    where: { role: 'EMPLOYEE' },
-  })).filter((employee) => shouldReceiveConstantEvaluations(employee))
+  // All users (role filter removed so HR/OA/SECURITY/EXECUTION members who
+  // legitimately receive evaluations aren't dropped). shouldReceiveConstantEvaluations
+  // gates the actual eligibility.
+  const employees = (await prisma.user.findMany()).filter((employee) =>
+    shouldReceiveConstantEvaluations(employee)
+  )
 
   // Get period
   const period = await prisma.evaluationPeriod.findUnique({
@@ -740,8 +742,10 @@ export async function generateVerificationCsv(periodId: string): Promise<string>
 
   const [employees, allEvaluations, allMappings, allWeightProfiles, allCustomWeightages] =
     await Promise.all([
+      // Role filter removed so HR/OA/SECURITY/EXECUTION users who legitimately
+      // receive evaluations (e.g. Areebah) aren't dropped from the verification
+      // CSV. shouldReceiveConstantEvaluations gates the final eligibility.
       prisma.user.findMany({
-        where: { role: 'EMPLOYEE' },
         select: { id: true, name: true, department: true, position: true },
       }),
       prisma.evaluation.findMany({

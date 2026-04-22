@@ -42,9 +42,10 @@ export async function GET(request: NextRequest) {
     // 2-6: Fetch all data in parallel
     const [employees, allEvaluations, allMappings, allWeightProfiles, allCustomWeightages] =
       await Promise.all([
-        // 2. All employees
+        // 2. All users — role filter removed so HR/OA/SECURITY/EXECUTION members
+        // who legitimately receive evaluations (e.g. Areebah) aren't dropped.
+        // shouldReceiveConstantEvaluations below gates the actual eligibility.
         prisma.user.findMany({
-          where: { role: 'EMPLOYEE' },
           select: { id: true, name: true, department: true, position: true },
         }),
 
