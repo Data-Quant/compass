@@ -1,8 +1,18 @@
 import { prisma } from '@/lib/db'
 import { calculateWeightedScore, EvaluationReport } from '@/lib/scoring'
-import { RelationshipType, RELATIONSHIP_TYPE_LABELS, RATING_LABELS } from '@/types'
+import {
+  RelationshipType,
+  RELATIONSHIP_TYPE_LABELS,
+  RATING_LABELS,
+  normalizeRelationshipTypeForWeighting,
+  toCategorySetKey,
+} from '@/types'
 import { escapeHtml } from '@/lib/sanitize'
-import { getEvaluationQuestionMeta } from '@/lib/pre-evaluation'
+import { calculateRedistributedWeights } from '@/lib/config'
+import {
+  getEvaluationQuestionMeta,
+  getDefaultQuestionBankRelationshipType,
+} from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
 import { filterPooledRelationshipEvaluations } from '@/lib/evaluation-completion'
@@ -39,6 +49,34 @@ function assertReportEligibility(employee: {
   if (!shouldReceiveConstantEvaluations(employee)) {
     throw new Error('This person does not receive incoming evaluations or reports')
   }
+}
+
+/**
+ * Returns true if this evaluation's question is part of the evaluator's current
+ * effective question bank. Returns false for "archived" evaluations whose
+ * question was served under a now-stale mapping (e.g. Anees answered the
+ * DIRECT_REPORT bank when mis-mapped as Ammar's team lead; after correction his
+ * effective bank is TEAM_LEAD and those answers are archived).
+ *
+ * - Lead-authored questions are only valid for TEAM_LEAD evaluators.
+ * - Regular questions must match the expected bank type for the evaluator's
+ *   current relationship (DIRECT_REPORT → TEAM_LEAD bank, etc).
+ */
+function isEvaluationInCurrentBank(
+  evaluation: {
+    leadQuestionId?: string | null
+    question?: { relationshipType: RelationshipType } | null
+  },
+  evaluatorRelationshipType: RelationshipType
+): boolean {
+  if (evaluation.leadQuestionId) {
+    return evaluatorRelationshipType === 'TEAM_LEAD'
+  }
+  if (evaluation.question) {
+    const expectedBankType = getDefaultQuestionBankRelationshipType(evaluatorRelationshipType)
+    return evaluation.question.relationshipType === expectedBankType
+  }
+  return false
 }
 
 export async function generateDetailedReport(
@@ -135,7 +173,7 @@ export async function generateDetailedReport(
     const effectiveEvaluatorEvaluations = filterPooledRelationshipEvaluations(
       relationshipType,
       evaluatorEvaluations
-    )
+    ).filter((evaluation) => isEvaluationInCurrentBank(evaluation, relationshipType))
     if (effectiveEvaluatorEvaluations.length === 0) {
       continue
     }
@@ -645,4 +683,322 @@ export async function generateHRSpreadsheet(periodId: string): Promise<Buffer> {
   // Generate buffer
   const buffer = await workbook.xlsx.writeBuffer()
   return Buffer.from(buffer)
+}
+
+/**
+ * Build a verification CSV for a given evaluation period.
+ * One row per reportable employee. For each relationship category, lists every
+ * submitted evaluator and their individual normalized score (0-4), the category
+ * average as used in scoring, the weight profile applied, and the final weighted
+ * total — so HR can hand-verify that weight × category_avg sums to the final.
+ */
+const VERIFICATION_CATEGORY_ORDER: RelationshipType[] = [
+  'TEAM_LEAD',
+  'PEER',
+  'DIRECT_REPORT',
+  'HR',
+  'C_LEVEL',
+  'DEPT',
+]
+
+type EvaluationWithMeta = Parameters<typeof getEvaluationQuestionMeta>[0] & {
+  ratingValue: number | null
+}
+
+function normalizedScoreFor(evaluations: EvaluationWithMeta[]): number | null {
+  let totalRating = 0
+  let totalMax = 0
+  for (const ev of evaluations) {
+    const meta = getEvaluationQuestionMeta(ev)
+    if (!meta || meta.questionType !== 'RATING') continue
+    if (ev.ratingValue === null) continue
+    totalRating += ev.ratingValue
+    totalMax += meta.maxRating
+  }
+  if (totalMax === 0) return null
+  return (totalRating / totalMax) * 4
+}
+
+function csvEscape(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return ''
+  const str = String(value)
+  if (/[",\n\r]/.test(str)) {
+    return `"${str.replace(/"/g, '""')}"`
+  }
+  return str
+}
+
+export async function generateVerificationCsv(periodId: string): Promise<string> {
+  const period =
+    periodId === 'active'
+      ? await prisma.evaluationPeriod.findFirst({ where: { isActive: true } })
+      : await prisma.evaluationPeriod.findUnique({ where: { id: periodId } })
+
+  if (!period) {
+    throw new Error('Period not found')
+  }
+
+  const [employees, allEvaluations, allMappings, allWeightProfiles, allCustomWeightages] =
+    await Promise.all([
+      prisma.user.findMany({
+        where: { role: 'EMPLOYEE' },
+        select: { id: true, name: true, department: true, position: true },
+      }),
+      prisma.evaluation.findMany({
+        where: { periodId: period.id, submittedAt: { not: null } },
+        include: {
+          question: true,
+          leadQuestion: true,
+          evaluator: { select: { id: true, name: true } },
+        },
+      }),
+      getResolvedEvaluationAssignments(period.id, { includeUsers: true }),
+      prisma.weightProfile.findMany(),
+      prisma.weightage.findMany(),
+    ])
+
+  // Index maps
+  const mappingsByEmployee = new Map<string, typeof allMappings>()
+  for (const m of allMappings) {
+    if (!mappingsByEmployee.has(m.evaluateeId)) {
+      mappingsByEmployee.set(m.evaluateeId, [])
+    }
+    mappingsByEmployee.get(m.evaluateeId)!.push(m)
+  }
+
+  const evalsByEmployee = new Map<string, typeof allEvaluations>()
+  for (const ev of allEvaluations) {
+    if (!evalsByEmployee.has(ev.evaluateeId)) {
+      evalsByEmployee.set(ev.evaluateeId, [])
+    }
+    evalsByEmployee.get(ev.evaluateeId)!.push(ev)
+  }
+
+  const weightProfileByKey = new Map<
+    string,
+    { displayName: string; weights: Record<string, number> }
+  >()
+  for (const wp of allWeightProfiles) {
+    weightProfileByKey.set(wp.categorySetKey, {
+      displayName: wp.displayName,
+      weights: wp.weights as Record<string, number>,
+    })
+  }
+
+  const customWeightByEmployee = new Map<string, Record<string, number>>()
+  for (const cw of allCustomWeightages) {
+    if (!customWeightByEmployee.has(cw.employeeId)) {
+      customWeightByEmployee.set(cw.employeeId, {})
+    }
+    customWeightByEmployee.get(cw.employeeId)![
+      normalizeRelationshipTypeForWeighting(cw.relationshipType as RelationshipType)
+    ] = cw.weightagePercentage
+  }
+
+  const reportable = employees.filter((e) => shouldReceiveConstantEvaluations(e))
+
+  // CSV header
+  const header: string[] = [
+    'Employee Name',
+    'Department',
+    'Position',
+    'Weight Profile',
+  ]
+  for (const category of VERIFICATION_CATEGORY_ORDER) {
+    header.push(`${RELATIONSHIP_TYPE_LABELS[category]} Scores`)
+    header.push(`${RELATIONSHIP_TYPE_LABELS[category]} Avg`)
+  }
+  header.push(
+    'Self Score',
+    'Weights Applied',
+    'Final Weighted Total (0-4)',
+    'Final Weighted Total (%)',
+    'Completion %',
+    'Pending Evaluators',
+    'Period'
+  )
+
+  const rows: string[] = [header.map(csvEscape).join(',')]
+
+  for (const employee of reportable) {
+    const employeeMappings = mappingsByEmployee.get(employee.id) ?? []
+    const employeeEvals = evalsByEmployee.get(employee.id) ?? []
+
+    const assignmentLookup = buildAssignmentLookup(
+      employeeMappings.map((m) => ({
+        evaluatorId: m.evaluatorId,
+        evaluateeId: m.evaluateeId,
+        relationshipType: m.relationshipType as RelationshipType,
+      }))
+    )
+
+    // Group submitted evals by relationship type, dropping any evaluation whose
+    // question is no longer in the evaluator's current effective bank (archived).
+    const evalsByType = new Map<RelationshipType, typeof employeeEvals>()
+    for (const ev of employeeEvals) {
+      const type = resolveEvaluationRelationshipTypeForRow({ evaluation: ev, assignmentLookup })
+      if (!type) continue
+      if (!isEvaluationInCurrentBank(ev, type)) continue
+      if (!evalsByType.has(type)) evalsByType.set(type, [])
+      evalsByType.get(type)!.push(ev)
+    }
+
+    // Determine weights (same priority as scoring.ts)
+    const allMappedTypes = [
+      ...new Set(
+        employeeMappings.map((m) =>
+          normalizeRelationshipTypeForWeighting(m.relationshipType as RelationshipType)
+        )
+      ),
+    ]
+    const categoryKey = toCategorySetKey(allMappedTypes)
+    let weights: Record<string, number> | null = null
+    let profileName = ''
+    if (categoryKey) {
+      const profile = weightProfileByKey.get(categoryKey)
+      if (profile) {
+        weights = profile.weights
+        profileName = profile.displayName
+      }
+    }
+    if (!weights) {
+      const custom = customWeightByEmployee.get(employee.id)
+      if (custom && Object.keys(custom).length > 0) {
+        weights = custom
+        profileName = 'Per-employee custom weightages'
+      } else {
+        weights = calculateRedistributedWeights(allMappedTypes)
+        profileName = 'Proportional fallback (no profile match)'
+      }
+    }
+
+    // Per-category per-evaluator scores + category averages
+    const row: string[] = [
+      employee.name,
+      employee.department ?? '',
+      employee.position ?? '',
+      profileName,
+    ]
+
+    for (const category of VERIFICATION_CATEGORY_ORDER) {
+      const typeEvals = evalsByType.get(category) ?? []
+      const effectiveEvals = filterPooledRelationshipEvaluations(category, typeEvals)
+
+      // Group by evaluator to compute each evaluator's individual normalized score
+      const evalsByEvaluator = new Map<string, typeof effectiveEvals>()
+      for (const ev of effectiveEvals) {
+        if (!evalsByEvaluator.has(ev.evaluatorId)) {
+          evalsByEvaluator.set(ev.evaluatorId, [])
+        }
+        evalsByEvaluator.get(ev.evaluatorId)!.push(ev)
+      }
+
+      const perEvaluatorEntries: string[] = []
+      for (const [, evalList] of evalsByEvaluator.entries()) {
+        const normalized = normalizedScoreFor(evalList)
+        if (normalized === null) continue
+        const evaluatorName = evalList[0].evaluator?.name ?? 'Unknown'
+        perEvaluatorEntries.push(`${evaluatorName}: ${normalized.toFixed(2)}`)
+      }
+
+      // Category average (matches scoring.ts: sum per-question averages / sum maxRatings × 4)
+      let catTotal = 0
+      let catMax = 0
+      const questionGroups = new Map<string, typeof effectiveEvals>()
+      for (const ev of effectiveEvals) {
+        const meta = getEvaluationQuestionMeta(ev)
+        if (!meta) continue
+        if (!questionGroups.has(meta.key)) questionGroups.set(meta.key, [])
+        questionGroups.get(meta.key)!.push(ev)
+      }
+      for (const [, qEvals] of questionGroups.entries()) {
+        const meta = getEvaluationQuestionMeta(qEvals[0])
+        if (!meta || meta.questionType !== 'RATING') continue
+        let qSum = 0
+        let qCount = 0
+        for (const ev of qEvals) {
+          if (ev.ratingValue !== null) {
+            qSum += ev.ratingValue
+            qCount++
+          }
+        }
+        if (qCount > 0) {
+          catTotal += qSum / qCount
+          catMax += meta.maxRating
+        }
+      }
+      const categoryAvg = catMax > 0 ? (catTotal / catMax) * 4 : null
+
+      row.push(perEvaluatorEntries.join('; '))
+      row.push(categoryAvg === null ? '' : categoryAvg.toFixed(2))
+    }
+
+    // Self score (separate column; not part of weighted total)
+    const selfEvals = evalsByType.get('SELF') ?? []
+    const selfScore = normalizedScoreFor(selfEvals)
+    row.push(selfScore === null ? '' : selfScore.toFixed(2))
+
+    // Weights applied
+    const weightsDisplay = Object.entries(weights)
+      .filter(([, w]) => w > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([type, w]) => `${type}: ${w.toFixed(2)}`)
+      .join(', ')
+    row.push(weightsDisplay)
+
+    // Final weighted total: same formula as scoring.ts
+    let finalWeighted = 0
+    for (const category of VERIFICATION_CATEGORY_ORDER) {
+      const categoryAvgIdx = header.indexOf(`${RELATIONSHIP_TYPE_LABELS[category]} Avg`)
+      const cell = row[categoryAvgIdx]
+      if (!cell) continue
+      const avgNum = Number(cell)
+      if (!Number.isFinite(avgNum)) continue
+      const weight = weights[category] ?? 0
+      finalWeighted += avgNum * weight
+    }
+    const finalPct = (finalWeighted / 4) * 100
+    row.push(finalWeighted.toFixed(3))
+    row.push(finalPct.toFixed(2))
+
+    // Completion % and pending evaluators
+    const assignedPairs = new Set<string>() // `${evaluatorId}|${relationshipType}`
+    for (const m of employeeMappings) {
+      const normalizedType = normalizeRelationshipTypeForWeighting(m.relationshipType as RelationshipType)
+      if (normalizedType === 'SELF') continue
+      assignedPairs.add(`${m.evaluatorId}|${normalizedType}`)
+    }
+    const submittedPairs = new Set<string>()
+    for (const ev of employeeEvals) {
+      const type = resolveEvaluationRelationshipTypeForRow({ evaluation: ev, assignmentLookup })
+      if (!type || type === 'SELF') continue
+      submittedPairs.add(`${ev.evaluatorId}|${type}`)
+    }
+    const totalAssigned = assignedPairs.size
+    const totalSubmitted = [...assignedPairs].filter((p) => submittedPairs.has(p)).length
+    const completionPct = totalAssigned > 0 ? (totalSubmitted / totalAssigned) * 100 : 100
+
+    const pendingByEvaluator = new Map<string, Set<string>>()
+    for (const pair of assignedPairs) {
+      if (submittedPairs.has(pair)) continue
+      const [evaluatorId, relationshipType] = pair.split('|')
+      if (!pendingByEvaluator.has(evaluatorId)) pendingByEvaluator.set(evaluatorId, new Set())
+      pendingByEvaluator.get(evaluatorId)!.add(relationshipType)
+    }
+    const evaluatorNamesById = new Map<string, string>()
+    for (const m of employeeMappings) {
+      evaluatorNamesById.set(m.evaluatorId, m.evaluator?.name ?? 'Unknown')
+    }
+    const pendingDisplay = [...pendingByEvaluator.entries()]
+      .map(([id, types]) => `${evaluatorNamesById.get(id) ?? 'Unknown'} (${[...types].join(', ')})`)
+      .join('; ')
+
+    row.push(completionPct.toFixed(0))
+    row.push(pendingDisplay)
+    row.push(period.name)
+
+    rows.push(row.map(csvEscape).join(','))
+  }
+
+  return rows.join('\n') + '\n'
 }

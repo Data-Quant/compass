@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Search, FileText, Download, Eye } from 'lucide-react'
+import { Search, FileText, Download, Eye, FileSpreadsheet } from 'lucide-react'
 
 function ReportsPageContent() {
   const searchParams = useSearchParams()
@@ -104,7 +104,7 @@ function ReportsPageContent() {
   return (
     <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
           <div>
             <h1 className="text-2xl font-bold text-foreground font-display">Performance Reports</h1>
             {period && (
@@ -113,6 +113,17 @@ function ReportsPageContent() {
               </p>
             )}
           </div>
+          <Button
+            variant="outline"
+            onClick={() => {
+              window.location.href = `/api/reports/verification-csv?periodId=${periodId}`
+            }}
+            className="gap-2"
+            title="Download a CSV with each employee's per-evaluator scores, category averages, weight profile, and final weighted total — for verifying the scoring pipeline."
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            Download Verification CSV
+          </Button>
         </div>
 
         {/* Filters */}
