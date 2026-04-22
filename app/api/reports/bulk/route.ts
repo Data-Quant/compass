@@ -8,6 +8,10 @@ import { getEvaluationQuestionMeta } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
 import { filterPooledRelationshipEvaluations } from '@/lib/evaluation-completion'
+import {
+  buildAssignmentLookup,
+  resolveEvaluationRelationshipTypeForRow,
+} from '@/lib/evaluation-relationship-resolution'
 
 /**
  * Bulk reports endpoint: fetches ALL employee report summaries in 6 DB calls
@@ -114,19 +118,21 @@ export async function GET(request: NextRequest) {
       const employeeMappings = mappingsByEmployee.get(employee.id) || []
       const employeeEvals = evalsByEmployee.get(employee.id) || []
 
-      // Build evaluatorId -> relationshipType map
-      const evaluatorToType = new Map<string, RelationshipType>()
-      for (const m of employeeMappings) {
-        evaluatorToType.set(
-          m.evaluatorId,
-          normalizeRelationshipTypeForWeighting(m.relationshipType as RelationshipType)
-        )
-      }
+      const assignmentLookup = buildAssignmentLookup(
+        employeeMappings.map((mapping) => ({
+          evaluatorId: mapping.evaluatorId,
+          evaluateeId: mapping.evaluateeId,
+          relationshipType: mapping.relationshipType as RelationshipType,
+        }))
+      )
 
       // Group evaluations by relationship type
       const evalsByType = new Map<RelationshipType, typeof employeeEvals>()
       for (const ev of employeeEvals) {
-        const type = evaluatorToType.get(ev.evaluatorId)
+        const type = resolveEvaluationRelationshipTypeForRow({
+          evaluation: ev,
+          assignmentLookup,
+        })
         if (type) {
           if (!evalsByType.has(type)) evalsByType.set(type, [])
           evalsByType.get(type)!.push(ev)

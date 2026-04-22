@@ -5,6 +5,10 @@ import { getEvaluationQuestionMeta } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
 import { filterPooledRelationshipEvaluations } from '@/lib/evaluation-completion'
+import {
+  buildAssignmentLookup,
+  resolveEvaluationRelationshipTypeForRow,
+} from '@/lib/evaluation-relationship-resolution'
 
 export interface ScoreBreakdown {
   relationshipType: RelationshipType
@@ -155,19 +159,22 @@ export async function calculateWeightedScore(
     evaluateeId: employeeId,
   })
 
-  const evaluatorToTypeMap = new Map<string, RelationshipType>()
-  mappings.forEach((m) => {
-    evaluatorToTypeMap.set(
-      m.evaluatorId,
-      normalizeRelationshipTypeForWeighting(m.relationshipType as RelationshipType)
-    )
-  })
+  const assignmentLookup = buildAssignmentLookup(
+    mappings.map((mapping) => ({
+      evaluatorId: mapping.evaluatorId,
+      evaluateeId: mapping.evaluateeId,
+      relationshipType: mapping.relationshipType as RelationshipType,
+    }))
+  )
 
   // Group evaluations by relationship type
   const evaluationsByType = new Map<RelationshipType, typeof evaluations>()
 
   for (const evaluation of evaluations) {
-    const type = evaluatorToTypeMap.get(evaluation.evaluatorId)
+    const type = resolveEvaluationRelationshipTypeForRow({
+      evaluation,
+      assignmentLookup,
+    })
     if (type) {
       if (!evaluationsByType.has(type)) {
         evaluationsByType.set(type, [])
@@ -292,7 +299,10 @@ export async function calculateWeightedScore(
   // Aggregate qualitative feedback
   const qualitativeFeedback: Record<string, string[]> = {}
   const filteredEvaluations = evaluations.filter((evaluation) => {
-    const relationshipType = evaluatorToTypeMap.get(evaluation.evaluatorId)
+    const relationshipType = resolveEvaluationRelationshipTypeForRow({
+      evaluation,
+      assignmentLookup,
+    })
     if (!relationshipType) {
       return false
     }

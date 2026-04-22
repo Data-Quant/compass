@@ -6,6 +6,10 @@ import { getEvaluationQuestionMeta } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
 import { filterPooledRelationshipEvaluations } from '@/lib/evaluation-completion'
+import {
+  buildAssignmentLookup,
+  resolveEvaluationRelationshipTypeForRow,
+} from '@/lib/evaluation-relationship-resolution'
 
 export interface DetailedEvaluationSection {
   relationshipType: RelationshipType
@@ -97,15 +101,22 @@ export async function generateDetailedReport(
     includeUsers: true,
   })
 
-  const evaluatorToTypeMap = new Map<string, RelationshipType>()
-  mappings.forEach((m) => {
-    evaluatorToTypeMap.set(m.evaluatorId, m.relationshipType)
-  })
-
   // Group evaluations by evaluator and relationship type
+  const assignmentLookup = buildAssignmentLookup(
+    mappings.map((mapping) => ({
+      evaluatorId: mapping.evaluatorId,
+      evaluateeId: mapping.evaluateeId,
+      relationshipType: mapping.relationshipType as RelationshipType,
+    }))
+  )
   const evaluationsByEvaluator = new Map<string, typeof evaluations>()
   for (const evaluation of evaluations) {
-    const key = evaluation.evaluatorId
+    const relationshipType = resolveEvaluationRelationshipTypeForRow({
+      evaluation,
+      assignmentLookup,
+    })
+    if (!relationshipType) continue
+    const key = `${evaluation.evaluatorId}:${relationshipType}`
     if (!evaluationsByEvaluator.has(key)) {
       evaluationsByEvaluator.set(key, [])
     }
@@ -115,8 +126,11 @@ export async function generateDetailedReport(
   // Build detailed sections
   const detailedSections: DetailedEvaluationSection[] = []
   
-  for (const [evaluatorId, evaluatorEvaluations] of evaluationsByEvaluator.entries()) {
-    const relationshipType = evaluatorToTypeMap.get(evaluatorId)
+  for (const [evaluatorKey, evaluatorEvaluations] of evaluationsByEvaluator.entries()) {
+    const relationshipType = resolveEvaluationRelationshipTypeForRow({
+      evaluation: evaluatorEvaluations[0],
+      assignmentLookup,
+    })
     if (!relationshipType) continue
     const effectiveEvaluatorEvaluations = filterPooledRelationshipEvaluations(
       relationshipType,
@@ -125,7 +139,7 @@ export async function generateDetailedReport(
     if (effectiveEvaluatorEvaluations.length === 0) {
       continue
     }
-    if (effectiveEvaluatorEvaluations[0].evaluatorId !== evaluatorId) {
+    if (`${effectiveEvaluatorEvaluations[0].evaluatorId}:${relationshipType}` !== evaluatorKey) {
       continue
     }
 

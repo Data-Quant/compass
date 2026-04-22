@@ -22,14 +22,21 @@ import {
 } from '@/lib/evaluation-completion'
 import {
   buildEvaluationResponseKey,
+  buildDepartmentEvaluationResponseKey,
   countFourRatingsForResponses,
   getEvaluatorFourRatingQuota,
   validateFourRatingQuota,
 } from '@/lib/evaluation-rating-quota'
+import {
+  getDeptEvaluationPoolContext,
+} from '@/lib/dept-evaluation-pool'
 
 const evaluationSchema = z.object({
   evaluateeId: z.string().trim().min(1),
   periodId: z.string().trim().min(1),
+  relationshipType: z
+    .enum(['DIRECT_REPORT', 'TEAM_LEAD', 'PEER', 'C_LEVEL', 'HR', 'DEPT', 'CROSS_DEPARTMENT'])
+    .optional(),
   responses: z.array(
     z.object({
       questionId: z.string().trim().min(1),
@@ -43,6 +50,9 @@ const evaluationSchema = z.object({
 const evaluationDraftSchema = z.object({
   evaluateeId: z.string().trim().min(1),
   periodId: z.string().trim().min(1),
+  relationshipType: z
+    .enum(['DIRECT_REPORT', 'TEAM_LEAD', 'PEER', 'C_LEVEL', 'HR', 'DEPT', 'CROSS_DEPARTMENT'])
+    .optional(),
   questionId: z.string().trim().min(1),
   questionSource: z.enum(['GLOBAL', 'LEAD']),
   ratingValue: z.number().min(1).max(4).nullable().optional(),
@@ -127,7 +137,8 @@ export async function POST(request: NextRequest) {
     const assignment = await getResolvedEvaluationAssignmentForPair(
       data.periodId,
       user.id,
-      data.evaluateeId
+      data.evaluateeId,
+      data.relationshipType
     )
 
     if (!assignment) {
@@ -151,6 +162,15 @@ export async function POST(request: NextRequest) {
         )
       }
     }
+
+    const deptPool =
+      assignment.relationshipType === 'DEPT'
+        ? await getDeptEvaluationPoolContext({
+            periodId: data.periodId,
+            evaluatorId: user.id,
+            evaluateeId: data.evaluateeId,
+          })
+        : null
 
     const resolved = await getResolvedEvaluationQuestions({
       relationshipType: assignment.relationshipType as RelationshipType,
@@ -212,11 +232,17 @@ export async function POST(request: NextRequest) {
     if (assignment.relationshipType !== 'HR') {
       const currentSubmissionResponseKeys = new Set(
         data.responses.map((response) =>
-          buildEvaluationResponseKey(
-            data.evaluateeId,
-            response.questionSource,
-            response.questionId
-          )
+          assignment.relationshipType === 'DEPT'
+            ? buildDepartmentEvaluationResponseKey(
+                deptPool?.summary.department,
+                response.questionSource,
+                response.questionId
+              )
+            : buildEvaluationResponseKey(
+                data.evaluateeId,
+                response.questionSource,
+                response.questionId
+              )
         )
       )
       const fourRatingQuota = await getEvaluatorFourRatingQuota({
@@ -241,39 +267,43 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const targetEvaluateeIds = deptPool?.evaluateeIds || [data.evaluateeId]
+
     // Save or update evaluations
     const evaluations = []
-    for (const response of data.responses) {
-      const existing = await findExistingEvaluation({
-        evaluatorId: user.id,
-        evaluateeId: data.evaluateeId,
-        periodId: data.periodId,
-        questionId: response.questionId,
-        questionSource: response.questionSource,
-      })
+    for (const targetEvaluateeId of targetEvaluateeIds) {
+      for (const response of data.responses) {
+        const existing = await findExistingEvaluation({
+          evaluatorId: user.id,
+          evaluateeId: targetEvaluateeId,
+          periodId: data.periodId,
+          questionId: response.questionId,
+          questionSource: response.questionSource,
+        })
 
-      const payload = {
-        ratingValue: response.ratingValue ?? null,
-        textResponse: normalizeEvaluationTextResponse(response.textResponse),
-        submittedAt: new Date(),
+        const payload = {
+          ratingValue: response.ratingValue ?? null,
+          textResponse: normalizeEvaluationTextResponse(response.textResponse),
+          submittedAt: new Date(),
+        }
+
+        const evaluation = existing
+          ? await prisma.evaluation.update({
+              where: { id: existing.id },
+              data: payload,
+            })
+          : await prisma.evaluation.create({
+              data: {
+                evaluatorId: user.id,
+                evaluateeId: targetEvaluateeId,
+                periodId: data.periodId,
+                questionId: response.questionSource === 'GLOBAL' ? response.questionId : null,
+                leadQuestionId: response.questionSource === 'LEAD' ? response.questionId : null,
+                ...payload,
+              },
+            })
+        evaluations.push(evaluation)
       }
-
-      const evaluation = existing
-        ? await prisma.evaluation.update({
-            where: { id: existing.id },
-            data: payload,
-          })
-        : await prisma.evaluation.create({
-            data: {
-              evaluatorId: user.id,
-              evaluateeId: data.evaluateeId,
-              periodId: data.periodId,
-              questionId: response.questionSource === 'GLOBAL' ? response.questionId : null,
-              leadQuestionId: response.questionSource === 'LEAD' ? response.questionId : null,
-              ...payload,
-            },
-          })
-      evaluations.push(evaluation)
     }
 
     return NextResponse.json({ success: true, evaluations })
@@ -301,7 +331,15 @@ export async function PUT(request: NextRequest) {
 
     const body = await request.json()
     const data = evaluationDraftSchema.parse(body)
-    const { evaluateeId, periodId, questionId, questionSource, ratingValue, textResponse } = data
+    const {
+      evaluateeId,
+      periodId,
+      questionId,
+      questionSource,
+      relationshipType,
+      ratingValue,
+      textResponse,
+    } = data
 
     // Check if period is locked
     const period = await prisma.evaluationPeriod.findUnique({
@@ -315,7 +353,12 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    const assignment = await getResolvedEvaluationAssignmentForPair(periodId, user.id, evaluateeId)
+    const assignment = await getResolvedEvaluationAssignmentForPair(
+      periodId,
+      user.id,
+      evaluateeId,
+      relationshipType
+    )
 
     if (!assignment) {
       return NextResponse.json(
@@ -339,6 +382,15 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    const deptPool =
+      assignment.relationshipType === 'DEPT'
+        ? await getDeptEvaluationPoolContext({
+            periodId,
+            evaluatorId: user.id,
+            evaluateeId,
+          })
+        : null
+
     const resolved = await getResolvedEvaluationQuestions({
       relationshipType: assignment.relationshipType as RelationshipType,
       periodId,
@@ -360,37 +412,44 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    // Save as draft (no submittedAt)
-    const existing = await findExistingEvaluation({
-      evaluatorId: user.id,
-      evaluateeId,
-      periodId,
-      questionId,
-      questionSource,
-    })
+    const targetEvaluateeIds = deptPool?.evaluateeIds || [evaluateeId]
 
-    const payload = {
-      ratingValue: ratingValue ?? null,
-      textResponse: normalizeEvaluationTextResponse(textResponse),
+    // Save as draft (no submittedAt)
+    const savedEvaluations = []
+    for (const targetEvaluateeId of targetEvaluateeIds) {
+      const existing = await findExistingEvaluation({
+        evaluatorId: user.id,
+        evaluateeId: targetEvaluateeId,
+        periodId,
+        questionId,
+        questionSource,
+      })
+
+      const payload = {
+        ratingValue: ratingValue ?? null,
+        textResponse: normalizeEvaluationTextResponse(textResponse),
+      }
+
+      const evaluation = existing
+        ? await prisma.evaluation.update({
+            where: { id: existing.id },
+            data: payload,
+          })
+        : await prisma.evaluation.create({
+            data: {
+              evaluatorId: user.id,
+              evaluateeId: targetEvaluateeId,
+              periodId,
+              questionId: questionSource === 'GLOBAL' ? questionId : null,
+              leadQuestionId: questionSource === 'LEAD' ? questionId : null,
+              ...payload,
+            },
+          })
+
+      savedEvaluations.push(evaluation)
     }
 
-    const evaluation = existing
-      ? await prisma.evaluation.update({
-          where: { id: existing.id },
-          data: payload,
-        })
-      : await prisma.evaluation.create({
-          data: {
-            evaluatorId: user.id,
-            evaluateeId,
-            periodId,
-            questionId: questionSource === 'GLOBAL' ? questionId : null,
-            leadQuestionId: questionSource === 'LEAD' ? questionId : null,
-            ...payload,
-          },
-        })
-
-    return NextResponse.json({ success: true, evaluation })
+    return NextResponse.json({ success: true, evaluation: savedEvaluations[0] })
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(

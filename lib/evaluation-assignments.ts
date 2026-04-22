@@ -340,13 +340,20 @@ export async function getResolvedEvaluationAssignments(
 export async function getResolvedEvaluationAssignmentForPair(
   periodId: string,
   evaluatorId: string,
-  evaluateeId: string
+  evaluateeId: string,
+  relationshipType?: RelationshipType,
+  db?: DbClient
 ) {
   const assignments = await getResolvedEvaluationAssignments(periodId, {
     evaluatorId,
     evaluateeId,
     includeUsers: true,
+    db,
   })
+
+  if (relationshipType) {
+    return assignments.find((assignment) => assignment.relationshipType === relationshipType) || null
+  }
 
   return assignments[0] || null
 }

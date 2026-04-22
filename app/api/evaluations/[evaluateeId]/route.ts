@@ -13,6 +13,16 @@ import {
   getSubmittedEvaluationCountMap,
 } from '@/lib/evaluation-completion'
 import { getEvaluatorFourRatingQuota } from '@/lib/evaluation-rating-quota'
+import {
+  getDeptEvaluationPoolContext,
+  getDeptPoolDisplayName,
+  getDeptPoolMemberLabel,
+  selectAuthoritativeDeptPoolEvaluateeId,
+} from '@/lib/dept-evaluation-pool'
+import {
+  buildAssignmentLookup,
+  resolveEvaluationRelationshipTypeForRow,
+} from '@/lib/evaluation-relationship-resolution'
 
 export async function GET(
   request: NextRequest,
@@ -26,6 +36,7 @@ export async function GET(
 
     const { searchParams } = new URL(request.url)
     const periodId = searchParams.get('periodId')
+    const relationshipType = searchParams.get('relationshipType') as RelationshipType | null
 
     if (!periodId) {
       return NextResponse.json(
@@ -36,7 +47,12 @@ export async function GET(
 
     const { evaluateeId } = await params
 
-    const assignment = await getResolvedEvaluationAssignmentForPair(periodId, user.id, evaluateeId)
+    const assignment = await getResolvedEvaluationAssignmentForPair(
+      periodId,
+      user.id,
+      evaluateeId,
+      relationshipType || undefined
+    )
 
     if (!assignment) {
       return NextResponse.json(
@@ -44,6 +60,15 @@ export async function GET(
         { status: 403 }
       )
     }
+
+    const deptPool =
+      assignment.relationshipType === 'DEPT'
+        ? await getDeptEvaluationPoolContext({
+            periodId,
+            evaluatorId: user.id,
+            evaluateeId,
+          })
+        : null
 
     const [resolved, fourRatingQuota] = await Promise.all([
       getResolvedEvaluationQuestions({
@@ -67,10 +92,11 @@ export async function GET(
     }
 
     // Get existing evaluations
+    const targetEvaluateeIds = deptPool?.evaluateeIds || [evaluateeId]
     const evaluations = await prisma.evaluation.findMany({
       where: {
         evaluatorId: user.id,
-        evaluateeId,
+        evaluateeId: { in: targetEvaluateeIds },
         periodId,
       },
       include: {
@@ -82,7 +108,7 @@ export async function GET(
       by: ['evaluatorId', 'evaluateeId'],
       where: {
         periodId,
-        evaluateeId,
+        evaluateeId: { in: targetEvaluateeIds },
         submittedAt: { not: null },
       },
       _count: { id: true },
@@ -94,24 +120,68 @@ export async function GET(
         count: submittedPair._count.id,
       }))
     )
-    const hrAssignments = await getResolvedEvaluationAssignments(periodId, {
-      evaluateeId,
-    })
+    const relevantAssignments = deptPool
+      ? await getResolvedEvaluationAssignments(periodId, {
+          evaluatorId: user.id,
+        })
+      : await getResolvedEvaluationAssignments(periodId, {
+          evaluateeId,
+        })
     const hrPoolClosedPairKeys = getHrPoolClosedPairKeys(
-      hrAssignments,
+      relevantAssignments,
       new Set(submittedCounts.keys())
     )
-    const completionState = getAssignmentCompletionState({
-      assignment,
-      questionsCount: resolved.questions.length,
-      submittedCounts,
-      hrPoolClosedPairKeys,
+    const assignmentLookup = buildAssignmentLookup(
+      relevantAssignments.map((candidate) => ({
+        evaluatorId: candidate.evaluatorId,
+        evaluateeId: candidate.evaluateeId,
+        relationshipType: candidate.relationshipType as RelationshipType,
+      }))
+    )
+    const sourceEvaluateeId = deptPool
+      ? selectAuthoritativeDeptPoolEvaluateeId({
+          evaluateeIds: deptPool.evaluateeIds,
+          evaluations,
+        })
+      : evaluateeId
+    const sourceAssignment =
+      deptPool?.assignments.find((candidate) => candidate.evaluateeId === sourceEvaluateeId) ||
+      assignment
+    const sourceEvaluations = evaluations.filter((evaluation) => {
+      if (evaluation.evaluateeId !== sourceEvaluateeId) {
+        return false
+      }
+
+      if (!deptPool) {
+        return true
+      }
+
+      return (
+        resolveEvaluationRelationshipTypeForRow({
+          evaluation,
+          assignmentLookup,
+        }) === 'DEPT'
+      )
     })
+    const completionState = deptPool
+      ? {
+          isComplete:
+            resolved.questions.length > 0 &&
+            sourceEvaluations.filter((evaluation) => evaluation.submittedAt).length >=
+              resolved.questions.length,
+          isClosedByPool: false,
+        }
+      : getAssignmentCompletionState({
+          assignment,
+          questionsCount: resolved.questions.length,
+          submittedCounts,
+          hrPoolClosedPairKeys,
+        })
     const isClosedByPool = completionState.isClosedByPool
 
     // Map evaluations to questions
     const evaluationMap = new Map(
-      evaluations
+      sourceEvaluations
         .map((evaluation) => {
           const meta = getEvaluationQuestionMeta(evaluation)
           if (!meta) return null
@@ -133,15 +203,22 @@ export async function GET(
     })
 
     return NextResponse.json({
-      evaluatee: await prisma.user.findUnique({
-        where: { id: evaluateeId },
-        select: {
-          id: true,
-          name: true,
-          department: true,
-          position: true,
-        },
-      }),
+      evaluatee: deptPool
+        ? {
+            id: sourceAssignment.evaluateeId,
+            name: getDeptPoolDisplayName(deptPool.summary.department),
+            department: deptPool.summary.department,
+            position: getDeptPoolMemberLabel(deptPool.summary.memberCount),
+          }
+        : await prisma.user.findUnique({
+            where: { id: evaluateeId },
+            select: {
+              id: true,
+              name: true,
+              department: true,
+              position: true,
+            },
+          }),
       relationshipType: assignment.relationshipType,
       questions: questionsWithResponses,
       isSubmitted: completionState.isComplete,

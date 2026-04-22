@@ -9,6 +9,17 @@ import {
   getHrPoolClosedPairKeys,
   getSubmittedEvaluationCountMap,
 } from '@/lib/evaluation-completion'
+import {
+  getDeptPoolDisplayName,
+  getDeptPoolMemberLabel,
+  groupDeptAssignmentsByDepartment,
+  pickRepresentativeDeptAssignment,
+  summarizeDeptPool,
+} from '@/lib/dept-evaluation-pool'
+import {
+  buildAssignmentLookup,
+  resolveEvaluationRelationshipTypeForRow,
+} from '@/lib/evaluation-relationship-resolution'
 
 export async function GET(request: NextRequest) {
   try {
@@ -98,8 +109,20 @@ export async function GET(request: NextRequest) {
       directReportIds.includes(assignment.evaluateeId)
     )
 
-    const outgoingWithStatus = await Promise.all(
-      outgoingAssignments.map(async (assignment) => {
+    const nonDeptOutgoingAssignments = outgoingAssignments.filter(
+      (assignment) => assignment.relationshipType !== 'DEPT'
+    )
+    const deptOutgoingGroups = [...groupDeptAssignmentsByDepartment(outgoingAssignments).values()]
+    const outgoingAssignmentLookup = buildAssignmentLookup(
+      outgoingAssignments.map((assignment) => ({
+        evaluatorId: assignment.evaluatorId,
+        evaluateeId: assignment.evaluateeId,
+        relationshipType: assignment.relationshipType as RelationshipType,
+      }))
+    )
+
+    const outgoingWithStatus = await Promise.all([
+      ...nonDeptOutgoingAssignments.map(async (assignment) => {
         const questionsCount = await getResolvedQuestionCount({
           relationshipType: assignment.relationshipType as RelationshipType,
           periodId: period.id,
@@ -125,8 +148,54 @@ export async function GET(request: NextRequest) {
           isComplete: completionState.isComplete,
           isClosedByPool: completionState.isClosedByPool,
         }
-      })
-    )
+      }),
+      ...deptOutgoingGroups.map(async (group) => {
+        const representative = pickRepresentativeDeptAssignment(group)
+        const summary = summarizeDeptPool(group)
+        const questionsCount = await getResolvedQuestionCount({
+          relationshipType: 'DEPT',
+          periodId: period.id,
+          evaluatorId: representative.evaluatorId,
+          evaluateeId: representative.evaluateeId,
+        })
+        const deptEvaluations = await prisma.evaluation.findMany({
+          where: {
+            periodId: period.id,
+            evaluatorId: representative.evaluatorId,
+            evaluateeId: { in: group.map((assignment) => assignment.evaluateeId) },
+            submittedAt: { not: null },
+          },
+          include: {
+            question: true,
+            leadQuestion: true,
+          },
+        })
+        const deptOnlyEvaluationCount = deptEvaluations.filter((evaluation) => {
+          const resolvedType = resolveEvaluationRelationshipTypeForRow({
+            evaluation,
+            assignmentLookup: outgoingAssignmentLookup,
+          })
+          return resolvedType === 'DEPT'
+        }).length
+        const completedCount = Math.min(questionsCount, deptOnlyEvaluationCount)
+        const isComplete = questionsCount > 0 && deptOnlyEvaluationCount >= questionsCount
+
+        return {
+          id: `DEPT_POOL:${representative.evaluatorId}:${summary.departmentKey}`,
+          evaluatee: {
+            id: representative.evaluateeId,
+            name: getDeptPoolDisplayName(summary.department),
+            department: representative.evaluatee?.department || null,
+            position: getDeptPoolMemberLabel(summary.memberCount),
+          },
+          relationshipType: 'DEPT',
+          questionsCount,
+          completedCount,
+          isComplete,
+          isClosedByPool: false,
+        }
+      }),
+    ])
 
     const incomingWithStatus = await Promise.all(
       incomingAssignments.map(async (assignment) => {

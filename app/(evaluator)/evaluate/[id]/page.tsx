@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
@@ -48,7 +48,9 @@ interface FourRatingQuota {
 export default function EvaluatePage() {
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
   const evaluateeId = params.id as string
+  const relationshipTypeParam = searchParams.get('relationshipType')
 
   const [evaluatee, setEvaluatee] = useState<any>(null)
   const [questions, setQuestions] = useState<Question[]>([])
@@ -64,7 +66,7 @@ export default function EvaluatePage() {
 
   useEffect(() => {
     loadEvaluationData()
-  }, [evaluateeId])
+  }, [evaluateeId, relationshipTypeParam])
 
   useEffect(() => {
     return () => {
@@ -79,7 +81,12 @@ export default function EvaluatePage() {
       const periodId = periodData.period?.id
       if (!periodId) { toast.error('No active evaluation period found'); router.push('/dashboard'); return }
 
-      const response = await fetch(`/api/evaluations/${evaluateeId}?periodId=${periodId}`)
+      const relationshipQuery = relationshipTypeParam
+        ? `&relationshipType=${encodeURIComponent(relationshipTypeParam)}`
+        : ''
+      const response = await fetch(
+        `/api/evaluations/${evaluateeId}?periodId=${periodId}${relationshipQuery}`
+      )
       const data = await response.json()
       if (data.error) { toast.error(data.error); router.push('/dashboard'); return }
 
@@ -129,6 +136,7 @@ export default function EvaluatePage() {
           periodId,
           questionId,
           questionSource: questions.find((q) => q.id === questionId)?.questionSource || 'GLOBAL',
+          relationshipType: relationshipTypeParam || relationshipType || undefined,
           ratingValue: rating,
           textResponse: text,
         }),
@@ -174,7 +182,12 @@ export default function EvaluatePage() {
       const response = await fetch('/api/evaluations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ evaluateeId, periodId, responses: responseData }),
+        body: JSON.stringify({
+          evaluateeId,
+          periodId,
+          relationshipType: relationshipTypeParam || relationshipType || undefined,
+          responses: responseData,
+        }),
       })
       const data = await response.json()
       if (data.success) {

@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  buildDepartmentEvaluationResponseKey,
   buildEvaluationResponseKey,
   countFourRatingsForResponses,
   getFourRatingQuotaScopeType,
@@ -114,5 +115,12 @@ test('buildEvaluationResponseKey scopes a question key to the evaluatee and sour
   assert.equal(
     buildEvaluationResponseKey('ammar', 'LEAD', 'question-1'),
     'ammar:LEAD:question-1'
+  )
+})
+
+test('buildDepartmentEvaluationResponseKey scopes a question key to the department pool', () => {
+  assert.equal(
+    buildDepartmentEvaluationResponseKey('Technology', 'GLOBAL', 'question-1'),
+    'DEPT:technology:GLOBAL:question-1'
   )
 })

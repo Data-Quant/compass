@@ -645,7 +645,10 @@ export default function EvaluationsPage() {
                         return (
                           <Link
                             key={mapping.id}
-                            href={`/evaluate/${mapping.evaluatee.id}`}
+                            href={{
+                              pathname: `/evaluate/${mapping.evaluatee.id}`,
+                              query: { relationshipType: mapping.relationshipType },
+                            }}
                             className="flex items-center justify-between py-3 px-4 rounded-lg hover:bg-muted transition-colors group"
                           >
                             <div className="flex items-center gap-3">

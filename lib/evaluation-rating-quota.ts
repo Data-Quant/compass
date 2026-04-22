@@ -7,6 +7,10 @@ import {
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import { buildEvaluationPairKey } from '@/lib/evaluation-completion'
 import { getResolvedQuestionCount } from '@/lib/pre-evaluation'
+import {
+  groupDeptAssignmentsByDepartment,
+  normalizeDepartmentPoolKey,
+} from '@/lib/dept-evaluation-pool'
 
 type DbClient = typeof prisma | Prisma.TransactionClient
 
@@ -22,6 +26,14 @@ export function buildEvaluationResponseKey(
   questionId: string
 ) {
   return `${evaluateeId}:${questionSource}:${questionId}`
+}
+
+export function buildDepartmentEvaluationResponseKey(
+  department: string | null | undefined,
+  questionSource: 'GLOBAL' | 'LEAD',
+  questionId: string
+) {
+  return `DEPT:${normalizeDepartmentPoolKey(department)}:${questionSource}:${questionId}`
 }
 
 export function getMaxAllowedFourRatings(totalQuestions: number) {
@@ -74,7 +86,7 @@ export async function getEvaluatorFourRatingQuota(params: {
   const quotaRelationshipType = getFourRatingQuotaScopeType(params.relationshipType)
 
   const [assignments, submittedFourRatings] = await Promise.all([
-    getResolvedEvaluationAssignments(params.periodId, { db }),
+    getResolvedEvaluationAssignments(params.periodId, { db, includeUsers: true }),
     db.evaluation.findMany({
       where: {
         periodId: params.periodId,
@@ -90,6 +102,22 @@ export async function getEvaluatorFourRatingQuota(params: {
     }),
   ])
 
+  const evaluateeDepartments = new Map(
+    (
+      await db.user.findMany({
+        where: {
+          id: {
+            in: [...new Set(submittedFourRatings.map((evaluation) => evaluation.evaluateeId))],
+          },
+        },
+        select: {
+          id: true,
+          department: true,
+        },
+      })
+    ).map((user) => [user.id, user.department] as const)
+  )
+
   const activeAssignments = assignments.filter(
     (assignment) =>
       assignment.evaluatorId === params.evaluatorId &&
@@ -99,8 +127,13 @@ export async function getEvaluatorFourRatingQuota(params: {
       })
   )
 
+  const quotaAssignments =
+    quotaRelationshipType === 'DEPT'
+      ? [...groupDeptAssignmentsByDepartment(activeAssignments).values()].map((group) => group[0])
+      : activeAssignments
+
   const questionCounts = await Promise.all(
-    activeAssignments.map((assignment) =>
+    quotaAssignments.map((assignment) =>
       getResolvedQuestionCount({
         relationshipType: assignment.relationshipType,
         periodId: params.periodId,
@@ -131,9 +164,40 @@ export async function getEvaluatorFourRatingQuota(params: {
       return false
     }
 
-    return !excludedKeys.has(
-      buildEvaluationResponseKey(evaluation.evaluateeId, questionSource, questionId)
+    const responseKey =
+      quotaRelationshipType === 'DEPT'
+        ? buildDepartmentEvaluationResponseKey(
+            evaluateeDepartments.get(evaluation.evaluateeId),
+            questionSource,
+            questionId
+          )
+        : buildEvaluationResponseKey(evaluation.evaluateeId, questionSource, questionId)
+
+    return !excludedKeys.has(responseKey)
+  }).filter((evaluation, index, collection) => {
+    if (quotaRelationshipType !== 'DEPT') {
+      return true
+    }
+
+    const questionId = evaluation.questionId || evaluation.leadQuestionId
+    const questionSource = evaluation.questionId ? 'GLOBAL' : 'LEAD'
+    const responseKey = buildDepartmentEvaluationResponseKey(
+      evaluateeDepartments.get(evaluation.evaluateeId),
+      questionSource,
+      questionId!
     )
+
+    return collection.findIndex((candidate) => {
+      const candidateQuestionId = candidate.questionId || candidate.leadQuestionId
+      const candidateQuestionSource = candidate.questionId ? 'GLOBAL' : 'LEAD'
+      return (
+        buildDepartmentEvaluationResponseKey(
+          evaluateeDepartments.get(candidate.evaluateeId),
+          candidateQuestionSource,
+          candidateQuestionId!
+        ) === responseKey
+      )
+    }) === index
   }).length
   const maxAllowedFourRatings = getMaxAllowedFourRatings(totalQuestions)
 
