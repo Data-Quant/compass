@@ -1,15 +1,10 @@
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
-import type { RelationshipType } from '@/types'
 import {
   getResolvedEvaluationAssignments,
   getResolvedEvaluationAssignmentForPair,
   type ResolvedEvaluationAssignment,
 } from '@/lib/evaluation-assignments'
-import {
-  buildAssignmentLookup,
-  resolveEvaluationRelationshipTypeForRow,
-} from '@/lib/evaluation-relationship-resolution'
 
 type DbClient = typeof prisma | Prisma.TransactionClient
 
@@ -21,12 +16,7 @@ export type DeptPoolSummary = {
 }
 
 type EvaluationLike = {
-  evaluatorId?: string
   evaluateeId: string
-  question?: {
-    relationshipType: RelationshipType
-  } | null
-  leadQuestionId?: string | null
   ratingValue?: number | null
   textResponse?: string | null
   submittedAt?: Date | null
@@ -195,126 +185,4 @@ export function selectAuthoritativeDeptPoolEvaluateeId(params: {
   })
 
   return ranked[0]?.evaluateeId || params.evaluateeIds[0]
-}
-
-export function applyAuthoritativeDeptPoolEvaluations<
-  T extends EvaluationLike & {
-    evaluatorId: string
-    question?: { relationshipType: RelationshipType } | null
-    leadQuestionId?: string | null
-  },
->(params: {
-  evaluateeId: string
-  evaluations: T[]
-  assignments: ResolvedEvaluationAssignment[]
-  getAssignmentsForEvaluator: (evaluatorId: string) => ResolvedEvaluationAssignment[]
-  getEvaluationsForEvaluator: (evaluatorId: string) => T[]
-}) {
-  const assignmentLookup = buildAssignmentLookup(
-    params.assignments.map((assignment) => ({
-      evaluatorId: assignment.evaluatorId,
-      evaluateeId: assignment.evaluateeId,
-      relationshipType: assignment.relationshipType,
-    }))
-  )
-
-  const nonDeptEvaluations: T[] = []
-  const localDeptEvaluationsByEvaluator = new Map<string, T[]>()
-
-  for (const evaluation of params.evaluations) {
-    const relationshipType = resolveEvaluationRelationshipTypeForRow({
-      evaluation,
-      assignmentLookup,
-    })
-
-    if (relationshipType !== 'DEPT') {
-      nonDeptEvaluations.push(evaluation)
-      continue
-    }
-
-    const existing = localDeptEvaluationsByEvaluator.get(evaluation.evaluatorId) || []
-    existing.push(evaluation)
-    localDeptEvaluationsByEvaluator.set(evaluation.evaluatorId, existing)
-  }
-
-  const normalizedEvaluations = [...nonDeptEvaluations]
-  const processedEvaluators = new Set<string>()
-
-  for (const assignment of params.assignments) {
-    if (
-      assignment.evaluateeId !== params.evaluateeId ||
-      assignment.relationshipType !== 'DEPT' ||
-      processedEvaluators.has(assignment.evaluatorId)
-    ) {
-      continue
-    }
-
-    processedEvaluators.add(assignment.evaluatorId)
-
-    const evaluatorAssignments = params.getAssignmentsForEvaluator(assignment.evaluatorId)
-    const poolAssignments = evaluatorAssignments.filter(
-      (candidate) =>
-        candidate.relationshipType === 'DEPT' &&
-        normalizeDepartmentPoolKey(candidate.evaluatee?.department) ===
-          normalizeDepartmentPoolKey(assignment.evaluatee?.department)
-    )
-
-    if (poolAssignments.length === 0) {
-      normalizedEvaluations.push(
-        ...(localDeptEvaluationsByEvaluator.get(assignment.evaluatorId) || [])
-      )
-      continue
-    }
-
-    const evaluatorAssignmentLookup = buildAssignmentLookup(
-      evaluatorAssignments.map((candidate) => ({
-        evaluatorId: candidate.evaluatorId,
-        evaluateeId: candidate.evaluateeId,
-        relationshipType: candidate.relationshipType,
-      }))
-    )
-    const poolEvaluateeIds = poolAssignments.map((candidate) => candidate.evaluateeId)
-    const pooledDeptEvaluations = params
-      .getEvaluationsForEvaluator(assignment.evaluatorId)
-      .filter(
-        (evaluation) =>
-          poolEvaluateeIds.includes(evaluation.evaluateeId) &&
-          resolveEvaluationRelationshipTypeForRow({
-            evaluation,
-            assignmentLookup: evaluatorAssignmentLookup,
-          }) === 'DEPT'
-      )
-
-    if (pooledDeptEvaluations.length === 0) {
-      normalizedEvaluations.push(
-        ...(localDeptEvaluationsByEvaluator.get(assignment.evaluatorId) || [])
-      )
-      continue
-    }
-
-    const authoritativeEvaluateeId = selectAuthoritativeDeptPoolEvaluateeId({
-      evaluateeIds: poolEvaluateeIds,
-      evaluations: pooledDeptEvaluations,
-    })
-    const authoritativeEvaluations = pooledDeptEvaluations.filter(
-      (evaluation) => evaluation.evaluateeId === authoritativeEvaluateeId
-    )
-
-    if (authoritativeEvaluations.length === 0) {
-      normalizedEvaluations.push(
-        ...(localDeptEvaluationsByEvaluator.get(assignment.evaluatorId) || [])
-      )
-      continue
-    }
-
-    normalizedEvaluations.push(
-      ...authoritativeEvaluations.map((evaluation) =>
-        evaluation.evaluateeId === params.evaluateeId
-          ? evaluation
-          : ({ ...evaluation, evaluateeId: params.evaluateeId } as T)
-      )
-    )
-  }
-
-  return normalizedEvaluations
 }

@@ -1,7 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  applyAuthoritativeDeptPoolEvaluations,
   getDeptPoolDisplayName,
   getDeptPoolKey,
   groupDeptAssignmentsByDepartment,
@@ -111,77 +110,4 @@ test('selectAuthoritativeDeptPoolEvaluateeId prefers the most complete saved dep
   })
 
   assert.equal(sourceEvaluateeId, 'member-b')
-})
-
-test('applyAuthoritativeDeptPoolEvaluations reuses the most complete department set for every member', () => {
-  const assignments = [
-    {
-      evaluatorId: 'hamiz',
-      evaluateeId: 'member-a',
-      relationshipType: 'DEPT' as const,
-      source: 'PERMANENT_MAPPING' as const,
-      evaluatee: { id: 'member-a', name: 'Anees', department: 'Technology', position: 'Engineer' },
-    },
-    {
-      evaluatorId: 'hamiz',
-      evaluateeId: 'member-b',
-      relationshipType: 'DEPT' as const,
-      source: 'PERMANENT_MAPPING' as const,
-      evaluatee: { id: 'member-b', name: 'Faizan', department: 'Technology', position: 'Analyst' },
-    },
-    {
-      evaluatorId: 'hamiz',
-      evaluateeId: 'member-b',
-      relationshipType: 'C_LEVEL' as const,
-      source: 'PERMANENT_MAPPING' as const,
-      evaluatee: { id: 'member-b', name: 'Faizan', department: 'Technology', position: 'Analyst' },
-    },
-  ]
-
-  const evaluatorAssignments = assignments
-  const evaluatorEvaluations = [
-    {
-      evaluatorId: 'hamiz',
-      evaluateeId: 'member-b',
-      question: { relationshipType: 'DEPT' as const },
-      leadQuestionId: null,
-      ratingValue: 4,
-      textResponse: null,
-      updatedAt: new Date('2026-04-22T11:00:00.000Z'),
-    },
-    {
-      evaluatorId: 'hamiz',
-      evaluateeId: 'member-b',
-      question: { relationshipType: 'DEPT' as const },
-      leadQuestionId: null,
-      ratingValue: 3,
-      textResponse: 'Shared dept context',
-      updatedAt: new Date('2026-04-22T11:05:00.000Z'),
-    },
-    {
-      evaluatorId: 'hamiz',
-      evaluateeId: 'member-b',
-      question: { relationshipType: 'C_LEVEL' as const },
-      leadQuestionId: null,
-      ratingValue: 2,
-      textResponse: 'Keep the c-level lane separate',
-      updatedAt: new Date('2026-04-22T11:10:00.000Z'),
-    },
-  ]
-
-  const effectiveEvaluations = applyAuthoritativeDeptPoolEvaluations({
-    evaluateeId: 'member-a',
-    evaluations: [],
-    assignments: assignments.filter((assignment) => assignment.evaluateeId === 'member-a'),
-    getAssignmentsForEvaluator: () => evaluatorAssignments,
-    getEvaluationsForEvaluator: () => evaluatorEvaluations,
-  })
-
-  assert.equal(effectiveEvaluations.length, 2)
-  assert.ok(effectiveEvaluations.every((evaluation) => evaluation.evaluateeId === 'member-a'))
-  assert.ok(
-    effectiveEvaluations.every(
-      (evaluation) => evaluation.question?.relationshipType === 'DEPT'
-    )
-  )
 })

@@ -5,7 +5,6 @@ import { getEvaluationQuestionMeta } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
 import { filterPooledRelationshipEvaluations } from '@/lib/evaluation-completion'
-import { applyAuthoritativeDeptPoolEvaluations } from '@/lib/dept-evaluation-pool'
 import {
   buildAssignmentLookup,
   resolveEvaluationRelationshipTypeForRow,
@@ -158,51 +157,6 @@ export async function calculateWeightedScore(
 
   const mappings = await getResolvedEvaluationAssignments(periodId, {
     evaluateeId: employeeId,
-    includeUsers: true,
-  })
-
-  const deptEvaluatorIds = [...new Set(
-    mappings
-      .filter((mapping) => mapping.relationshipType === 'DEPT')
-      .map((mapping) => mapping.evaluatorId)
-  )]
-  const [deptEvaluatorAssignments, deptEvaluatorEvaluations] = await Promise.all([
-    Promise.all(
-      deptEvaluatorIds.map(async (evaluatorId) => [
-        evaluatorId,
-        await getResolvedEvaluationAssignments(periodId, {
-          evaluatorId,
-          includeUsers: true,
-        }),
-      ] as const)
-    ),
-    Promise.all(
-      deptEvaluatorIds.map(async (evaluatorId) => [
-        evaluatorId,
-        await prisma.evaluation.findMany({
-          where: {
-            periodId,
-            evaluatorId,
-          },
-          include: {
-            question: true,
-            leadQuestion: true,
-            evaluator: true,
-          },
-        }),
-      ] as const)
-    ),
-  ])
-  const deptAssignmentsByEvaluator = new Map(deptEvaluatorAssignments)
-  const deptEvaluationsByEvaluator = new Map(deptEvaluatorEvaluations)
-  const effectiveEvaluations = applyAuthoritativeDeptPoolEvaluations({
-    evaluateeId: employeeId,
-    evaluations,
-    assignments: mappings,
-    getAssignmentsForEvaluator: (evaluatorId) =>
-      deptAssignmentsByEvaluator.get(evaluatorId) || [],
-    getEvaluationsForEvaluator: (evaluatorId) =>
-      deptEvaluationsByEvaluator.get(evaluatorId) || [],
   })
 
   const assignmentLookup = buildAssignmentLookup(
@@ -216,7 +170,7 @@ export async function calculateWeightedScore(
   // Group evaluations by relationship type
   const evaluationsByType = new Map<RelationshipType, typeof evaluations>()
 
-  for (const evaluation of effectiveEvaluations) {
+  for (const evaluation of evaluations) {
     const type = resolveEvaluationRelationshipTypeForRow({
       evaluation,
       assignmentLookup,
@@ -344,7 +298,7 @@ export async function calculateWeightedScore(
 
   // Aggregate qualitative feedback
   const qualitativeFeedback: Record<string, string[]> = {}
-  const filteredEvaluations = effectiveEvaluations.filter((evaluation) => {
+  const filteredEvaluations = evaluations.filter((evaluation) => {
     const relationshipType = resolveEvaluationRelationshipTypeForRow({
       evaluation,
       assignmentLookup,
