@@ -18,7 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Sliders, Save, Upload, Trash2, Info, Users, ChevronDown, ChevronUp } from 'lucide-react'
+import { Sliders, Save, Upload, Trash2, Info, Users, ChevronDown, ChevronUp, Plus, X } from 'lucide-react'
 
 interface WeightProfile {
   id: string
@@ -63,6 +63,10 @@ export default function SettingsPage() {
   const [seeding, setSeeding] = useState(false)
   const [expandedProfile, setExpandedProfile] = useState<string | null>(null)
   const [editWeights, setEditWeights] = useState<Record<string, number>>({})
+  const [creatingProfile, setCreatingProfile] = useState(false)
+  const [createDisplayName, setCreateDisplayName] = useState('')
+  const [createTypes, setCreateTypes] = useState<RelationshipType[]>([])
+  const [createWeights, setCreateWeights] = useState<Record<string, number>>({})
 
   useEffect(() => {
     loadProfiles()
@@ -119,8 +123,118 @@ export default function SettingsPage() {
     }))
   }
 
+  const getDefaultDisplayName = (types: RelationshipType[]) =>
+    ALL_TYPES
+      .filter((type) => types.includes(type))
+      .map((type) => RELATIONSHIP_TYPE_LABELS[type] || TYPE_SHORT_LABELS[type])
+      .join(', ')
+
+  const startCreateProfile = (categorySetKey?: string) => {
+    const types = categorySetKey
+      ? categorySetKey
+          .split(',')
+          .filter((type): type is RelationshipType =>
+            ALL_TYPES.includes(type as RelationshipType)
+          )
+      : []
+    const equalWeight = types.length > 0 ? 1 / types.length : 0
+    const weights = Object.fromEntries(types.map((type) => [type, equalWeight]))
+
+    setCreatingProfile(true)
+    setCreateTypes(types)
+    setCreateWeights(weights)
+    setCreateDisplayName(types.length > 0 ? getDefaultDisplayName(types) : '')
+  }
+
+  const resetCreateProfile = () => {
+    setCreatingProfile(false)
+    setCreateTypes([])
+    setCreateWeights({})
+    setCreateDisplayName('')
+  }
+
+  const toggleCreateType = (type: RelationshipType) => {
+    setCreateTypes((prev) => {
+      const next = prev.includes(type)
+        ? prev.filter((item) => item !== type)
+        : [...prev, type]
+
+      setCreateWeights((current) => {
+        const nextWeights: Record<string, number> = {}
+        for (const selectedType of next) {
+          nextWeights[selectedType] =
+            current[selectedType] ?? (next.length > 0 ? 1 / next.length : 0)
+        }
+        return nextWeights
+      })
+
+      if (!createDisplayName.trim()) {
+        setCreateDisplayName(getDefaultDisplayName(next))
+      }
+
+      return next
+    })
+  }
+
+  const handleCreateWeightChange = (type: string, value: number) => {
+    setCreateWeights((prev) => ({
+      ...prev,
+      [type]: Math.max(0, Math.min(100, value)) / 100,
+    }))
+  }
+
   const getEditTotal = () => {
     return Object.values(editWeights).reduce((sum, w) => sum + w, 0) * 100
+  }
+
+  const getCreateTotal = () =>
+    createTypes.reduce((sum, type) => sum + (createWeights[type] || 0), 0) * 100
+
+  const handleCreateProfile = async () => {
+    if (createTypes.length === 0) {
+      toast.error('Select at least one category for this profile')
+      return
+    }
+
+    const selectedWeights = Object.fromEntries(
+      createTypes.map((type) => [type, createWeights[type] || 0])
+    )
+    const zeroWeightTypes = createTypes.filter((type) => !selectedWeights[type])
+    if (zeroWeightTypes.length > 0) {
+      toast.error('Every selected category needs a weight above 0%')
+      return
+    }
+
+    const total = getCreateTotal()
+    if (Math.abs(total - 100) > 1) {
+      toast.error(`Weights must sum to 100%. Current: ${total.toFixed(1)}%`)
+      return
+    }
+
+    setSaving(true)
+    try {
+      const response = await fetch('/api/admin/weight-profiles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          categoryTypes: createTypes,
+          weights: selectedWeights,
+          displayName: createDisplayName.trim() || getDefaultDisplayName(createTypes),
+        }),
+      })
+      const data = await response.json()
+      if (data.success) {
+        toast.success('Weight profile created')
+        resetCreateProfile()
+        loadProfiles()
+      } else {
+        toast.error(data.error || 'Create failed')
+      }
+    } catch {
+      toast.error('Failed to create profile')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleSaveProfile = async (profile: WeightProfile) => {
@@ -183,7 +297,7 @@ export default function SettingsPage() {
 
   return (
     <div className="p-6 sm:p-8 max-w-7xl mx-auto">
-        <div className="mb-8 flex items-start justify-between">
+        <div className="mb-8 flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-foreground font-display">Weight Profiles</h1>
             <p className="text-muted-foreground mt-1">
@@ -191,14 +305,122 @@ export default function SettingsPage() {
               HR and Dept are constant categories, and unsupported mapping combinations are flagged below.
             </p>
           </div>
-          <Button
-            onClick={handleSeedProfiles}
-            disabled={seeding}
-          >
-            <Upload className="w-4 h-4" />
-            {seeding ? 'Seeding...' : 'Seed Workbook Profiles'}
-          </Button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button variant="outline" onClick={() => startCreateProfile()}>
+              <Plus className="w-4 h-4" />
+              New Profile
+            </Button>
+            <Button
+              onClick={handleSeedProfiles}
+              disabled={seeding}
+            >
+              <Upload className="w-4 h-4" />
+              {seeding ? 'Seeding...' : 'Seed Workbook Profiles'}
+            </Button>
+          </div>
         </div>
+
+        {creatingProfile && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6"
+          >
+            <Card className="border-primary/30 bg-primary/5">
+              <CardContent className="p-6 space-y-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="font-semibold text-foreground">Create Weight Profile</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Pick the evaluator categories this profile applies to. Anyone whose incoming mappings match this exact category set will automatically use these weights.
+                    </p>
+                  </div>
+                  <Button variant="ghost" size="icon" onClick={resetCreateProfile}>
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="profile-display-name">Display name</Label>
+                  <Input
+                    id="profile-display-name"
+                    value={createDisplayName}
+                    onChange={(event) => setCreateDisplayName(event.target.value)}
+                    placeholder="Team Lead, Peer, HR, Dept"
+                  />
+                </div>
+
+                <div className="space-y-3">
+                  <Label>Composition</Label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                    {ALL_TYPES.map((type) => {
+                      const selected = createTypes.includes(type)
+                      return (
+                        <Button
+                          key={type}
+                          type="button"
+                          variant={selected ? 'default' : 'outline'}
+                          className="justify-start"
+                          onClick={() => toggleCreateType(type)}
+                        >
+                          {TYPE_SHORT_LABELS[type]}
+                        </Button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {createTypes.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                    {ALL_TYPES.map((type) => {
+                      const isSelected = createTypes.includes(type)
+                      if (!isSelected) return null
+                      return (
+                        <div key={type} className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">
+                            {TYPE_SHORT_LABELS[type]}
+                          </Label>
+                          <div className="flex items-center gap-1">
+                            <Input
+                              type="number"
+                              min={0}
+                              max={100}
+                              step={1}
+                              value={((createWeights[type] || 0) * 100).toFixed(0)}
+                              onChange={(event) =>
+                                handleCreateWeightChange(type, parseFloat(event.target.value) || 0)
+                              }
+                              className="text-center text-sm"
+                            />
+                            <span className="text-xs text-muted-foreground">%</span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                  <span className={`text-sm font-medium ${
+                    Math.abs(getCreateTotal() - 100) < 1
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-red-600 dark:text-red-400'
+                  }`}>
+                    Total: {getCreateTotal().toFixed(1)}%
+                  </span>
+                  <Button
+                    onClick={handleCreateProfile}
+                    disabled={saving || createTypes.length === 0 || Math.abs(getCreateTotal() - 100) > 1}
+                    size="sm"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    {saving ? 'Saving...' : 'Create Profile'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
 
         {(warnings.unmatchedCategorySets.length > 0 || warnings.mismatchedEmployees.length > 0) && (
           <motion.div
@@ -239,6 +461,16 @@ export default function SettingsPage() {
                           <p className="text-sm text-foreground mt-2">
                             {warning.employeeNames.join(', ')}
                           </p>
+                          <div className="mt-3">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => startCreateProfile(warning.categorySetKey)}
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              Create matching profile
+                            </Button>
+                          </div>
                         </div>
                       ))}
                     </div>

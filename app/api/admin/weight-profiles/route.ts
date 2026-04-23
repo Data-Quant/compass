@@ -5,6 +5,15 @@ import { prisma } from '@/lib/db'
 import { toCategorySetKey, RELATIONSHIP_TYPE_LABELS, RelationshipType } from '@/types'
 import { analyzeWeightProfileAssignments, buildWeightProfileDisplayName } from '@/lib/weight-profiles'
 
+const EDITABLE_PROFILE_TYPES: RelationshipType[] = [
+  'TEAM_LEAD',
+  'DIRECT_REPORT',
+  'PEER',
+  'HR',
+  'C_LEVEL',
+  'DEPT',
+]
+
 /**
  * GET - List all weight profiles
  */
@@ -79,8 +88,38 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const invalidTypes = categoryTypes.filter(
+      (type) => !EDITABLE_PROFILE_TYPES.includes(type as RelationshipType)
+    )
+    if (invalidTypes.length > 0) {
+      return NextResponse.json(
+        { error: `Invalid profile categories: ${invalidTypes.join(', ')}` },
+        { status: 400 }
+      )
+    }
+
+    const normalizedTypes = [...new Set(categoryTypes)] as RelationshipType[]
+    if (normalizedTypes.length === 0) {
+      return NextResponse.json(
+        { error: 'At least one profile category is required' },
+        { status: 400 }
+      )
+    }
+
+    const submittedWeights = weights as Record<string, unknown>
+    const profileWeights = Object.fromEntries(
+      normalizedTypes.map((type) => [type, Number(submittedWeights[type]) || 0])
+    ) as Record<string, number>
+    const zeroWeightTypes = normalizedTypes.filter((type) => profileWeights[type] <= 0)
+    if (zeroWeightTypes.length > 0) {
+      return NextResponse.json(
+        { error: `Selected categories need weights above 0%: ${zeroWeightTypes.join(', ')}` },
+        { status: 400 }
+      )
+    }
+
     // Validate weights sum to 1.0
-    const total = Object.values(weights as Record<string, number>).reduce((s, w) => s + w, 0)
+    const total = Object.values(profileWeights).reduce((s, w) => s + w, 0)
     if (Math.abs(total - 1.0) > 0.01) {
       return NextResponse.json(
         { error: `Weights must sum to 100%. Current total: ${(total * 100).toFixed(2)}%` },
@@ -88,8 +127,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const categorySetKey = toCategorySetKey(categoryTypes)
-    const normalizedTypes = categoryTypes.map((type: string) => type as RelationshipType)
+    const categorySetKey = toCategorySetKey(normalizedTypes)
     const name =
       displayName ||
       buildWeightProfileDisplayName(normalizedTypes) ||
@@ -99,8 +137,8 @@ export async function POST(request: NextRequest) {
 
     const profile = await prisma.weightProfile.upsert({
       where: { categorySetKey },
-      update: { weights, displayName: name },
-      create: { categorySetKey, displayName: name, weights },
+      update: { weights: profileWeights, displayName: name },
+      create: { categorySetKey, displayName: name, weights: profileWeights },
     })
 
     return NextResponse.json({ success: true, profile })
