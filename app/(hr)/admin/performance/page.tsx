@@ -47,6 +47,7 @@ import {
   ClipboardList,
   ArrowUpDown,
   Loader2,
+  RotateCcw,
   ShieldAlert,
   Undo2,
   UserPlus,
@@ -200,12 +201,16 @@ function ActivityList({
   direction,
   onExcludeForPeriod,
   excludeBusyKey,
+  onResetEvaluation,
+  resetBusyKey,
 }: {
   items: ActivityAssignment[]
   emptyState: string
   direction: 'incoming' | 'outgoing'
   onExcludeForPeriod?: (item: ActivityAssignment) => void
   excludeBusyKey?: string | null
+  onResetEvaluation?: (item: ActivityAssignment) => void
+  resetBusyKey?: string | null
 }) {
   if (items.length === 0) {
     return (
@@ -223,6 +228,10 @@ function ActivityList({
           item.status === 'SUBMITTED' || item.status === 'CLOSED_BY_POOL'
             ? `${item.completedResponseCount}/${item.questionsCount} completed`
             : `${item.savedResponseCount}/${item.questionsCount} saved`
+        const canReset =
+          item.status === 'CLOSED_BY_POOL' ||
+          item.savedResponseCount > 0 ||
+          item.submittedResponseCount > 0
 
         return (
           <div key={item.id} className="rounded-2xl border border-border/70 bg-card/60 p-4">
@@ -255,22 +264,40 @@ function ActivityList({
                     <p>Last saved: {formatDateTime(item.lastSavedAt)}</p>
                   ) : null}
                 </div>
-                {onExcludeForPeriod && item.source !== 'PERIOD_OVERRIDE' ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => onExcludeForPeriod(item)}
-                    disabled={excludeBusyKey === item.id}
-                    className="gap-2"
-                  >
-                    {excludeBusyKey === item.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <ShieldAlert className="h-3.5 w-3.5" />
-                    )}
-                    Exclude This Period
-                  </Button>
-                ) : null}
+                <div className="flex flex-wrap gap-2 lg:justify-end">
+                  {onResetEvaluation && canReset ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onResetEvaluation(item)}
+                      disabled={resetBusyKey === item.id}
+                      className="gap-2 border-destructive/30 text-destructive hover:bg-destructive/10"
+                    >
+                      {resetBusyKey === item.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <RotateCcw className="h-3.5 w-3.5" />
+                      )}
+                      Reset Answers
+                    </Button>
+                  ) : null}
+                  {onExcludeForPeriod && item.source !== 'PERIOD_OVERRIDE' ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onExcludeForPeriod(item)}
+                      disabled={excludeBusyKey === item.id}
+                      className="gap-2"
+                    >
+                      {excludeBusyKey === item.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <ShieldAlert className="h-3.5 w-3.5" />
+                      )}
+                      Exclude This Period
+                    </Button>
+                  ) : null}
+                </div>
               </div>
             </div>
 
@@ -378,6 +405,7 @@ export default function AdminPerformanceOverviewPage() {
   const [directoryUsers, setDirectoryUsers] = useState<UserOption[]>([])
   const [directoryLoading, setDirectoryLoading] = useState(false)
   const [overrideBusyKey, setOverrideBusyKey] = useState<string | null>(null)
+  const [resetBusyKey, setResetBusyKey] = useState<string | null>(null)
   const [newOverrideEvaluatorId, setNewOverrideEvaluatorId] = useState('')
   const [newOverrideRelationshipType, setNewOverrideRelationshipType] =
     useState<RelationshipType>('TEAM_LEAD')
@@ -564,6 +592,46 @@ export default function AdminPerformanceOverviewPage() {
       toast.error(message)
     } finally {
       setOverrideBusyKey(null)
+    }
+  }
+
+  const handleResetAssignment = async (item: ActivityAssignment) => {
+    if (!detailData) return
+
+    const confirmed = window.confirm(
+      'Reset this evaluation? This removes saved and submitted answers for the selected period and clears cached reports so scores recalculate.'
+    )
+    if (!confirmed) return
+
+    setResetBusyKey(item.id)
+    try {
+      const response = await fetch('/api/admin/performance/resets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          periodId: detailData.period.id,
+          evaluatorId: item.evaluatorId,
+          evaluateeId: item.evaluateeId,
+          relationshipType: item.relationshipType,
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Failed to reset evaluation')
+      }
+
+      const deletedRows = Number(data.deletedEvaluationRows || 0)
+      toast.success(
+        deletedRows > 0
+          ? `Evaluation reset (${deletedRows} answer${deletedRows === 1 ? '' : 's'} removed)`
+          : 'Evaluation reset; no saved answers were found'
+      )
+      await Promise.all([refreshDetail(), loadDashboard()])
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to reset evaluation'
+      toast.error(message)
+    } finally {
+      setResetBusyKey(null)
     }
   }
 
@@ -1041,6 +1109,8 @@ export default function AdminPerformanceOverviewPage() {
                 <ActivityList
                   items={detailData.outgoing}
                   direction="outgoing"
+                  onResetEvaluation={handleResetAssignment}
+                  resetBusyKey={resetBusyKey}
                   onExcludeForPeriod={handleExcludeAssignment}
                   excludeBusyKey={overrideBusyKey}
                   emptyState="No evaluation assignments were resolved for this employee in the selected period."
@@ -1152,6 +1222,8 @@ export default function AdminPerformanceOverviewPage() {
                 <ActivityList
                   items={detailData.incoming}
                   direction="incoming"
+                  onResetEvaluation={handleResetAssignment}
+                  resetBusyKey={resetBusyKey}
                   onExcludeForPeriod={handleExcludeAssignment}
                   excludeBusyKey={overrideBusyKey}
                   emptyState="No incoming evaluations were resolved for this employee in the selected period."
