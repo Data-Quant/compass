@@ -4,9 +4,11 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle
 } from '@/components/ui/sheet'
+import { Calendar as DatePicker } from '@/components/ui/calendar'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import {
-  X, Trash2, Calendar, Flag, Tag, Users, MessageSquare,
+  X, Trash2, Calendar as CalendarIcon, Flag, Tag, Users, MessageSquare,
   Send, FolderOpen, ChevronDown, Check
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -83,6 +85,30 @@ const STATUS_CONFIG: Record<string, { color: string; label: string; bg: string }
   DONE: { color: 'text-emerald-400', bg: 'bg-emerald-400/10', label: 'Done' },
 }
 
+function toLocalDateValue(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function parseTaskDate(value: string | null | undefined) {
+  if (!value) return undefined
+  const datePart = value.includes('T') ? value.split('T')[0] : value
+  const date = new Date(`${datePart}T00:00:00`)
+  return Number.isNaN(date.getTime()) ? undefined : date
+}
+
+function formatTaskDate(value: string | null | undefined) {
+  const date = parseTaskDate(value)
+  if (!date) return 'No deadline'
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
 /* ─── Dropdown Helper ─────────────────────────────────────────────────── */
 
 function Dropdown({ trigger, children, className }: {
@@ -139,6 +165,7 @@ export function TaskDetailPanel({
   const [newComment, setNewComment] = useState('')
   const [loadingComments, setLoadingComments] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [dueDateOpen, setDueDateOpen] = useState(false)
   const titleRef = useRef<HTMLInputElement>(null)
   const saveTimeout = useRef<NodeJS.Timeout | null>(null)
 
@@ -147,6 +174,7 @@ export function TaskDetailPanel({
     if (task) {
       setTitle(task.title)
       setDescription(task.description || '')
+      setDueDateOpen(false)
       loadComments(task.id)
     }
   }, [task?.id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -360,13 +388,48 @@ export function TaskDetailPanel({
             </FieldRow>
 
             {/* Due Date */}
-            <FieldRow icon={<Calendar className="w-4 h-4" />} label="Due date">
-              <input
-                type="date"
-                value={task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : ''}
-                onChange={(e) => updateTask({ dueDate: e.target.value || null })}
-                className="bg-transparent border-none outline-none text-sm py-1 px-2 rounded-md hover:bg-muted/30 transition-colors"
-              />
+            <FieldRow icon={<CalendarIcon className="w-4 h-4" />} label="Due date">
+              <Popover open={dueDateOpen} onOpenChange={setDueDateOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className={cn(
+                      'inline-flex items-center gap-2 rounded-md px-2.5 py-1 text-sm transition-colors hover:bg-muted/30',
+                      !task.dueDate && 'text-muted-foreground'
+                    )}
+                  >
+                    <CalendarIcon className="w-3.5 h-3.5" />
+                    {formatTaskDate(task.dueDate)}
+                    <ChevronDown className="w-3 h-3 opacity-60" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="z-[80] w-auto p-0">
+                  <DatePicker
+                    mode="single"
+                    selected={parseTaskDate(task.dueDate)}
+                    onSelect={(date) => {
+                      if (!date) return
+                      void updateTask({ dueDate: toLocalDateValue(date) })
+                      setDueDateOpen(false)
+                    }}
+                    autoFocus
+                  />
+                  {task.dueDate ? (
+                    <div className="border-t border-border/60 p-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void updateTask({ dueDate: null })
+                          setDueDateOpen(false)
+                        }}
+                        className="w-full rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                      >
+                        Clear deadline
+                      </button>
+                    </div>
+                  ) : null}
+                </PopoverContent>
+              </Popover>
             </FieldRow>
 
             {/* Priority */}
