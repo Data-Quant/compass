@@ -1,4 +1,7 @@
-import type { RelationshipType } from '@/types'
+import {
+  normalizeRelationshipTypeForWeighting,
+  type RelationshipType,
+} from '@/types'
 
 type AssignmentLike = {
   evaluatorId: string
@@ -10,6 +13,26 @@ type EvaluationLike = {
   evaluatorId: string
   evaluateeId: string
   submittedAt?: Date | null
+}
+
+type SubmittedSlotLike = EvaluationLike & {
+  relationshipType: RelationshipType
+}
+
+export type WeightedCompletionPendingSlot = {
+  evaluatorId: string
+  evaluateeId: string
+  relationshipType: RelationshipType
+}
+
+export type WeightedCompletionBreakdown = {
+  relationshipType: RelationshipType
+  weight: number
+  requiredSlots: number
+  completedSlots: number
+  completionPercentage: number
+  weightedCompletion: number
+  pendingSlots: WeightedCompletionPendingSlot[]
 }
 
 export function buildEvaluationPairKey(evaluatorId: string, evaluateeId: string) {
@@ -92,6 +115,132 @@ export function getEffectiveEvaluationSlotKey(assignment: AssignmentLike) {
     assignment.evaluatorId,
     assignment.evaluateeId
   )}`
+}
+
+function getWeightedCompletionSlotKey(input: AssignmentLike) {
+  const relationshipType = normalizeRelationshipTypeForWeighting(input.relationshipType)
+  if (relationshipType === 'HR') {
+    return `HR_POOL:${input.evaluateeId}`
+  }
+
+  return `${relationshipType}:${buildEvaluationPairKey(input.evaluatorId, input.evaluateeId)}`
+}
+
+function getPositiveWeightEntries(weights: Record<string, number>) {
+  const normalizedWeights = new Map<RelationshipType, number>()
+
+  for (const [relationshipType, weight] of Object.entries(weights)) {
+    const normalizedType = normalizeRelationshipTypeForWeighting(
+      relationshipType as RelationshipType
+    ) as RelationshipType
+    if (normalizedType === 'SELF') continue
+
+    const numericWeight = Number(weight) || 0
+    if (numericWeight <= 0) continue
+
+    normalizedWeights.set(
+      normalizedType,
+      (normalizedWeights.get(normalizedType) || 0) + numericWeight
+    )
+  }
+
+  return [...normalizedWeights.entries()].map(([relationshipType, weight]) => ({
+    relationshipType,
+    weight,
+  }))
+}
+
+export function calculateWeightedEvaluationCompletion(params: {
+  assignments: AssignmentLike[]
+  submittedSlots: SubmittedSlotLike[]
+  weights: Record<string, number>
+}) {
+  const requiredSlotsByType = new Map<
+    RelationshipType,
+    Map<string, WeightedCompletionPendingSlot>
+  >()
+  const submittedSlotKeysByType = new Map<RelationshipType, Set<string>>()
+
+  for (const assignment of params.assignments) {
+    const relationshipType = normalizeRelationshipTypeForWeighting(
+      assignment.relationshipType
+    ) as RelationshipType
+    if (relationshipType === 'SELF') continue
+
+    const slotKey = getWeightedCompletionSlotKey({
+      ...assignment,
+      relationshipType,
+    })
+    const existing = requiredSlotsByType.get(relationshipType) || new Map()
+    if (!existing.has(slotKey)) {
+      existing.set(slotKey, {
+        evaluatorId: assignment.evaluatorId,
+        evaluateeId: assignment.evaluateeId,
+        relationshipType,
+      })
+    }
+    requiredSlotsByType.set(relationshipType, existing)
+  }
+
+  for (const submittedSlot of params.submittedSlots) {
+    if (!submittedSlot.submittedAt) continue
+
+    const relationshipType = normalizeRelationshipTypeForWeighting(
+      submittedSlot.relationshipType
+    ) as RelationshipType
+    if (relationshipType === 'SELF') continue
+
+    const slotKey = getWeightedCompletionSlotKey({
+      ...submittedSlot,
+      relationshipType,
+    })
+    const existing = submittedSlotKeysByType.get(relationshipType) || new Set<string>()
+    existing.add(slotKey)
+    submittedSlotKeysByType.set(relationshipType, existing)
+  }
+
+  const weightEntries = getPositiveWeightEntries(params.weights)
+  const totalWeight = weightEntries.reduce((sum, entry) => sum + entry.weight, 0)
+  const breakdown: WeightedCompletionBreakdown[] = []
+
+  for (const { relationshipType, weight } of weightEntries) {
+    const requiredSlots = requiredSlotsByType.get(relationshipType) || new Map()
+    const submittedSlotKeys = submittedSlotKeysByType.get(relationshipType) || new Set()
+    const completedSlots = [...requiredSlots.keys()].filter((slotKey) =>
+      submittedSlotKeys.has(slotKey)
+    )
+    const requiredCount = requiredSlots.size
+    const completionRatio =
+      requiredCount > 0 ? completedSlots.length / requiredCount : 0
+    const pendingSlots = [...requiredSlots.entries()]
+      .filter(([slotKey]) => !submittedSlotKeys.has(slotKey))
+      .map(([, slot]) => slot)
+
+    breakdown.push({
+      relationshipType,
+      weight,
+      requiredSlots: requiredCount,
+      completedSlots: completedSlots.length,
+      completionPercentage: completionRatio * 100,
+      weightedCompletion: weight * completionRatio,
+      pendingSlots,
+    })
+  }
+
+  const completedWeight = breakdown.reduce(
+    (sum, entry) => sum + entry.weightedCompletion,
+    0
+  )
+  const completionPercentage =
+    totalWeight > 0 ? (completedWeight / totalWeight) * 100 : 100
+
+  return {
+    completionPercentage,
+    completedWeight,
+    totalWeight,
+    breakdown,
+    pendingSlots: breakdown.flatMap((entry) => entry.pendingSlots),
+  }
 }
 
 export function collapseAssignmentRequirementsByPool(

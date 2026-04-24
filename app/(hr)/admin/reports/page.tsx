@@ -27,7 +27,7 @@ function ReportsPageContent() {
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState<any>(null)
   const [searchTerm, setSearchTerm] = useState('')
-  const [sortBy, setSortBy] = useState<'name' | 'score'>('name')
+  const [sortBy, setSortBy] = useState<'name' | 'score' | 'completion'>('name')
   const [anonymize, setAnonymize] = useState(false)
 
   useEffect(() => {
@@ -77,9 +77,17 @@ function ReportsPageContent() {
     return 'text-red-600 dark:text-red-400'
   }
 
-  const getScoreBg = (score: number) => {
-    if (score >= 80) return 'bg-emerald-500'
-    if (score >= 60) return 'bg-amber-500'
+  const getCompletionValue = (report: any) => report.completionPercentage ?? 0
+
+  const getCompletionColor = (completion: number) => {
+    if (completion >= 99.5) return 'text-emerald-600 dark:text-emerald-400'
+    if (completion >= 60) return 'text-amber-600 dark:text-amber-400'
+    return 'text-red-600 dark:text-red-400'
+  }
+
+  const getCompletionBg = (completion: number) => {
+    if (completion >= 99.5) return 'bg-emerald-500'
+    if (completion >= 60) return 'bg-amber-500'
     return 'bg-red-500'
   }
 
@@ -90,6 +98,7 @@ function ReportsPageContent() {
     )
     .sort((a, b) => {
       if (sortBy === 'score') return b.overallScore - a.overallScore
+      if (sortBy === 'completion') return getCompletionValue(b) - getCompletionValue(a)
       return a.employeeName.localeCompare(b.employeeName)
     })
 
@@ -146,13 +155,14 @@ function ReportsPageContent() {
                     className="pl-10"
                   />
                 </div>
-                <Select value={sortBy} onValueChange={(v) => setSortBy(v as 'name' | 'score')}>
+                <Select value={sortBy} onValueChange={(v) => setSortBy(v as 'name' | 'score' | 'completion')}>
                   <SelectTrigger className="w-[180px]">
                     <SelectValue placeholder="Sort by" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="name">Sort by Name</SelectItem>
                     <SelectItem value="score">Sort by Score</SelectItem>
+                    <SelectItem value="completion">Sort by Completion</SelectItem>
                   </SelectContent>
                 </Select>
                 <div className="flex items-center gap-2">
@@ -193,19 +203,29 @@ function ReportsPageContent() {
                         )}
                       </div>
                     </div>
-                    <div className={`text-2xl font-bold ${getScoreColor(report.overallScore)}`}>
-                      {report.overallScore?.toFixed(1) || '0.0'}%
+                    <div className="text-right">
+                      <div className={`text-2xl font-bold ${getCompletionColor(getCompletionValue(report))}`}>
+                        {getCompletionValue(report).toFixed(0)}%
+                      </div>
+                      <div className="text-xs text-muted-foreground">Complete</div>
                     </div>
                   </div>
 
-                  {/* Score Bar */}
+                  {/* Completion Bar */}
                   <div className="mb-4">
                     <div className="w-full bg-muted rounded-full h-2">
                       <div
-                        className={`h-2 rounded-full transition-all ${getScoreBg(report.overallScore)}`}
-                        style={{ width: `${Math.min(report.overallScore, 100)}%` }}
+                        className={`h-2 rounded-full transition-all ${getCompletionBg(getCompletionValue(report))}`}
+                        style={{ width: `${Math.min(getCompletionValue(report), 100)}%` }}
                       />
                     </div>
+                  </div>
+
+                  <div className="flex justify-between text-sm mb-4">
+                    <span className="text-muted-foreground">Score</span>
+                    <span className={`font-semibold ${getScoreColor(report.overallScore)}`}>
+                      {report.overallScore?.toFixed(1) || '0.0'}%
+                    </span>
                   </div>
 
                   {report.breakdown && report.breakdown.length > 0 && (

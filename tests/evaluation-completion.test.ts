@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   buildEvaluationPairKey,
+  calculateWeightedEvaluationCompletion,
   collapseAssignmentRequirementsByPool,
   filterPooledRelationshipEvaluations,
   getAssignmentCompletionState,
@@ -147,4 +148,92 @@ test('partial submitted rows do not mark a non-HR evaluation complete', () => {
   assert.equal(state.completedCount, 8)
   assert.equal(state.isClosedByPool, false)
   assert.equal(state.isComplete, false)
+})
+
+test('weighted completion gives full credit when all profile slots are complete', () => {
+  const completion = calculateWeightedEvaluationCompletion({
+    assignments: [
+      { evaluatorId: 'direct-a', evaluateeId: 'ammar', relationshipType: 'DIRECT_REPORT' },
+      { evaluatorId: 'peer-a', evaluateeId: 'ammar', relationshipType: 'PEER' },
+      { evaluatorId: 'peer-b', evaluateeId: 'ammar', relationshipType: 'PEER' },
+      { evaluatorId: 'hr-a', evaluateeId: 'ammar', relationshipType: 'HR' },
+      { evaluatorId: 'hr-b', evaluateeId: 'ammar', relationshipType: 'HR' },
+    ],
+    submittedSlots: [
+      {
+        evaluatorId: 'direct-a',
+        evaluateeId: 'ammar',
+        relationshipType: 'DIRECT_REPORT',
+        submittedAt: new Date('2026-04-24T08:00:00.000Z'),
+      },
+      {
+        evaluatorId: 'peer-a',
+        evaluateeId: 'ammar',
+        relationshipType: 'PEER',
+        submittedAt: new Date('2026-04-24T08:00:00.000Z'),
+      },
+      {
+        evaluatorId: 'peer-b',
+        evaluateeId: 'ammar',
+        relationshipType: 'PEER',
+        submittedAt: new Date('2026-04-24T08:00:00.000Z'),
+      },
+      {
+        evaluatorId: 'hr-a',
+        evaluateeId: 'ammar',
+        relationshipType: 'HR',
+        submittedAt: new Date('2026-04-24T08:00:00.000Z'),
+      },
+    ],
+    weights: { DIRECT_REPORT: 0.25, PEER: 0.65, HR: 0.1 },
+  })
+
+  assert.equal(completion.completionPercentage, 100)
+  assert.equal(
+    completion.breakdown.find((entry) => entry.relationshipType === 'HR')?.requiredSlots,
+    1
+  )
+  assert.deepEqual(completion.pendingSlots, [])
+})
+
+test('weighted completion applies partial category progress by profile weight', () => {
+  const completion = calculateWeightedEvaluationCompletion({
+    assignments: [
+      { evaluatorId: 'direct-a', evaluateeId: 'ammar', relationshipType: 'DIRECT_REPORT' },
+      { evaluatorId: 'peer-a', evaluateeId: 'ammar', relationshipType: 'PEER' },
+      { evaluatorId: 'peer-b', evaluateeId: 'ammar', relationshipType: 'PEER' },
+      { evaluatorId: 'hr-a', evaluateeId: 'ammar', relationshipType: 'HR' },
+      { evaluatorId: 'hr-b', evaluateeId: 'ammar', relationshipType: 'HR' },
+    ],
+    submittedSlots: [
+      {
+        evaluatorId: 'direct-a',
+        evaluateeId: 'ammar',
+        relationshipType: 'DIRECT_REPORT',
+        submittedAt: new Date('2026-04-24T08:00:00.000Z'),
+      },
+      {
+        evaluatorId: 'peer-a',
+        evaluateeId: 'ammar',
+        relationshipType: 'PEER',
+        submittedAt: new Date('2026-04-24T08:00:00.000Z'),
+      },
+      {
+        evaluatorId: 'hr-a',
+        evaluateeId: 'ammar',
+        relationshipType: 'HR',
+        submittedAt: new Date('2026-04-24T08:00:00.000Z'),
+      },
+    ],
+    weights: { DIRECT_REPORT: 0.25, PEER: 0.65, HR: 0.1 },
+  })
+
+  assert.equal(completion.completionPercentage, 67.5)
+  assert.deepEqual(completion.pendingSlots, [
+    {
+      evaluatorId: 'peer-b',
+      evaluateeId: 'ammar',
+      relationshipType: 'PEER',
+    },
+  ])
 })

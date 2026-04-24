@@ -15,7 +15,10 @@ import {
 } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
-import { filterPooledRelationshipEvaluations } from '@/lib/evaluation-completion'
+import {
+  calculateWeightedEvaluationCompletion,
+  filterPooledRelationshipEvaluations,
+} from '@/lib/evaluation-completion'
 import {
   buildAssignmentLookup,
   resolveEvaluationRelationshipTypeForRow,
@@ -839,10 +842,22 @@ export async function generateVerificationCsv(periodId: string): Promise<string>
     // Group submitted evals by relationship type, dropping any evaluation whose
     // question is no longer in the evaluator's current effective bank (archived).
     const evalsByType = new Map<RelationshipType, typeof employeeEvals>()
+    const submittedSlots: Array<{
+      evaluatorId: string
+      evaluateeId: string
+      relationshipType: RelationshipType
+      submittedAt: Date | null
+    }> = []
     for (const ev of employeeEvals) {
       const type = resolveEvaluationRelationshipTypeForRow({ evaluation: ev, assignmentLookup })
       if (!type) continue
       if (!isEvaluationInCurrentBank(ev, type)) continue
+      submittedSlots.push({
+        evaluatorId: ev.evaluatorId,
+        evaluateeId: ev.evaluateeId,
+        relationshipType: type,
+        submittedAt: ev.submittedAt,
+      })
       if (!evalsByType.has(type)) evalsByType.set(type, [])
       evalsByType.get(type)!.push(ev)
     }
@@ -965,39 +980,30 @@ export async function generateVerificationCsv(periodId: string): Promise<string>
     row.push(finalWeighted.toFixed(3))
     row.push(finalPct.toFixed(2))
 
-    // Completion % and pending evaluators
-    const assignedPairs = new Set<string>() // `${evaluatorId}|${relationshipType}`
-    for (const m of employeeMappings) {
-      const normalizedType = normalizeRelationshipTypeForWeighting(m.relationshipType as RelationshipType)
-      if (normalizedType === 'SELF') continue
-      assignedPairs.add(`${m.evaluatorId}|${normalizedType}`)
-    }
-    const submittedPairs = new Set<string>()
-    for (const ev of employeeEvals) {
-      const type = resolveEvaluationRelationshipTypeForRow({ evaluation: ev, assignmentLookup })
-      if (!type || type === 'SELF') continue
-      submittedPairs.add(`${ev.evaluatorId}|${type}`)
-    }
-    const totalAssigned = assignedPairs.size
-    const totalSubmitted = [...assignedPairs].filter((p) => submittedPairs.has(p)).length
-    const completionPct = totalAssigned > 0 ? (totalSubmitted / totalAssigned) * 100 : 100
-
-    const pendingByEvaluator = new Map<string, Set<string>>()
-    for (const pair of assignedPairs) {
-      if (submittedPairs.has(pair)) continue
-      const [evaluatorId, relationshipType] = pair.split('|')
-      if (!pendingByEvaluator.has(evaluatorId)) pendingByEvaluator.set(evaluatorId, new Set())
-      pendingByEvaluator.get(evaluatorId)!.add(relationshipType)
-    }
+    // Completion % and pending evaluators, weighted by the applied profile.
+    const completion = calculateWeightedEvaluationCompletion({
+      assignments: employeeMappings.map((m) => ({
+        evaluatorId: m.evaluatorId,
+        evaluateeId: m.evaluateeId,
+        relationshipType: m.relationshipType as RelationshipType,
+      })),
+      submittedSlots,
+      weights,
+    })
     const evaluatorNamesById = new Map<string, string>()
     for (const m of employeeMappings) {
       evaluatorNamesById.set(m.evaluatorId, m.evaluator?.name ?? 'Unknown')
     }
-    const pendingDisplay = [...pendingByEvaluator.entries()]
-      .map(([id, types]) => `${evaluatorNamesById.get(id) ?? 'Unknown'} (${[...types].join(', ')})`)
+    const pendingDisplay = completion.pendingSlots
+      .map((slot) => {
+        if (slot.relationshipType === 'HR') {
+          return 'HR Personnel pool (HR)'
+        }
+        return `${evaluatorNamesById.get(slot.evaluatorId) ?? 'Unknown'} (${slot.relationshipType})`
+      })
       .join('; ')
 
-    row.push(completionPct.toFixed(0))
+    row.push(completion.completionPercentage.toFixed(0))
     row.push(pendingDisplay)
     row.push(period.name)
 

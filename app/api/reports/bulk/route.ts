@@ -7,7 +7,10 @@ import { isAdminRole } from '@/lib/permissions'
 import { getEvaluationQuestionMeta } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
-import { filterPooledRelationshipEvaluations } from '@/lib/evaluation-completion'
+import {
+  calculateWeightedEvaluationCompletion,
+  filterPooledRelationshipEvaluations,
+} from '@/lib/evaluation-completion'
 import {
   buildAssignmentLookup,
   resolveEvaluationRelationshipTypeForRow,
@@ -129,12 +132,24 @@ export async function GET(request: NextRequest) {
 
       // Group evaluations by relationship type
       const evalsByType = new Map<RelationshipType, typeof employeeEvals>()
+      const submittedSlots: Array<{
+        evaluatorId: string
+        evaluateeId: string
+        relationshipType: RelationshipType
+        submittedAt: Date | null
+      }> = []
       for (const ev of employeeEvals) {
         const type = resolveEvaluationRelationshipTypeForRow({
           evaluation: ev,
           assignmentLookup,
         })
         if (type) {
+          submittedSlots.push({
+            evaluatorId: ev.evaluatorId,
+            evaluateeId: ev.evaluateeId,
+            relationshipType: type,
+            submittedAt: ev.submittedAt,
+          })
           if (!evalsByType.has(type)) evalsByType.set(type, [])
           evalsByType.get(type)!.push(ev)
         }
@@ -223,11 +238,23 @@ export async function GET(request: NextRequest) {
 
       const totalWeighted = breakdown.reduce((s, b) => s + b.weightedContribution, 0)
       const overallScore = (totalWeighted / 4.0) * 100
+      const completion = calculateWeightedEvaluationCompletion({
+        assignments: employeeMappings.map((mapping) => ({
+          evaluatorId: mapping.evaluatorId,
+          evaluateeId: mapping.evaluateeId,
+          relationshipType: mapping.relationshipType as RelationshipType,
+        })),
+        submittedSlots,
+        weights: dynamicWeights,
+      })
 
       return {
         employeeId: employee.id,
         employeeName: employee.name,
         overallScore,
+        completionPercentage: completion.completionPercentage,
+        completionBreakdown: completion.breakdown,
+        pendingCompletionSlots: completion.pendingSlots,
         breakdown,
         employee,
       }
