@@ -319,29 +319,94 @@ export default function EvaluatePage() {
 
                   {question.questionType === 'RATING' ? (
                     <div className="ml-14">
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        {[1, 2, 3, 4].map((rating) => (
-                          <button
-                            key={rating}
-                            type="button"
-                            onClick={() => handleRatingChange(question.id, rating)}
-                            disabled={isSubmitted || (rating === 4 && !canSelectFour(question.id))}
-                            className={`p-4 rounded-xl border-2 transition-all ${
-                              responses[question.id]?.rating === rating
-                                ? 'border-primary bg-primary/10 shadow-lg shadow-primary/20'
-                                : 'border-border hover:border-primary/50 bg-card'
-                            } ${isSubmitted ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} disabled:cursor-not-allowed disabled:opacity-50`}
-                          >
-                            <div className="text-3xl font-bold text-foreground mb-1">{rating}</div>
-                            <div className="text-xs font-semibold text-primary">
-                              {RATING_LABELS[rating].label}
-                            </div>
-                            <div className="text-xs text-muted-foreground mt-1 hidden md:block">
-                              {question.ratingDescriptions?.[rating as 1 | 2 | 3 | 4] || RATING_LABELS[rating].description}
-                            </div>
-                          </button>
-                        ))}
-                      </div>
+                      {fourRatingQuota?.isExempt ? (
+                        // Exempt evaluators (e.g. Hamiz) can enter fractional
+                        // ratings like 3.25 or 3.5. Guard rails: 1–4 bounded,
+                        // 0.25 step. Button strip kept visible as quick picks.
+                        <div className="flex flex-col gap-3">
+                          <div className="flex flex-wrap items-center gap-3">
+                            <label
+                              htmlFor={`rating-${question.id}`}
+                              className="text-sm font-medium text-foreground"
+                            >
+                              Rating (1 – 4, decimals allowed)
+                            </label>
+                            <input
+                              id={`rating-${question.id}`}
+                              type="number"
+                              inputMode="decimal"
+                              min={1}
+                              max={4}
+                              step={0.25}
+                              value={responses[question.id]?.rating ?? ''}
+                              onChange={(e) => {
+                                const raw = e.target.value
+                                if (raw === '') {
+                                  setResponses((prev) => ({
+                                    ...prev,
+                                    [question.id]: { ...prev[question.id], rating: undefined },
+                                  }))
+                                  return
+                                }
+                                const parsed = Number(raw)
+                                if (!Number.isFinite(parsed)) return
+                                const clamped = Math.min(4, Math.max(1, parsed))
+                                handleRatingChange(question.id, clamped)
+                              }}
+                              disabled={isSubmitted}
+                              className="w-28 rounded-lg border-2 border-border bg-card px-3 py-2 text-lg font-semibold text-foreground focus:border-primary focus:outline-none disabled:opacity-50"
+                            />
+                            {responses[question.id]?.rating !== undefined && (
+                              <span className="text-sm text-muted-foreground">
+                                {RATING_LABELS[
+                                  Math.round(responses[question.id]!.rating!) as 1 | 2 | 3 | 4
+                                ]?.label}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {[1, 1.5, 2, 2.5, 3, 3.25, 3.5, 3.75, 4].map((quick) => (
+                              <button
+                                key={quick}
+                                type="button"
+                                onClick={() => handleRatingChange(question.id, quick)}
+                                disabled={isSubmitted}
+                                className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-all ${
+                                  responses[question.id]?.rating === quick
+                                    ? 'border-primary bg-primary/10 text-foreground'
+                                    : 'border-border bg-card text-muted-foreground hover:border-primary/50'
+                                } disabled:opacity-50 disabled:cursor-not-allowed`}
+                              >
+                                {quick}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          {[1, 2, 3, 4].map((rating) => (
+                            <button
+                              key={rating}
+                              type="button"
+                              onClick={() => handleRatingChange(question.id, rating)}
+                              disabled={isSubmitted || (rating === 4 && !canSelectFour(question.id))}
+                              className={`p-4 rounded-xl border-2 transition-all ${
+                                responses[question.id]?.rating === rating
+                                  ? 'border-primary bg-primary/10 shadow-lg shadow-primary/20'
+                                  : 'border-border hover:border-primary/50 bg-card'
+                              } ${isSubmitted ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} disabled:cursor-not-allowed disabled:opacity-50`}
+                            >
+                              <div className="text-3xl font-bold text-foreground mb-1">{rating}</div>
+                              <div className="text-xs font-semibold text-primary">
+                                {RATING_LABELS[rating].label}
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-1 hidden md:block">
+                                {question.ratingDescriptions?.[rating as 1 | 2 | 3 | 4] || RATING_LABELS[rating].description}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
 
                       <div className="mt-4 space-y-2">
                         <div className="flex items-center justify-between gap-3 text-sm">

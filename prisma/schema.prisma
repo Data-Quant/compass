@@ -441,7 +441,7 @@ model Evaluation {
   questionId     String?
   leadQuestionId String?
   periodId       String
-  ratingValue    Int?
+  ratingValue    Float?
   textResponse   String?
   submittedAt    DateTime?
   createdAt      DateTime                   @default(now())
