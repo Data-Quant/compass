@@ -43,6 +43,7 @@ interface FourRatingQuota {
   usedFourRatings: number
   maxAllowedFourRatings: number
   remainingFourRatings: number
+  isExempt?: boolean
 }
 
 export default function EvaluatePage() {
@@ -220,7 +221,7 @@ export default function EvaluatePage() {
     ? RELATIONSHIP_TYPE_LABELS[fourRatingQuota.quotaRelationshipType]
     : null
   const canSelectFour = (questionId: string) => {
-    if (!fourRatingQuota) {
+    if (!fourRatingQuota || fourRatingQuota.isExempt) {
       return true
     }
 
@@ -278,7 +279,7 @@ export default function EvaluatePage() {
               </div>
             )}
 
-            {!isSubmitted && fourRatingQuota && (
+            {!isSubmitted && fourRatingQuota && !fourRatingQuota.isExempt && (
               <div className="mt-4 rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-3 text-sm">
                 <p className="font-medium text-foreground">
                   4-rating allowance for {fourRatingQuotaLabel}: {currentFourUsage}/{fourRatingQuota.maxAllowedFourRatings}

@@ -11,6 +11,26 @@ import {
   groupDeptAssignmentsByDepartment,
   normalizeDepartmentPoolKey,
 } from '@/lib/dept-evaluation-pool'
+import { HAMIZ_EVALUATOR } from '@/lib/config'
+
+// Evaluators whose 4-rating budget is unlimited. Hamiz sits at the C-Level /
+// Department scope where a 10% cap is inappropriate — by role he routinely
+// needs to give top ratings across the whole company.
+const FOUR_RATING_QUOTA_EXEMPT_NAMES = new Set<string>([
+  HAMIZ_EVALUATOR.trim().toLowerCase(),
+])
+
+async function isFourRatingQuotaExemptEvaluator(
+  evaluatorId: string,
+  db: DbClient
+): Promise<boolean> {
+  const user = await db.user.findUnique({
+    where: { id: evaluatorId },
+    select: { name: true },
+  })
+  if (!user?.name) return false
+  return FOUR_RATING_QUOTA_EXEMPT_NAMES.has(user.name.trim().toLowerCase())
+}
 
 type DbClient = typeof prisma | Prisma.TransactionClient
 
@@ -84,6 +104,20 @@ export async function getEvaluatorFourRatingQuota(params: {
 }) {
   const db = params.db || prisma
   const quotaRelationshipType = getFourRatingQuotaScopeType(params.relationshipType)
+
+  // Bypass the 10% ceiling entirely for exempt evaluators. Returning an
+  // infinite ceiling lets validateFourRatingQuota pass unconditionally while
+  // still reporting accurate usage fields to callers that want to display them.
+  if (await isFourRatingQuotaExemptEvaluator(params.evaluatorId, db)) {
+    return {
+      quotaRelationshipType,
+      totalQuestions: 0,
+      usedFourRatings: 0,
+      maxAllowedFourRatings: Number.POSITIVE_INFINITY,
+      remainingFourRatings: Number.POSITIVE_INFINITY,
+      isExempt: true as const,
+    }
+  }
 
   const [assignments, submittedFourRatings] = await Promise.all([
     getResolvedEvaluationAssignments(params.periodId, { db, includeUsers: true }),
@@ -207,5 +241,6 @@ export async function getEvaluatorFourRatingQuota(params: {
     usedFourRatings,
     maxAllowedFourRatings,
     remainingFourRatings: Math.max(0, maxAllowedFourRatings - usedFourRatings),
+    isExempt: false as const,
   }
 }
