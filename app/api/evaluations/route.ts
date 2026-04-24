@@ -251,19 +251,25 @@ export async function POST(request: NextRequest) {
         relationshipType: assignment.relationshipType,
         excludeResponseKeys: currentSubmissionResponseKeys,
       })
-      const quotaValidation = validateFourRatingQuota({
-        totalQuestions: fourRatingQuota.totalQuestions,
-        usedFourRatings: fourRatingQuota.usedFourRatings,
-        pendingFourRatings: countFourRatingsForResponses(data.responses),
-      })
 
-      if (quotaValidation.wouldExceed) {
-        return NextResponse.json(
-          {
-            error: `Ratings of 4 are capped at ${quotaValidation.maxAllowedFourRatings} across your ${fourRatingQuota.totalQuestions} ${RELATIONSHIP_TYPE_LABELS[fourRatingQuota.quotaRelationshipType].toLowerCase()} evaluation questions this period. You have already used ${fourRatingQuota.usedFourRatings} in this category.`,
-          },
-          { status: 400 }
-        )
+      // Exempt evaluators bypass the 4-rating cap entirely. validateFourRatingQuota
+      // recomputes the cap from totalQuestions internally, so we must skip it
+      // rather than rely on the Infinity field from the quota object.
+      if (!fourRatingQuota.isExempt) {
+        const quotaValidation = validateFourRatingQuota({
+          totalQuestions: fourRatingQuota.totalQuestions,
+          usedFourRatings: fourRatingQuota.usedFourRatings,
+          pendingFourRatings: countFourRatingsForResponses(data.responses),
+        })
+
+        if (quotaValidation.wouldExceed) {
+          return NextResponse.json(
+            {
+              error: `Ratings of 4 are capped at ${quotaValidation.maxAllowedFourRatings} across your ${fourRatingQuota.totalQuestions} ${RELATIONSHIP_TYPE_LABELS[fourRatingQuota.quotaRelationshipType].toLowerCase()} evaluation questions this period. You have already used ${fourRatingQuota.usedFourRatings} in this category.`,
+            },
+            { status: 400 }
+          )
+        }
       }
     }
 
