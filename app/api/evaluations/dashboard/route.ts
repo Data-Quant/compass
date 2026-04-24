@@ -5,9 +5,10 @@ import type { RelationshipType } from '@/types'
 import { getResolvedQuestionCount } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import {
+  buildSubmittedCountMap,
+  deriveSubmittedHrPairKeys,
   getAssignmentCompletionState,
   getHrPoolClosedPairKeys,
-  getSubmittedEvaluationCountMap,
 } from '@/lib/evaluation-completion'
 import {
   getDeptPoolDisplayName,
@@ -77,31 +78,32 @@ export async function GET(request: NextRequest) {
 
     const directReportIds = directReportMappings.map((mapping) => mapping.evaluateeId)
 
+    // Fetch period-wide submitted evaluations (not scoped to this user) so
+    // HR pool closure correctly reflects any HR evaluator's submission, not
+    // just the logged-in user's. Triple-keyed counts prevent one relationship
+    // type's submissions from falsely completing another.
     const [assignments, submittedEvaluations] = await Promise.all([
       getResolvedEvaluationAssignments(period.id, { includeUsers: true }),
-      prisma.evaluation.groupBy({
-        by: ['evaluatorId', 'evaluateeId'],
+      prisma.evaluation.findMany({
         where: {
           periodId: period.id,
           submittedAt: { not: null },
-          OR: [
-            { evaluatorId: user.id },
-            { evaluateeId: user.id },
-            ...(directReportIds.length > 0 ? [{ evaluateeId: { in: directReportIds } }] : []),
-          ],
         },
-        _count: { id: true },
+        select: {
+          evaluatorId: true,
+          evaluateeId: true,
+          submittedAt: true,
+          leadQuestionId: true,
+          question: { select: { relationshipType: true } },
+        },
       }),
     ])
 
-    const submittedCounts = getSubmittedEvaluationCountMap(
-      submittedEvaluations.map((evaluation) => ({
-        evaluatorId: evaluation.evaluatorId,
-        evaluateeId: evaluation.evaluateeId,
-        count: evaluation._count.id,
-      }))
+    const submittedCounts = buildSubmittedCountMap(submittedEvaluations, assignments)
+    const hrPoolClosedPairKeys = getHrPoolClosedPairKeys(
+      assignments,
+      deriveSubmittedHrPairKeys(submittedCounts)
     )
-    const hrPoolClosedPairKeys = getHrPoolClosedPairKeys(assignments, new Set(submittedCounts.keys()))
 
     const outgoingAssignments = assignments.filter((assignment) => assignment.evaluatorId === user.id)
     const incomingAssignments = assignments.filter((assignment) => assignment.evaluateeId === user.id)

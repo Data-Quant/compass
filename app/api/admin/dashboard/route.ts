@@ -7,10 +7,11 @@ import { getResolvedQuestionCount } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import { isThreeEDepartment } from '@/lib/company-branding'
 import {
+  buildSubmittedCountMap,
   collapseAssignmentRequirementsByPool,
+  deriveSubmittedHrPairKeys,
   getAssignmentCompletionState,
   getHrPoolClosedPairKeys,
-  getSubmittedEvaluationCountMap,
 } from '@/lib/evaluation-completion'
 
 export async function GET() {
@@ -28,16 +29,21 @@ export async function GET() {
       return NextResponse.json({ error: 'No active period found' }, { status: 404 })
     }
 
-    const [allTeamMembers, allMappings, submittedEvaluationPairs, allReports] =
+    const [allTeamMembers, allMappings, submittedEvaluationRows, allReports] =
       await Promise.all([
         prisma.user.findMany({
           select: { id: true, name: true, department: true, position: true },
         }),
         getResolvedEvaluationAssignments(period.id),
-        prisma.evaluation.groupBy({
-          by: ['evaluatorId', 'evaluateeId'],
+        prisma.evaluation.findMany({
           where: { periodId: period.id, submittedAt: { not: null } },
-          _count: { id: true },
+          select: {
+            evaluatorId: true,
+            evaluateeId: true,
+            submittedAt: true,
+            leadQuestionId: true,
+            question: { select: { relationshipType: true } },
+          },
         }),
         prisma.report.findMany({
           where: { periodId: period.id },
@@ -63,16 +69,10 @@ export async function GET() {
       }))
     )
 
-    const submittedPairCounts = getSubmittedEvaluationCountMap(
-      submittedEvaluationPairs.map((pair) => ({
-        evaluatorId: pair.evaluatorId,
-        evaluateeId: pair.evaluateeId,
-        count: pair._count.id,
-      }))
-    )
+    const submittedPairCounts = buildSubmittedCountMap(submittedEvaluationRows, allMappings)
     const hrPoolClosedPairKeys = getHrPoolClosedPairKeys(
       allMappings,
-      new Set(submittedPairCounts.keys())
+      deriveSubmittedHrPairKeys(submittedPairCounts)
     )
 
     const inboundEvaluatorCountMap = new Map<string, number>()

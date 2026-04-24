@@ -2,6 +2,7 @@ import {
   normalizeRelationshipTypeForWeighting,
   type RelationshipType,
 } from '@/types'
+import { getDefaultQuestionBankRelationshipType } from '@/lib/pre-evaluation'
 
 type AssignmentLike = {
   evaluatorId: string
@@ -13,6 +14,41 @@ type EvaluationLike = {
   evaluatorId: string
   evaluateeId: string
   submittedAt?: Date | null
+}
+
+type EvaluationWithBank = {
+  evaluatorId: string
+  evaluateeId: string
+  submittedAt?: Date | null
+  leadQuestionId?: string | null
+  question?: { relationshipType: RelationshipType } | null
+}
+
+// An evaluation row's question comes from the bank corresponding to the
+// evaluator's relationship type (e.g. a DIRECT_REPORT evaluator pulls from
+// the TEAM_LEAD bank). Lead-authored questions only apply for TEAM_LEAD
+// evaluators. Use this to decide whether a submitted row counts towards
+// completion of a specific (evaluator, evaluatee, relationshipType) slot.
+export function isEvaluationInBankForRelationshipType(
+  evaluation: EvaluationWithBank,
+  relationshipType: RelationshipType
+): boolean {
+  if (evaluation.leadQuestionId) {
+    return relationshipType === 'TEAM_LEAD'
+  }
+  if (evaluation.question) {
+    const expectedBankType = getDefaultQuestionBankRelationshipType(relationshipType)
+    return evaluation.question.relationshipType === expectedBankType
+  }
+  return false
+}
+
+export function buildAssignmentTripleKey(
+  evaluatorId: string,
+  evaluateeId: string,
+  relationshipType: string
+) {
+  return `${evaluatorId}:${evaluateeId}:${relationshipType}`
 }
 
 type SubmittedSlotLike = EvaluationLike & {
@@ -39,15 +75,67 @@ export function buildEvaluationPairKey(evaluatorId: string, evaluateeId: string)
   return `${evaluatorId}:${evaluateeId}`
 }
 
-export function getSubmittedEvaluationCountMap(
-  evaluations: Array<{ evaluatorId: string; evaluateeId: string; count: number }>
-) {
-  return new Map(
-    evaluations.map((evaluation) => [
-      buildEvaluationPairKey(evaluation.evaluatorId, evaluation.evaluateeId),
-      evaluation.count,
-    ])
-  )
+/**
+ * Build a map of submitted evaluation counts keyed by
+ * `evaluatorId:evaluateeId:relationshipType`. Correctly separates submissions
+ * per relationship type — prevents one assignment's submissions from falsely
+ * marking another assignment as complete when the same evaluator has multiple
+ * mappings to the same evaluatee (e.g. Areebah is both TEAM_LEAD and HR for
+ * Saman; her TEAM_LEAD submissions must not count towards the HR slot).
+ */
+export function buildSubmittedCountMap(
+  evaluations: EvaluationWithBank[],
+  assignments: AssignmentLike[]
+): Map<string, number> {
+  const evalsByPair = new Map<string, EvaluationWithBank[]>()
+  for (const evaluation of evaluations) {
+    if (!evaluation.submittedAt) continue
+    const pairKey = buildEvaluationPairKey(evaluation.evaluatorId, evaluation.evaluateeId)
+    const existing = evalsByPair.get(pairKey) || []
+    existing.push(evaluation)
+    evalsByPair.set(pairKey, existing)
+  }
+
+  const counts = new Map<string, number>()
+  // Seed every known assignment so a lookup with no submissions returns 0
+  // rather than undefined — keeps downstream logic simple.
+  for (const assignment of assignments) {
+    const pairKey = buildEvaluationPairKey(assignment.evaluatorId, assignment.evaluateeId)
+    const pairEvaluations = evalsByPair.get(pairKey) || []
+    const matching = pairEvaluations.filter((evaluation) =>
+      isEvaluationInBankForRelationshipType(evaluation, assignment.relationshipType)
+    )
+    if (matching.length > 0) {
+      counts.set(
+        buildAssignmentTripleKey(
+          assignment.evaluatorId,
+          assignment.evaluateeId,
+          assignment.relationshipType
+        ),
+        matching.length
+      )
+    }
+  }
+  return counts
+}
+
+/**
+ * Extract the set of (evaluator, evaluatee) pair keys that have at least one
+ * HR-bank submission. Feed into getHrPoolClosedPairKeys so pool closure only
+ * fires when an actual HR evaluation was submitted, not when any other
+ * relationship's eval happens to share the same pair key.
+ */
+export function deriveSubmittedHrPairKeys(
+  submittedCounts: ReadonlyMap<string, number>
+): Set<string> {
+  const hrPairKeys = new Set<string>()
+  for (const [tripleKey, count] of submittedCounts.entries()) {
+    if (count <= 0) continue
+    if (!tripleKey.endsWith(':HR')) continue
+    const [evaluatorId, evaluateeId] = tripleKey.split(':')
+    hrPairKeys.add(buildEvaluationPairKey(evaluatorId, evaluateeId))
+  }
+  return hrPairKeys
 }
 
 export function getHrPoolClosedPairKeys(
@@ -90,7 +178,12 @@ export function getAssignmentCompletionState(params: {
     params.assignment.evaluatorId,
     params.assignment.evaluateeId
   )
-  const rawCompletedCount = params.submittedCounts.get(pairKey) || 0
+  const tripleKey = buildAssignmentTripleKey(
+    params.assignment.evaluatorId,
+    params.assignment.evaluateeId,
+    params.assignment.relationshipType
+  )
+  const rawCompletedCount = params.submittedCounts.get(tripleKey) || 0
   const isClosedByPool =
     params.assignment.relationshipType === 'HR' &&
     params.hrPoolClosedPairKeys.has(pairKey) &&

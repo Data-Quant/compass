@@ -6,8 +6,12 @@ import { sendMail } from '@/lib/email'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import {
   buildEvaluationPairKey,
+  buildSubmittedCountMap,
+  deriveSubmittedHrPairKeys,
   getHrPoolClosedPairKeys,
+  isEvaluationInBankForRelationshipType,
 } from '@/lib/evaluation-completion'
+import type { RelationshipType } from '@/types'
 
 export async function POST(request: NextRequest) {
   try {
@@ -35,7 +39,9 @@ export async function POST(request: NextRequest) {
       includeUsers: true,
     })
 
-    // Get all submitted evaluations for this period
+    // Get all submitted evaluations for this period (with bank info so we can
+    // attribute each submission to the correct relationship type, not just the
+    // evaluator-evaluatee pair).
     const submittedEvaluations = await prisma.evaluation.findMany({
       where: {
         periodId,
@@ -44,22 +50,52 @@ export async function POST(request: NextRequest) {
       select: {
         evaluatorId: true,
         evaluateeId: true,
+        submittedAt: true,
+        leadQuestionId: true,
+        question: { select: { relationshipType: true } },
       },
     })
 
-    // Create a set of completed evaluation pairs
-    const completedPairs = new Set(
-      submittedEvaluations.map(e => buildEvaluationPairKey(e.evaluatorId, e.evaluateeId))
+    const submittedCounts = buildSubmittedCountMap(submittedEvaluations, mappings)
+    const hrPoolClosedPairKeys = getHrPoolClosedPairKeys(
+      mappings,
+      deriveSubmittedHrPairKeys(submittedCounts)
     )
-    const hrPoolClosedPairKeys = getHrPoolClosedPairKeys(mappings, completedPairs)
+
+    // An assignment is "completed" when at least one submission exists for
+    // that specific (evaluator, evaluatee, relationshipType). We compare
+    // against the actual assignments rather than generic pair keys so the
+    // reminder excludes a TEAM_LEAD-complete pair whose HR slot is still open.
+    const submittedSet = new Set<string>()
+    for (const evaluation of submittedEvaluations) {
+      for (const mapping of mappings) {
+        if (
+          mapping.evaluatorId === evaluation.evaluatorId &&
+          mapping.evaluateeId === evaluation.evaluateeId &&
+          isEvaluationInBankForRelationshipType(
+            evaluation,
+            mapping.relationshipType as RelationshipType
+          )
+        ) {
+          submittedSet.add(
+            `${mapping.evaluatorId}:${mapping.evaluateeId}:${mapping.relationshipType}`
+          )
+        }
+      }
+    }
 
     // Find pending evaluations
-    const pendingEvaluations = mappings.filter(
-      m => {
-        const pairKey = buildEvaluationPairKey(m.evaluatorId, m.evaluateeId)
-        return !completedPairs.has(pairKey) && !hrPoolClosedPairKeys.has(pairKey)
+    const pendingEvaluations = mappings.filter((m) => {
+      const pairKey = buildEvaluationPairKey(m.evaluatorId, m.evaluateeId)
+      const tripleKey = `${m.evaluatorId}:${m.evaluateeId}:${m.relationshipType}`
+      if (submittedSet.has(tripleKey)) return false
+      // HR pool closure still applies: if someone else's HR submission closed
+      // the pool for this evaluatee, skip reminding about this HR slot.
+      if (m.relationshipType === 'HR' && hrPoolClosedPairKeys.has(pairKey)) {
+        return false
       }
-    )
+      return true
+    })
 
     // Group by evaluator
     const pendingByEvaluator = pendingEvaluations.reduce((acc, mapping) => {

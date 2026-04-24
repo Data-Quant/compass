@@ -8,9 +8,10 @@ import {
   getResolvedEvaluationAssignments,
 } from '@/lib/evaluation-assignments'
 import {
+  buildSubmittedCountMap,
+  deriveSubmittedHrPairKeys,
   getAssignmentCompletionState,
   getHrPoolClosedPairKeys,
-  getSubmittedEvaluationCountMap,
 } from '@/lib/evaluation-completion'
 import { getEvaluatorFourRatingQuota } from '@/lib/evaluation-rating-quota'
 import {
@@ -104,22 +105,20 @@ export async function GET(
         leadQuestion: true,
       },
     })
-    const submittedPairs = await prisma.evaluation.groupBy({
-      by: ['evaluatorId', 'evaluateeId'],
+    const submittedEvaluationsForCounts = await prisma.evaluation.findMany({
       where: {
         periodId,
         evaluateeId: { in: targetEvaluateeIds },
         submittedAt: { not: null },
       },
-      _count: { id: true },
+      select: {
+        evaluatorId: true,
+        evaluateeId: true,
+        submittedAt: true,
+        leadQuestionId: true,
+        question: { select: { relationshipType: true } },
+      },
     })
-    const submittedCounts = getSubmittedEvaluationCountMap(
-      submittedPairs.map((submittedPair) => ({
-        evaluatorId: submittedPair.evaluatorId,
-        evaluateeId: submittedPair.evaluateeId,
-        count: submittedPair._count.id,
-      }))
-    )
     const relevantAssignments = deptPool
       ? await getResolvedEvaluationAssignments(periodId, {
           evaluatorId: user.id,
@@ -127,9 +126,13 @@ export async function GET(
       : await getResolvedEvaluationAssignments(periodId, {
           evaluateeId,
         })
+    const submittedCounts = buildSubmittedCountMap(
+      submittedEvaluationsForCounts,
+      relevantAssignments
+    )
     const hrPoolClosedPairKeys = getHrPoolClosedPairKeys(
       relevantAssignments,
-      new Set(submittedCounts.keys())
+      deriveSubmittedHrPairKeys(submittedCounts)
     )
     const assignmentLookup = buildAssignmentLookup(
       relevantAssignments.map((candidate) => ({
