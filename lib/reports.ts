@@ -19,6 +19,7 @@ import {
   calculateWeightedEvaluationCompletion,
   filterPooledRelationshipEvaluations,
 } from '@/lib/evaluation-completion'
+import { applyAuthoritativeDeptPoolEvaluations } from '@/lib/dept-evaluation-pool'
 import {
   buildAssignmentLookup,
   resolveEvaluationRelationshipTypeForRow,
@@ -141,6 +142,49 @@ export async function generateDetailedReport(
     evaluateeId: employeeId,
     includeUsers: true,
   })
+  const deptEvaluatorIds = [...new Set(
+    mappings
+      .filter((mapping) => mapping.relationshipType === 'DEPT')
+      .map((mapping) => mapping.evaluatorId)
+  )]
+  const [deptEvaluatorAssignments, deptEvaluatorEvaluations] = await Promise.all([
+    Promise.all(
+      deptEvaluatorIds.map(async (evaluatorId) => [
+        evaluatorId,
+        await getResolvedEvaluationAssignments(periodId, {
+          evaluatorId,
+          includeUsers: true,
+        }),
+      ] as const)
+    ),
+    Promise.all(
+      deptEvaluatorIds.map(async (evaluatorId) => [
+        evaluatorId,
+        await prisma.evaluation.findMany({
+          where: {
+            periodId,
+            evaluatorId,
+          },
+          include: {
+            question: true,
+            leadQuestion: true,
+            evaluator: true,
+          },
+        }),
+      ] as const)
+    ),
+  ])
+  const deptAssignmentsByEvaluator = new Map(deptEvaluatorAssignments)
+  const deptEvaluationsByEvaluator = new Map(deptEvaluatorEvaluations)
+  const effectiveEvaluations = applyAuthoritativeDeptPoolEvaluations({
+    evaluateeId: employeeId,
+    evaluations,
+    assignments: mappings,
+    getAssignmentsForEvaluator: (evaluatorId) =>
+      deptAssignmentsByEvaluator.get(evaluatorId) || [],
+    getEvaluationsForEvaluator: (evaluatorId) =>
+      deptEvaluationsByEvaluator.get(evaluatorId) || [],
+  })
 
   // Group evaluations by evaluator and relationship type
   const assignmentLookup = buildAssignmentLookup(
@@ -151,7 +195,7 @@ export async function generateDetailedReport(
     }))
   )
   const evaluationsByEvaluator = new Map<string, typeof evaluations>()
-  for (const evaluation of evaluations) {
+  for (const evaluation of effectiveEvaluations) {
     const relationshipType = resolveEvaluationRelationshipTypeForRow({
       evaluation,
       assignmentLookup,
@@ -781,6 +825,24 @@ export async function generateVerificationCsv(periodId: string): Promise<string>
     evalsByEmployee.get(ev.evaluateeId)!.push(ev)
   }
 
+  // Evaluations grouped by evaluator — needed so dept-pool carry-forward can
+  // find an evaluator's submission against a different evaluatee in the same
+  // dept and rebind it to the current employee.
+  const evalsByEvaluator = new Map<string, typeof allEvaluations>()
+  for (const ev of allEvaluations) {
+    if (!evalsByEvaluator.has(ev.evaluatorId)) {
+      evalsByEvaluator.set(ev.evaluatorId, [])
+    }
+    evalsByEvaluator.get(ev.evaluatorId)!.push(ev)
+  }
+  const mappingsByEvaluator = new Map<string, typeof allMappings>()
+  for (const mapping of allMappings) {
+    if (!mappingsByEvaluator.has(mapping.evaluatorId)) {
+      mappingsByEvaluator.set(mapping.evaluatorId, [])
+    }
+    mappingsByEvaluator.get(mapping.evaluatorId)!.push(mapping)
+  }
+
   const weightProfileByKey = new Map<
     string,
     { displayName: string; weights: Record<string, number> }
@@ -829,7 +891,21 @@ export async function generateVerificationCsv(periodId: string): Promise<string>
 
   for (const employee of reportable) {
     const employeeMappings = mappingsByEmployee.get(employee.id) ?? []
-    const employeeEvals = evalsByEmployee.get(employee.id) ?? []
+    const rawEmployeeEvals = evalsByEmployee.get(employee.id) ?? []
+
+    // Propagate Hamiz's pooled DEPT submission — made against one
+    // authoritative evaluatee per department — to every current dept member.
+    // New members added after the submission still get credit because the
+    // carry-forward resolves at read time.
+    const employeeEvals = applyAuthoritativeDeptPoolEvaluations({
+      evaluateeId: employee.id,
+      evaluations: rawEmployeeEvals,
+      assignments: employeeMappings,
+      getAssignmentsForEvaluator: (evaluatorId) =>
+        mappingsByEvaluator.get(evaluatorId) ?? [],
+      getEvaluationsForEvaluator: (evaluatorId) =>
+        evalsByEvaluator.get(evaluatorId) ?? [],
+    })
 
     const assignmentLookup = buildAssignmentLookup(
       employeeMappings.map((m) => ({

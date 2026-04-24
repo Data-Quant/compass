@@ -11,6 +11,7 @@ import {
   calculateWeightedEvaluationCompletion,
   filterPooledRelationshipEvaluations,
 } from '@/lib/evaluation-completion'
+import { applyAuthoritativeDeptPoolEvaluations } from '@/lib/dept-evaluation-pool'
 import {
   buildAssignmentLookup,
   resolveEvaluationRelationshipTypeForRow,
@@ -66,7 +67,7 @@ export async function GET(request: NextRequest) {
         }),
 
         // 4. ALL active evaluator assignments for this period
-        getResolvedEvaluationAssignments(period.id),
+        getResolvedEvaluationAssignments(period.id, { includeUsers: true }),
 
         // 5. ALL weight profiles
         prisma.weightProfile.findMany(),
@@ -85,6 +86,13 @@ export async function GET(request: NextRequest) {
       }
       mappingsByEmployee.get(m.evaluateeId)!.push(m)
     }
+    const mappingsByEvaluator = new Map<string, typeof allMappings>()
+    for (const mapping of allMappings) {
+      if (!mappingsByEvaluator.has(mapping.evaluatorId)) {
+        mappingsByEvaluator.set(mapping.evaluatorId, [])
+      }
+      mappingsByEvaluator.get(mapping.evaluatorId)!.push(mapping)
+    }
 
     // Evaluations: evaluateeId -> evaluations[]
     const evalsByEmployee = new Map<string, typeof allEvaluations>()
@@ -93,6 +101,13 @@ export async function GET(request: NextRequest) {
         evalsByEmployee.set(ev.evaluateeId, [])
       }
       evalsByEmployee.get(ev.evaluateeId)!.push(ev)
+    }
+    const evalsByEvaluator = new Map<string, typeof allEvaluations>()
+    for (const evaluation of allEvaluations) {
+      if (!evalsByEvaluator.has(evaluation.evaluatorId)) {
+        evalsByEvaluator.set(evaluation.evaluatorId, [])
+      }
+      evalsByEvaluator.get(evaluation.evaluatorId)!.push(evaluation)
     }
 
     // Weight profiles: categorySetKey -> weights
@@ -121,6 +136,15 @@ export async function GET(request: NextRequest) {
     const reports = reportableEmployees.map((employee) => {
       const employeeMappings = mappingsByEmployee.get(employee.id) || []
       const employeeEvals = evalsByEmployee.get(employee.id) || []
+      const effectiveEmployeeEvals = applyAuthoritativeDeptPoolEvaluations({
+        evaluateeId: employee.id,
+        evaluations: employeeEvals,
+        assignments: employeeMappings,
+        getAssignmentsForEvaluator: (evaluatorId) =>
+          mappingsByEvaluator.get(evaluatorId) || [],
+        getEvaluationsForEvaluator: (evaluatorId) =>
+          evalsByEvaluator.get(evaluatorId) || [],
+      })
 
       const assignmentLookup = buildAssignmentLookup(
         employeeMappings.map((mapping) => ({
@@ -130,7 +154,9 @@ export async function GET(request: NextRequest) {
         }))
       )
 
-      // Group evaluations by relationship type
+      // Group evaluations by relationship type — use the dept-pool-propagated
+      // set so Hamiz's one-per-dept submission is credited to every current
+      // member of that dept (including members added after his submission).
       const evalsByType = new Map<RelationshipType, typeof employeeEvals>()
       const submittedSlots: Array<{
         evaluatorId: string
@@ -138,7 +164,7 @@ export async function GET(request: NextRequest) {
         relationshipType: RelationshipType
         submittedAt: Date | null
       }> = []
-      for (const ev of employeeEvals) {
+      for (const ev of effectiveEmployeeEvals) {
         const type = resolveEvaluationRelationshipTypeForRow({
           evaluation: ev,
           assignmentLookup,
