@@ -35,24 +35,42 @@ test('office v2 collision blocks cubicles but lets players walk on the lobby log
   assert.equal(isOfficeTileWalkable(map.tileMap[cubicle.y][cubicle.x]), false)
 })
 
-test('office v2 has 8 department wings each with 6 cubicles and a lead office', () => {
-  const departments = [
-    'Technology',
-    'Value Creation',
-    'Growth and Strategy',
-    'Ops and Accounting',
-    'HR',
-    'Design',
-    '1to1 plans',
-    'Product',
-  ]
+test('office v2 has 8 department wings, each with cubicles and a lead office', () => {
+  const expectedSlots: Record<string, number> = {
+    Technology: 12, // overflow capacity for Ammar's larger team
+    'Value Creation': 9,
+    'Growth and Strategy': 9,
+    'Ops and Accounting': 9,
+    HR: 9,
+    Design: 9,
+    '1to1 plans': 9,
+    Product: 9,
+  }
 
-  for (const dept of departments) {
+  for (const [dept, slots] of Object.entries(expectedSlots)) {
     const wingCubicles = OFFICE_WORLD.cubicles.filter((c) => c.department === dept)
-    assert.equal(wingCubicles.length, 6, `${dept} wing should have 6 cubicles`)
+    assert.equal(wingCubicles.length, slots, `${dept} should have ${slots} cubicles`)
 
     const leadOffice = OFFICE_WORLD.leadershipOffices.find((o) => o.department === dept)
     assert.ok(leadOffice, `${dept} should have a lead office`)
+  }
+})
+
+test('lead office door faces south so the walk-up path is unobstructed', () => {
+  const map = generateOfficeMap(OFFICE_WORLD)
+  const T = (1 as unknown) // placeholder; we verify by tile id constants below.
+  // Walking from the door (south wall) straight up to the desk's chair must
+  // hit only walkable tiles — no PC, plant, or bookshelf in the way.
+  for (const office of OFFICE_WORLD.leadershipOffices.filter((o) => o.id.startsWith('lead-'))) {
+    // Door we punched is at (deskX, y2). Chair is at (deskX, deskY+1).
+    const doorX = office.deskX
+    const chairY = office.deskY + 1
+    for (let y = office.y2 - 1; y >= chairY; y -= 1) {
+      assert.ok(
+        isOfficeTileWalkable(map.tileMap[y][doorX]),
+        `tile (${doorX},${y}) inside ${office.id} should be walkable on the entry path`,
+      )
+    }
   }
 })
 

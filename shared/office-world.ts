@@ -170,8 +170,10 @@ export function decorThemeTint(theme: DecorTheme): { primary: string; accent: st
 // ─── Department wing layout ──────────────────────────────────────────────────
 // Eight department wings sit in a 4×2 grid in the central band. Each wing is
 // 20 wide × 18 tall, with the lead office tucked into the upper-right corner
-// and 6 nameplated cubicles arranged in the open floor area. The exact
-// User.department string for each wing is the canonical name HR provided.
+// and a configurable number of nameplated cubicles in the open floor area.
+// The exact User.department string for each wing is the canonical name HR
+// provided. Cubicle slots default to 9 (3 cols × 3 rows); Technology has more
+// people so it gets 12 (3 cols × 4 rows packed tighter).
 
 type DeptWingPlan = {
   id: string
@@ -180,12 +182,17 @@ type DeptWingPlan = {
   department: string
   x1: number
   y1: number
+  /** Optional override for the number of cubicles in this wing. Default 9. */
+  cubicleSlots?: number
 }
+
+const DEFAULT_CUBICLE_SLOTS = 9
+const MAX_CUBICLE_SLOTS = 12
 
 // Each wing occupies a 20×18 block. Origin (x1, y1) is the top-left corner.
 const DEPT_WINGS: DeptWingPlan[] = [
-  // Top row
-  { id: 'quant',         label: 'Technology',               department: 'Technology',               x1: 2,  y1: 17 },
+  // Top row — Technology has overflow capacity for Ammar's larger team.
+  { id: 'quant',         label: 'Technology',               department: 'Technology',               x1: 2,  y1: 17, cubicleSlots: 12 },
   { id: 'valuecreation', label: 'Value Creation',           department: 'Value Creation',           x1: 25, y1: 17 },
   { id: 'growth',        label: 'Growth and Strategy',      department: 'Growth and Strategy',      x1: 52, y1: 17 },
   { id: 'ops',           label: 'Ops and Accounting',       department: 'Ops and Accounting',       x1: 75, y1: 17 },
@@ -203,12 +210,24 @@ const DEPT_WING_H = 18
 const LEAD_OFFICE_W = 7
 const LEAD_OFFICE_H = 7
 
-// Each wing has 6 cubicles, laid out as 2 rows × 3 cols in the lower-left.
-// Cubicle is the "desk" tile; seat is the chair right below it.
-const CUBICLE_LAYOUT: Array<{ dx: number; dy: number }> = [
-  { dx: 3,  dy: 6 },  { dx: 7,  dy: 6 },  { dx: 11, dy: 6 },
-  { dx: 3,  dy: 11 }, { dx: 7,  dy: 11 }, { dx: 11, dy: 11 },
-]
+// Cubicles are placed in the wing's open floor (left side, below the lead
+// office). 3 columns at dx=3, 7, 11. Rows step down starting at dy=8 (one row
+// south of the lead office's bottom wall) — 9-slot wings space rows 3 apart
+// for breathing room; 12-slot wings pack 4 rows tighter (2 apart).
+function buildCubicleLayout(slots: number): Array<{ dx: number; dy: number }> {
+  const cols = [3, 7, 11]
+  const rowCount = Math.ceil(slots / cols.length)
+  const rowGap = rowCount <= 3 ? 3 : 2
+  const positions: Array<{ dx: number; dy: number }> = []
+  for (let row = 0; row < rowCount; row += 1) {
+    const dy = 8 + row * rowGap
+    for (const dx of cols) {
+      if (positions.length >= slots) break
+      positions.push({ dx, dy })
+    }
+  }
+  return positions
+}
 
 function buildDeptZones(): OfficeZoneDefinition[] {
   return DEPT_WINGS.map((wing) => ({
@@ -227,7 +246,9 @@ function buildDeptZones(): OfficeZoneDefinition[] {
 function buildDeptCubicles(): OfficeCubicleDefinition[] {
   const cubicles: OfficeCubicleDefinition[] = []
   for (const wing of DEPT_WINGS) {
-    CUBICLE_LAYOUT.forEach((cell, index) => {
+    const slots = Math.min(wing.cubicleSlots ?? DEFAULT_CUBICLE_SLOTS, MAX_CUBICLE_SLOTS)
+    const layout = buildCubicleLayout(slots)
+    layout.forEach((cell, index) => {
       const x = wing.x1 + cell.dx
       const y = wing.y1 + cell.dy
       cubicles.push({
@@ -256,8 +277,10 @@ function buildDeptLeadOffices(): OfficeLeadershipOfficeDefinition[] {
       y1,
       x2: x1 + LEAD_OFFICE_W - 1,
       y2: y1 + LEAD_OFFICE_H - 1,
+      // Desk sits at the top of the office (y1+1) so the south-wall door
+      // gives the player a straight, unobstructed walk-up to the chair.
       deskX: x1 + 3,
-      deskY: y1 + 2,
+      deskY: y1 + 1,
     }
   })
 }
@@ -526,13 +549,16 @@ export function generateOfficeMap(world = OFFICE_WORLD): OfficeMapData {
     wallRoom(x1, y1, x2, y2, { x: x1 + Math.floor(DEPT_WING_W / 2), y: y2 })
   }
 
-  // Lead offices (sub-rooms inside each wing)
+  // Lead offices (sub-rooms inside each wing). Door faces south — same way
+  // the player approaches from the wing's open floor — and the desk sits at
+  // the top of the room so the walk-up path is unobstructed. Plant +
+  // bookshelf live in the back corners so they never block the doorway.
   for (const office of OFFICE_WORLD.leadershipOffices.filter((o) => o.id.startsWith('lead-'))) {
-    wallRoom(office.x1, office.y1, office.x2, office.y2, { x: office.x1, y: office.y2 - 1 })
+    wallRoom(office.x1, office.y1, office.x2, office.y2, { x: office.deskX, y: office.y2 })
     setObj(office.deskX, office.deskY, T.OFFICE_DESK)
     setObj(office.deskX, office.deskY + 1, T.CHAIR)
     setObj(office.x2 - 1, office.y1 + 1, T.BOOKSHELF)
-    setObj(office.x1 + 1, office.y2 - 1, T.PLANT)
+    setObj(office.x1 + 1, office.y1 + 1, T.PLANT)
   }
 
   // Cubicles — desk + chair pair for every assigned seat
