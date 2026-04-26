@@ -620,6 +620,40 @@ export class OfficeScene extends Phaser.Scene {
   private myLeadOfficeId: string | null = null
   private myPartnerOfficeId: string | null = null
   private currentAtDesk: { kind: 'cubicle' | 'lead-office' | 'partner-office'; id: string } | null = null
+  // Throttle for the localStorage write that backs position-resume.
+  private lastPositionSavedAt = 0
+  // True after the first warp attempt this session, so we don't keep re-applying.
+  private didRestorePosition = false
+
+  private static readonly POSITION_KEY_PREFIX = 'office:lastPosition:'
+  private static readonly POSITION_SAVE_THROTTLE_MS = 800
+
+  /** Persist the local player's position so a future page load can resume here. */
+  private savePositionLocally(x: number, y: number, force = false) {
+    if (!this.localUserId) return
+    const now = Date.now()
+    if (!force && now - this.lastPositionSavedAt < OfficeScene.POSITION_SAVE_THROTTLE_MS) return
+    this.lastPositionSavedAt = now
+    try {
+      window.localStorage?.setItem(
+        OfficeScene.POSITION_KEY_PREFIX + this.localUserId,
+        JSON.stringify({ x, y, timestamp: now }),
+      )
+    } catch { /* localStorage may be unavailable (Safari private mode, etc.) */ }
+  }
+
+  /** Read the user's saved position from localStorage; null if missing/invalid. */
+  private readSavedPosition(userId: string): { x: number; y: number } | null {
+    try {
+      const raw = window.localStorage?.getItem(OfficeScene.POSITION_KEY_PREFIX + userId)
+      if (!raw) return null
+      const pos = JSON.parse(raw)
+      if (typeof pos?.x !== 'number' || typeof pos?.y !== 'number') return null
+      return { x: pos.x, y: pos.y }
+    } catch {
+      return null
+    }
+  }
 
   /**
    * Called every time the local player moves. Checks whether they're on or
@@ -781,6 +815,13 @@ export class OfficeScene extends Phaser.Scene {
    * away. Prevents the reconnect loop from firing on a deliberate exit.
    */
   shutdownNetwork() {
+    // Force-save the latest position so a navigate-away (and the page reload
+    // that follows it) still resumes exactly here even if the throttle hadn't
+    // flushed our most recent step.
+    const localPlayer = this.playersData.get(this.localSessionId)
+    if (localPlayer) {
+      this.savePositionLocally(localPlayer.x, localPlayer.y, true)
+    }
     this.intentionalDisconnect = true
     this.clearReconnectTimer()
     this.room?.leave().catch(() => {})
@@ -811,6 +852,19 @@ export class OfficeScene extends Phaser.Scene {
         if (localPlayer) {
           this.callbacks.onLocalSessionReady?.(localPlayer.userId)
           this.highlightLocalSeat(localPlayer.userId)
+
+          // Position resume — if a saved position exists in localStorage and
+          // the spawn doesn't already match it (e.g., the server's in-memory
+          // map kept it across a same-machine reconnect), ask the server to
+          // warp us. Only do this on the first fullState of a session so a
+          // reconnect mid-walk doesn't yank the player back.
+          if (!this.didRestorePosition) {
+            this.didRestorePosition = true
+            const saved = this.readSavedPosition(localPlayer.userId)
+            if (saved && (saved.x !== localPlayer.x || saved.y !== localPlayer.y)) {
+              this.room?.send('warp', { x: saved.x, y: saved.y })
+            }
+          }
         }
         for (const msg of data.chatHistory) this.callbacks.onChatMessage(msg)
         this.notifyPlayersChange()
@@ -852,9 +906,12 @@ export class OfficeScene extends Phaser.Scene {
 
         this.callbacks.onPlayerPositionChange?.(player.userId, data.x, data.y)
 
-        // Local-player proximity to their assigned desk drives the desk popup.
+        // Local-player proximity to their assigned desk drives the desk popup,
+        // and we persist the local player's position so a future reload can
+        // resume exactly here (survives fly cold-starts, browser restarts).
         if (data.sessionId === this.localSessionId) {
           this.checkAtMyDesk(data.x, data.y)
+          this.savePositionLocally(data.x, data.y)
         }
       })
 

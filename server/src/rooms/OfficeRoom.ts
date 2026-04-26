@@ -325,6 +325,41 @@ export class OfficeRoom extends Room {
       if (target) client.send('locatePlayer', { userId: target.userId, x: target.x, y: target.y, currentZoneId: target.currentZoneId })
     })
 
+    // Warp lets the client teleport its own player to a remembered seat right
+    // after connect (used by the position-resume feature). Validates the
+    // target is walkable and within the world before applying. Distance isn't
+    // restricted because resume needs to span the whole map after a navigate-
+    // away/return, and we trust the JWT to scope which user is moving.
+    this.onMessage('warp', (client, data: { x?: number; y?: number }) => {
+      const player = this.players.get(client.sessionId)
+      if (!player) return
+      const x = Math.floor(Number(data.x))
+      const y = Math.floor(Number(data.y))
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return
+      if (y < 0 || y >= this.mapData.length) return
+      if (x < 0 || x >= (this.mapData[0]?.length ?? 0)) return
+      if (!isOfficeTileWalkable(this.mapData[y][x])) return
+
+      player.x = x
+      player.y = y
+      player.isMoving = false
+      const zone = getOfficeZoneAt(x, y)
+      player.currentZoneId = zone?.id ?? null
+      player.currentZoneLabel = zone?.label ?? null
+      player.currentAudioMode = isOnStage(x, y) ? 'broadcast' : (zone?.audioMode ?? 'open')
+
+      this.broadcast('playerMoved', {
+        sessionId: player.sessionId,
+        x: player.x,
+        y: player.y,
+        direction: player.direction,
+        isMoving: false,
+        currentZoneId: player.currentZoneId,
+        currentZoneLabel: player.currentZoneLabel,
+        currentAudioMode: player.currentAudioMode,
+      })
+    })
+
     this.onMessage('reaction', (client, data: { reaction?: string }) => {
       const player = this.players.get(client.sessionId)
       if (!player) return
