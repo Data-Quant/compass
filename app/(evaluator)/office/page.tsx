@@ -478,9 +478,11 @@ export default function OfficePage() {
               <ul className="space-y-1">
                 <li><kbd className="rounded bg-white/10 px-1.5 py-0.5">W A S D</kbd> / <kbd className="rounded bg-white/10 px-1.5 py-0.5">↑ ← ↓ →</kbd> — move</li>
                 <li><kbd className="rounded bg-white/10 px-1.5 py-0.5">V</kbd> — push-to-talk (hold)</li>
-                <li><kbd className="rounded bg-white/10 px-1.5 py-0.5">E</kbd> — open your computer at your desk</li>
+                <li><kbd className="rounded bg-white/10 px-1.5 py-0.5">E</kbd> — open your computer when at your assigned desk</li>
+                <li><kbd className="rounded bg-white/10 px-1.5 py-0.5">Esc</kbd> — close any open popup</li>
                 <li><kbd className="rounded bg-white/10 px-1.5 py-0.5">Mouse wheel</kbd> — zoom</li>
                 <li>Walk close to a teammate to talk via proximity audio</li>
+                <li>Stand on the Town Hall stage to broadcast to everyone in the room</li>
               </ul>
             </div>
           )}
