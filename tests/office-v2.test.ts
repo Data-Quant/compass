@@ -37,7 +37,7 @@ test('office v2 collision blocks cubicles but lets players walk on the lobby log
 
 test('office v2 has 8 department wings each with 6 cubicles and a lead office', () => {
   const departments = [
-    'Quantitative Engineering',
+    'Technology',
     'Value Creation',
     'Growth and Strategy',
     'Ops and Accounting',

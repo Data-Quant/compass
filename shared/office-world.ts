@@ -185,7 +185,7 @@ type DeptWingPlan = {
 // Each wing occupies a 20×18 block. Origin (x1, y1) is the top-left corner.
 const DEPT_WINGS: DeptWingPlan[] = [
   // Top row
-  { id: 'quant',         label: 'Quantitative Engineering', department: 'Quantitative Engineering', x1: 2,  y1: 17 },
+  { id: 'quant',         label: 'Technology',               department: 'Technology',               x1: 2,  y1: 17 },
   { id: 'valuecreation', label: 'Value Creation',           department: 'Value Creation',           x1: 25, y1: 17 },
   { id: 'growth',        label: 'Growth and Strategy',      department: 'Growth and Strategy',      x1: 52, y1: 17 },
   { id: 'ops',           label: 'Ops and Accounting',       department: 'Ops and Accounting',       x1: 75, y1: 17 },
