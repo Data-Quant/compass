@@ -19,7 +19,7 @@ const colorFrom = (palette: readonly string[]) => hexColor.refine(
   'Color is not in the approved avatar palette'
 )
 
-export const avatarV2Schema = z.object({
+const avatarV2Schema = z.object({
   avatarBodyFrame: z.enum(AVATAR_BODY_FRAMES),
   avatarOutfitType: z.enum(AVATAR_OUTFIT_TYPES),
   avatarOutfitColor: colorFrom(AVATAR_OUTFIT_COLORS),
