@@ -346,6 +346,11 @@ export const OFFICE_WORLD: OfficeWorldDefinition = {
     { id: 'boardroom-east', label: 'East Boardroom',   type: 'meeting',    x1: 76, y1: 2,  x2: 93, y2: 14, audioMode: 'room' },
     // Department wings — middle band
     ...buildDeptZones(),
+    // Central plaza — open hangout strip running between the left and right
+    // dept columns. No walls, just sofas/coffee/plants. Anyone can chill here
+    // regardless of department, and audio is proximity-based so small groups
+    // can have parallel conversations.
+    { id: 'plaza', label: 'Central Atrium', type: 'lounge', x1: 43, y1: 17, x2: 51, y2: 54, audioMode: 'open' },
     // South band
     { id: 'lobby',      label: 'Plutus21 Lobby', type: 'lobby',   x1: 46, y1: 57, x2: 58, y2: 62, audioMode: 'open' },
     { id: 'lounge',     label: 'Lounge',         type: 'lounge',  x1: 2,  y1: 57, x2: 23, y2: 62, audioMode: 'open' },
@@ -593,6 +598,24 @@ export function generateOfficeMap(world = OFFICE_WORLD): OfficeMapData {
   setObj(81, 58, T.NOTICE)
   setObj(83, 58, T.WHITEBOARD)
   setObj(92, 58, T.PLANT)
+
+  // Central Atrium — sofas, plants, and a coffee station so anyone from any
+  // department can take a break together. Plaza spans x=43..51, y=17..54.
+  // Furniture is placed in clusters so there's plenty of clear floor.
+  // North coffee + standing-table cluster
+  setObj(45, 19, T.COFFEE)
+  setObj(48, 19, T.PLANT)
+  setObj(46, 22, T.DESK_V); setObj(48, 22, T.DESK_V)
+  // Center sofa ring around the middle
+  for (const x of [44, 47, 50]) setObj(x, 30, T.SOFA)
+  setObj(43, 33, T.PLANT); setObj(51, 33, T.PLANT)
+  for (const x of [44, 47, 50]) setObj(x, 36, T.SOFA)
+  // South lounge cluster — bookshelves and a whiteboard for ad-hoc jam sessions
+  setObj(45, 45, T.WHITEBOARD)
+  setObj(47, 45, T.BOOKSHELF)
+  setObj(49, 45, T.BOOKSHELF)
+  setObj(43, 49, T.PLANT); setObj(51, 49, T.PLANT)
+  for (const x of [45, 48]) setObj(x, 52, T.SOFA)
 
   return { tileMap, floorMap }
 }

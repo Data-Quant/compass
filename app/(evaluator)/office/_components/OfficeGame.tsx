@@ -55,6 +55,7 @@ export interface OfficeGameHandle {
   setStatus: (status: OfficeStatus) => void
   setSpeakingUsers: (userIds: Set<string>) => void
   sendReaction: (reaction: string) => void
+  updateSeatDecor: (scope: 'cubicle' | 'lead-office' | 'partner-office', id: string, decor: DecorChoices) => void
 }
 
 export type AtDeskState = { kind: 'cubicle' | 'lead-office' | 'partner-office'; id: string } | null
@@ -98,6 +99,9 @@ const OfficeGame = forwardRef<OfficeGameHandle, OfficeGameProps>(function Office
     },
     sendReaction: (reaction: string) => {
       sceneRef.current?.sendReaction(reaction)
+    },
+    updateSeatDecor: (scope, id, decor) => {
+      sceneRef.current?.updateSeatDecor(scope, id, decor)
     },
   }))
 

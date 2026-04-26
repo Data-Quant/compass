@@ -527,6 +527,9 @@ export default function OfficePage() {
                   }
                   return { ...prev, directory: { ...dir } }
                 })
+                // Repaint the affected seat in the live scene so the player
+                // sees their new theme/items/poster immediately, no reload.
+                gameRef.current?.updateSeatDecor(atDesk.kind, atDesk.id, decor)
               }}
             />
           )}

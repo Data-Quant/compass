@@ -508,25 +508,25 @@ export class OfficeScene extends Phaser.Scene {
   // visible markers on top of the world: a theme-colored stripe on the desk,
   // emoji icons for desk items, and a square on the wall for a wall poster.
 
-  private decorObjects: Phaser.GameObjects.GameObject[] = []
+  // Decor objects keyed by location id (cubicleId / lead-* / partner-*) so a
+  // single seat's decor can be torn down and repainted on the fly when the
+  // owner saves new choices, without rebuilding the entire world.
+  private decorObjectsByLocation = new Map<string, Phaser.GameObjects.GameObject[]>()
+
+  private static readonly DESK_ITEM_EMOJI: Record<string, string> = {
+    plant: '🪴',
+    notebook: '📓',
+    coffee: '☕',
+    award: '🏆',
+  }
 
   private drawDecor() {
     if (!this.directory) return
-    for (const obj of this.decorObjects) obj.destroy()
-    this.decorObjects = []
-
-    const deskItemEmoji: Record<string, string> = {
-      plant: '🪴',
-      notebook: '📓',
-      coffee: '☕',
-      award: '🏆',
-    }
-
     // Cubicles
     for (const cubicle of OFFICE_WORLD.cubicles) {
       const entry = this.directory.cubicleAssignments[cubicle.id]
       if (!entry) continue
-      this.paintDecorAt(cubicle.x, cubicle.y, entry.decor, deskItemEmoji)
+      this.paintDecorFor(cubicle.id, cubicle.x, cubicle.y, entry.decor)
     }
 
     // Lead + partner offices
@@ -536,11 +536,18 @@ export class OfficeScene extends Phaser.Scene {
         ? this.directory.leadOfficeAssignments[office.id]
         : this.directory.partnerOfficeAssignments[office.id]
       if (!entry) continue
-      this.paintDecorAt(office.deskX, office.deskY, entry.decor, deskItemEmoji)
+      this.paintDecorFor(office.id, office.deskX, office.deskY, entry.decor)
     }
   }
 
-  private paintDecorAt(deskX: number, deskY: number, decor: DecorChoices, emojiMap: Record<string, string>) {
+  private paintDecorFor(locationId: string, deskX: number, deskY: number, decor: DecorChoices) {
+    // Tear down any prior decor for this seat so a re-paint replaces cleanly.
+    const prior = this.decorObjectsByLocation.get(locationId)
+    if (prior) {
+      for (const obj of prior) obj.destroy()
+    }
+    const next: Phaser.GameObjects.GameObject[] = []
+
     const tint = decorThemeTint(decor.theme)
     const px = deskX * TILE_SIZE
     const py = deskY * TILE_SIZE
@@ -554,17 +561,17 @@ export class OfficeScene extends Phaser.Scene {
       Phaser.Display.Color.HexStringToColor(tint.primary).color,
       0.95,
     ).setDepth(2)
-    this.decorObjects.push(stripe)
+    next.push(stripe)
 
     // Desk items as small emoji icons sitting on the desk surface.
     decor.deskItems.slice(0, 3).forEach((item, i) => {
-      const emoji = emojiMap[item]
+      const emoji = OfficeScene.DESK_ITEM_EMOJI[item]
       if (!emoji) return
       const text = this.add.text(px + 4 + i * 8, py + 2, emoji, {
         fontSize: '10px',
         fontFamily: 'system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif',
       }).setDepth(2)
-      this.decorObjects.push(text)
+      next.push(text)
     })
 
     // Wall poster — small framed square one tile above the desk if a poster is set.
@@ -578,8 +585,27 @@ export class OfficeScene extends Phaser.Scene {
         Phaser.Display.Color.HexStringToColor(tint.accent).color,
         0.9,
       ).setStrokeStyle(1, 0xffffff, 0.5).setDepth(2)
-      this.decorObjects.push(frame)
+      next.push(frame)
     }
+
+    this.decorObjectsByLocation.set(locationId, next)
+  }
+
+  /**
+   * Public hook so the page can ask the scene to repaint a specific seat's
+   * decor right after the owner hits "Save". Without this, decor changes
+   * persisted to the DB but never appeared until the page was reloaded.
+   */
+  updateSeatDecor(scope: 'cubicle' | 'lead-office' | 'partner-office', id: string, decor: DecorChoices) {
+    if (scope === 'cubicle') {
+      const cubicle = OFFICE_WORLD.cubicles.find((c) => c.id === id)
+      if (!cubicle) return
+      this.paintDecorFor(cubicle.id, cubicle.x, cubicle.y, decor)
+      return
+    }
+    const office = OFFICE_WORLD.leadershipOffices.find((o) => o.id === id)
+    if (!office) return
+    this.paintDecorFor(office.id, office.deskX, office.deskY, decor)
   }
 
   // ─── My Seat Highlight ──────────────────────────────────────────────

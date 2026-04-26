@@ -73,6 +73,10 @@ export class OfficeRoom extends Room {
   private players = new Map<string, PlayerData>()
   private userSessionMap = new Map<string, string>() // userId -> sessionId
   private chatHistory: ChatMessageData[] = []
+  // Remembers each user's last position across reconnects within this room
+  // instance so a user who navigates away to a quick-link page and comes
+  // back resumes where they left off, instead of being teleported to spawn.
+  private lastKnownPosition = new Map<string, { x: number; y: number }>()
 
   onCreate() {
     // No setState — all sync via messages (avoids @colyseus/schema client issues)
@@ -359,7 +363,14 @@ export class OfficeRoom extends Room {
 
     this.userSessionMap.set(auth.userId, client.sessionId)
 
-    const zone = getOfficeZoneAt(SPAWN_X, SPAWN_Y)
+    // Resume from the user's last known position if we have one and the tile
+    // is still walkable (the map may have changed across deploys). Falls back
+    // to the lobby spawn for first-time joiners or stale positions.
+    const remembered = this.lastKnownPosition.get(auth.userId)
+    const startX = remembered && isOfficeTileWalkable(this.mapData[remembered.y]?.[remembered.x] ?? -1) ? remembered.x : SPAWN_X
+    const startY = remembered && isOfficeTileWalkable(this.mapData[remembered.y]?.[remembered.x] ?? -1) ? remembered.y : SPAWN_Y
+
+    const zone = getOfficeZoneAt(startX, startY)
     const player: PlayerData = {
       sessionId: client.sessionId,
       userId: auth.userId,
@@ -367,8 +378,8 @@ export class OfficeRoom extends Room {
       department: auth.department || '',
       position: auth.position || '',
       role: auth.role,
-      x: SPAWN_X,
-      y: SPAWN_Y,
+      x: startX,
+      y: startY,
       direction: 'down',
       isMoving: false,
       status: 'ONLINE',
@@ -448,6 +459,8 @@ export class OfficeRoom extends Room {
   onLeave(client: Client) {
     const player = this.players.get(client.sessionId)
     if (player) {
+      // Remember where they were so the next reconnect resumes here.
+      this.lastKnownPosition.set(player.userId, { x: player.x, y: player.y })
       this.userSessionMap.delete(player.userId)
       console.log(`[Office] ${player.name} left (${client.sessionId})`)
     }
