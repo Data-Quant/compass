@@ -63,7 +63,7 @@ function hairCategoryToStyleIndex(category: AvatarHairCategory): number {
 import {
   generateFloorTextures, generateObjectTextures, generateCharacterTexture,
   generateAmbientTexture, generateVignetteTexture, generateMonitorGlowTexture,
-  generateShadowTexture,
+  generateShadowTexture, generateLogoPlaqueTexture,
   getFloorTextureKey, getObjectTextureKey, isSpriteAsset,
 } from '../sprites/OfficeSprites'
 
@@ -190,6 +190,9 @@ export class OfficeScene extends Phaser.Scene {
 
   preload() {
     for (const [key, asset] of Object.entries(SPRITE_ASSETS)) {
+      // Some sprite-asset entries are runtime-composited (no path) — skip them
+      // here; their textures are built later in create() via canvas helpers.
+      if (!asset.path) continue
       this.load.image(key, asset.path)
     }
   }
@@ -198,6 +201,8 @@ export class OfficeScene extends Phaser.Scene {
     generateFloorTextures(this)
     generateObjectTextures(this)
     generateShadowTexture(this)
+    // Plutus21 logo PNG → polished marble plaque (strips white BG, adds frame).
+    generateLogoPlaqueTexture(this)
 
     const { tileMap, floorMap } = generateDefaultMap()
     this.mapData = tileMap
@@ -427,6 +432,9 @@ export class OfficeScene extends Phaser.Scene {
     }
 
     for (const zone of OFFICE_WORLD.zones) {
+      // Lobby has the Plutus21 marble plaque on the floor — skipping the
+      // duplicate zone label so the two don't fight each other visually.
+      if (zone.type === 'lobby') continue
       placeSign({
         x1: zone.x1,
         y1: zone.y1,

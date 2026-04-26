@@ -61,6 +61,109 @@ function canvasTex(scene: Phaser.Scene, key: string, w: number, h: number, draw:
   scene.textures.addCanvas(key, c)
 }
 
+/**
+ * Builds a polished lobby plaque from the Plutus21 logo PNG: drops the white
+ * background to transparent, renders it onto a brass-bordered marble inlay
+ * with a soft drop shadow, and registers the result as a single texture
+ * `sprite_logo_plaque` that we treat as a floor decal.
+ *
+ * Without this, the raw PNG stamps a giant white rectangle on the wood floor
+ * — looks like a poster slapped on the carpet, not a corporate sign.
+ */
+export function generateLogoPlaqueTexture(scene: Phaser.Scene) {
+  if (scene.textures.exists('sprite_logo_plaque')) return
+  if (!scene.textures.exists('sprite_logo')) return
+
+  const src = scene.textures.get('sprite_logo').getSourceImage()
+  if (!(src instanceof HTMLImageElement) && !(src instanceof HTMLCanvasElement)) return
+
+  // Step 1 — drop near-white pixels to transparent so the wordmark stands alone.
+  const cut = document.createElement('canvas')
+  cut.width = src.width
+  cut.height = src.height
+  const cutCtx = cut.getContext('2d')!
+  cutCtx.imageSmoothingEnabled = true
+  cutCtx.drawImage(src as CanvasImageSource, 0, 0)
+  const id = cutCtx.getImageData(0, 0, cut.width, cut.height)
+  const d = id.data
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], g = d[i + 1], b = d[i + 2]
+    // Pure white & near-white → transparent.
+    if (r > 240 && g > 240 && b > 240) {
+      d[i + 3] = 0
+    } else if (r > 220 && g > 220 && b > 220) {
+      // Soft edge anti-aliasing.
+      d[i + 3] = Math.round(((255 - Math.max(r, g, b)) / 35) * 255)
+    }
+  }
+  cutCtx.putImageData(id, 0, 0)
+
+  // Step 2 — composite the cut-out onto a brass-bordered marble plaque so
+  // the logo reads as an intentional inlay rather than a pasted image.
+  const plaque = document.createElement('canvas')
+  // Aspect ratio mirrors the source (very wide); plaque adds margin around it.
+  const padX = 120
+  const padY = 90
+  plaque.width = src.width + padX * 2
+  plaque.height = src.height + padY * 2
+  const ctx = plaque.getContext('2d')!
+  ctx.imageSmoothingEnabled = true
+
+  // Drop shadow under the plaque.
+  ctx.fillStyle = 'rgba(0,0,0,0.35)'
+  ctx.fillRect(20, plaque.height - 50, plaque.width - 40, 30)
+
+  // Marble inlay — soft cream gradient.
+  const grad = ctx.createLinearGradient(0, 0, 0, plaque.height)
+  grad.addColorStop(0, '#f5f1e8')
+  grad.addColorStop(0.5, '#ece6d8')
+  grad.addColorStop(1, '#d8cfb8')
+  ctx.fillStyle = grad
+  roundRect(ctx, 30, 30, plaque.width - 60, plaque.height - 60, 28)
+  ctx.fill()
+
+  // Subtle veining for marble feel (a few light strokes).
+  ctx.strokeStyle = 'rgba(120,100,70,0.12)'
+  ctx.lineWidth = 4
+  for (let i = 0; i < 6; i += 1) {
+    ctx.beginPath()
+    const startY = 60 + i * 80 + Math.random() * 30
+    ctx.moveTo(50, startY)
+    ctx.bezierCurveTo(plaque.width * 0.3, startY + 30, plaque.width * 0.7, startY - 30, plaque.width - 50, startY + Math.random() * 40)
+    ctx.stroke()
+  }
+
+  // Brass border — outer + inner ring for a beveled look.
+  ctx.strokeStyle = '#a8804b'
+  ctx.lineWidth = 8
+  roundRect(ctx, 30, 30, plaque.width - 60, plaque.height - 60, 28)
+  ctx.stroke()
+
+  ctx.strokeStyle = '#d4a96a'
+  ctx.lineWidth = 3
+  roundRect(ctx, 38, 38, plaque.width - 76, plaque.height - 76, 22)
+  ctx.stroke()
+
+  // Logo on top.
+  ctx.drawImage(cut, padX, padY)
+
+  scene.textures.addCanvas('sprite_logo_plaque', plaque)
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.lineTo(x + w - r, y)
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r)
+  ctx.lineTo(x + w, y + h - r)
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h)
+  ctx.lineTo(x + r, y + h)
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r)
+  ctx.lineTo(x, y + r)
+  ctx.quadraticCurveTo(x, y, x + r, y)
+  ctx.closePath()
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // FLOOR TEXTURE GENERATION — Clean RPG-style floors (no noise/dithering)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -527,7 +630,7 @@ export function getObjectTextureKey(tileType: number): string | null {
     case T.SOFA:       return 'tile_sofa'
     case T.WHITEBOARD: return 'tile_whiteboard'
     case T.GLASS_WALL: return 'tile_glass'
-    case T.LOGO_SIGN:  return 'sprite_logo'
+    case T.LOGO_SIGN:  return 'sprite_logo_plaque'
     case T.DOOR:       return 'tile_door'
     case T.CUBICLE:    return 'tile_cubicle'
     case T.OFFICE_DESK:return 'tile_office_desk'

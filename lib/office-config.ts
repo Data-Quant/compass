@@ -151,16 +151,18 @@ export function getBodyType(userId: string): BodyType {
 
 // ─── Sprite Asset Manifest ───────────────────────────────────────────────────
 
-export const SPRITE_ASSETS: Record<string, { path: string; scale: number }> = {
+export const SPRITE_ASSETS: Record<string, { path?: string; scale: number }> = {
   sprite_desk_h:    { path: '/office/desk-with-pc.png', scale: 0.5 },
   sprite_desk_v:    { path: '/office/writing-table.png', scale: 0.5 },
   sprite_chair:     { path: '/office/Chair.png', scale: 2.0 },
   sprite_plant:     { path: '/office/plant.png', scale: 1.0 },
   sprite_coffee:    { path: '/office/coffee-maker.png', scale: 0.5 },
   sprite_bookshelf: { path: '/office/cabinet.png', scale: 0.5 },
-  // Plutus21 brand mark — used as the lobby logo sign. Source at 5001×1459;
-  // rendered at scale 0.04 ≈ 200×58px (~6 tiles wide × ~2 tall).
+  // Raw Plutus21 logo PNG. Loaded from disk; the OfficeSprites.ts module
+  // composites it onto a marble plaque (sprite_logo_plaque) at runtime.
   sprite_logo:      { path: '/office/plutus21-logo.png', scale: 0.04 },
+  // The lobby plaque — composed at runtime, no path. Render scale only.
+  sprite_logo_plaque: { scale: 0.045 },
 }
 
 // ─── Tile Types ──────────────────────────────────────────────────────────────
