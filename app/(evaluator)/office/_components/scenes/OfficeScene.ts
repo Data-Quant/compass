@@ -6,7 +6,27 @@ import {
   STATUS_COLORS, generateDefaultMap, CHAT_BUBBLE_DURATION,
   type OfficeStatus, type ChatChannel,
 } from '@/lib/office-config'
-import { OFFICE_MOVE_RATE_LIMIT_MS, OFFICE_WORLD, getOfficeZoneAt } from '@/shared/office-world'
+import {
+  OFFICE_MOVE_RATE_LIMIT_MS,
+  OFFICE_WORLD,
+  decorThemeTint,
+  getOfficeZoneAt,
+  type DecorChoices,
+} from '@/shared/office-world'
+
+interface DirectoryEntry {
+  userId: string
+  name: string
+  position: string | null
+  department: string | null
+  decor: DecorChoices
+}
+
+interface OfficeDirectoryData {
+  cubicleAssignments: Record<string, DirectoryEntry>
+  leadOfficeAssignments: Record<string, DirectoryEntry>
+  partnerOfficeAssignments: Record<string, DirectoryEntry>
+}
 import {
   resolveAvatarV2Settings,
   type AvatarHairCategory,
@@ -15,6 +35,21 @@ import {
 // Map v2 hair category to the numeric style index that drawHair() in
 // OfficeSprites consumes. drawHair has 5 patterns (0-4). 'covered' is unused
 // (the hijab is rendered via a separate path).
+function officeRoleLabel(position: string | null | undefined): string {
+  const p = (position || '').trim()
+  if (!p) return 'Lead'
+  // Compact common titles so the nameplate stays readable.
+  const map: Array<[RegExp, string]> = [
+    [/junior partner/i, 'Junior Partner'],
+    [/principal/i, 'Principal'],
+    [/manager/i, 'Manager'],
+    [/director/i, 'Director'],
+    [/lead/i, 'Lead'],
+  ]
+  for (const [pattern, label] of map) if (pattern.test(p)) return label
+  return p
+}
+
 function hairCategoryToStyleIndex(category: AvatarHairCategory): number {
   switch (category) {
     case 'short':   return 0
@@ -54,6 +89,7 @@ interface PlayerData {
   avatarOutfitColor?: string | null
   avatarOutfitAccentColor?: string | null
   avatarHairCategory?: string | null
+  avatarHairColor?: string | null
   avatarHeadCoveringType?: string | null
   avatarHeadCoveringColor?: string | null
   avatarAccessories?: string[] | null
@@ -107,6 +143,8 @@ export interface OfficeSceneCallbacks {
   onReconnecting?: (attempt: number, nextDelayMs: number) => void
   onPlayerPositionChange?: (userId: string, x: number, y: number) => void
   onLocalSessionReady?: (localUserId: string) => void
+  /** Fires when the local player walks onto/off of their assigned seat. */
+  onAtMyDeskChange?: (atDesk: { kind: 'cubicle' | 'lead-office' | 'partner-office'; id: string } | null) => void
 }
 
 // ─── Scene ──────────────────────────────────────────────────────────────────
@@ -122,6 +160,8 @@ export class OfficeScene extends Phaser.Scene {
   private callbacks: OfficeSceneCallbacks
   private token: string
   private serverUrl: string
+  private directory: OfficeDirectoryData | null
+  private namePlates: Phaser.GameObjects.Text[] = []
   // Reconnect state
   private reconnectAttempt = 0
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -140,11 +180,12 @@ export class OfficeScene extends Phaser.Scene {
   private baseZoom = 1
   private userZoom = 1
 
-  constructor(token: string, serverUrl: string, callbacks: OfficeSceneCallbacks) {
+  constructor(token: string, serverUrl: string, callbacks: OfficeSceneCallbacks, directory: OfficeDirectoryData | null = null) {
     super({ key: 'OfficeScene' })
     this.token = token
     this.serverUrl = serverUrl
     this.callbacks = callbacks
+    this.directory = directory
   }
 
   preload() {
@@ -163,6 +204,9 @@ export class OfficeScene extends Phaser.Scene {
     this.floorData = floorMap
 
     this.drawMap()
+    this.drawZoneLabels()
+    this.drawNameplates()
+    this.drawDecor()
     this.updateCameraZoom()
     this.setupInput()
     this.addAmbientLighting()
@@ -216,10 +260,13 @@ export class OfficeScene extends Phaser.Scene {
         if (isSpriteAsset(tile)) {
           // PNG sprite — load from preloaded image with scale
           const asset = SPRITE_ASSETS[objKey]
+          // Logo renders as a floor decal (depth 0) so players walk over it
+          // like a corporate rug. Other sprites render above the floor.
+          const isFloorDecal = tile === T.LOGO_SIGN
           const img = this.add.image(px, py, objKey)
             .setOrigin(0, 0)
             .setScale(asset.scale)
-            .setDepth(1)
+            .setDepth(isFloorDecal ? 0.5 : 1)
 
           if (tile === T.PLANT) {
             this.animatedPlants.push({
@@ -342,6 +389,310 @@ export class OfficeScene extends Phaser.Scene {
     }
   }
 
+  // ─── Zone Labels ────────────────────────────────────────────────────
+  //
+  // Big readable signs over every walled room (dept wings, boardrooms, town
+  // hall, leadership wing, lobby). Helps people orient instantly — the user
+  // asked for clear boundaries and "knowing where you can/can't go".
+
+  private drawZoneLabels() {
+    const placeSign = (zone: { x1: number; y1: number; x2: number; y2: number; label: string; color?: string }) => {
+      const cx = ((zone.x1 + zone.x2 + 1) / 2) * TILE_SIZE
+      // Float the sign just inside the top wall of the zone.
+      const cy = (zone.y1 + 1) * TILE_SIZE + 2
+      const label = this.add.text(cx, cy, zone.label, {
+        fontSize: '12px',
+        fontFamily: 'system-ui, sans-serif',
+        fontStyle: 'bold',
+        color: '#f8fafc',
+        backgroundColor: zone.color ?? '#1e3a8acc',
+        padding: { left: 6, right: 6, top: 3, bottom: 3 },
+      })
+        .setOrigin(0.5, 0)
+        .setDepth(900)
+      this.namePlates.push(label)
+    }
+
+    // Color per zone type — gives each room a recognizable accent.
+    const zoneColor: Record<string, string> = {
+      department: '#1e3a8acc',
+      meeting:    '#7c2d12cc',
+      townhall:   '#9a3412cc',
+      leadership: '#581c87cc',
+      lobby:      '#0f766ecc',
+      lounge:     '#92400ecc',
+      break:      '#92400ecc',
+      focus:      '#1f2937cc',
+      support:    '#0c4a6ecc',
+    }
+
+    for (const zone of OFFICE_WORLD.zones) {
+      placeSign({
+        x1: zone.x1,
+        y1: zone.y1,
+        x2: zone.x2,
+        y2: zone.y2,
+        label: zone.label,
+        color: zoneColor[zone.type] ?? '#1e3a8acc',
+      })
+    }
+  }
+
+  // ─── Nameplates ─────────────────────────────────────────────────────
+  //
+  // Draws a small label above each cubicle and lead office desk so people
+  // can see whose seat they're walking past. Reads from the directory
+  // payload that came from /api/office/token.
+
+  private drawNameplates() {
+    if (!this.directory) return
+
+    const placeLabel = (worldX: number, worldY: number, text: string, color = '#ffffff') => {
+      // Anchor the label slightly above the tile so it sits above any prop.
+      const px = worldX * TILE_SIZE + TILE_SIZE / 2
+      const py = worldY * TILE_SIZE - 6
+      const label = this.add.text(px, py, text, {
+        fontSize: '9px',
+        fontFamily: 'system-ui, sans-serif',
+        color,
+        backgroundColor: '#0b0f19cc',
+        padding: { left: 4, right: 4, top: 2, bottom: 2 },
+        align: 'center',
+      })
+        .setOrigin(0.5, 1)
+        .setDepth(1000)
+      this.namePlates.push(label)
+    }
+
+    // Cubicle nameplates — every desk in the world gets either an assignee
+    // or an "Available" placeholder so empty desks are obvious to HR.
+    for (const cubicle of OFFICE_WORLD.cubicles) {
+      const entry = this.directory.cubicleAssignments[cubicle.id]
+      if (entry) {
+        placeLabel(cubicle.x, cubicle.y, entry.name)
+      } else {
+        placeLabel(cubicle.x, cubicle.y, 'Available', '#94a3b8')
+      }
+    }
+
+    // Lead office nameplates sit above the desk inside each sub-room.
+    for (const office of OFFICE_WORLD.leadershipOffices) {
+      let entry: DirectoryEntry | undefined
+      if (office.id.startsWith('lead-')) {
+        entry = this.directory.leadOfficeAssignments[office.id]
+      } else if (office.id.startsWith('partner-')) {
+        entry = this.directory.partnerOfficeAssignments[office.id]
+      }
+      const label = entry ? `${entry.name} · ${officeRoleLabel(entry.position)}` : office.label
+      const color = entry ? '#fde68a' : '#94a3b8'
+      placeLabel(office.deskX, office.deskY, label, color)
+    }
+  }
+
+  private destroyNameplates() {
+    for (const label of this.namePlates) label.destroy()
+    this.namePlates = []
+  }
+
+  // ─── Decor Rendering ────────────────────────────────────────────────
+  //
+  // Reads each cubicle/office's saved decor from the directory and paints
+  // visible markers on top of the world: a theme-colored stripe on the desk,
+  // emoji icons for desk items, and a square on the wall for a wall poster.
+
+  private decorObjects: Phaser.GameObjects.GameObject[] = []
+
+  private drawDecor() {
+    if (!this.directory) return
+    for (const obj of this.decorObjects) obj.destroy()
+    this.decorObjects = []
+
+    const deskItemEmoji: Record<string, string> = {
+      plant: '🪴',
+      notebook: '📓',
+      coffee: '☕',
+      award: '🏆',
+    }
+
+    // Cubicles
+    for (const cubicle of OFFICE_WORLD.cubicles) {
+      const entry = this.directory.cubicleAssignments[cubicle.id]
+      if (!entry) continue
+      this.paintDecorAt(cubicle.x, cubicle.y, entry.decor, deskItemEmoji)
+    }
+
+    // Lead + partner offices
+    for (const office of OFFICE_WORLD.leadershipOffices) {
+      const isLead = office.id.startsWith('lead-')
+      const entry = isLead
+        ? this.directory.leadOfficeAssignments[office.id]
+        : this.directory.partnerOfficeAssignments[office.id]
+      if (!entry) continue
+      this.paintDecorAt(office.deskX, office.deskY, entry.decor, deskItemEmoji)
+    }
+  }
+
+  private paintDecorAt(deskX: number, deskY: number, decor: DecorChoices, emojiMap: Record<string, string>) {
+    const tint = decorThemeTint(decor.theme)
+    const px = deskX * TILE_SIZE
+    const py = deskY * TILE_SIZE
+
+    // Themed stripe runs along the bottom of the desk.
+    const stripe = this.add.rectangle(
+      px + TILE_SIZE / 2,
+      py + TILE_SIZE - 3,
+      TILE_SIZE - 6,
+      2,
+      Phaser.Display.Color.HexStringToColor(tint.primary).color,
+      0.95,
+    ).setDepth(2)
+    this.decorObjects.push(stripe)
+
+    // Desk items as small emoji icons sitting on the desk surface.
+    decor.deskItems.slice(0, 3).forEach((item, i) => {
+      const emoji = emojiMap[item]
+      if (!emoji) return
+      const text = this.add.text(px + 4 + i * 8, py + 2, emoji, {
+        fontSize: '10px',
+        fontFamily: 'system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif',
+      }).setDepth(2)
+      this.decorObjects.push(text)
+    })
+
+    // Wall poster — small framed square one tile above the desk if a poster is set.
+    if (decor.wallItem) {
+      const wallY = (deskY - 1) * TILE_SIZE
+      const frame = this.add.rectangle(
+        px + TILE_SIZE / 2,
+        wallY + 6,
+        14,
+        9,
+        Phaser.Display.Color.HexStringToColor(tint.accent).color,
+        0.9,
+      ).setStrokeStyle(1, 0xffffff, 0.5).setDepth(2)
+      this.decorObjects.push(frame)
+    }
+  }
+
+  // ─── My Seat Highlight ──────────────────────────────────────────────
+  //
+  // Draws a soft pulsing ring on the local player's assigned cubicle (or
+  // lead/partner office desk) so they can find their seat in a 96×64 world
+  // without hunting. Called once we know who the local player is.
+
+  private highlightedSeats: Phaser.GameObjects.GameObject[] = []
+  private localUserId = ''
+  private myCubicleId: string | null = null
+  private myLeadOfficeId: string | null = null
+  private myPartnerOfficeId: string | null = null
+  private currentAtDesk: { kind: 'cubicle' | 'lead-office' | 'partner-office'; id: string } | null = null
+
+  /**
+   * Called every time the local player moves. Checks whether they're on or
+   * adjacent to their assigned seat — fires the at-desk callback once, on
+   * the leading edge of the change. Adjacent counts so people don't have to
+   * stand exactly on the chair tile.
+   */
+  private checkAtMyDesk(x: number, y: number) {
+    const isNearTile = (tx: number, ty: number) => Math.abs(x - tx) <= 1 && Math.abs(y - ty) <= 1
+
+    let next: typeof this.currentAtDesk = null
+
+    if (this.myCubicleId) {
+      const cubicle = OFFICE_WORLD.cubicles.find((c) => c.id === this.myCubicleId)
+      if (cubicle && (isNearTile(cubicle.x, cubicle.y) || isNearTile(cubicle.seatX, cubicle.seatY))) {
+        next = { kind: 'cubicle', id: this.myCubicleId }
+      }
+    }
+    if (!next && this.myLeadOfficeId) {
+      const office = OFFICE_WORLD.leadershipOffices.find((o) => o.id === this.myLeadOfficeId)
+      if (office && isNearTile(office.deskX, office.deskY)) {
+        next = { kind: 'lead-office', id: this.myLeadOfficeId }
+      }
+    }
+    if (!next && this.myPartnerOfficeId) {
+      const office = OFFICE_WORLD.leadershipOffices.find((o) => o.id === this.myPartnerOfficeId)
+      if (office && isNearTile(office.deskX, office.deskY)) {
+        next = { kind: 'partner-office', id: this.myPartnerOfficeId }
+      }
+    }
+
+    const same =
+      (this.currentAtDesk?.id ?? null) === (next?.id ?? null) &&
+      (this.currentAtDesk?.kind ?? null) === (next?.kind ?? null)
+    if (same) return
+
+    this.currentAtDesk = next
+    this.callbacks.onAtMyDeskChange?.(next)
+  }
+
+  private highlightLocalSeat(localUserId: string) {
+    this.localUserId = localUserId
+    if (!this.directory) return
+
+    // Clear any previous highlight (in case onLocalSessionReady fires again).
+    for (const obj of this.highlightedSeats) obj.destroy()
+    this.highlightedSeats = []
+
+    // Cache "my" seat ids so the move handler can do cheap proximity checks.
+    this.myCubicleId = Object.entries(this.directory.cubicleAssignments)
+      .find(([, e]) => e.userId === localUserId)?.[0] ?? null
+    this.myLeadOfficeId = Object.entries(this.directory.leadOfficeAssignments)
+      .find(([, e]) => e.userId === localUserId)?.[0] ?? null
+    this.myPartnerOfficeId = Object.entries(this.directory.partnerOfficeAssignments)
+      .find(([, e]) => e.userId === localUserId)?.[0] ?? null
+
+    const findSeat = (): { x: number; y: number; label: string } | null => {
+      if (this.myCubicleId) {
+        const cubicle = OFFICE_WORLD.cubicles.find((c) => c.id === this.myCubicleId)
+        if (cubicle) return { x: cubicle.x, y: cubicle.y, label: 'Your seat' }
+      }
+      if (this.myLeadOfficeId) {
+        const office = OFFICE_WORLD.leadershipOffices.find((o) => o.id === this.myLeadOfficeId)
+        if (office) return { x: office.deskX, y: office.deskY, label: 'Your office' }
+      }
+      if (this.myPartnerOfficeId) {
+        const office = OFFICE_WORLD.leadershipOffices.find((o) => o.id === this.myPartnerOfficeId)
+        if (office) return { x: office.deskX, y: office.deskY, label: 'Your office' }
+      }
+      return null
+    }
+
+    const seat = findSeat()
+    if (!seat) return
+
+    const px = seat.x * TILE_SIZE + TILE_SIZE / 2
+    const py = seat.y * TILE_SIZE + TILE_SIZE / 2
+
+    const ring = this.add.circle(px, py, 16, 0xfde047, 0)
+      .setStrokeStyle(2, 0xfde047, 0.9)
+      .setDepth(950)
+    this.highlightedSeats.push(ring)
+
+    this.tweens.add({
+      targets: ring,
+      scale: { from: 1, to: 1.4 },
+      alpha: { from: 0.95, to: 0.45 },
+      duration: 1200,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    })
+
+    // Bright label so it stands out among the other nameplates.
+    const label = this.add.text(px, py - 24, seat.label, {
+      fontSize: '10px',
+      fontFamily: 'system-ui, sans-serif',
+      fontStyle: 'bold',
+      color: '#0b0f19',
+      backgroundColor: '#fde047',
+      padding: { left: 6, right: 6, top: 2, bottom: 2 },
+    })
+      .setOrigin(0.5, 1)
+      .setDepth(951)
+    this.highlightedSeats.push(label)
+  }
+
   // ─── Input Setup ────────────────────────────────────────────────────
 
   private setupInput() {
@@ -425,6 +776,7 @@ export class OfficeScene extends Phaser.Scene {
         const localPlayer = data.players.find((p) => p.sessionId === data.yourSessionId)
         if (localPlayer) {
           this.callbacks.onLocalSessionReady?.(localPlayer.userId)
+          this.highlightLocalSeat(localPlayer.userId)
         }
         for (const msg of data.chatHistory) this.callbacks.onChatMessage(msg)
         this.notifyPlayersChange()
@@ -465,6 +817,11 @@ export class OfficeScene extends Phaser.Scene {
         }
 
         this.callbacks.onPlayerPositionChange?.(player.userId, data.x, data.y)
+
+        // Local-player proximity to their assigned desk drives the desk popup.
+        if (data.sessionId === this.localSessionId) {
+          this.checkAtMyDesk(data.x, data.y)
+        }
       })
 
       this.room.onMessage('playerStopped', (data: { sessionId: string }) => {
@@ -505,6 +862,10 @@ export class OfficeScene extends Phaser.Scene {
       this.room.onMessage('chatMessage', (msg: ChatMessageData) => {
         this.callbacks.onChatMessage(msg)
         this.showChatBubble(msg.senderId, msg.content)
+      })
+
+      this.room.onMessage('reaction', (data: { sessionId: string; userId: string; reaction: string; x: number; y: number }) => {
+        this.showReactionEmote(data.sessionId, data.reaction)
       })
 
       this.room.onMessage('kicked', (data: { reason: string }) => {
@@ -552,12 +913,13 @@ export class OfficeScene extends Phaser.Scene {
       avatarOutfitColor: player.avatarOutfitColor,
       avatarOutfitAccentColor: player.avatarOutfitAccentColor,
       avatarHairCategory: player.avatarHairCategory as any,
+      avatarHairColor: player.avatarHairColor,
       avatarHeadCoveringType: player.avatarHeadCoveringType as any,
       avatarHeadCoveringColor: player.avatarHeadCoveringColor,
       avatarAccessories: player.avatarAccessories as any,
     })
     const skinColor = player.avatarSkinTone || getSkinTone(seed)
-    const hairColor = getHairColor(seed)
+    const hairColor = avatar.avatarHairColor || getHairColor(seed)
     const hairStyle = hairCategoryToStyleIndex(avatar.avatarHairCategory)
     const bodyType: 'male' | 'female' = avatar.avatarBodyFrame === 'feminine' ? 'female' : 'male'
     const texKey = `char_${player.userId}`
@@ -694,6 +1056,31 @@ export class OfficeScene extends Phaser.Scene {
         ps.chatBubble.destroy()
         ps.chatBubble = undefined
       }
+    })
+  }
+
+  // ─── Reaction Emotes ────────────────────────────────────────────────
+
+  private showReactionEmote(sessionId: string, emoji: string) {
+    const ps = this.playerSprites.get(sessionId)
+    if (!ps || !emoji) return
+
+    // Floats above the head, drifts up and fades out over ~1.6s.
+    const text = this.add.text(0, -50, emoji, {
+      fontSize: '24px',
+      fontFamily: 'system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif',
+    }).setOrigin(0.5, 0.5)
+
+    ps.container.add(text)
+
+    this.tweens.add({
+      targets: text,
+      y: -90,
+      alpha: { from: 1, to: 0 },
+      scale: { from: 0.8, to: 1.2 },
+      duration: 1600,
+      ease: 'Sine.easeOut',
+      onComplete: () => text.destroy(),
     })
   }
 

@@ -429,6 +429,72 @@ export function generateObjectTextures(scene: Phaser.Scene) {
     ctx.fillStyle = '#f3c969'
     ctx.fillRect(10, 17, 12, 5)
   })
+
+  // ─── STAGE — raised wood planking with subtle stage-lighting glow ──
+  canvasTex(scene, 'tile_stage', S, S, (ctx) => {
+    // Warm wood floor with darker grain
+    ctx.fillStyle = '#5b3a22'
+    ctx.fillRect(0, 0, S, S)
+    for (let py = 0; py < S; py += 8) {
+      ctx.fillStyle = '#704728'
+      ctx.fillRect(0, py, S, 7)
+      ctx.fillStyle = '#3e2516'
+      ctx.fillRect(0, py + 7, S, 1)
+    }
+    // Soft golden spotlight wash
+    ctx.globalAlpha = 0.18
+    ctx.fillStyle = '#fde68a'
+    ctx.fillRect(4, 4, S - 8, S - 8)
+    ctx.globalAlpha = 1
+    // Front-edge highlight so the stage edge reads
+    ctx.fillStyle = '#fbbf24'
+    ctx.fillRect(0, S - 1, S, 1)
+  })
+
+  // ─── PODIUM — mic stand on stage (transparent so stage floor shows through) ──
+  canvasTex(scene, 'tile_podium', S, S, (ctx) => {
+    ctx.clearRect(0, 0, S, S)
+    // Podium base
+    ctx.fillStyle = '#1f2937'
+    ctx.fillRect(11, 14, 10, 14)
+    ctx.fillStyle = '#374151'
+    ctx.fillRect(11, 14, 10, 3)
+    // Mic stand
+    ctx.fillStyle = '#9ca3af'
+    ctx.fillRect(15, 4, 2, 12)
+    // Mic head
+    ctx.fillStyle = '#1f2937'
+    ctx.fillRect(13, 2, 6, 4)
+    ctx.fillStyle = '#4b5563'
+    ctx.fillRect(13, 2, 6, 1)
+    // Subtle drop shadow under base
+    ctx.globalAlpha = 0.4
+    ctx.fillStyle = '#000000'
+    ctx.fillRect(10, 28, 12, 2)
+    ctx.globalAlpha = 1
+  })
+
+  // ─── BOARDROOM TABLE — table segment, transparent edges ──
+  canvasTex(scene, 'tile_boardroom_table', S, S, (ctx) => {
+    ctx.clearRect(0, 0, S, S)
+    // Polished dark wood
+    ctx.fillStyle = '#3d2817'
+    ctx.fillRect(0, 4, S, S - 8)
+    // Top sheen
+    ctx.fillStyle = '#5b3a22'
+    ctx.fillRect(0, 4, S, 3)
+    // Edge highlight
+    ctx.fillStyle = '#7c5535'
+    ctx.fillRect(0, 4, S, 1)
+    // Bottom shadow
+    ctx.fillStyle = '#1a0f08'
+    ctx.fillRect(0, S - 5, S, 1)
+    // Subtle reflection on the surface
+    ctx.globalAlpha = 0.12
+    ctx.fillStyle = '#fbbf24'
+    ctx.fillRect(2, 8, S - 4, 2)
+    ctx.globalAlpha = 1
+  })
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -443,6 +509,7 @@ export function getFloorTextureKey(floorType: number): string {
     case T.CARPET:   return 'tile_carpet'
     case T.RUG:      return 'tile_rug'
     case T.WALL:     return 'tile_wall'
+    case T.STAGE:    return 'tile_stage'
     default:         return 'tile_floor'
   }
 }
@@ -460,11 +527,13 @@ export function getObjectTextureKey(tileType: number): string | null {
     case T.SOFA:       return 'tile_sofa'
     case T.WHITEBOARD: return 'tile_whiteboard'
     case T.GLASS_WALL: return 'tile_glass'
-    case T.LOGO_SIGN:  return 'tile_logo_sign'
+    case T.LOGO_SIGN:  return 'sprite_logo'
     case T.DOOR:       return 'tile_door'
     case T.CUBICLE:    return 'tile_cubicle'
     case T.OFFICE_DESK:return 'tile_office_desk'
     case T.NOTICE:     return 'tile_notice'
+    case T.PODIUM:     return 'tile_podium'
+    case T.BOARDROOM_TABLE: return 'tile_boardroom_table'
     default:           return null
   }
 }
@@ -478,6 +547,7 @@ export function isSpriteAsset(tileType: number): boolean {
     case T.PLANT:
     case T.BOOKSHELF:
     case T.COFFEE:
+    case T.LOGO_SIGN:
       return true
     default:
       return false

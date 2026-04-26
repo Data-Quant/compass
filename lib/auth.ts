@@ -24,6 +24,7 @@ export type SafeUser = {
   avatarOutfitColor: string | null
   avatarOutfitAccentColor: string | null
   avatarHairCategory: string | null
+  avatarHairColor: string | null
   avatarHeadCoveringType: string | null
   avatarHeadCoveringColor: string | null
   avatarAccessories: unknown
@@ -60,6 +61,7 @@ export async function getSession(): Promise<SafeUser | null> {
       avatarOutfitColor: true,
       avatarOutfitAccentColor: true,
       avatarHairCategory: true,
+      avatarHairColor: true,
       avatarHeadCoveringType: true,
       avatarHeadCoveringColor: true,
       avatarAccessories: true,

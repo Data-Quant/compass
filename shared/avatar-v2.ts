@@ -61,6 +61,22 @@ export const AVATAR_HIJAB_COLORS = [
   '#f8fafc',
 ] as const
 
+// Realistic hair colors (top row) plus a few stylized options.
+export const AVATAR_HAIR_COLORS = [
+  '#1f1208', // jet black
+  '#2c1810', // dark brown
+  '#5a3a1f', // medium brown
+  '#8b5a2b', // light brown / chestnut
+  '#c9a45b', // dark blonde
+  '#e8c97a', // blonde
+  '#a13d20', // auburn
+  '#7a1f1f', // burgundy
+  '#9aa0a6', // grey
+  '#e5e7eb', // platinum / white
+  '#6d28d9', // purple (dyed)
+  '#0ea5e9', // blue (dyed)
+] as const
+
 export type AvatarV2Settings = {
   avatarSchemaVersion: number | null
   avatarBodyFrame: AvatarBodyFrame | null
@@ -68,6 +84,7 @@ export type AvatarV2Settings = {
   avatarOutfitColor: string | null
   avatarOutfitAccentColor: string | null
   avatarHairCategory: AvatarHairCategory | null
+  avatarHairColor: string | null
   avatarHeadCoveringType: AvatarHeadCoveringType | null
   avatarHeadCoveringColor: string | null
   avatarAccessories: AvatarAccessory[] | null
@@ -136,6 +153,10 @@ export function resolveAvatarV2Settings(
           : bodyFrame === 'feminine'
             ? pick(['medium', 'long', 'tied', 'curly'] as const, seed, 29)
             : pick(['short', 'medium', 'curly'] as const, seed, 31),
+    avatarHairColor:
+      hasSavedV2 && avatar.avatarHairColor
+        ? avatar.avatarHairColor
+        : pick(AVATAR_HAIR_COLORS, seed, 41),
     avatarHeadCoveringType: headCoveringType,
     avatarHeadCoveringColor:
       hasSavedV2 && avatar.avatarHeadCoveringColor
@@ -173,4 +194,39 @@ export function isSeniorManagementPosition(position: string | null | undefined) 
     'cfo',
     'coo',
   ].some((marker) => normalized.includes(marker))
+}
+
+/**
+ * Returns a numeric rank for a position. Lower = more senior. Used for
+ * picking who gets the dept-lead office when several people in a department
+ * are lead-eligible (principal, manager, junior partner). Unknown positions
+ * fall to the bottom.
+ */
+export function getPositionRank(position: string | null | undefined): number {
+  const p = (position || '').trim().toLowerCase()
+  if (!p) return 999
+  if (p.includes('managing partner')) return 1
+  if (p.includes('operating partner')) return 2
+  if (p.includes('principal and junior partner')) return 3
+  if (p.includes('principal')) return 4
+  if (p.startsWith('partner') || p === 'partner') return 5
+  if (p.includes('chief ') || p === 'ceo' || p === 'cto' || p === 'cfo' || p === 'coo') return 5
+  if (p.includes('junior partner')) return 6
+  if (p.includes('director')) return 8
+  if (p.includes('manager')) return 10
+  if (p.includes('lead')) return 12
+  if (p.includes('senior')) return 20
+  if (p.includes('associate')) return 30
+  if (p.includes('analyst')) return 40
+  return 100
+}
+
+/**
+ * Lead-eligible roles: principal, manager, junior partner, and anyone else
+ * with rank ≤ 12 (inclusive of director/lead). These people qualify for the
+ * department-lead office. Senior management (partner+) get a dedicated
+ * partner office instead — see isSeniorManagementPosition.
+ */
+export function isDeptLeadEligible(position: string | null | undefined) {
+  return getPositionRank(position) <= 12
 }

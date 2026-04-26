@@ -25,6 +25,7 @@ export async function POST() {
       avatarOutfitColor: bootstrap.avatar.avatarOutfitColor,
       avatarOutfitAccentColor: bootstrap.avatar.avatarOutfitAccentColor,
       avatarHairCategory: bootstrap.avatar.avatarHairCategory,
+      avatarHairColor: bootstrap.avatar.avatarHairColor,
       avatarHeadCoveringType: bootstrap.avatar.avatarHeadCoveringType,
       avatarHeadCoveringColor: bootstrap.avatar.avatarHeadCoveringColor,
       avatarAccessories: bootstrap.avatar.avatarAccessories,
@@ -44,6 +45,7 @@ export async function POST() {
       avatarNeedsSetup: bootstrap.avatarNeedsSetup,
       user: { id: user.id, name: user.name },
       catalog: bootstrap.catalog,
+      directory: bootstrap.directory,
     })
   } catch (error) {
     console.error('Failed to generate office token:', error)

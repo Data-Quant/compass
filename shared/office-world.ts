@@ -1,7 +1,8 @@
 export const OFFICE_TILE_SIZE = 32
-export const OFFICE_MAP_WIDTH = 56
-export const OFFICE_MAP_HEIGHT = 36
-export const OFFICE_SPAWN = { x: 28, y: 32 }
+export const OFFICE_MAP_WIDTH = 96
+export const OFFICE_MAP_HEIGHT = 64
+// Spawn drops players inside the lobby, just inside the south door.
+export const OFFICE_SPAWN = { x: 50, y: 60 }
 
 // Minimum gap (ms) between consecutive move messages from a single player.
 // Enforced on the server and gated on the client from the same constant so
@@ -30,16 +31,18 @@ export const OFFICE_TILE = {
   CUBICLE: 18,
   OFFICE_DESK: 19,
   NOTICE: 20,
+  STAGE: 21,
+  PODIUM: 22,
+  BOARDROOM_TABLE: 23,
 } as const
 
 export type OfficeTileType = (typeof OFFICE_TILE)[keyof typeof OFFICE_TILE]
 export type OfficeRoomType =
   | 'lobby'
   | 'department'
-  | 'cubicles'
   | 'leadership'
   | 'meeting'
-  | 'huddle'
+  | 'townhall'
   | 'focus'
   | 'lounge'
   | 'break'
@@ -53,12 +56,16 @@ export type OfficeZoneDefinition = {
   y1: number
   x2: number
   y2: number
-  audioMode: 'open' | 'room' | 'private'
+  audioMode: 'open' | 'room' | 'private' | 'broadcast'
+  /** Department string this zone belongs to (matches User.department). */
+  department?: string
 }
 
 export type OfficeCubicleDefinition = {
   id: string
   label: string
+  /** Department string the cubicle is reserved for (matches User.department). */
+  department: string
   x: number
   y: number
   seatX: number
@@ -68,6 +75,8 @@ export type OfficeCubicleDefinition = {
 export type OfficeLeadershipOfficeDefinition = {
   id: string
   label: string
+  /** If set, this lead office is reserved for the lead of this department. */
+  department?: string
   x1: number
   y1: number
   x2: number
@@ -87,6 +96,7 @@ export type OfficeInteractableDefinition = {
     | 'department-sign'
     | 'help-desk'
     | 'deep-link'
+    | 'stage'
   x: number
   y: number
   href?: string
@@ -112,12 +122,185 @@ export type OfficeWorldDefinition = {
   cubicles: OfficeCubicleDefinition[]
   leadershipOffices: OfficeLeadershipOfficeDefinition[]
   interactables: OfficeInteractableDefinition[]
+  /** Stage tiles inside the town hall — standing here broadcasts to everyone in the zone. */
+  stageTiles: { x: number; y: number; zoneId: string }[]
 }
 
 export type OfficeMapData = {
   tileMap: number[][]
   floorMap: number[][]
 }
+
+// ─── Decor catalog ──────────────────────────────────────────────────────────
+// Players customize their cubicle/lead office via DecorChoices. Schema-side
+// we store this in OfficeCubicleAssignment.decorJson (and the lead office
+// equivalent). Render-side, OfficeScene reads it through the directory.
+
+export const DECOR_THEMES = ['plutus-blue', 'deep-focus', 'warm-wood', 'clean-slate'] as const
+export type DecorTheme = (typeof DECOR_THEMES)[number]
+
+export const DECOR_DESK_ITEMS = ['plant', 'notebook', 'coffee', 'award'] as const
+export type DecorDeskItem = (typeof DECOR_DESK_ITEMS)[number]
+
+export const DECOR_WALL_ITEMS = ['plutus-poster', 'team-photo', 'whiteboard', 'market-chart'] as const
+export type DecorWallItem = (typeof DECOR_WALL_ITEMS)[number]
+
+export type DecorChoices = {
+  theme: DecorTheme
+  deskItems: DecorDeskItem[]
+  wallItem: DecorWallItem | null
+}
+
+export const DEFAULT_DECOR: DecorChoices = {
+  theme: 'plutus-blue',
+  deskItems: [],
+  wallItem: null,
+}
+
+/** Returns hex tint values for a theme — used to color the cubicle prop. */
+export function decorThemeTint(theme: DecorTheme): { primary: string; accent: string } {
+  switch (theme) {
+    case 'plutus-blue': return { primary: '#2378f5', accent: '#1e3a8a' }
+    case 'deep-focus':  return { primary: '#1f2937', accent: '#0f172a' }
+    case 'warm-wood':   return { primary: '#8b5a2b', accent: '#5b3a22' }
+    case 'clean-slate': return { primary: '#94a3b8', accent: '#475569' }
+  }
+}
+
+// ─── Department wing layout ──────────────────────────────────────────────────
+// Eight department wings sit in a 4×2 grid in the central band. Each wing is
+// 20 wide × 18 tall, with the lead office tucked into the upper-right corner
+// and 6 nameplated cubicles arranged in the open floor area. The exact
+// User.department string for each wing is the canonical name HR provided.
+
+type DeptWingPlan = {
+  id: string
+  label: string
+  /** Must match User.department exactly. */
+  department: string
+  x1: number
+  y1: number
+}
+
+// Each wing occupies a 20×18 block. Origin (x1, y1) is the top-left corner.
+const DEPT_WINGS: DeptWingPlan[] = [
+  // Top row
+  { id: 'quant',         label: 'Quantitative Engineering', department: 'Quantitative Engineering', x1: 2,  y1: 17 },
+  { id: 'valuecreation', label: 'Value Creation',           department: 'Value Creation',           x1: 25, y1: 17 },
+  { id: 'growth',        label: 'Growth and Strategy',      department: 'Growth and Strategy',      x1: 52, y1: 17 },
+  { id: 'ops',           label: 'Ops and Accounting',       department: 'Ops and Accounting',       x1: 75, y1: 17 },
+  // Bottom row
+  { id: 'hr',            label: 'HR',                       department: 'HR',                       x1: 2,  y1: 37 },
+  { id: 'design',        label: 'Design',                   department: 'Design',                   x1: 25, y1: 37 },
+  { id: 'oneonone',      label: '1to1 Plans',               department: '1to1 plans',               x1: 52, y1: 37 },
+  { id: 'product',       label: 'Product',                  department: 'Product',                  x1: 75, y1: 37 },
+]
+
+const DEPT_WING_W = 20
+const DEPT_WING_H = 18
+
+// Lead office sits in the top-right of every wing, 7 wide × 7 tall.
+const LEAD_OFFICE_W = 7
+const LEAD_OFFICE_H = 7
+
+// Each wing has 6 cubicles, laid out as 2 rows × 3 cols in the lower-left.
+// Cubicle is the "desk" tile; seat is the chair right below it.
+const CUBICLE_LAYOUT: Array<{ dx: number; dy: number }> = [
+  { dx: 3,  dy: 6 },  { dx: 7,  dy: 6 },  { dx: 11, dy: 6 },
+  { dx: 3,  dy: 11 }, { dx: 7,  dy: 11 }, { dx: 11, dy: 11 },
+]
+
+function buildDeptZones(): OfficeZoneDefinition[] {
+  return DEPT_WINGS.map((wing) => ({
+    id: wing.id,
+    label: wing.label,
+    type: 'department' as const,
+    x1: wing.x1,
+    y1: wing.y1,
+    x2: wing.x1 + DEPT_WING_W - 1,
+    y2: wing.y1 + DEPT_WING_H - 1,
+    audioMode: 'room' as const,
+    department: wing.department,
+  }))
+}
+
+function buildDeptCubicles(): OfficeCubicleDefinition[] {
+  const cubicles: OfficeCubicleDefinition[] = []
+  for (const wing of DEPT_WINGS) {
+    CUBICLE_LAYOUT.forEach((cell, index) => {
+      const x = wing.x1 + cell.dx
+      const y = wing.y1 + cell.dy
+      cubicles.push({
+        id: `${wing.id}-cubicle-${index + 1}`,
+        label: `${wing.label} · Desk ${index + 1}`,
+        department: wing.department,
+        x,
+        y,
+        seatX: x,
+        seatY: y + 1,
+      })
+    })
+  }
+  return cubicles
+}
+
+function buildDeptLeadOffices(): OfficeLeadershipOfficeDefinition[] {
+  return DEPT_WINGS.map((wing) => {
+    const x1 = wing.x1 + DEPT_WING_W - LEAD_OFFICE_W - 1
+    const y1 = wing.y1 + 1
+    return {
+      id: `lead-${wing.id}`,
+      label: `${wing.label} · Lead Office`,
+      department: wing.department,
+      x1,
+      y1,
+      x2: x1 + LEAD_OFFICE_W - 1,
+      y2: y1 + LEAD_OFFICE_H - 1,
+      deskX: x1 + 3,
+      deskY: y1 + 2,
+    }
+  })
+}
+
+function buildDeptSigns(): OfficeInteractableDefinition[] {
+  // Signs sit just outside the wing's south wall so they read as a doorplate.
+  return DEPT_WINGS.map((wing) => ({
+    id: `${wing.id}-sign`,
+    label: wing.label,
+    kind: 'department-sign' as const,
+    x: wing.x1 + Math.floor(DEPT_WING_W / 2),
+    y: wing.y1 + DEPT_WING_H, // one tile south of the wing's south wall
+    zoneId: wing.id,
+  }))
+}
+
+// Partner-and-up wing on the far north left.
+const LEADERSHIP_WING = { x1: 2, y1: 2, x2: 15, y2: 14 }
+
+const PARTNER_OFFICES: OfficeLeadershipOfficeDefinition[] = [
+  { id: 'partner-office-1', label: 'Partner Office 1', x1: 3,  y1: 3, x2: 6,  y2: 7,  deskX: 4,  deskY: 4 },
+  { id: 'partner-office-2', label: 'Partner Office 2', x1: 8,  y1: 3, x2: 11, y2: 7,  deskX: 9,  deskY: 4 },
+  { id: 'partner-office-3', label: 'Partner Office 3', x1: 3,  y1: 9, x2: 6,  y2: 13, deskX: 4,  deskY: 10 },
+  { id: 'partner-office-4', label: 'Partner Office 4', x1: 8,  y1: 9, x2: 11, y2: 13, deskX: 9,  deskY: 10 },
+]
+
+// ─── Town Hall stage ────────────────────────────────────────────────────────
+// Stage runs across the front of the town hall. Standing on any of these tiles
+// opts a speaker into broadcast mode (heard by everyone in the zone).
+const TOWN_HALL_STAGE_TILES = [
+  { x: 53, y: 3, zoneId: 'town-hall' },
+  { x: 54, y: 3, zoneId: 'town-hall' },
+  { x: 55, y: 3, zoneId: 'town-hall' },
+  { x: 56, y: 3, zoneId: 'town-hall' },
+  { x: 57, y: 3, zoneId: 'town-hall' },
+  { x: 58, y: 3, zoneId: 'town-hall' },
+  { x: 53, y: 4, zoneId: 'town-hall' },
+  { x: 54, y: 4, zoneId: 'town-hall' },
+  { x: 55, y: 4, zoneId: 'town-hall' },
+  { x: 56, y: 4, zoneId: 'town-hall' },
+  { x: 57, y: 4, zoneId: 'town-hall' },
+  { x: 58, y: 4, zoneId: 'town-hall' },
+]
 
 export const OFFICE_WORLD: OfficeWorldDefinition = {
   id: 'plutus21-hq',
@@ -133,55 +316,34 @@ export const OFFICE_WORLD: OfficeWorldDefinition = {
     primaryColor: '#2377f5',
   },
   zones: [
-    { id: 'lobby', label: 'Plutus21 Lobby', type: 'lobby', x1: 18, y1: 27, x2: 38, y2: 34, audioMode: 'open' },
-    { id: 'quant', label: 'Quantitative Engineering', type: 'department', x1: 3, y1: 10, x2: 15, y2: 21, audioMode: 'open' },
-    { id: 'vc', label: 'Value Creation', type: 'department', x1: 20, y1: 10, x2: 35, y2: 21, audioMode: 'open' },
-    { id: 'growth', label: 'Growth and Strategy', type: 'department', x1: 40, y1: 10, x2: 52, y2: 21, audioMode: 'open' },
-    { id: 'cubicles', label: 'Team Cubicles', type: 'cubicles', x1: 4, y1: 23, x2: 18, y2: 33, audioMode: 'open' },
-    { id: 'leadership', label: 'Leadership Wing', type: 'leadership', x1: 2, y1: 2, x2: 23, y2: 8, audioMode: 'private' },
-    { id: 'meeting-east', label: 'East Boardroom', type: 'meeting', x1: 33, y1: 2, x2: 52, y2: 8, audioMode: 'room' },
-    { id: 'huddle-a', label: 'Huddle A', type: 'huddle', x1: 25, y1: 2, x2: 31, y2: 7, audioMode: 'room' },
-    { id: 'focus-pods', label: 'Focus Pods', type: 'focus', x1: 40, y1: 23, x2: 52, y2: 27, audioMode: 'private' },
-    { id: 'lounge', label: 'Lounge', type: 'lounge', x1: 21, y1: 23, x2: 36, y2: 29, audioMode: 'open' },
-    { id: 'break-room', label: 'Break Room', type: 'break', x1: 40, y1: 29, x2: 52, y2: 33, audioMode: 'open' },
-    { id: 'help-desk', label: 'People Ops Help Desk', type: 'support', x1: 20, y1: 30, x2: 26, y2: 34, audioMode: 'open' },
+    // North band
+    { id: 'leadership',     label: 'Leadership Wing',  type: 'leadership', x1: LEADERSHIP_WING.x1, y1: LEADERSHIP_WING.y1, x2: LEADERSHIP_WING.x2, y2: LEADERSHIP_WING.y2, audioMode: 'private' },
+    { id: 'boardroom-north',label: 'North Boardroom',  type: 'meeting',    x1: 18, y1: 2,  x2: 36, y2: 14, audioMode: 'room' },
+    { id: 'town-hall',      label: 'Town Hall',        type: 'townhall',   x1: 39, y1: 2,  x2: 73, y2: 14, audioMode: 'room' },
+    { id: 'boardroom-east', label: 'East Boardroom',   type: 'meeting',    x1: 76, y1: 2,  x2: 93, y2: 14, audioMode: 'room' },
+    // Department wings — middle band
+    ...buildDeptZones(),
+    // South band
+    { id: 'lobby',      label: 'Plutus21 Lobby', type: 'lobby',   x1: 46, y1: 57, x2: 58, y2: 62, audioMode: 'open' },
+    { id: 'lounge',     label: 'Lounge',         type: 'lounge',  x1: 2,  y1: 57, x2: 23, y2: 62, audioMode: 'open' },
+    { id: 'focus-pods', label: 'Focus Pods',     type: 'focus',   x1: 26, y1: 57, x2: 43, y2: 62, audioMode: 'private' },
+    { id: 'break-room', label: 'Break Room',     type: 'break',   x1: 60, y1: 57, x2: 77, y2: 62, audioMode: 'open' },
+    { id: 'help-desk',  label: 'People Ops Help Desk', type: 'support', x1: 80, y1: 57, x2: 93, y2: 62, audioMode: 'open' },
   ],
-  cubicles: Array.from({ length: 24 }, (_, index) => {
-    const col = index % 6
-    const row = Math.floor(index / 6)
-    const x = 5 + col * 2
-    const y = 24 + row * 2
-    return {
-      id: `cubicle-${index + 1}`,
-      label: `Cubicle ${index + 1}`,
-      x,
-      y,
-      seatX: x,
-      seatY: y + 1,
-    }
-  }),
-  leadershipOffices: Array.from({ length: 6 }, (_, index) => {
-    const x1 = 3 + index * 3
-    return {
-      id: `leadership-office-${index + 1}`,
-      label: `Leadership Office ${index + 1}`,
-      x1,
-      y1: 3,
-      x2: x1 + 2,
-      y2: 7,
-      deskX: x1 + 1,
-      deskY: 4,
-    }
-  }),
+  cubicles: buildDeptCubicles(),
+  leadershipOffices: [
+    ...PARTNER_OFFICES,
+    ...buildDeptLeadOffices(),
+  ],
   interactables: [
-    { id: 'main-logo', label: 'Plutus21', kind: 'logo', x: 28, y: 28, zoneId: 'lobby' },
-    { id: 'org-chart', label: 'Org Chart', kind: 'deep-link', x: 22, y: 31, href: '/admin/org-chart', zoneId: 'help-desk' },
-    { id: 'reports', label: 'Performance Reports', kind: 'deep-link', x: 24, y: 31, href: '/admin/reports', zoneId: 'help-desk' },
-    { id: 'hr-help', label: 'HR Help Desk', kind: 'help-desk', x: 21, y: 32, href: '/device-tickets', zoneId: 'help-desk' },
-    { id: 'quant-sign', label: 'Quantitative Engineering', kind: 'department-sign', x: 9, y: 10, zoneId: 'quant' },
-    { id: 'vc-sign', label: 'Value Creation', kind: 'department-sign', x: 27, y: 10, zoneId: 'vc' },
-    { id: 'growth-sign', label: 'Growth and Strategy', kind: 'department-sign', x: 46, y: 10, zoneId: 'growth' },
+    { id: 'main-logo', label: 'Plutus21', kind: 'logo', x: 49, y: 58, zoneId: 'lobby' },
+    { id: 'org-chart', label: 'Org Chart', kind: 'deep-link', x: 84, y: 60, href: '/admin/org-chart', zoneId: 'help-desk' },
+    { id: 'reports', label: 'Performance Reports', kind: 'deep-link', x: 87, y: 60, href: '/admin/reports', zoneId: 'help-desk' },
+    { id: 'hr-help', label: 'HR Help Desk', kind: 'help-desk', x: 90, y: 60, href: '/device-tickets', zoneId: 'help-desk' },
+    { id: 'town-hall-stage', label: 'Town Hall Stage', kind: 'stage', x: 55, y: 4, zoneId: 'town-hall' },
+    ...buildDeptSigns(),
   ],
+  stageTiles: TOWN_HALL_STAGE_TILES,
 }
 
 export function isOfficeTileWalkable(tile: number) {
@@ -194,10 +356,14 @@ export function isOfficeTileWalkable(tile: number) {
     OFFICE_TILE.WHITEBOARD,
     OFFICE_TILE.GLASS_WALL,
     OFFICE_TILE.SOFA,
-    OFFICE_TILE.LOGO_SIGN,
+    // LOGO_SIGN is intentionally walkable — the Plutus21 mark renders as a
+    // floor decal in the lobby, like a corporate rug.
     OFFICE_TILE.CUBICLE,
     OFFICE_TILE.OFFICE_DESK,
     OFFICE_TILE.NOTICE,
+    OFFICE_TILE.PODIUM,
+    OFFICE_TILE.BOARDROOM_TABLE,
+    // STAGE is intentionally walkable — speakers stand on it.
   ]
   return !blockedTiles.includes(tile)
 }
@@ -209,22 +375,37 @@ export function getOfficeZoneAt(x: number, y: number, world = OFFICE_WORLD) {
   )
 }
 
+export function isOnStage(x: number, y: number, world = OFFICE_WORLD) {
+  return world.stageTiles.some((tile) => tile.x === x && tile.y === y)
+}
+
+// ─── Map generation ─────────────────────────────────────────────────────────
+//
+// generateOfficeMap walks the world definition and stamps walls, floors,
+// doors, and props into a 2D grid. Walls are explicit so movement collision
+// reads cleanly to the player ("I cannot pass through this row of tiles").
+
 export function generateOfficeMap(world = OFFICE_WORLD): OfficeMapData {
   const T = OFFICE_TILE
   const tileMap = Array.from({ length: world.height }, () => new Array(world.width).fill(T.FLOOR))
   const floorMap = Array.from({ length: world.height }, () => new Array(world.width).fill(T.FLOOR))
+
   const setWall = (x: number, y: number) => {
+    if (y < 0 || y >= world.height || x < 0 || x >= world.width) return
     tileMap[y][x] = T.WALL
     floorMap[y][x] = T.WALL
   }
   const setFloor = (x: number, y: number, tile: number) => {
+    if (y < 0 || y >= world.height || x < 0 || x >= world.width) return
     tileMap[y][x] = tile
     floorMap[y][x] = tile
   }
   const setObj = (x: number, y: number, tile: number) => {
+    if (y < 0 || y >= world.height || x < 0 || x >= world.width) return
     tileMap[y][x] = tile
   }
 
+  // World perimeter
   for (let x = 0; x < world.width; x += 1) {
     setWall(x, 0)
     setWall(x, 1)
@@ -235,17 +416,27 @@ export function generateOfficeMap(world = OFFICE_WORLD): OfficeMapData {
     setWall(world.width - 1, y)
   }
 
+  // Zone floors — picks a tile per room type so the player can read the
+  // boundaries at a glance.
   for (const zone of world.zones) {
     const floorTile =
-      zone.type === 'meeting' || zone.type === 'huddle'
+      zone.type === 'meeting'
         ? T.MEETING
-        : zone.type === 'lounge'
-          ? T.LOUNGE
-          : zone.type === 'break' || zone.type === 'focus'
-            ? T.CARPET
-            : zone.type === 'lobby'
-              ? T.RUG
-              : T.FLOOR
+        : zone.type === 'townhall'
+          ? T.MEETING
+          : zone.type === 'lounge'
+            ? T.LOUNGE
+            : zone.type === 'break'
+              ? T.LOUNGE
+              : zone.type === 'focus'
+                ? T.CARPET
+                : zone.type === 'lobby'
+                  ? T.RUG
+                  : zone.type === 'leadership'
+                    ? T.CARPET
+                    : zone.type === 'support'
+                      ? T.CARPET
+                      : T.FLOOR
     for (let y = zone.y1; y <= zone.y2; y += 1) {
       for (let x = zone.x1; x <= zone.x2; x += 1) {
         setFloor(x, y, floorTile)
@@ -253,49 +444,129 @@ export function generateOfficeMap(world = OFFICE_WORLD): OfficeMapData {
     }
   }
 
-  for (const office of world.leadershipOffices) {
-    for (let x = office.x1; x <= office.x2; x += 1) {
-      setWall(x, office.y1)
-      setWall(x, office.y2)
+  // Walled rooms — every department wing, leadership wing, both boardrooms,
+  // and the town hall get a clearly visible wall around their perimeter. Doors
+  // are punched through one wall so players can enter.
+  const wallRoom = (
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    door: { x: number; y: number },
+  ) => {
+    for (let x = x1; x <= x2; x += 1) {
+      setWall(x, y1)
+      setWall(x, y2)
     }
-    for (let y = office.y1; y <= office.y2; y += 1) {
-      setWall(office.x1, y)
-      setWall(office.x2, y)
+    for (let y = y1; y <= y2; y += 1) {
+      setWall(x1, y)
+      setWall(x2, y)
     }
-    setObj(office.x1 + 1, office.y2, T.DOOR)
-    setObj(office.deskX, office.deskY, T.OFFICE_DESK)
-    setObj(office.deskX, office.deskY + 1, T.CHAIR)
+    setObj(door.x, door.y, T.DOOR)
+    setFloor(door.x, door.y, T.FLOOR)
   }
 
-  for (const cubicle of world.cubicles) {
+  // Leadership Wing — door on south side, central
+  wallRoom(LEADERSHIP_WING.x1, LEADERSHIP_WING.y1, LEADERSHIP_WING.x2, LEADERSHIP_WING.y2, { x: 8, y: LEADERSHIP_WING.y2 })
+
+  // Partner offices inside the leadership wing (sub-rooms)
+  for (const office of PARTNER_OFFICES) {
+    wallRoom(office.x1, office.y1, office.x2, office.y2, { x: office.x1 + 1, y: office.y2 })
+    setObj(office.deskX, office.deskY, T.OFFICE_DESK)
+    setObj(office.deskX, office.deskY + 1, T.CHAIR)
+    setObj(office.x2 - 1, office.y1 + 1, T.BOOKSHELF)
+  }
+
+  // North Boardroom
+  wallRoom(18, 2, 36, 14, { x: 27, y: 14 })
+  for (let x = 22; x <= 32; x += 1) setObj(x, 8, T.BOARDROOM_TABLE)
+  for (let x = 22; x <= 32; x += 2) {
+    setObj(x, 6, T.CHAIR)
+    setObj(x, 10, T.CHAIR)
+  }
+  setObj(20, 4, T.WHITEBOARD)
+  setObj(35, 4, T.PLANT)
+  setObj(20, 12, T.PLANT)
+
+  // East Boardroom
+  wallRoom(76, 2, 93, 14, { x: 84, y: 14 })
+  for (let x = 80; x <= 90; x += 1) setObj(x, 8, T.BOARDROOM_TABLE)
+  for (let x = 80; x <= 90; x += 2) {
+    setObj(x, 6, T.CHAIR)
+    setObj(x, 10, T.CHAIR)
+  }
+  setObj(78, 4, T.WHITEBOARD)
+  setObj(92, 4, T.PLANT)
+  setObj(78, 12, T.PLANT)
+
+  // Town Hall — long room with a stage at the front, audience floor, mic stand
+  wallRoom(39, 2, 73, 14, { x: 56, y: 14 })
+  // Stage tiles span x=53..58, y=3..4
+  for (let x = 53; x <= 58; x += 1) {
+    setFloor(x, 3, T.STAGE)
+    setFloor(x, 4, T.STAGE)
+  }
+  setObj(55, 3, T.PODIUM) // mic stand at center-front of stage
+  // Audience seating — three rows of chairs facing the stage
+  for (const y of [8, 10, 12]) {
+    for (const x of [44, 46, 48, 50, 52, 54, 56, 58, 60, 62, 64, 66, 68]) {
+      setObj(x, y, T.CHAIR)
+    }
+  }
+  setObj(40, 4, T.PLANT)
+  setObj(72, 4, T.PLANT)
+
+  // Department wings — 4×2 grid of nameplated cubicle rooms with a lead office
+  for (const wing of DEPT_WINGS) {
+    const x1 = wing.x1
+    const y1 = wing.y1
+    const x2 = x1 + DEPT_WING_W - 1
+    const y2 = y1 + DEPT_WING_H - 1
+    // Door on the south wall, centered
+    wallRoom(x1, y1, x2, y2, { x: x1 + Math.floor(DEPT_WING_W / 2), y: y2 })
+  }
+
+  // Lead offices (sub-rooms inside each wing)
+  for (const office of OFFICE_WORLD.leadershipOffices.filter((o) => o.id.startsWith('lead-'))) {
+    wallRoom(office.x1, office.y1, office.x2, office.y2, { x: office.x1, y: office.y2 - 1 })
+    setObj(office.deskX, office.deskY, T.OFFICE_DESK)
+    setObj(office.deskX, office.deskY + 1, T.CHAIR)
+    setObj(office.x2 - 1, office.y1 + 1, T.BOOKSHELF)
+    setObj(office.x1 + 1, office.y2 - 1, T.PLANT)
+  }
+
+  // Cubicles — desk + chair pair for every assigned seat
+  for (const cubicle of OFFICE_WORLD.cubicles) {
     setObj(cubicle.x, cubicle.y, T.CUBICLE)
     setObj(cubicle.seatX, cubicle.seatY, T.CHAIR)
   }
 
-  for (let x = 34; x <= 51; x += 1) {
-    setObj(x, 5, T.DESK_H)
+  // Lobby — Plutus21 logo as a floor decal centered in the upper lobby,
+  // plants framing the entry from the south band.
+  setObj(49, 58, T.LOGO_SIGN)
+  setObj(46, 61, T.PLANT)
+  setObj(58, 61, T.PLANT)
+
+  // Lounge — cluster of sofas + plants
+  for (let x = 4; x <= 20; x += 4) setObj(x, 60, T.SOFA)
+  setObj(3, 58, T.PLANT)
+  setObj(22, 58, T.PLANT)
+
+  // Focus Pods — single-seat private booths
+  for (let x = 28; x <= 42; x += 3) {
+    setObj(x, 59, T.DESK_V)
+    setObj(x, 60, T.CHAIR)
   }
-  for (const x of [37, 41, 45, 49]) {
-    setObj(x, 4, T.CHAIR)
-    setObj(x, 6, T.CHAIR)
-  }
-  for (let x = 24; x <= 30; x += 1) setObj(x, 5, T.DESK_H)
-  for (let x = 22; x <= 34; x += 1) setObj(x, 25, T.SOFA)
-  for (let x = 43; x <= 50; x += 2) setObj(x, 25, T.DESK_V)
-  for (const [x, y] of [
-    [7, 10],
-    [17, 24],
-    [36, 24],
-    [52, 30],
-    [18, 28],
-    [38, 28],
-    [3, 22],
-    [52, 22],
-  ]) setObj(x, y, T.PLANT)
-  setObj(28, 28, T.LOGO_SIGN)
-  setObj(21, 31, T.NOTICE)
-  setObj(24, 31, T.WHITEBOARD)
-  setObj(51, 31, T.COFFEE)
+
+  // Break Room — coffee + sofas
+  setObj(61, 58, T.COFFEE)
+  setObj(63, 58, T.COFFEE)
+  for (let x = 65; x <= 75; x += 4) setObj(x, 60, T.SOFA)
+
+  // Help Desk — notice board + whiteboard for the People Ops corner
+  setObj(81, 58, T.NOTICE)
+  setObj(83, 58, T.WHITEBOARD)
+  setObj(92, 58, T.PLANT)
 
   return { tileMap, floorMap }
 }

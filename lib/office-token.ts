@@ -15,6 +15,7 @@ export interface OfficeTokenPayload {
   avatarOutfitColor: string | null
   avatarOutfitAccentColor: string | null
   avatarHairCategory: string | null
+  avatarHairColor: string | null
   avatarHeadCoveringType: string | null
   avatarHeadCoveringColor: string | null
   avatarAccessories: unknown
@@ -36,6 +37,7 @@ export function generateOfficeToken(user: {
   avatarOutfitColor?: string | null
   avatarOutfitAccentColor?: string | null
   avatarHairCategory?: string | null
+  avatarHairColor?: string | null
   avatarHeadCoveringType?: string | null
   avatarHeadCoveringColor?: string | null
   avatarAccessories?: unknown
@@ -56,6 +58,7 @@ export function generateOfficeToken(user: {
     avatarOutfitColor: user.avatarOutfitColor ?? null,
     avatarOutfitAccentColor: user.avatarOutfitAccentColor ?? null,
     avatarHairCategory: user.avatarHairCategory ?? null,
+    avatarHairColor: user.avatarHairColor ?? null,
     avatarHeadCoveringType: user.avatarHeadCoveringType ?? null,
     avatarHeadCoveringColor: user.avatarHeadCoveringColor ?? null,
     avatarAccessories: user.avatarAccessories ?? null,

@@ -7,9 +7,11 @@ import { ChatPanel } from './_components/ChatPanel'
 import { PlayerList } from './_components/PlayerList'
 import { ControlsOverlay } from './_components/ControlsOverlay'
 import { MicControls } from './_components/MicControls'
+import { MyDeskPanel } from './_components/MyDeskPanel'
 import { useOfficeAudio } from './_components/hooks/useOfficeAudio'
-import { Loader2, WifiOff, Users, MessageSquare, Map, Search, HelpCircle, Smile, Mic, Radio } from 'lucide-react'
-import type { OfficeGameHandle } from './_components/OfficeGame'
+import { Loader2, WifiOff, Users, MessageSquare, Map, Search, HelpCircle, Smile, Mic, Radio, Monitor } from 'lucide-react'
+import type { OfficeGameHandle, AtDeskState } from './_components/OfficeGame'
+import { DEFAULT_DECOR, type DecorChoices } from '@/shared/office-world'
 import {
   getSkinTone,
   type OfficeStatus,
@@ -71,6 +73,8 @@ export default function OfficePage() {
   const [savingDefaultAvatar, setSavingDefaultAvatar] = useState(false)
   const [showReactionPicker, setShowReactionPicker] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  const [atDesk, setAtDesk] = useState<AtDeskState>(null)
+  const [showDeskPanel, setShowDeskPanel] = useState(false)
 
   // Proximity audio
   const audio = useOfficeAudio({ enabled: connectionState === 'connected' })
@@ -143,6 +147,26 @@ export default function OfficePage() {
     }
   }, [connectionState])
 
+  const handleAtMyDeskChange = useCallback((state: AtDeskState) => {
+    setAtDesk(state)
+    // Auto-close the panel when the player walks away from their desk.
+    if (!state) setShowDeskPanel(false)
+  }, [])
+
+  // E key opens the desk panel when the local player is at their seat.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === 'e' && atDesk && !showDeskPanel) {
+        // Don't hijack when typing in an input or chat.
+        const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase()
+        if (tag === 'input' || tag === 'textarea') return
+        setShowDeskPanel(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [atDesk, showDeskPanel])
+
   const handleReconnecting = useCallback((attempt: number, nextDelayMs: number) => {
     if (connectionState === 'kicked') return
     setConnectionState('reconnecting')
@@ -180,6 +204,7 @@ export default function OfficePage() {
           avatarOutfitColor: bootstrap.avatar.avatarOutfitColor,
           avatarOutfitAccentColor: bootstrap.avatar.avatarOutfitAccentColor,
           avatarHairCategory: isHijab ? 'covered' : bootstrap.avatar.avatarHairCategory,
+          avatarHairColor: bootstrap.avatar.avatarHairColor,
           avatarSkinTone: getSkinTone(seed),
           avatarHeadCoveringType: bootstrap.avatar.avatarHeadCoveringType,
           avatarHeadCoveringColor: bootstrap.avatar.avatarHeadCoveringColor,
@@ -311,6 +336,7 @@ export default function OfficePage() {
               ref={gameRef}
               token={token}
               serverUrl={serverUrl}
+              directory={bootstrap?.directory ?? null}
               onPlayersChange={handlePlayersChange}
               onChatMessage={handleChatMessage}
               onConnectionError={handleConnectionError}
@@ -319,6 +345,7 @@ export default function OfficePage() {
               onReconnecting={handleReconnecting}
               onPlayerPositionChange={handlePlayerPositionChange}
               onLocalSessionReady={handleLocalSessionReady}
+              onAtMyDeskChange={handleAtMyDeskChange}
             />
           )}
           <ControlsOverlay />
@@ -328,9 +355,15 @@ export default function OfficePage() {
                 <p className="text-[11px] uppercase tracking-wide text-slate-500">Current Room</p>
                 <p className="text-sm font-semibold text-white">{currentZone}</p>
               </div>
-              <div className="flex items-center gap-1 rounded bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-300">
+              <div className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] ${
+                localPlayer?.currentAudioMode === 'broadcast'
+                  ? 'bg-amber-500/15 text-amber-300'
+                  : 'bg-emerald-500/10 text-emerald-300'
+              }`}>
                 <Radio className="h-3 w-3" />
-                {audio.currentZone ? 'Isolated' : 'Proximity'}
+                {localPlayer?.currentAudioMode === 'broadcast'
+                  ? 'On Stage'
+                  : audio.currentZone ? 'Isolated' : 'Proximity'}
               </div>
             </div>
             <div className="mt-3 grid grid-cols-3 gap-2 text-center text-[11px] text-slate-300">
@@ -357,7 +390,10 @@ export default function OfficePage() {
               </div>
               <span className="text-[11px] text-slate-500">{OFFICE_WORLD.name}</span>
             </div>
-            <div className="relative aspect-[56/36] rounded border border-white/10 bg-slate-950">
+            <div
+              className="relative rounded border border-white/10 bg-slate-950"
+              style={{ aspectRatio: `${OFFICE_MAP_WIDTH} / ${OFFICE_MAP_HEIGHT}` }}
+            >
               {OFFICE_WORLD.zones.map((zone) => (
                 <div
                   key={zone.id}
@@ -442,10 +478,55 @@ export default function OfficePage() {
               <ul className="space-y-1">
                 <li><kbd className="rounded bg-white/10 px-1.5 py-0.5">W A S D</kbd> / <kbd className="rounded bg-white/10 px-1.5 py-0.5">↑ ← ↓ →</kbd> — move</li>
                 <li><kbd className="rounded bg-white/10 px-1.5 py-0.5">V</kbd> — push-to-talk (hold)</li>
+                <li><kbd className="rounded bg-white/10 px-1.5 py-0.5">E</kbd> — open your computer at your desk</li>
                 <li><kbd className="rounded bg-white/10 px-1.5 py-0.5">Mouse wheel</kbd> — zoom</li>
                 <li>Walk close to a teammate to talk via proximity audio</li>
               </ul>
             </div>
+          )}
+
+          {/* "Press E" prompt — appears when the local player walks up to their assigned seat. */}
+          {atDesk && !showDeskPanel && (
+            <button
+              onClick={() => setShowDeskPanel(true)}
+              className="absolute bottom-24 left-1/2 z-20 -translate-x-1/2 inline-flex items-center gap-2 rounded-md border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-sm text-amber-100 shadow-xl backdrop-blur hover:bg-amber-500/25"
+            >
+              <Monitor className="h-4 w-4" />
+              Press <kbd className="rounded bg-amber-500/30 px-1.5 py-0.5 text-xs font-semibold text-amber-50">E</kbd> to open your computer
+            </button>
+          )}
+
+          {/* Desk panel — computer + decor tabs. */}
+          {atDesk && (
+            <MyDeskPanel
+              open={showDeskPanel}
+              onClose={() => setShowDeskPanel(false)}
+              scope={atDesk.kind}
+              initialDecor={
+                (atDesk.kind === 'cubicle'
+                  ? bootstrap?.directory?.cubicleAssignments?.[atDesk.id]?.decor
+                  : atDesk.kind === 'lead-office'
+                    ? bootstrap?.directory?.leadOfficeAssignments?.[atDesk.id]?.decor
+                    : bootstrap?.directory?.partnerOfficeAssignments?.[atDesk.id]?.decor
+                ) ?? DEFAULT_DECOR
+              }
+              onDecorSaved={(decor: DecorChoices) => {
+                // Optimistically reflect the saved decor in the bootstrap so the
+                // panel reopens with the new state without a refetch.
+                setBootstrap((prev: any) => {
+                  if (!prev?.directory) return prev
+                  const dir = prev.directory
+                  if (atDesk.kind === 'cubicle' && dir.cubicleAssignments?.[atDesk.id]) {
+                    dir.cubicleAssignments[atDesk.id] = { ...dir.cubicleAssignments[atDesk.id], decor }
+                  } else if (atDesk.kind === 'lead-office' && dir.leadOfficeAssignments?.[atDesk.id]) {
+                    dir.leadOfficeAssignments[atDesk.id] = { ...dir.leadOfficeAssignments[atDesk.id], decor }
+                  } else if (atDesk.kind === 'partner-office' && dir.partnerOfficeAssignments?.[atDesk.id]) {
+                    dir.partnerOfficeAssignments[atDesk.id] = { ...dir.partnerOfficeAssignments[atDesk.id], decor }
+                  }
+                  return { ...prev, directory: { ...dir } }
+                })
+              }}
+            />
           )}
 
           {showAvatarSetup && (

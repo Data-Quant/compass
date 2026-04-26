@@ -2,6 +2,21 @@
 
 import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react'
 import type { OfficeStatus, ChatChannel } from '@/lib/office-config'
+import type { DecorChoices } from '@/shared/office-world'
+
+interface DirectoryEntry {
+  userId: string
+  name: string
+  position: string | null
+  department: string | null
+  decor: DecorChoices
+}
+
+export interface OfficeDirectoryProp {
+  cubicleAssignments: Record<string, DirectoryEntry>
+  leadOfficeAssignments: Record<string, DirectoryEntry>
+  partnerOfficeAssignments: Record<string, DirectoryEntry>
+}
 
 interface PlayerData {
   sessionId: string
@@ -42,9 +57,12 @@ export interface OfficeGameHandle {
   sendReaction: (reaction: string) => void
 }
 
+export type AtDeskState = { kind: 'cubicle' | 'lead-office' | 'partner-office'; id: string } | null
+
 interface OfficeGameProps {
   token: string
   serverUrl: string
+  directory?: OfficeDirectoryProp | null
   onPlayersChange: (players: PlayerData[]) => void
   onChatMessage: (msg: ChatMessageData) => void
   onConnectionError: (error: string) => void
@@ -53,10 +71,11 @@ interface OfficeGameProps {
   onReconnecting?: (attempt: number, nextDelayMs: number) => void
   onPlayerPositionChange?: (userId: string, x: number, y: number) => void
   onLocalSessionReady?: (localUserId: string) => void
+  onAtMyDeskChange?: (state: AtDeskState) => void
 }
 
 const OfficeGame = forwardRef<OfficeGameHandle, OfficeGameProps>(function OfficeGame(
-  { token, serverUrl, onPlayersChange, onChatMessage, onConnectionError, onConnected, onDisconnected, onReconnecting, onPlayerPositionChange, onLocalSessionReady },
+  { token, serverUrl, directory, onPlayersChange, onChatMessage, onConnectionError, onConnected, onDisconnected, onReconnecting, onPlayerPositionChange, onLocalSessionReady, onAtMyDeskChange },
   ref
 ) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -64,8 +83,8 @@ const OfficeGame = forwardRef<OfficeGameHandle, OfficeGameProps>(function Office
   const sceneRef = useRef<any>(null)
 
   // Stable callback refs to avoid re-creating the scene
-  const callbacksRef = useRef({ onPlayersChange, onChatMessage, onConnectionError, onConnected, onDisconnected, onReconnecting, onPlayerPositionChange, onLocalSessionReady })
-  callbacksRef.current = { onPlayersChange, onChatMessage, onConnectionError, onConnected, onDisconnected, onReconnecting, onPlayerPositionChange, onLocalSessionReady }
+  const callbacksRef = useRef({ onPlayersChange, onChatMessage, onConnectionError, onConnected, onDisconnected, onReconnecting, onPlayerPositionChange, onLocalSessionReady, onAtMyDeskChange })
+  callbacksRef.current = { onPlayersChange, onChatMessage, onConnectionError, onConnected, onDisconnected, onReconnecting, onPlayerPositionChange, onLocalSessionReady, onAtMyDeskChange }
 
   useImperativeHandle(ref, () => ({
     sendChat: (content: string, channel: ChatChannel) => {
@@ -105,7 +124,8 @@ const OfficeGame = forwardRef<OfficeGameHandle, OfficeGameProps>(function Office
           onReconnecting: (attempt, delay) => callbacksRef.current.onReconnecting?.(attempt, delay),
           onPlayerPositionChange: (userId, x, y) => callbacksRef.current.onPlayerPositionChange?.(userId, x, y),
           onLocalSessionReady: (userId) => callbacksRef.current.onLocalSessionReady?.(userId),
-        })
+          onAtMyDeskChange: (state) => callbacksRef.current.onAtMyDeskChange?.(state),
+        }, directory ?? null)
 
         sceneRef.current = scene
 

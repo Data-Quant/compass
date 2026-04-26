@@ -158,6 +158,9 @@ export const SPRITE_ASSETS: Record<string, { path: string; scale: number }> = {
   sprite_plant:     { path: '/office/plant.png', scale: 1.0 },
   sprite_coffee:    { path: '/office/coffee-maker.png', scale: 0.5 },
   sprite_bookshelf: { path: '/office/cabinet.png', scale: 0.5 },
+  // Plutus21 brand mark — used as the lobby logo sign. Source at 5001×1459;
+  // rendered at scale 0.04 ≈ 200×58px (~6 tiles wide × ~2 tall).
+  sprite_logo:      { path: '/office/plutus21-logo.png', scale: 0.04 },
 }
 
 // ─── Tile Types ──────────────────────────────────────────────────────────────
@@ -184,6 +187,9 @@ export const T = {
   CUBICLE:     18,  // personal cubicle desk
   OFFICE_DESK: 19,  // leadership office desk
   NOTICE:      20,  // interactive notice board
+  STAGE:       21,  // town hall stage floor (walkable; broadcasts speaker audio)
+  PODIUM:      22,  // mic stand at center of stage
+  BOARDROOM_TABLE: 23, // long boardroom table
 } as const
 
 export type TileType = (typeof T)[keyof typeof T]

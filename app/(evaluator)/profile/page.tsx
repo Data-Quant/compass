@@ -36,6 +36,7 @@ import {
   AVATAR_ACCESSORIES,
   AVATAR_ACCENT_COLORS,
   AVATAR_BODY_FRAMES,
+  AVATAR_HAIR_COLORS,
   AVATAR_HIJAB_COLORS,
   AVATAR_OUTFIT_COLORS,
   AVATAR_OUTFIT_TYPES,
@@ -199,6 +200,7 @@ export default function ProfilePage() {
   const [avatarOutfitColor, setAvatarOutfitColor] = useState<string>(AVATAR_OUTFIT_COLORS[0])
   const [avatarOutfitAccentColor, setAvatarOutfitAccentColor] = useState<string>(AVATAR_ACCENT_COLORS[0])
   const [avatarHairCategory, setAvatarHairCategory] = useState<AvatarHairCategory>('short')
+  const [avatarHairColor, setAvatarHairColor] = useState<string>(AVATAR_HAIR_COLORS[1])
   const [avatarHeadCoveringType, setAvatarHeadCoveringType] = useState<AvatarHeadCoveringType>('none')
   const [avatarHeadCoveringColor, setAvatarHeadCoveringColor] = useState<string>(AVATAR_HIJAB_COLORS[0])
   const [avatarAccessories, setAvatarAccessories] = useState<AvatarAccessory[]>([])
@@ -214,21 +216,17 @@ export default function ProfilePage() {
       setAvatarOutfitColor(user.avatarOutfitColor || AVATAR_OUTFIT_COLORS[0])
       setAvatarOutfitAccentColor(user.avatarOutfitAccentColor || AVATAR_ACCENT_COLORS[0])
       setAvatarHairCategory((user.avatarHairCategory as AvatarHairCategory) || 'short')
+      setAvatarHairColor(user.avatarHairColor || getHairColor(user.id))
       setAvatarHeadCoveringType((user.avatarHeadCoveringType as AvatarHeadCoveringType) || 'none')
       setAvatarHeadCoveringColor(user.avatarHeadCoveringColor || AVATAR_HIJAB_COLORS[0])
       setAvatarAccessories(Array.isArray(user.avatarAccessories) ? (user.avatarAccessories as AvatarAccessory[]) : [])
     }
   }, [user])
 
-  // Hair color is seeded by user id, independent of outfit. Same source the
-  // office renderer uses (lib/office-config.getHairColor) so the preview
-  // matches what people will see on the canvas.
-  const hairColor = user ? getHairColor(user.id) : '#1a1a1a'
-
   // Redraw avatar preview when any avatar setting changes (v2 only).
   const redrawAvatar = useCallback(() => {
     if (canvasRef.current) {
-      drawAvatarPreview(canvasRef.current, avatarSkinTone, hairColor, {
+      drawAvatarPreview(canvasRef.current, avatarSkinTone, avatarHairColor, {
         bodyFrame: avatarBodyFrame,
         outfitType: avatarOutfitType,
         outfitColor: avatarOutfitColor,
@@ -239,7 +237,7 @@ export default function ProfilePage() {
         accessories: avatarAccessories,
       })
     }
-  }, [avatarSkinTone, hairColor, avatarBodyFrame, avatarOutfitType, avatarOutfitColor, avatarOutfitAccentColor, avatarHairCategory, avatarHeadCoveringType, avatarHeadCoveringColor, avatarAccessories])
+  }, [avatarSkinTone, avatarHairColor, avatarBodyFrame, avatarOutfitType, avatarOutfitColor, avatarOutfitAccentColor, avatarHairCategory, avatarHeadCoveringType, avatarHeadCoveringColor, avatarAccessories])
 
   useEffect(() => { redrawAvatar() }, [redrawAvatar])
 
@@ -342,6 +340,7 @@ export default function ProfilePage() {
           avatarOutfitColor,
           avatarOutfitAccentColor,
           avatarHairCategory: avatarHeadCoveringType === 'hijab' ? 'covered' : avatarHairCategory,
+          avatarHairColor,
           avatarHeadCoveringType,
           avatarHeadCoveringColor,
           avatarAccessories,
@@ -586,6 +585,28 @@ export default function ProfilePage() {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div>
+                  <Label>Hair Color</Label>
+                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+                    {AVATAR_HAIR_COLORS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setAvatarHairColor(c)}
+                        disabled={avatarHairCategory === 'covered'}
+                        className={`h-7 w-7 rounded-full border-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                          avatarHairColor === c ? 'border-primary scale-110' : 'border-transparent hover:scale-105'
+                        }`}
+                        style={{ backgroundColor: c }}
+                        title={c}
+                      />
+                    ))}
+                  </div>
+                  {avatarHairCategory === 'covered' && (
+                    <p className="text-xs text-muted-foreground mt-1">Hair color is hidden when wearing a hijab.</p>
+                  )}
                 </div>
 
                 <div>

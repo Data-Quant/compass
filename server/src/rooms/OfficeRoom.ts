@@ -7,6 +7,7 @@ import {
   OFFICE_SPAWN,
   generateOfficeMap,
   getOfficeZoneAt,
+  isOnStage,
   isOfficeTileWalkable,
 } from '../../../shared/office-world'
 
@@ -39,6 +40,7 @@ interface PlayerData {
   avatarOutfitColor: string | null
   avatarOutfitAccentColor: string | null
   avatarHairCategory: string | null
+  avatarHairColor: string | null
   avatarHeadCoveringType: string | null
   avatarHeadCoveringColor: string | null
   avatarAccessories: string[]
@@ -117,7 +119,10 @@ export class OfficeRoom extends Room {
       const zone = getOfficeZoneAt(newX, newY)
       player.currentZoneId = zone?.id ?? null
       player.currentZoneLabel = zone?.label ?? null
-      player.currentAudioMode = zone?.audioMode ?? 'open'
+      // Standing on a stage tile in the town hall opts the speaker into
+      // broadcast mode (heard by everyone in the zone, no proximity falloff).
+      // Off-stage = the zone's normal audio mode.
+      player.currentAudioMode = isOnStage(newX, newY) ? 'broadcast' : (zone?.audioMode ?? 'open')
 
       this.broadcast('playerMoved', {
         sessionId: player.sessionId,
@@ -375,6 +380,7 @@ export class OfficeRoom extends Room {
       avatarOutfitColor: auth.avatarOutfitColor ?? null,
       avatarOutfitAccentColor: auth.avatarOutfitAccentColor ?? null,
       avatarHairCategory: auth.avatarHairCategory ?? null,
+      avatarHairColor: auth.avatarHairColor ?? null,
       avatarHeadCoveringType: auth.avatarHeadCoveringType ?? null,
       avatarHeadCoveringColor: auth.avatarHeadCoveringColor ?? null,
       avatarAccessories: auth.avatarAccessories ?? [],
@@ -384,7 +390,7 @@ export class OfficeRoom extends Room {
       statusText: '',
       currentZoneId: zone?.id ?? null,
       currentZoneLabel: zone?.label ?? null,
-      currentAudioMode: zone?.audioMode ?? 'open',
+      currentAudioMode: isOnStage(SPAWN_X, SPAWN_Y) ? 'broadcast' : (zone?.audioMode ?? 'open'),
       seatedAt: null,
       lastMoveAt: 0,
     }
@@ -412,6 +418,7 @@ export class OfficeRoom extends Room {
       avatarOutfitColor: p.avatarOutfitColor,
       avatarOutfitAccentColor: p.avatarOutfitAccentColor,
       avatarHairCategory: p.avatarHairCategory,
+      avatarHairColor: p.avatarHairColor,
       avatarHeadCoveringType: p.avatarHeadCoveringType,
       avatarHeadCoveringColor: p.avatarHeadCoveringColor,
       avatarAccessories: p.avatarAccessories,

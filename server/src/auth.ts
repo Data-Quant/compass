@@ -15,6 +15,7 @@ export interface OfficeTokenPayload {
   avatarOutfitColor?: string | null
   avatarOutfitAccentColor?: string | null
   avatarHairCategory?: string | null
+  avatarHairColor?: string | null
   avatarHeadCoveringType?: string | null
   avatarHeadCoveringColor?: string | null
   avatarAccessories?: string[] | null

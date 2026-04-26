@@ -267,6 +267,7 @@ model User {
   avatarOutfitColor String?
   avatarOutfitAccentColor String?
   avatarHairCategory String?
+  avatarHairColor String?
   avatarHeadCoveringType String?
   avatarHeadCoveringColor String?
   avatarAccessories Json?
