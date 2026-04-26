@@ -5,6 +5,7 @@ import {
   OFFICE_MAP_WIDTH as MAP_WIDTH,
   OFFICE_MOVE_RATE_LIMIT_MS,
   OFFICE_SPAWN,
+  OFFICE_WORLD,
   generateOfficeMap,
   getOfficeZoneAt,
   isOnStage,
@@ -73,10 +74,6 @@ export class OfficeRoom extends Room {
   private players = new Map<string, PlayerData>()
   private userSessionMap = new Map<string, string>() // userId -> sessionId
   private chatHistory: ChatMessageData[] = []
-  // Remembers each user's last position across reconnects within this room
-  // instance so a user who navigates away to a quick-link page and comes
-  // back resumes where they left off, instead of being teleported to spawn.
-  private lastKnownPosition = new Map<string, { x: number; y: number }>()
 
   onCreate() {
     // No setState — all sync via messages (avoids @colyseus/schema client issues)
@@ -325,41 +322,6 @@ export class OfficeRoom extends Room {
       if (target) client.send('locatePlayer', { userId: target.userId, x: target.x, y: target.y, currentZoneId: target.currentZoneId })
     })
 
-    // Warp lets the client teleport its own player to a remembered seat right
-    // after connect (used by the position-resume feature). Validates the
-    // target is walkable and within the world before applying. Distance isn't
-    // restricted because resume needs to span the whole map after a navigate-
-    // away/return, and we trust the JWT to scope which user is moving.
-    this.onMessage('warp', (client, data: { x?: number; y?: number }) => {
-      const player = this.players.get(client.sessionId)
-      if (!player) return
-      const x = Math.floor(Number(data.x))
-      const y = Math.floor(Number(data.y))
-      if (!Number.isFinite(x) || !Number.isFinite(y)) return
-      if (y < 0 || y >= this.mapData.length) return
-      if (x < 0 || x >= (this.mapData[0]?.length ?? 0)) return
-      if (!isOfficeTileWalkable(this.mapData[y][x])) return
-
-      player.x = x
-      player.y = y
-      player.isMoving = false
-      const zone = getOfficeZoneAt(x, y)
-      player.currentZoneId = zone?.id ?? null
-      player.currentZoneLabel = zone?.label ?? null
-      player.currentAudioMode = isOnStage(x, y) ? 'broadcast' : (zone?.audioMode ?? 'open')
-
-      this.broadcast('playerMoved', {
-        sessionId: player.sessionId,
-        x: player.x,
-        y: player.y,
-        direction: player.direction,
-        isMoving: false,
-        currentZoneId: player.currentZoneId,
-        currentZoneLabel: player.currentZoneLabel,
-        currentAudioMode: player.currentAudioMode,
-      })
-    })
-
     this.onMessage('reaction', (client, data: { reaction?: string }) => {
       const player = this.players.get(client.sessionId)
       if (!player) return
@@ -398,12 +360,13 @@ export class OfficeRoom extends Room {
 
     this.userSessionMap.set(auth.userId, client.sessionId)
 
-    // Resume from the user's last known position if we have one and the tile
-    // is still walkable (the map may have changed across deploys). Falls back
-    // to the lobby spawn for first-time joiners or stale positions.
-    const remembered = this.lastKnownPosition.get(auth.userId)
-    const startX = remembered && isOfficeTileWalkable(this.mapData[remembered.y]?.[remembered.x] ?? -1) ? remembered.x : SPAWN_X
-    const startY = remembered && isOfficeTileWalkable(this.mapData[remembered.y]?.[remembered.x] ?? -1) ? remembered.y : SPAWN_Y
+    // Spawn at the user's assigned desk (cubicle chair, or lead/partner
+    // office chair) so people land where they belong instead of dumping into
+    // the lobby every time. Falls back to the lobby spawn if no assignment
+    // is in the JWT or the assigned tile is no longer walkable.
+    const desk = findAssignedDesk(auth)
+    const startX = desk && isOfficeTileWalkable(this.mapData[desk.y]?.[desk.x] ?? -1) ? desk.x : SPAWN_X
+    const startY = desk && isOfficeTileWalkable(this.mapData[desk.y]?.[desk.x] ?? -1) ? desk.y : SPAWN_Y
 
     const zone = getOfficeZoneAt(startX, startY)
     const player: PlayerData = {
@@ -494,8 +457,6 @@ export class OfficeRoom extends Room {
   onLeave(client: Client) {
     const player = this.players.get(client.sessionId)
     if (player) {
-      // Remember where they were so the next reconnect resumes here.
-      this.lastKnownPosition.set(player.userId, { x: player.x, y: player.y })
       this.userSessionMap.delete(player.userId)
       console.log(`[Office] ${player.name} left (${client.sessionId})`)
     }
@@ -506,4 +467,21 @@ export class OfficeRoom extends Room {
   onDispose() {
     console.log('[Office] Room disposed')
   }
+}
+
+/**
+ * Returns the chair tile for the user's assigned seat, or null if the JWT
+ * doesn't include any assignment. Cubicle chair sits one tile south of the
+ * desk; lead/partner office chair sits at (deskX, deskY + 1).
+ */
+function findAssignedDesk(auth: OfficeTokenPayload): { x: number; y: number } | null {
+  if (auth.cubicleId) {
+    const cubicle = OFFICE_WORLD.cubicles.find((c) => c.id === auth.cubicleId)
+    if (cubicle) return { x: cubicle.seatX, y: cubicle.seatY }
+  }
+  if (auth.leadershipOfficeId) {
+    const office = OFFICE_WORLD.leadershipOffices.find((o) => o.id === auth.leadershipOfficeId)
+    if (office) return { x: office.deskX, y: office.deskY + 1 }
+  }
+  return null
 }
