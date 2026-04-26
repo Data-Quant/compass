@@ -30,6 +30,7 @@ import {
 import {
   SKIN_TONES,
   getSkinTone,
+  getHairColor,
 } from '@/lib/office-config'
 import {
   AVATAR_ACCESSORIES,
@@ -103,6 +104,7 @@ function drawGlassesPreview(p: PFn) {
 function drawAvatarPreview(
   canvas: HTMLCanvasElement,
   skinColor: string,
+  hairColor: string,
   options: {
     bodyFrame: AvatarBodyFrame
     outfitType: AvatarOutfitType
@@ -131,8 +133,6 @@ function drawAvatarPreview(
   const bodyFrame = options.bodyFrame
   const previewBodyType: 'male' | 'female' = bodyFrame === 'feminine' ? 'female' : 'male'
   const outfitColor = options.outfitColor
-  // v2 has no explicit hair color — derive from outfit color (matches office renderer fallback)
-  const hairColor = darken(options.outfitColor, 40)
   const hairStyle = hairCategoryToStyleIndex(options.hairCategory)
   if (options.headCoveringType === 'hijab') drawHijabPreview(p, options.headCoveringColor)
   else drawHairPreview(p, 'down', hairStyle, hairColor)
@@ -220,10 +220,15 @@ export default function ProfilePage() {
     }
   }, [user])
 
+  // Hair color is seeded by user id, independent of outfit. Same source the
+  // office renderer uses (lib/office-config.getHairColor) so the preview
+  // matches what people will see on the canvas.
+  const hairColor = user ? getHairColor(user.id) : '#1a1a1a'
+
   // Redraw avatar preview when any avatar setting changes (v2 only).
   const redrawAvatar = useCallback(() => {
     if (canvasRef.current) {
-      drawAvatarPreview(canvasRef.current, avatarSkinTone, {
+      drawAvatarPreview(canvasRef.current, avatarSkinTone, hairColor, {
         bodyFrame: avatarBodyFrame,
         outfitType: avatarOutfitType,
         outfitColor: avatarOutfitColor,
@@ -234,7 +239,7 @@ export default function ProfilePage() {
         accessories: avatarAccessories,
       })
     }
-  }, [avatarSkinTone, avatarBodyFrame, avatarOutfitType, avatarOutfitColor, avatarOutfitAccentColor, avatarHairCategory, avatarHeadCoveringType, avatarHeadCoveringColor, avatarAccessories])
+  }, [avatarSkinTone, hairColor, avatarBodyFrame, avatarOutfitType, avatarOutfitColor, avatarOutfitAccentColor, avatarHairCategory, avatarHeadCoveringType, avatarHeadCoveringColor, avatarAccessories])
 
   useEffect(() => { redrawAvatar() }, [redrawAvatar])
 

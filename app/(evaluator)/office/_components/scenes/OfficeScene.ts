@@ -730,6 +730,11 @@ export class OfficeScene extends Phaser.Scene {
     this.room.send('status', { status })
   }
 
+  sendReaction(reaction: string) {
+    if (!this.room || !this.isConnected) return
+    this.room.send('reaction', { reaction })
+  }
+
   // ─── Game Loop ──────────────────────────────────────────────────────
 
   update(_time: number, delta: number) {

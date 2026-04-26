@@ -39,6 +39,7 @@ export interface OfficeGameHandle {
   sendChat: (content: string, channel: ChatChannel) => void
   setStatus: (status: OfficeStatus) => void
   setSpeakingUsers: (userIds: Set<string>) => void
+  sendReaction: (reaction: string) => void
 }
 
 interface OfficeGameProps {
@@ -75,6 +76,9 @@ const OfficeGame = forwardRef<OfficeGameHandle, OfficeGameProps>(function Office
     },
     setSpeakingUsers: (userIds: Set<string>) => {
       sceneRef.current?.setSpeakingUsers(userIds)
+    },
+    sendReaction: (reaction: string) => {
+      sceneRef.current?.sendReaction(reaction)
     },
   }))
 

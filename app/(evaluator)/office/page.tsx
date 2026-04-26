@@ -69,6 +69,8 @@ export default function OfficePage() {
   const [localUserId, setLocalUserId] = useState('')
   const [showAvatarSetup, setShowAvatarSetup] = useState(false)
   const [savingDefaultAvatar, setSavingDefaultAvatar] = useState(false)
+  const [showReactionPicker, setShowReactionPicker] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
 
   // Proximity audio
   const audio = useOfficeAudio({ enabled: connectionState === 'connected' })
@@ -384,22 +386,67 @@ export default function OfficePage() {
           </div>
 
           <div className="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-md border border-white/10 bg-[#0b0f19]/95 px-3 py-2 shadow-xl backdrop-blur">
-            <button className="rounded p-2 text-slate-300 hover:bg-white/10 hover:text-white" title="Microphone">
+            <button
+              onClick={() => audio.toggleMic()}
+              className={`rounded p-2 hover:bg-white/10 hover:text-white ${audio.isMuted ? 'text-slate-400' : 'text-emerald-400'}`}
+              title={audio.isMuted ? 'Mic muted (click to unmute)' : 'Mic on (click to mute)'}
+            >
               <Mic className="h-4 w-4" />
             </button>
-            <button onClick={() => setSidePanel(sidePanel === 'chat' ? null : 'chat')} className="rounded p-2 text-slate-300 hover:bg-white/10 hover:text-white" title="Chat">
+            <button onClick={() => setSidePanel(sidePanel === 'chat' ? null : 'chat')} className={`rounded p-2 hover:bg-white/10 hover:text-white ${sidePanel === 'chat' ? 'bg-white/10 text-white' : 'text-slate-300'}`} title="Chat">
               <MessageSquare className="h-4 w-4" />
             </button>
-            <button onClick={() => setSidePanel(sidePanel === 'players' ? null : 'players')} className="rounded p-2 text-slate-300 hover:bg-white/10 hover:text-white" title="People">
+            <button onClick={() => setSidePanel(sidePanel === 'players' ? null : 'players')} className={`rounded p-2 hover:bg-white/10 hover:text-white ${sidePanel === 'players' ? 'bg-white/10 text-white' : 'text-slate-300'}`} title="People">
               <Users className="h-4 w-4" />
             </button>
-            <button className="rounded p-2 text-slate-300 hover:bg-white/10 hover:text-white" title="React">
-              <Smile className="h-4 w-4" />
-            </button>
-            <button className="rounded p-2 text-slate-300 hover:bg-white/10 hover:text-white" title="Help">
+            <div className="relative">
+              <button
+                onClick={() => { setShowReactionPicker((v) => !v); setShowHelp(false) }}
+                className={`rounded p-2 hover:bg-white/10 hover:text-white ${showReactionPicker ? 'bg-white/10 text-white' : 'text-slate-300'}`}
+                title="React"
+              >
+                <Smile className="h-4 w-4" />
+              </button>
+              {showReactionPicker && (
+                <div className="absolute bottom-full left-1/2 mb-2 -translate-x-1/2 flex gap-1 rounded-md border border-white/10 bg-[#0b0f19]/95 px-2 py-1.5 shadow-xl">
+                  {['👋', '👍', '🎉', '❤️', '🔥', '😂', '🤔', '👀'].map((emoji) => (
+                    <button
+                      key={emoji}
+                      onClick={() => {
+                        gameRef.current?.sendReaction(emoji)
+                        setShowReactionPicker(false)
+                      }}
+                      className="rounded p-1 text-lg hover:bg-white/10"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => { setShowHelp((v) => !v); setShowReactionPicker(false) }}
+              className={`rounded p-2 hover:bg-white/10 hover:text-white ${showHelp ? 'bg-white/10 text-white' : 'text-slate-300'}`}
+              title="Help"
+            >
               <HelpCircle className="h-4 w-4" />
             </button>
           </div>
+
+          {showHelp && (
+            <div className="absolute bottom-20 left-1/2 z-20 -translate-x-1/2 w-80 rounded-md border border-white/10 bg-[#0b0f19]/95 p-4 shadow-xl backdrop-blur text-xs text-slate-200">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="font-semibold text-white">Keyboard shortcuts</span>
+                <button onClick={() => setShowHelp(false)} className="text-slate-400 hover:text-white">✕</button>
+              </div>
+              <ul className="space-y-1">
+                <li><kbd className="rounded bg-white/10 px-1.5 py-0.5">W A S D</kbd> / <kbd className="rounded bg-white/10 px-1.5 py-0.5">↑ ← ↓ →</kbd> — move</li>
+                <li><kbd className="rounded bg-white/10 px-1.5 py-0.5">V</kbd> — push-to-talk (hold)</li>
+                <li><kbd className="rounded bg-white/10 px-1.5 py-0.5">Mouse wheel</kbd> — zoom</li>
+                <li>Walk close to a teammate to talk via proximity audio</li>
+              </ul>
+            </div>
+          )}
 
           {showAvatarSetup && (
             <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
