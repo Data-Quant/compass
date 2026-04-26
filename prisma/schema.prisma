@@ -259,12 +259,17 @@ model User {
   chartX      Float?
   chartY      Float?
 
-  // Avatar customization (virtual office)
-  avatarBodyType   String?
-  avatarHairStyle  Int?
-  avatarHairColor  String?
+  // Avatar customization (virtual office, v2)
   avatarSkinTone   String?
-  avatarShirtColor String?
+  avatarSchemaVersion Int @default(2)
+  avatarBodyFrame String?
+  avatarOutfitType String?
+  avatarOutfitColor String?
+  avatarOutfitAccentColor String?
+  avatarHairCategory String?
+  avatarHeadCoveringType String?
+  avatarHeadCoveringColor String?
+  avatarAccessories Json?
 
   // Relations
   evaluatorMappings   EvaluatorMapping[] @relation("Evaluator")
@@ -315,6 +320,10 @@ model User {
   newHireRecord           NewHire?                @relation("NewHireUser")
   onboardingProgress      OnboardingProgress[]
   quizAttempts            QuizAttempt[]
+  officePreference        OfficeUserPreference?
+  officeCubicleAssignment OfficeCubicleAssignment?
+  officeLeadershipOfficeAssignment OfficeLeadershipOfficeAssignment?
+  ownedOfficeRooms        OfficeRoomMetadata[]    @relation("OfficeRoomOwner")
   benefitCategory         BenefitCategory?        @relation(fields: [benefitCategoryId], references: [id], onDelete: SetNull)
   preEvaluationLeadPreps  PreEvaluationLeadPrep[] @relation("PreEvaluationLead")
   preEvaluationOverrides  PreEvaluationLeadPrep[] @relation("PreEvaluationOverrideBy")
@@ -331,6 +340,82 @@ model User {
   @@index([name])
   @@index([email])
   @@index([benefitCategoryId])
+}
+
+model OfficeUserPreference {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  preferredStatusText String?
+  audioSettings       Json?
+  panelLayout         Json?
+  dismissedHints      Json?
+  selectedDecor       Json?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model OfficeCubicleAssignment {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  cubicleId     String
+  decorJson     Json?
+  assignedById  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([cubicleId])
+}
+
+model OfficeLeadershipOfficeAssignment {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  officeId       String
+  isLockedByDefault Boolean @default(false)
+  decorJson      Json?
+  eligibilityOverride Boolean?
+  assignedById   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([officeId])
+}
+
+model OfficeRoomMetadata {
+  id             String   @id @default(cuid())
+  roomId         String   @unique
+  label          String
+  roomType       String
+  capacity       Int?
+  ownerId        String?
+  privacyDefault String   @default("OPEN")
+  isVisible      Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  owner          User?    @relation("OfficeRoomOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([roomType])
+  @@index([ownerId])
+}
+
+model OfficeCatalogItem {
+  id          String   @id @default(cuid())
+  kind        String
+  key         String
+  label       String
+  metadata    Json?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([kind, key])
+  @@index([kind, isActive])
 }
 
 model Subscription {

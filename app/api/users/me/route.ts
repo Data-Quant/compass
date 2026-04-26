@@ -3,6 +3,16 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { getSession } from '@/lib/auth'
 import { stripHtml } from '@/lib/sanitize'
+import {
+  AVATAR_ACCESSORIES,
+  AVATAR_ACCENT_COLORS,
+  AVATAR_BODY_FRAMES,
+  AVATAR_HAIR_CATEGORIES,
+  AVATAR_HEAD_COVERING_TYPES,
+  AVATAR_HIJAB_COLORS,
+  AVATAR_OUTFIT_COLORS,
+  AVATAR_OUTFIT_TYPES,
+} from '@/shared/avatar-v2'
 
 const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Invalid color')
 const sanitizedShortText = (max: number) =>
@@ -17,11 +27,15 @@ const sanitizedShortText = (max: number) =>
 const profileUpdateSchema = z.object({
   email: z.string().trim().email().max(255).nullable().optional(),
   discordId: sanitizedShortText(100),
-  avatarBodyType: z.enum(['male', 'female']).nullable().optional(),
-  avatarHairStyle: z.number().int().min(0).max(4).nullable().optional(),
-  avatarHairColor: hexColor.nullable().optional(),
   avatarSkinTone: hexColor.nullable().optional(),
-  avatarShirtColor: hexColor.nullable().optional(),
+  avatarBodyFrame: z.enum(AVATAR_BODY_FRAMES).nullable().optional(),
+  avatarOutfitType: z.enum(AVATAR_OUTFIT_TYPES).nullable().optional(),
+  avatarOutfitColor: hexColor.refine((value) => AVATAR_OUTFIT_COLORS.includes(value as any)).nullable().optional(),
+  avatarOutfitAccentColor: hexColor.refine((value) => AVATAR_ACCENT_COLORS.includes(value as any)).nullable().optional(),
+  avatarHairCategory: z.enum(AVATAR_HAIR_CATEGORIES).nullable().optional(),
+  avatarHeadCoveringType: z.enum(AVATAR_HEAD_COVERING_TYPES).nullable().optional(),
+  avatarHeadCoveringColor: hexColor.refine((value) => AVATAR_HIJAB_COLORS.includes(value as any)).nullable().optional(),
+  avatarAccessories: z.array(z.enum(AVATAR_ACCESSORIES)).max(3).nullable().optional(),
 }).strict()
 
 export async function PUT(request: NextRequest) {
@@ -57,6 +71,13 @@ export async function PUT(request: NextRequest) {
     if (Object.keys(data).length === 0) {
       return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
     }
+    if (
+      'avatarBodyFrame' in data ||
+      'avatarOutfitType' in data ||
+      'avatarHeadCoveringType' in data
+    ) {
+      data.avatarSchemaVersion = 2
+    }
 
     const updatedUser = await prisma.user.update({
       where: { id: currentUser.id },
@@ -69,11 +90,16 @@ export async function PUT(request: NextRequest) {
         department: true,
         position: true,
         role: true,
-        avatarBodyType: true,
-        avatarHairStyle: true,
-        avatarHairColor: true,
         avatarSkinTone: true,
-        avatarShirtColor: true,
+        avatarSchemaVersion: true,
+        avatarBodyFrame: true,
+        avatarOutfitType: true,
+        avatarOutfitColor: true,
+        avatarOutfitAccentColor: true,
+        avatarHairCategory: true,
+        avatarHeadCoveringType: true,
+        avatarHeadCoveringColor: true,
+        avatarAccessories: true,
       },
     })
 

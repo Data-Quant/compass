@@ -17,11 +17,16 @@ export type SafeUser = {
   updatedAt: Date
   chartX: number | null
   chartY: number | null
-  avatarBodyType: string | null
-  avatarHairStyle: number | null
-  avatarHairColor: string | null
   avatarSkinTone: string | null
-  avatarShirtColor: string | null
+  avatarSchemaVersion: number
+  avatarBodyFrame: string | null
+  avatarOutfitType: string | null
+  avatarOutfitColor: string | null
+  avatarOutfitAccentColor: string | null
+  avatarHairCategory: string | null
+  avatarHeadCoveringType: string | null
+  avatarHeadCoveringColor: string | null
+  avatarAccessories: unknown
 }
 
 export async function getSession(): Promise<SafeUser | null> {
@@ -48,11 +53,16 @@ export async function getSession(): Promise<SafeUser | null> {
       updatedAt: true,
       chartX: true,
       chartY: true,
-      avatarBodyType: true,
-      avatarHairStyle: true,
-      avatarHairColor: true,
       avatarSkinTone: true,
-      avatarShirtColor: true,
+      avatarSchemaVersion: true,
+      avatarBodyFrame: true,
+      avatarOutfitType: true,
+      avatarOutfitColor: true,
+      avatarOutfitAccentColor: true,
+      avatarHairCategory: true,
+      avatarHeadCoveringType: true,
+      avatarHeadCoveringColor: true,
+      avatarAccessories: true,
       passwordVersion: true,
       payrollProfile: {
         select: {

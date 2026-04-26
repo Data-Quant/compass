@@ -8,11 +8,19 @@ export interface OfficeTokenPayload {
   department: string | null
   position: string | null
   role: string
-  avatarBodyType: string | null
-  avatarHairStyle: number | null
-  avatarHairColor: string | null
   avatarSkinTone: string | null
-  avatarShirtColor: string | null
+  avatarSchemaVersion?: number | null
+  avatarBodyFrame?: string | null
+  avatarOutfitType?: string | null
+  avatarOutfitColor?: string | null
+  avatarOutfitAccentColor?: string | null
+  avatarHairCategory?: string | null
+  avatarHeadCoveringType?: string | null
+  avatarHeadCoveringColor?: string | null
+  avatarAccessories?: string[] | null
+  cubicleId?: string | null
+  leadershipOfficeId?: string | null
+  seniorOfficeEligible?: boolean
 }
 
 export function verifyOfficeToken(token: string): OfficeTokenPayload {

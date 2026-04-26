@@ -2,10 +2,29 @@ import * as Phaser from 'phaser'
 import { Client, Room } from 'colyseus.js'
 import {
   TILE_SIZE, MAP_WIDTH, MAP_HEIGHT, T, SPRITE_ASSETS,
-  getAvatarColor, getSkinTone, getHairColor, getHairStyle, getBodyType,
+  getSkinTone, getHairColor,
   STATUS_COLORS, generateDefaultMap, CHAT_BUBBLE_DURATION,
   type OfficeStatus, type ChatChannel,
 } from '@/lib/office-config'
+import { OFFICE_MOVE_RATE_LIMIT_MS, OFFICE_WORLD, getOfficeZoneAt } from '@/shared/office-world'
+import {
+  resolveAvatarV2Settings,
+  type AvatarHairCategory,
+} from '@/shared/avatar-v2'
+
+// Map v2 hair category to the numeric style index that drawHair() in
+// OfficeSprites consumes. drawHair has 5 patterns (0-4). 'covered' is unused
+// (the hijab is rendered via a separate path).
+function hairCategoryToStyleIndex(category: AvatarHairCategory): number {
+  switch (category) {
+    case 'short':   return 0
+    case 'tied':    return 1
+    case 'medium':  return 2
+    case 'long':    return 3
+    case 'curly':   return 4
+    case 'covered': return 0
+  }
+}
 import {
   generateFloorTextures, generateObjectTextures, generateCharacterTexture,
   generateAmbientTexture, generateVignetteTexture, generateMonitorGlowTexture,
@@ -28,11 +47,24 @@ interface PlayerData {
   isMoving: boolean
   status: string
   avatarSeed: string
-  avatarBodyType: string | null
-  avatarHairStyle: number | null
-  avatarHairColor: string | null
   avatarSkinTone: string | null
-  avatarShirtColor: string | null
+  avatarSchemaVersion?: number | null
+  avatarBodyFrame?: string | null
+  avatarOutfitType?: string | null
+  avatarOutfitColor?: string | null
+  avatarOutfitAccentColor?: string | null
+  avatarHairCategory?: string | null
+  avatarHeadCoveringType?: string | null
+  avatarHeadCoveringColor?: string | null
+  avatarAccessories?: string[] | null
+  cubicleId?: string | null
+  leadershipOfficeId?: string | null
+  seniorOfficeEligible?: boolean
+  statusText?: string
+  currentZoneId?: string | null
+  currentZoneLabel?: string | null
+  currentAudioMode?: string
+  seatedAt?: string | null
 }
 
 interface ChatMessageData {
@@ -72,6 +104,7 @@ export interface OfficeSceneCallbacks {
   onConnectionError: (error: string) => void
   onConnected: () => void
   onDisconnected: () => void
+  onReconnecting?: (attempt: number, nextDelayMs: number) => void
   onPlayerPositionChange?: (userId: string, x: number, y: number) => void
   onLocalSessionReady?: (localUserId: string) => void
 }
@@ -89,10 +122,14 @@ export class OfficeScene extends Phaser.Scene {
   private callbacks: OfficeSceneCallbacks
   private token: string
   private serverUrl: string
+  // Reconnect state
+  private reconnectAttempt = 0
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private intentionalDisconnect = false
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys
   private wasd!: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key }
   private lastMoveTime = 0
-  private moveInterval = 150
+  private moveInterval = OFFICE_MOVE_RATE_LIMIT_MS
   private isConnected = false
   private animatedPlants: { sprite: Phaser.GameObjects.Image; baseX: number; time: number }[] = []
   private monitorSprites: Phaser.GameObjects.Image[] = []
@@ -218,7 +255,50 @@ export class OfficeScene extends Phaser.Scene {
       }
     }
 
+    this.addWorldLabels()
     this.cameras.main.setBounds(0, 0, MAP_WIDTH * TILE_SIZE, MAP_HEIGHT * TILE_SIZE)
+  }
+
+  private addWorldLabels() {
+    const labelStyle: Phaser.Types.GameObjects.Text.TextStyle = {
+      fontSize: '10px',
+      fontFamily: 'system-ui, sans-serif',
+      color: '#e5e7eb',
+      align: 'center',
+      stroke: '#111827',
+      strokeThickness: 3,
+    }
+
+    for (const zone of OFFICE_WORLD.zones) {
+      if (zone.id === 'lobby') continue
+      const cx = ((zone.x1 + zone.x2) / 2) * TILE_SIZE
+      const cy = (zone.y1 + 0.8) * TILE_SIZE
+      this.add.text(cx, cy, zone.label, labelStyle).setOrigin(0.5, 0.5).setDepth(3).setAlpha(0.75)
+    }
+
+    const lobby = OFFICE_WORLD.zones.find((zone) => zone.id === 'lobby')
+    if (lobby) {
+      const cx = ((lobby.x1 + lobby.x2) / 2) * TILE_SIZE
+      const cy = (lobby.y1 + 2.2) * TILE_SIZE
+      const icon = this.add.text(cx - 132, cy, '2', {
+        fontSize: '54px',
+        fontFamily: 'system-ui, sans-serif',
+        fontStyle: '900',
+        color: '#2778f6',
+      }).setOrigin(0.5, 0.5).setDepth(4)
+      const wordmark = this.add.text(cx - 88, cy + 1, OFFICE_WORLD.branding.companyName, {
+        fontSize: '34px',
+        fontFamily: 'system-ui, sans-serif',
+        fontStyle: '800',
+        color: '#273047',
+      }).setOrigin(0, 0.5).setDepth(4)
+      const plate = this.add.rectangle(cx, cy, 330, 72, 0xf6f8ff, 0.94)
+        .setStrokeStyle(2, 0x2778f6, 0.55)
+        .setDepth(3)
+      icon.setDepth(4)
+      wordmark.setDepth(4)
+      plate.setDepth(3)
+    }
   }
 
   // ─── Ambient Lighting ───────────────────────────────────────────────
@@ -284,11 +364,53 @@ export class OfficeScene extends Phaser.Scene {
 
   // ─── Server Connection ──────────────────────────────────────────────
 
+  /**
+   * Schedule the next reconnect attempt with exponential backoff.
+   * Doubling delay (1s, 2s, 4s, 8s, capped at 16s). The UI is notified via
+   * onReconnecting so it can render a "Reconnecting…" overlay instead of
+   * the terminal "Connection error" state.
+   */
+  private scheduleReconnect() {
+    if (this.intentionalDisconnect) return
+    if (this.reconnectTimer) return
+    this.reconnectAttempt += 1
+    const baseDelay = 1000
+    const maxDelay = 16_000
+    const delay = Math.min(baseDelay * 2 ** (this.reconnectAttempt - 1), maxDelay)
+    this.callbacks.onReconnecting?.(this.reconnectAttempt, delay)
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null
+      this.connectToServer()
+    }, delay)
+  }
+
+  private clearReconnectTimer() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+  }
+
+  /**
+   * Public hook for the page to tear down cleanly when the user navigates
+   * away. Prevents the reconnect loop from firing on a deliberate exit.
+   */
+  shutdownNetwork() {
+    this.intentionalDisconnect = true
+    this.clearReconnectTimer()
+    this.room?.leave().catch(() => {})
+  }
+
   private async connectToServer() {
     try {
-      this.client = new Client(this.serverUrl)
+      if (!this.client) {
+        this.client = new Client(this.serverUrl)
+      }
       this.room = await this.client.joinOrCreate('office', { token: this.token })
       this.isConnected = true
+      // Successful connect resets backoff so a future drop starts at 1s again.
+      this.reconnectAttempt = 0
+      this.clearReconnectTimer()
 
       this.room.onMessage('fullState', (data: {
         players: PlayerData[]; chatHistory: ChatMessageData[]; yourSessionId: string
@@ -324,11 +446,15 @@ export class OfficeScene extends Phaser.Scene {
 
       this.room.onMessage('playerMoved', (data: {
         sessionId: string; x: number; y: number; direction: string; isMoving: boolean
+        currentZoneId?: string | null; currentZoneLabel?: string | null; currentAudioMode?: string
       }) => {
         const player = this.playersData.get(data.sessionId)
         if (!player) return
         player.x = data.x; player.y = data.y
         player.direction = data.direction; player.isMoving = data.isMoving
+        player.currentZoneId = data.currentZoneId ?? getOfficeZoneAt(data.x, data.y)?.id ?? null
+        player.currentZoneLabel = data.currentZoneLabel ?? getOfficeZoneAt(data.x, data.y)?.label ?? null
+        player.currentAudioMode = data.currentAudioMode ?? getOfficeZoneAt(data.x, data.y)?.audioMode ?? 'open'
 
         const sprite = this.playerSprites.get(data.sessionId)
         if (sprite) {
@@ -362,26 +488,51 @@ export class OfficeScene extends Phaser.Scene {
         this.notifyPlayersChange()
       })
 
+      this.room.onMessage('playerStatusText', (data: { sessionId: string; statusText: string }) => {
+        const player = this.playersData.get(data.sessionId)
+        if (!player) return
+        player.statusText = data.statusText
+        this.notifyPlayersChange()
+      })
+
+      this.room.onMessage('playerSeated', (data: { sessionId: string; seatedAt: string | null }) => {
+        const player = this.playersData.get(data.sessionId)
+        if (!player) return
+        player.seatedAt = data.seatedAt
+        this.notifyPlayersChange()
+      })
+
       this.room.onMessage('chatMessage', (msg: ChatMessageData) => {
         this.callbacks.onChatMessage(msg)
         this.showChatBubble(msg.senderId, msg.content)
       })
 
       this.room.onMessage('kicked', (data: { reason: string }) => {
+        // Server-initiated kick (multi-tab, etc). Treat as terminal —
+        // do NOT reconnect, otherwise we'd just get kicked again.
+        this.intentionalDisconnect = true
+        this.clearReconnectTimer()
         this.callbacks.onConnectionError(data.reason)
         this.isConnected = false
       })
 
-      this.room.onLeave((code) => {
+      this.room.onLeave(() => {
         this.isConnected = false
         this.callbacks.onDisconnected()
+        this.scheduleReconnect()
       })
 
       this.room.onError((_code, message) => {
         this.callbacks.onConnectionError(message || 'Connection error')
       })
     } catch (err: any) {
-      this.callbacks.onConnectionError(err.message || 'Failed to connect to office server')
+      // Initial join failed (or a reconnect attempt failed). Either way,
+      // try again unless the page has shut us down.
+      if (!this.intentionalDisconnect) {
+        this.scheduleReconnect()
+      } else {
+        this.callbacks.onConnectionError(err.message || 'Failed to connect to office server')
+      }
     }
   }
 
@@ -392,15 +543,35 @@ export class OfficeScene extends Phaser.Scene {
 
     const isLocal = sessionId === this.localSessionId
     const seed = player.userId || player.avatarSeed
-    const shirtColor = player.avatarShirtColor || getAvatarColor(seed)
+    // Resolve v2 settings (filling in deterministic defaults for any missing
+    // fields). v1 fields are no longer read; only v2 + skin tone drive rendering.
+    const avatar = resolveAvatarV2Settings(seed, {
+      avatarSkinTone: player.avatarSkinTone,
+      avatarBodyFrame: player.avatarBodyFrame as any,
+      avatarOutfitType: player.avatarOutfitType as any,
+      avatarOutfitColor: player.avatarOutfitColor,
+      avatarOutfitAccentColor: player.avatarOutfitAccentColor,
+      avatarHairCategory: player.avatarHairCategory as any,
+      avatarHeadCoveringType: player.avatarHeadCoveringType as any,
+      avatarHeadCoveringColor: player.avatarHeadCoveringColor,
+      avatarAccessories: player.avatarAccessories as any,
+    })
     const skinColor = player.avatarSkinTone || getSkinTone(seed)
-    const hairColor = player.avatarHairColor || getHairColor(seed)
-    const hairStyle = player.avatarHairStyle ?? getHairStyle(seed)
-    const bodyType = (player.avatarBodyType as 'male' | 'female') || getBodyType(seed)
+    const hairColor = getHairColor(seed)
+    const hairStyle = hairCategoryToStyleIndex(avatar.avatarHairCategory)
+    const bodyType: 'male' | 'female' = avatar.avatarBodyFrame === 'feminine' ? 'female' : 'male'
     const texKey = `char_${player.userId}`
 
     if (!this.textures.exists(texKey)) {
-      generateCharacterTexture(this, texKey, shirtColor, skinColor, hairColor, hairStyle, bodyType)
+      generateCharacterTexture(this, texKey, avatar.avatarOutfitColor, skinColor, hairColor, hairStyle, bodyType, {
+        bodyFrame: avatar.avatarBodyFrame,
+        outfitType: avatar.avatarOutfitType,
+        outfitColor: avatar.avatarOutfitColor,
+        outfitAccentColor: avatar.avatarOutfitAccentColor,
+        headCoveringType: avatar.avatarHeadCoveringType,
+        headCoveringColor: avatar.avatarHeadCoveringColor,
+        accessories: avatar.avatarAccessories,
+      })
     }
 
     const px = player.x * TILE_SIZE + TILE_SIZE / 2

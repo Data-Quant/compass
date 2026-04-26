@@ -1,13 +1,19 @@
 import { Room, Client } from 'colyseus'
 import { verifyOfficeToken, OfficeTokenPayload } from '../auth'
+import {
+  OFFICE_MAP_HEIGHT as MAP_HEIGHT,
+  OFFICE_MAP_WIDTH as MAP_WIDTH,
+  OFFICE_MOVE_RATE_LIMIT_MS,
+  OFFICE_SPAWN,
+  generateOfficeMap,
+  getOfficeZoneAt,
+  isOfficeTileWalkable,
+} from '../../../shared/office-world'
 
-// Map constants (must match lib/office-config.ts)
-const MAP_WIDTH = 40
-const MAP_HEIGHT = 30
-const SPAWN_X = 20
-const SPAWN_Y = 25
+const SPAWN_X = OFFICE_SPAWN.x
+const SPAWN_Y = OFFICE_SPAWN.y
 const PROXIMITY_RADIUS = 5
-const MOVE_RATE_LIMIT = 100 // ms
+const MOVE_RATE_LIMIT = OFFICE_MOVE_RATE_LIMIT_MS
 const MAX_CHAT_HISTORY = 50
 const VALID_STATUSES = ['ONLINE', 'AWAY', 'BUSY', 'DND']
 
@@ -26,11 +32,24 @@ interface PlayerData {
   isMoving: boolean
   status: string
   avatarSeed: string
-  avatarBodyType: string | null
-  avatarHairStyle: number | null
-  avatarHairColor: string | null
   avatarSkinTone: string | null
-  avatarShirtColor: string | null
+  avatarSchemaVersion: number | null
+  avatarBodyFrame: string | null
+  avatarOutfitType: string | null
+  avatarOutfitColor: string | null
+  avatarOutfitAccentColor: string | null
+  avatarHairCategory: string | null
+  avatarHeadCoveringType: string | null
+  avatarHeadCoveringColor: string | null
+  avatarAccessories: string[]
+  cubicleId: string | null
+  leadershipOfficeId: string | null
+  seniorOfficeEligible: boolean
+  statusText: string
+  currentZoneId: string | null
+  currentZoneLabel: string | null
+  currentAudioMode: string
+  seatedAt: string | null
   lastMoveAt: number
 }
 
@@ -45,136 +64,6 @@ interface ChatMessageData {
   timestamp: number
 }
 
-// ─── Tile Types (must match lib/office-config.ts T enum) ────────────────────
-
-const T = {
-  FLOOR: 0, WALL: 1, DESK_H: 2, DESK_V: 3, MEETING: 4, LOUNGE: 5,
-  PLANT: 6, CHAIR: 7, SOFA: 8, BOOKSHELF: 9, COFFEE: 10, WHITEBOARD: 11,
-  RUG: 12, WALL_BOTTOM: 13, CARPET: 14, GLASS_WALL: 15,
-} as const
-
-// ─── Map ────────────────────────────────────────────────────────────────────
-
-function generateMap(): number[][] {
-  const F = T.FLOOR, W = T.WALL, DH = T.DESK_H, DV = T.DESK_V
-  const M = T.MEETING, L = T.LOUNGE, P = T.PLANT, CH = T.CHAIR
-  const S = T.SOFA, BS = T.BOOKSHELF, CF = T.COFFEE, WB = T.WHITEBOARD
-  const R = T.RUG, CP = T.CARPET, GW = T.GLASS_WALL
-
-  const map: number[][] = []
-  for (let y = 0; y < MAP_HEIGHT; y++) {
-    map[y] = new Array(MAP_WIDTH).fill(F)
-  }
-
-  // Border walls
-  for (let x = 0; x < MAP_WIDTH; x++) {
-    map[0][x] = W; map[1][x] = W
-    map[MAP_HEIGHT - 1][x] = W; map[MAP_HEIGHT - 2][x] = W
-  }
-  for (let y = 0; y < MAP_HEIGHT; y++) {
-    map[y][0] = W; map[y][MAP_WIDTH - 1] = W
-  }
-
-  // Left Meeting Room (cols 2-8, rows 2-7)
-  for (let x = 1; x <= 9; x++) { map[2][x] = W; map[7][x] = W }
-  for (let y = 2; y <= 7; y++) { map[y][1] = W; map[y][9] = W }
-  for (let y = 3; y <= 5; y++) map[y][9] = GW
-  map[6][9] = F
-  for (let y = 3; y <= 6; y++) for (let x = 2; x <= 8; x++) map[y][x] = M
-  for (let x = 3; x <= 7; x++) map[4][x] = DH
-  for (let x = 3; x <= 7; x++) map[5][x] = DH
-  map[3][4] = CH; map[3][6] = CH; map[6][4] = CH; map[6][6] = CH
-  map[3][2] = WB
-
-  // Right Meeting Room (cols 31-37, rows 2-7)
-  for (let x = 30; x <= 38; x++) { map[2][x] = W; map[7][x] = W }
-  for (let y = 2; y <= 7; y++) { map[y][30] = W; map[y][38] = W }
-  for (let y = 3; y <= 5; y++) map[y][30] = GW
-  map[6][30] = F
-  for (let y = 3; y <= 6; y++) for (let x = 31; x <= 37; x++) map[y][x] = M
-  for (let x = 32; x <= 36; x++) map[4][x] = DH
-  for (let x = 32; x <= 36; x++) map[5][x] = DH
-  map[3][33] = CH; map[3][35] = CH; map[6][33] = CH; map[6][35] = CH
-  map[3][37] = WB
-
-  // Plants along top corridor
-  map[2][11] = P; map[2][14] = P; map[2][25] = P; map[2][28] = P
-
-  // Main Workspace — Left desk cluster (cols 3-7, rows 10-15)
-  for (const row of [10, 13]) {
-    for (let x = 3; x <= 6; x++) map[row][x] = DH
-    map[row + 1][3] = CH; map[row + 1][5] = CH
-    map[row - 1][4] = CH; map[row - 1][6] = CH
-  }
-
-  // Main Workspace — Center cluster (cols 16-23, rows 10-15)
-  for (const row of [10, 13]) {
-    for (let x = 16; x <= 23; x++) map[row][x] = DH
-    map[row + 1][17] = CH; map[row + 1][19] = CH; map[row + 1][21] = CH
-    map[row - 1][18] = CH; map[row - 1][20] = CH; map[row - 1][22] = CH
-  }
-
-  // Main Workspace — Right cluster (cols 33-36, rows 10-15)
-  for (const row of [10, 13]) {
-    for (let x = 33; x <= 36; x++) map[row][x] = DH
-    map[row + 1][33] = CH; map[row + 1][35] = CH
-    map[row - 1][34] = CH; map[row - 1][36] = CH
-  }
-
-  // Bookshelf wall (right side, rows 10-15)
-  for (let y = 10; y <= 15; y++) map[y][38] = BS
-
-  // Plants in workspace
-  map[10][10] = P; map[15][10] = P; map[10][28] = P; map[15][28] = P
-  map[12][14] = P; map[12][25] = P
-
-  // Lounge Area (bottom-left, cols 2-12, rows 19-25)
-  for (let y = 19; y <= 25; y++) for (let x = 2; x <= 12; x++) map[y][x] = L
-  map[20][3] = S; map[20][4] = S; map[20][5] = S
-  map[21][3] = S
-  map[22][3] = S; map[22][4] = S; map[22][5] = S
-  for (let y = 20; y <= 22; y++) for (let x = 6; x <= 8; x++) {
-    if (map[y][x] === L) map[y][x] = R
-  }
-  map[21][7] = DV
-  map[19][2] = P; map[19][12] = P; map[25][2] = P
-
-  // Break Room (bottom-right, cols 28-37, rows 19-25)
-  for (let y = 18; y <= 25; y++) for (let x = 27; x <= 37; x++) map[y][x] = CP
-  for (let y = 18; y <= 22; y++) map[y][27] = W
-  map[23][27] = F
-  map[19][37] = CF; map[20][37] = CF
-  map[21][30] = DV; map[21][34] = DV
-  map[20][30] = CH; map[22][30] = CH; map[20][34] = CH; map[22][34] = CH
-  map[19][28] = BS; map[19][29] = BS
-  map[25][37] = P; map[25][28] = P
-
-  // Center corridor rugs
-  for (let x = 15; x <= 24; x++) { map[17][x] = R; map[26][x] = R }
-
-  // Entrance plants
-  map[26][5] = P; map[26][34] = P
-  map[27][1] = P; map[27][38] = P
-
-  return map
-}
-
-function isWalkable(tile: number): boolean {
-  switch (tile) {
-    case T.WALL:
-    case T.DESK_H:
-    case T.DESK_V:
-    case T.BOOKSHELF:
-    case T.COFFEE:
-    case T.WHITEBOARD:
-    case T.GLASS_WALL:
-    case T.SOFA:
-      return false
-    default:
-      return true
-  }
-}
-
 // ─── Room ───────────────────────────────────────────────────────────────────
 
 export class OfficeRoom extends Room {
@@ -185,7 +74,7 @@ export class OfficeRoom extends Room {
 
   onCreate() {
     // No setState — all sync via messages (avoids @colyseus/schema client issues)
-    this.mapData = generateMap()
+    this.mapData = generateOfficeMap().tileMap
     this.maxClients = 30
 
     // ─── Move handler ──────────────────────────────────────────────
@@ -205,7 +94,7 @@ export class OfficeRoom extends Room {
       const newY = player.y + dy
 
       if (newX < 0 || newX >= MAP_WIDTH || newY < 0 || newY >= MAP_HEIGHT) return
-      if (!isWalkable(this.mapData[newY][newX])) return
+      if (!isOfficeTileWalkable(this.mapData[newY][newX])) return
 
       // Player collision
       let blocked = false
@@ -225,6 +114,10 @@ export class OfficeRoom extends Room {
       player.y = newY
       player.isMoving = true
       player.lastMoveAt = now
+      const zone = getOfficeZoneAt(newX, newY)
+      player.currentZoneId = zone?.id ?? null
+      player.currentZoneLabel = zone?.label ?? null
+      player.currentAudioMode = zone?.audioMode ?? 'open'
 
       this.broadcast('playerMoved', {
         sessionId: player.sessionId,
@@ -232,6 +125,9 @@ export class OfficeRoom extends Room {
         y: player.y,
         direction: player.direction,
         isMoving: true,
+        currentZoneId: player.currentZoneId,
+        currentZoneLabel: player.currentZoneLabel,
+        currentAudioMode: player.currentAudioMode,
       })
     })
 
@@ -251,7 +147,7 @@ export class OfficeRoom extends Room {
       const content = (data.content || '').trim().slice(0, 500)
       if (!content) return
 
-      const channel = data.channel === 'proximity' ? 'proximity' : 'global'
+      const channel = data.channel === 'proximity' || data.channel === 'room' ? data.channel : 'global'
 
       const msg: ChatMessageData = {
         id: `${client.sessionId}-${Date.now()}`,
@@ -270,6 +166,13 @@ export class OfficeRoom extends Room {
           this.chatHistory.shift()
         }
         this.broadcast('chatMessage', msg)
+      } else if (channel === 'room') {
+        this.players.forEach((other, sessionId) => {
+          if (other.currentZoneId === player.currentZoneId) {
+            const target = this.clients.find(c => c.sessionId === sessionId)
+            target?.send('chatMessage', msg)
+          }
+        })
       } else {
         // Proximity: send only to nearby clients
         this.players.forEach((other, sessionId) => {
@@ -291,6 +194,137 @@ export class OfficeRoom extends Room {
       this.broadcast('playerStatus', {
         sessionId: player.sessionId,
         status: player.status,
+      })
+    })
+
+    this.onMessage('setStatusText', (client, data: { statusText?: string }) => {
+      const player = this.players.get(client.sessionId)
+      if (!player) return
+      player.statusText = (data.statusText || '').trim().slice(0, 80)
+      this.broadcast('playerStatusText', {
+        sessionId: player.sessionId,
+        statusText: player.statusText,
+      })
+    })
+
+    this.onMessage('typing', (client, data: { channel?: string; isTyping?: boolean }) => {
+      const player = this.players.get(client.sessionId)
+      if (!player) return
+      this.broadcast('typing', {
+        sessionId: player.sessionId,
+        userId: player.userId,
+        name: player.name,
+        channel: data.channel === 'room' ? 'room' : data.channel === 'proximity' ? 'proximity' : 'global',
+        isTyping: Boolean(data.isTyping),
+        currentZoneId: player.currentZoneId,
+      }, { except: client })
+    })
+
+    this.onMessage('directMessage', (client, data: { targetUserId?: string; content?: string }) => {
+      const player = this.players.get(client.sessionId)
+      if (!player || !data.targetUserId) return
+      const content = (data.content || '').trim().slice(0, 500)
+      if (!content) return
+      const msg: ChatMessageData = {
+        id: `${client.sessionId}-dm-${Date.now()}`,
+        senderId: player.userId,
+        senderName: player.name,
+        content,
+        channel: 'direct',
+        x: player.x,
+        y: player.y,
+        timestamp: Date.now(),
+      }
+      this.players.forEach((other, sessionId) => {
+        if (other.userId === data.targetUserId || other.userId === player.userId) {
+          const target = this.clients.find(c => c.sessionId === sessionId)
+          target?.send('chatMessage', msg)
+        }
+      })
+    })
+
+    this.onMessage('sit', (client, data: { seatId?: string }) => {
+      const player = this.players.get(client.sessionId)
+      if (!player) return
+      player.seatedAt = (data.seatId || player.currentZoneId || 'seat').slice(0, 80)
+      this.broadcast('playerSeated', { sessionId: player.sessionId, seatedAt: player.seatedAt })
+    })
+
+    this.onMessage('stand', (client) => {
+      const player = this.players.get(client.sessionId)
+      if (!player) return
+      player.seatedAt = null
+      this.broadcast('playerSeated', { sessionId: player.sessionId, seatedAt: null })
+    })
+
+    this.onMessage('interact', (client, data: { interactableId?: string }) => {
+      const player = this.players.get(client.sessionId)
+      if (!player || !data.interactableId) return
+      client.send('interaction', {
+        interactableId: data.interactableId,
+        currentZoneId: player.currentZoneId,
+      })
+    })
+
+    this.onMessage('knock', (client, data: { officeId?: string }) => {
+      const player = this.players.get(client.sessionId)
+      if (!player || !data.officeId) return
+      this.players.forEach((other, sessionId) => {
+        if (other.leadershipOfficeId === data.officeId) {
+          const target = this.clients.find(c => c.sessionId === sessionId)
+          target?.send('knockRequest', {
+            officeId: data.officeId,
+            fromSessionId: player.sessionId,
+            fromUserId: player.userId,
+            fromName: player.name,
+          })
+        }
+      })
+    })
+
+    this.onMessage('respondToKnock', (client, data: { targetSessionId?: string; officeId?: string; accepted?: boolean }) => {
+      const player = this.players.get(client.sessionId)
+      if (!player || player.leadershipOfficeId !== data.officeId || !data.targetSessionId) return
+      const target = this.clients.find(c => c.sessionId === data.targetSessionId)
+      target?.send('knockResponse', {
+        officeId: data.officeId,
+        accepted: Boolean(data.accepted),
+        fromUserId: player.userId,
+        fromName: player.name,
+      })
+    })
+
+    this.onMessage('lockRoom', (client, data: { officeId?: string }) => {
+      const player = this.players.get(client.sessionId)
+      if (!player || player.leadershipOfficeId !== data.officeId) return
+      this.broadcast('roomLockChanged', { officeId: data.officeId, locked: true, ownerUserId: player.userId })
+    })
+
+    this.onMessage('unlockRoom', (client, data: { officeId?: string }) => {
+      const player = this.players.get(client.sessionId)
+      if (!player || player.leadershipOfficeId !== data.officeId) return
+      this.broadcast('roomLockChanged', { officeId: data.officeId, locked: false, ownerUserId: player.userId })
+    })
+
+    this.onMessage('followPlayer', (client, data: { targetUserId?: string }) => {
+      const target = Array.from(this.players.values()).find((p) => p.userId === data.targetUserId)
+      if (target) client.send('locatePlayer', { userId: target.userId, x: target.x, y: target.y, currentZoneId: target.currentZoneId })
+    })
+
+    this.onMessage('locatePlayer', (client, data: { targetUserId?: string }) => {
+      const target = Array.from(this.players.values()).find((p) => p.userId === data.targetUserId)
+      if (target) client.send('locatePlayer', { userId: target.userId, x: target.x, y: target.y, currentZoneId: target.currentZoneId })
+    })
+
+    this.onMessage('reaction', (client, data: { reaction?: string }) => {
+      const player = this.players.get(client.sessionId)
+      if (!player) return
+      this.broadcast('reaction', {
+        sessionId: player.sessionId,
+        userId: player.userId,
+        reaction: (data.reaction || '').slice(0, 24),
+        x: player.x,
+        y: player.y,
       })
     })
   }
@@ -320,6 +354,7 @@ export class OfficeRoom extends Room {
 
     this.userSessionMap.set(auth.userId, client.sessionId)
 
+    const zone = getOfficeZoneAt(SPAWN_X, SPAWN_Y)
     const player: PlayerData = {
       sessionId: client.sessionId,
       userId: auth.userId,
@@ -333,11 +368,24 @@ export class OfficeRoom extends Room {
       isMoving: false,
       status: 'ONLINE',
       avatarSeed: auth.userId,
-      avatarBodyType: auth.avatarBodyType ?? null,
-      avatarHairStyle: auth.avatarHairStyle ?? null,
-      avatarHairColor: auth.avatarHairColor ?? null,
       avatarSkinTone: auth.avatarSkinTone ?? null,
-      avatarShirtColor: auth.avatarShirtColor ?? null,
+      avatarSchemaVersion: auth.avatarSchemaVersion ?? 2,
+      avatarBodyFrame: auth.avatarBodyFrame ?? null,
+      avatarOutfitType: auth.avatarOutfitType ?? null,
+      avatarOutfitColor: auth.avatarOutfitColor ?? null,
+      avatarOutfitAccentColor: auth.avatarOutfitAccentColor ?? null,
+      avatarHairCategory: auth.avatarHairCategory ?? null,
+      avatarHeadCoveringType: auth.avatarHeadCoveringType ?? null,
+      avatarHeadCoveringColor: auth.avatarHeadCoveringColor ?? null,
+      avatarAccessories: auth.avatarAccessories ?? [],
+      cubicleId: auth.cubicleId ?? null,
+      leadershipOfficeId: auth.leadershipOfficeId ?? null,
+      seniorOfficeEligible: Boolean(auth.seniorOfficeEligible),
+      statusText: '',
+      currentZoneId: zone?.id ?? null,
+      currentZoneLabel: zone?.label ?? null,
+      currentAudioMode: zone?.audioMode ?? 'open',
+      seatedAt: null,
       lastMoveAt: 0,
     }
 
@@ -357,11 +405,24 @@ export class OfficeRoom extends Room {
       isMoving: p.isMoving,
       status: p.status,
       avatarSeed: p.avatarSeed,
-      avatarBodyType: p.avatarBodyType,
-      avatarHairStyle: p.avatarHairStyle,
-      avatarHairColor: p.avatarHairColor,
       avatarSkinTone: p.avatarSkinTone,
-      avatarShirtColor: p.avatarShirtColor,
+      avatarSchemaVersion: p.avatarSchemaVersion,
+      avatarBodyFrame: p.avatarBodyFrame,
+      avatarOutfitType: p.avatarOutfitType,
+      avatarOutfitColor: p.avatarOutfitColor,
+      avatarOutfitAccentColor: p.avatarOutfitAccentColor,
+      avatarHairCategory: p.avatarHairCategory,
+      avatarHeadCoveringType: p.avatarHeadCoveringType,
+      avatarHeadCoveringColor: p.avatarHeadCoveringColor,
+      avatarAccessories: p.avatarAccessories,
+      cubicleId: p.cubicleId,
+      leadershipOfficeId: p.leadershipOfficeId,
+      seniorOfficeEligible: p.seniorOfficeEligible,
+      statusText: p.statusText,
+      currentZoneId: p.currentZoneId,
+      currentZoneLabel: p.currentZoneLabel,
+      currentAudioMode: p.currentAudioMode,
+      seatedAt: p.seatedAt,
     }))
 
     client.send('fullState', {

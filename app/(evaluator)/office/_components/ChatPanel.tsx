@@ -49,7 +49,7 @@ export function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
     <div className="flex flex-col h-full bg-card">
       {/* Tabs */}
       <div className="flex border-b border-border shrink-0">
-        {(['global', 'proximity'] as const).map((tab) => (
+        {(['global', 'proximity', 'room'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -71,7 +71,9 @@ export function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
           <p className="text-xs text-muted-foreground text-center py-4">
             {activeTab === 'global'
               ? 'No messages yet. Say hi!'
-              : 'Walk near someone to chat!'}
+              : activeTab === 'room'
+                ? 'Room chat is quiet.'
+                : 'Walk near someone to chat!'}
           </p>
         )}
         {filteredMessages.map((msg) => (

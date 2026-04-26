@@ -1,5 +1,11 @@
 import * as Phaser from 'phaser'
 import { TILE_SIZE, T, PALETTE, type BodyType } from '@/lib/office-config'
+import type {
+  AvatarAccessory,
+  AvatarBodyFrame,
+  AvatarHeadCoveringType,
+  AvatarOutfitType,
+} from '@/shared/avatar-v2'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // COLOR HELPERS
@@ -354,6 +360,75 @@ export function generateObjectTextures(scene: Phaser.Scene) {
     ctx.fillStyle = '#40a040'
     ctx.fillRect(20, S - 7, 4, 2)
   })
+
+  canvasTex(scene, 'tile_logo_sign', S, S, (ctx) => {
+    ctx.fillStyle = '#f6f8ff'
+    ctx.fillRect(2, 7, S - 4, 18)
+    ctx.fillStyle = '#2778f6'
+    ctx.fillRect(5, 10, 6, 10)
+    ctx.fillRect(5, 20, 8, 2)
+    ctx.fillStyle = '#273047'
+    ctx.fillRect(15, 11, 10, 3)
+    ctx.fillRect(15, 16, 7, 2)
+    ctx.fillRect(15, 20, 11, 2)
+    ctx.fillStyle = 'rgba(39,120,246,0.16)'
+    ctx.fillRect(2, 24, S - 4, 2)
+  })
+
+  canvasTex(scene, 'tile_door', S, S, (ctx) => {
+    ctx.fillStyle = '#d9b982'
+    ctx.fillRect(5, 3, S - 10, S - 5)
+    ctx.fillStyle = darken('#d9b982', 18)
+    ctx.fillRect(5, 3, 2, S - 5)
+    ctx.fillRect(S - 7, 3, 2, S - 5)
+    ctx.fillRect(5, S - 4, S - 10, 2)
+    ctx.fillStyle = '#f8df96'
+    ctx.fillRect(S - 10, 15, 2, 2)
+  })
+
+  canvasTex(scene, 'tile_cubicle', S, S, (ctx) => {
+    ctx.fillStyle = '#7b8294'
+    ctx.fillRect(2, 4, S - 4, 4)
+    ctx.fillRect(2, 4, 4, S - 8)
+    ctx.fillStyle = '#bfc7d5'
+    ctx.fillRect(6, 8, S - 10, 12)
+    ctx.fillStyle = '#8b5e3c'
+    ctx.fillRect(8, 19, S - 12, 4)
+    ctx.fillStyle = '#4f9cf9'
+    ctx.fillRect(10, 11, 6, 5)
+    ctx.fillStyle = '#43b581'
+    ctx.fillRect(22, 12, 4, 7)
+    ctx.fillStyle = '#2f6f3e'
+    ctx.fillRect(21, 11, 6, 2)
+  })
+
+  canvasTex(scene, 'tile_office_desk', S, S, (ctx) => {
+    ctx.fillStyle = '#6b4a2f'
+    ctx.fillRect(4, 9, S - 8, 12)
+    ctx.fillStyle = '#8a6442'
+    ctx.fillRect(4, 8, S - 8, 3)
+    ctx.fillStyle = '#2d3348'
+    ctx.fillRect(12, 5, 8, 5)
+    ctx.fillStyle = '#60a5fa'
+    ctx.fillRect(13, 6, 6, 3)
+    ctx.fillStyle = '#3b2a1c'
+    ctx.fillRect(6, 21, 3, 5)
+    ctx.fillRect(S - 9, 21, 3, 5)
+  })
+
+  canvasTex(scene, 'tile_notice', S, S, (ctx) => {
+    ctx.fillStyle = '#8b6f47'
+    ctx.fillRect(4, 3, S - 8, S - 7)
+    ctx.fillStyle = '#f7e6b5'
+    ctx.fillRect(7, 6, 7, 8)
+    ctx.fillRect(17, 7, 8, 6)
+    ctx.fillStyle = '#c85d5d'
+    ctx.fillRect(9, 8, 3, 1)
+    ctx.fillStyle = '#496d9c'
+    ctx.fillRect(19, 9, 4, 1)
+    ctx.fillStyle = '#f3c969'
+    ctx.fillRect(10, 17, 12, 5)
+  })
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -385,6 +460,11 @@ export function getObjectTextureKey(tileType: number): string | null {
     case T.SOFA:       return 'tile_sofa'
     case T.WHITEBOARD: return 'tile_whiteboard'
     case T.GLASS_WALL: return 'tile_glass'
+    case T.LOGO_SIGN:  return 'tile_logo_sign'
+    case T.DOOR:       return 'tile_door'
+    case T.CUBICLE:    return 'tile_cubicle'
+    case T.OFFICE_DESK:return 'tile_office_desk'
+    case T.NOTICE:     return 'tile_notice'
     default:           return null
   }
 }
@@ -416,6 +496,15 @@ export function generateCharacterTexture(
   hairColor?: string,
   hairStyle?: number,
   bodyType?: BodyType,
+  options: {
+    bodyFrame?: AvatarBodyFrame | null
+    outfitType?: AvatarOutfitType | null
+    outfitColor?: string | null
+    outfitAccentColor?: string | null
+    headCoveringType?: AvatarHeadCoveringType | null
+    headCoveringColor?: string | null
+    accessories?: AvatarAccessory[] | null
+  } = {},
 ) {
   const W = 20
   const H = 28
@@ -432,7 +521,14 @@ export function generateCharacterTexture(
   const directions = ['down', 'left', 'right', 'up'] as const
   const hColor = hairColor || darken(shirtColor, 40)
   const hStyle = hairStyle ?? 0
-  const body = bodyType || 'male'
+  const bodyFrame = options.bodyFrame ?? (bodyType === 'female' ? 'feminine' : 'masculine')
+  const body = bodyFrame === 'feminine' ? 'female' : 'male'
+  const outfitType = options.outfitType ?? 'shirt'
+  const outfitColor = options.outfitColor ?? shirtColor
+  const accentColor = options.outfitAccentColor ?? '#2778f6'
+  const headCoveringType = options.headCoveringType ?? 'none'
+  const headCoveringColor = options.headCoveringColor ?? '#334155'
+  const accessories = new Set(options.accessories ?? [])
   const shoeColor = '#383838'
   const pantsColor = '#484858'
   const beltColor = '#3a3a3a'
@@ -449,7 +545,8 @@ export function generateCharacterTexture(
       const bob = frame === 1 ? -1 : frame === 2 ? 1 : 0
 
       // ── Hair ──────────────────────────────────────────
-      drawHair(p, dir, hStyle, hColor)
+      if (headCoveringType === 'hijab') drawHijab(p, dir, headCoveringColor)
+      else drawHair(p, dir, hStyle, hColor)
 
       // ── Head ──────────────────────────────────────────
       p(7, 4, 6, 5, skinColor)
@@ -480,9 +577,10 @@ export function generateCharacterTexture(
         p(11, 6, 2, 2, '#282828')
         p(12, 6, 1, 1, '#ffffff')
       } else {
-        // Back view: extra hair
-        p(7, 3, 6, 2, hColor)
+        // Back view: extra hair or head covering volume.
+        p(7, 3, 6, 2, headCoveringType === 'hijab' ? headCoveringColor : hColor)
       }
+      if (accessories.has('glasses')) drawGlasses(p, dir)
 
       // ── Neck ──────────────────────────────────────────
       p(9, 9, 2, 1, skinColor)
@@ -490,29 +588,15 @@ export function generateCharacterTexture(
       // ── Body / Shirt ──────────────────────────────────
       const bodyW = body === 'female' ? 8 : 10
       const bodyX = body === 'female' ? 6 : 5
-      p(bodyX, 10, bodyW, 7, shirtColor)
-      // Shirt shadow
-      p(bodyX, 15, bodyW, 2, darken(shirtColor, 18))
-      // Collar
-      if (dir === 'down') {
-        p(8, 10, 4, 1, darken(shirtColor, 10))
-        p(9, 10, 2, 1, lighten(shirtColor, 8))
-      }
-      // Pocket (front view only)
-      if (dir === 'down' && body === 'male') {
-        p(11, 12, 2, 2, darken(shirtColor, 8))
-      }
-      // Side shadow
-      if (dir === 'left') p(bodyX + bodyW - 1, 10, 1, 7, darken(shirtColor, 12))
-      if (dir === 'right') p(bodyX, 10, 1, 7, darken(shirtColor, 12))
+      drawOutfit(p, dir, bodyX, bodyW, body, outfitType, outfitColor, accentColor)
       // ── Arms ──────────────────────────────────────────
       const armY = 11 + bob
       if (dir === 'left') {
         p(4, armY, 2, 5, skinColor)
-        p(bodyX + bodyW, 11, 1, 5, darken(shirtColor, 5))
+        p(bodyX + bodyW, 11, 1, 5, darken(outfitColor, 5))
       } else if (dir === 'right') {
         p(bodyX + bodyW, armY, 2, 5, skinColor)
-        p(bodyX - 1, 11, 1, 5, darken(shirtColor, 5))
+        p(bodyX - 1, 11, 1, 5, darken(outfitColor, 5))
       } else {
         p(bodyX - 2, 11, 2, 5, skinColor)
         p(bodyX + bodyW, 11, 2, 5, skinColor)
@@ -520,6 +604,7 @@ export function generateCharacterTexture(
 
       // ── Belt ──────────────────────────────────────────
       p(bodyX, 17, bodyW, 1, beltColor)
+      drawAccessories(p, dir, accessories, bodyX, bodyW, accentColor)
 
       // ── Pants ─────────────────────────────────────────
       const pantsX = body === 'female' ? 6 : 5
@@ -568,6 +653,106 @@ export function generateCharacterTexture(
 // ─── Hair style drawing ─────────────────────────────────────────────────────
 
 type PixelFn = (x: number, y: number, w: number, h: number, color: string) => void
+
+function drawHijab(
+  p: PixelFn,
+  dir: 'down' | 'left' | 'right' | 'up',
+  color: string,
+) {
+  const hi = lighten(color, 14)
+  const lo = darken(color, 14)
+  p(6, 1, 8, 4, color)
+  p(6, 4, 1, 6, color)
+  p(13, 4, 1, 6, color)
+  p(7, 0, 6, 1, hi)
+  if (dir === 'left') {
+    p(5, 2, 2, 8, color)
+    p(12, 3, 2, 7, lo)
+  } else if (dir === 'right') {
+    p(13, 2, 2, 8, color)
+    p(6, 3, 2, 7, lo)
+  } else if (dir === 'up') {
+    p(6, 1, 8, 8, color)
+    p(8, 2, 4, 1, hi)
+  } else {
+    p(6, 3, 1, 5, lo)
+    p(13, 3, 1, 5, lo)
+  }
+}
+
+function drawGlasses(p: PixelFn, dir: 'down' | 'left' | 'right' | 'up') {
+  if (dir === 'down') {
+    p(7, 6, 3, 1, '#1f2937')
+    p(11, 6, 3, 1, '#1f2937')
+    p(10, 6, 1, 1, '#1f2937')
+  } else if (dir === 'left') {
+    p(7, 6, 3, 1, '#1f2937')
+  } else if (dir === 'right') {
+    p(10, 6, 3, 1, '#1f2937')
+  }
+}
+
+function drawOutfit(
+  p: PixelFn,
+  dir: 'down' | 'left' | 'right' | 'up',
+  bodyX: number,
+  bodyW: number,
+  body: 'male' | 'female',
+  outfitType: AvatarOutfitType,
+  outfitColor: string,
+  accentColor: string,
+) {
+  const shadow = darken(outfitColor, 18)
+  p(bodyX, 10, bodyW, 7, outfitColor)
+  p(bodyX, 15, bodyW, 2, shadow)
+
+  if (outfitType === 'blazer' || outfitType === 'suit') {
+    p(bodyX, 10, 2, 7, darken(outfitColor, 10))
+    p(bodyX + bodyW - 2, 10, 2, 7, darken(outfitColor, 10))
+    if (dir === 'down') {
+      p(bodyX + 3, 10, bodyW - 6, 7, '#f8fafc')
+      p(9, 11, 2, 5, accentColor)
+    }
+  } else if (outfitType === 'hoodie') {
+    p(bodyX + 1, 9, bodyW - 2, 2, darken(outfitColor, 8))
+    if (dir === 'down') {
+      p(8, 12, 1, 3, accentColor)
+      p(11, 12, 1, 3, accentColor)
+    }
+  } else if (outfitType === 'kurta') {
+    p(bodyX - 1, 14, bodyW + 2, 5, outfitColor)
+    if (dir === 'down') {
+      p(9, 10, 2, 8, accentColor)
+      p(7, 13, 6, 1, lighten(outfitColor, 8))
+    }
+  } else if (dir === 'down') {
+    p(8, 10, 4, 1, darken(outfitColor, 10))
+    p(9, 10, 2, 1, lighten(outfitColor, 8))
+  }
+
+  if (dir === 'down' && body === 'male' && outfitType === 'shirt') {
+    p(11, 12, 2, 2, darken(outfitColor, 8))
+  }
+  if (dir === 'left') p(bodyX + bodyW - 1, 10, 1, 7, darken(outfitColor, 12))
+  if (dir === 'right') p(bodyX, 10, 1, 7, darken(outfitColor, 12))
+}
+
+function drawAccessories(
+  p: PixelFn,
+  dir: 'down' | 'left' | 'right' | 'up',
+  accessories: Set<AvatarAccessory>,
+  bodyX: number,
+  bodyW: number,
+  accentColor: string,
+) {
+  if (accessories.has('badge') && dir === 'down') {
+    p(bodyX + bodyW - 3, 12, 2, 2, '#f8fafc')
+    p(bodyX + bodyW - 2, 13, 1, 1, accentColor)
+  }
+  if (accessories.has('watch')) {
+    p(dir === 'right' ? bodyX + bodyW + 1 : bodyX - 2, 15, 1, 1, accentColor)
+  }
+}
 
 function drawHair(
   p: PixelFn,

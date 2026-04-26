@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { MAP_WIDTH, MAP_HEIGHT, SPAWN_X, SPAWN_Y } from '@/lib/office-config'
+import { OFFICE_WORLD } from '@/shared/office-world'
 
 export async function GET() {
   try {
@@ -20,6 +21,7 @@ export async function GET() {
         spawnY: SPAWN_Y,
         maxPlayers: 30,
         isActive: true,
+        world: OFFICE_WORLD,
       },
     ]
 

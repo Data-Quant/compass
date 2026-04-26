@@ -16,6 +16,12 @@ interface PlayerData {
   isMoving: boolean
   status: string
   avatarSeed: string
+  currentZoneId?: string | null
+  currentZoneLabel?: string | null
+  currentAudioMode?: string
+  cubicleId?: string | null
+  leadershipOfficeId?: string | null
+  statusText?: string
 }
 
 interface ChatMessageData {
@@ -43,12 +49,13 @@ interface OfficeGameProps {
   onConnectionError: (error: string) => void
   onConnected: () => void
   onDisconnected: () => void
+  onReconnecting?: (attempt: number, nextDelayMs: number) => void
   onPlayerPositionChange?: (userId: string, x: number, y: number) => void
   onLocalSessionReady?: (localUserId: string) => void
 }
 
 const OfficeGame = forwardRef<OfficeGameHandle, OfficeGameProps>(function OfficeGame(
-  { token, serverUrl, onPlayersChange, onChatMessage, onConnectionError, onConnected, onDisconnected, onPlayerPositionChange, onLocalSessionReady },
+  { token, serverUrl, onPlayersChange, onChatMessage, onConnectionError, onConnected, onDisconnected, onReconnecting, onPlayerPositionChange, onLocalSessionReady },
   ref
 ) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -56,8 +63,8 @@ const OfficeGame = forwardRef<OfficeGameHandle, OfficeGameProps>(function Office
   const sceneRef = useRef<any>(null)
 
   // Stable callback refs to avoid re-creating the scene
-  const callbacksRef = useRef({ onPlayersChange, onChatMessage, onConnectionError, onConnected, onDisconnected, onPlayerPositionChange, onLocalSessionReady })
-  callbacksRef.current = { onPlayersChange, onChatMessage, onConnectionError, onConnected, onDisconnected, onPlayerPositionChange, onLocalSessionReady }
+  const callbacksRef = useRef({ onPlayersChange, onChatMessage, onConnectionError, onConnected, onDisconnected, onReconnecting, onPlayerPositionChange, onLocalSessionReady })
+  callbacksRef.current = { onPlayersChange, onChatMessage, onConnectionError, onConnected, onDisconnected, onReconnecting, onPlayerPositionChange, onLocalSessionReady }
 
   useImperativeHandle(ref, () => ({
     sendChat: (content: string, channel: ChatChannel) => {
@@ -91,6 +98,7 @@ const OfficeGame = forwardRef<OfficeGameHandle, OfficeGameProps>(function Office
           onConnectionError: (e) => callbacksRef.current.onConnectionError(e),
           onConnected: () => callbacksRef.current.onConnected(),
           onDisconnected: () => callbacksRef.current.onDisconnected(),
+          onReconnecting: (attempt, delay) => callbacksRef.current.onReconnecting?.(attempt, delay),
           onPlayerPositionChange: (userId, x, y) => callbacksRef.current.onPlayerPositionChange?.(userId, x, y),
           onLocalSessionReady: (userId) => callbacksRef.current.onLocalSessionReady?.(userId),
         })

@@ -1,10 +1,22 @@
+import {
+  OFFICE_MAP_HEIGHT,
+  OFFICE_MAP_WIDTH,
+  OFFICE_SPAWN,
+  OFFICE_TILE,
+  OFFICE_TILE_SIZE,
+  OFFICE_WORLD,
+  generateOfficeMap,
+  getOfficeZoneAt,
+  isOfficeTileWalkable,
+} from '@/shared/office-world'
+
 // ─── Virtual Office Constants ────────────────────────────────────────────────
 
-export const TILE_SIZE = 32
-export const MAP_WIDTH = 40   // tiles
-export const MAP_HEIGHT = 30  // tiles
-export const SPAWN_X = 20
-export const SPAWN_Y = 25
+export const TILE_SIZE = OFFICE_TILE_SIZE
+export const MAP_WIDTH = OFFICE_MAP_WIDTH   // tiles
+export const MAP_HEIGHT = OFFICE_MAP_HEIGHT  // tiles
+export const SPAWN_X = OFFICE_SPAWN.x
+export const SPAWN_Y = OFFICE_SPAWN.y
 export const PROXIMITY_RADIUS = 5
 export const MOVE_INTERVAL = 100
 export const CHAT_BUBBLE_DURATION = 4000
@@ -20,7 +32,7 @@ export const STATUS_COLORS: Record<OfficeStatus, string> = {
   DND:    '#6c7086',
 }
 
-export const CHAT_CHANNELS = ['global', 'proximity'] as const
+export const CHAT_CHANNELS = ['global', 'proximity', 'room'] as const
 export type ChatChannel = (typeof CHAT_CHANNELS)[number]
 
 // ─── Color Palette (warm office tones) ───────────────────────────────────────
@@ -167,6 +179,11 @@ export const T = {
   WALL_BOTTOM: 13,  // bottom face of wall (walkable side)
   CARPET:      14,  // carpeted hallway
   GLASS_WALL:  15,  // glass partition (non-walkable but see-through)
+  LOGO_SIGN:   16,  // branded wall logo/signage
+  DOOR:        17,  // room doorway
+  CUBICLE:     18,  // personal cubicle desk
+  OFFICE_DESK: 19,  // leadership office desk
+  NOTICE:      20,  // interactive notice board
 } as const
 
 export type TileType = (typeof T)[keyof typeof T]
@@ -190,6 +207,10 @@ export interface MapData {
 }
 
 export function generateDefaultMap(): MapData {
+  return generateOfficeMap(OFFICE_WORLD)
+}
+
+export function generateLegacyDefaultMap(): MapData {
   const F = T.FLOOR, W = T.WALL, DH = T.DESK_H, DV = T.DESK_V
   const M = T.MEETING, L = T.LOUNGE, P = T.PLANT, CH = T.CHAIR
   const S = T.SOFA, BS = T.BOOKSHELF, CF = T.COFFEE, WB = T.WHITEBOARD
@@ -336,21 +357,30 @@ export interface AudioZone {
 }
 
 export const AUDIO_ZONES: AudioZone[] = [
-  { id: 'meeting-left',  label: 'Meeting Room L', x1: 2, y1: 3, x2: 8,  y2: 6 },
-  { id: 'meeting-right', label: 'Meeting Room R', x1: 31, y1: 3, x2: 37, y2: 6 },
+  ...OFFICE_WORLD.zones
+    .filter((zone) => zone.audioMode !== 'open')
+    .map((zone) => ({
+      id: zone.id,
+      label: zone.label,
+      x1: zone.x1,
+      y1: zone.y1,
+      x2: zone.x2,
+      y2: zone.y2,
+    })),
 ]
 
 export function getAudioZone(x: number, y: number): AudioZone | null {
-  for (const zone of AUDIO_ZONES) {
-    if (x >= zone.x1 && x <= zone.x2 && y >= zone.y1 && y <= zone.y2) {
-      return zone
-    }
-  }
-  return null
+  const zone = getOfficeZoneAt(x, y, OFFICE_WORLD)
+  if (!zone || zone.audioMode === 'open') return null
+  return { id: zone.id, label: zone.label, x1: zone.x1, y1: zone.y1, x2: zone.x2, y2: zone.y2 }
 }
 
 // Check if a tile is walkable
 export function isWalkable(tileType: number): boolean {
+  return isOfficeTileWalkable(tileType)
+}
+
+export function isLegacyWalkable(tileType: number): boolean {
   switch (tileType) {
     case T.WALL:
     case T.DESK_H:

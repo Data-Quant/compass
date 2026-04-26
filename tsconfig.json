@@ -36,6 +36,7 @@
     "components/**/*.tsx",
     "lib/**/*.ts",
     "lib/**/*.tsx",
+    "shared/**/*.ts",
     "hooks/**/*.ts",
     "hooks/**/*.tsx",
     "types/**/*.ts",
