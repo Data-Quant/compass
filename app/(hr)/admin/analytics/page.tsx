@@ -35,6 +35,7 @@ interface Analytics {
     totalTeamMembers?: number
     totalEmployees: number
     employeesWithEvaluations: number
+    employeesComplete?: number
     totalEvaluations: number
     totalReports: number
     avgOverallScore: number
@@ -105,8 +106,13 @@ export default function AnalyticsPage() {
 
   const statCards = [
     { label: 'Team Members', value: analytics.summary.totalTeamMembers ?? analytics.summary.totalEmployees, icon: Users, color: 'text-primary' },
-    { label: 'Evaluated', value: analytics.summary.employeesWithEvaluations, icon: CheckCircle, color: 'text-emerald-600 dark:text-emerald-400' },
-    { label: 'Evaluations', value: analytics.summary.totalEvaluations, icon: FileText, color: 'text-purple-600 dark:text-purple-400' },
+    {
+      label: 'Complete',
+      value: `${analytics.summary.employeesComplete ?? analytics.summary.employeesWithEvaluations}/${analytics.summary.totalTeamMembers ?? analytics.summary.totalEmployees}`,
+      icon: CheckCircle,
+      color: 'text-emerald-600 dark:text-emerald-400',
+    },
+    { label: 'Avg Completion', value: `${analytics.summary.completionRate.toFixed(1)}%`, icon: FileText, color: 'text-purple-600 dark:text-purple-400' },
     { label: 'Avg Score', value: `${analytics.summary.avgOverallScore.toFixed(1)}%`, icon: TrendingUp, color: 'text-amber-600 dark:text-amber-400' },
   ]
 
