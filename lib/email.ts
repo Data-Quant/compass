@@ -96,6 +96,48 @@ function mergeRecipientEmails(...groups: Array<Array<string | null | undefined>>
   ]
 }
 
+async function getReportTeamLeadCcEmails(input: {
+  employeeId: string
+  employeeEmail: string
+  periodId: string
+}) {
+  const assignments = await getResolvedEvaluationAssignments(input.periodId, {
+    evaluateeId: input.employeeId,
+  })
+  const teamLeadIds = [
+    ...new Set(
+      assignments
+        .filter((assignment) => assignment.relationshipType === 'TEAM_LEAD')
+        .map((assignment) => assignment.evaluatorId)
+        .filter((id) => id !== input.employeeId)
+    ),
+  ]
+
+  if (teamLeadIds.length === 0) {
+    return []
+  }
+
+  const teamLeads = await prisma.user.findMany({
+    where: {
+      id: { in: teamLeadIds },
+      email: { not: null },
+    },
+    select: {
+      email: true,
+    },
+  })
+  const employeeEmail = input.employeeEmail.trim().toLowerCase()
+
+  return [
+    ...new Set(
+      teamLeads
+        .map((teamLead) => teamLead.email?.trim())
+        .filter((email): email is string => Boolean(email))
+        .filter((email) => email.toLowerCase() !== employeeEmail)
+    ),
+  ]
+}
+
 export async function sendMail(to: string, subject: string, html: string) {
   return transporter.sendMail({
     from: `P21 Compass <${FROM_EMAIL}>`,
@@ -227,10 +269,16 @@ export async function sendEmail(emailQueueId: string) {
       startDate: period.startDate,
       endDate: period.endDate,
     })
+    const cc = await getReportTeamLeadCcEmails({
+      employeeId: employee.id,
+      employeeEmail: employee.email,
+      periodId: period.id,
+    })
 
     const info = await transporter.sendMail({
       from: `P21 Compass <${FROM_EMAIL}>`,
       to: employee.email,
+      ...(cc.length > 0 ? { cc } : {}),
       subject: `Performance Evaluation Report - ${period.name}`,
       html: htmlContent,
     })
