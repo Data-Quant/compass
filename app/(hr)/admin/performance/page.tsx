@@ -195,6 +195,24 @@ function getActivityStatusLabel(status: ActivityAssignment['status']) {
   }
 }
 
+function getRelationshipTypeLabel(type: RelationshipType) {
+  return RELATIONSHIP_TYPE_LABELS[type] || type.replaceAll('_', ' ')
+}
+
+function getRatingLabel(value: number | null) {
+  if (value === null) return null
+  if (RATING_LABELS[value]) return RATING_LABELS[value].label
+  if (value > 1 && value < 4) {
+    const lower = Math.floor(value)
+    return RATING_LABELS[lower]?.label || 'Unlabeled rating'
+  }
+  return 'Unlabeled rating'
+}
+
+function formatRatingValue(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')
+}
+
 function ActivityList({
   items,
   emptyState,
@@ -242,7 +260,7 @@ function ActivityList({
                     {partnerLabel}
                   </span>
                   <Badge variant="outline" className="border-border/70">
-                    {RELATIONSHIP_TYPE_LABELS[item.relationshipType]}
+                    {getRelationshipTypeLabel(item.relationshipType)}
                   </Badge>
                   <Badge variant="outline" className={getActivityStatusBadge(item.status)}>
                     {getActivityStatusLabel(item.status)}
@@ -331,10 +349,10 @@ function ActivityList({
                           </Badge>
                         ) : null}
                       </div>
-                      {response.ratingValue ? (
+                      {response.ratingValue !== null ? (
                         <p className="mt-2 text-sm text-foreground">
                           <span className="font-medium">
-                            {response.ratingValue} - {RATING_LABELS[response.ratingValue].label}
+                            {formatRatingValue(response.ratingValue)} - {getRatingLabel(response.ratingValue)}
                           </span>
                         </p>
                       ) : null}
@@ -1041,7 +1059,7 @@ export default function AdminPerformanceOverviewPage() {
                                 {override.action === 'ADD' ? 'Added for this period' : 'Excluded for this period'}
                               </Badge>
                               <Badge variant="outline" className="border-border/70">
-                                {RELATIONSHIP_TYPE_LABELS[override.relationshipType]}
+                                {getRelationshipTypeLabel(override.relationshipType)}
                               </Badge>
                               <Badge variant="outline" className="border-border/70">
                                 {override.direction === 'outgoing' ? 'They evaluate' : 'They are evaluated by'}
@@ -1182,7 +1200,7 @@ export default function AdminPerformanceOverviewPage() {
                             ] as RelationshipType[]
                           ).map((type) => (
                             <SelectItem key={type} value={type}>
-                              {RELATIONSHIP_TYPE_LABELS[type]}
+                              {getRelationshipTypeLabel(type)}
                             </SelectItem>
                           ))}
                         </SelectContent>
