@@ -78,8 +78,11 @@ export async function GET(request: NextRequest) {
       getResolvedEvaluationAssignments(period.id),
     ])
 
-    const reportableMembers = allTeamMembers.filter(shouldReceiveConstantEvaluations)
-    const reportableMemberIds = new Set(reportableMembers.map((member) => member.id))
+    const mappedEvaluateeIds = new Set(allMappings.map((mapping) => mapping.evaluateeId))
+    const analyticsMembers = allTeamMembers.filter(
+      (member) => shouldReceiveConstantEvaluations(member) && mappedEvaluateeIds.has(member.id)
+    )
+    const analyticsMemberIds = new Set(analyticsMembers.map((member) => member.id))
 
     const questionCounts = await Promise.all(
       allMappings.map(async (mapping) => ({
@@ -125,7 +128,7 @@ export async function GET(request: NextRequest) {
       string,
       { totalQuestions: number; completedQuestions: number; completionRate: number }
     >()
-    for (const member of reportableMembers) {
+    for (const member of analyticsMembers) {
       const entries = collapsedRequirements.filter((entry) => entry.evaluateeId === member.id)
       const totalQuestions = entries.reduce((sum, entry) => sum + entry.questionsCount, 0)
       const completedQuestions = entries.reduce(
@@ -142,7 +145,7 @@ export async function GET(request: NextRequest) {
 
     const generatedReports = (
       await Promise.all(
-        reportableMembers.map(async (employee) => {
+        analyticsMembers.map(async (employee) => {
           try {
             const report = await generateDetailedReport(employee.id, period.id)
             return {
@@ -156,7 +159,7 @@ export async function GET(request: NextRequest) {
         })
       )
     ).filter(Boolean) as Array<{
-      employee: (typeof reportableMembers)[number]
+      employee: (typeof analyticsMembers)[number]
       overallScore: number
     }>
 
@@ -173,7 +176,7 @@ export async function GET(request: NextRequest) {
       }
     > = {}
 
-    for (const member of reportableMembers) {
+    for (const member of analyticsMembers) {
       const dept = member.department || 'Unknown'
       if (!departmentStats[dept]) {
         departmentStats[dept] = { total: 0, completed: 0, completionSum: 0, scores: [] }
@@ -224,7 +227,7 @@ export async function GET(request: NextRequest) {
     ) as Record<RelationshipType, number>
 
     for (const mapping of allMappings) {
-      if (!reportableMemberIds.has(mapping.evaluateeId)) continue
+      if (!analyticsMemberIds.has(mapping.evaluateeId)) continue
       evaluatorMappingsCount[mapping.relationshipType as RelationshipType]++
     }
 
@@ -248,8 +251,10 @@ export async function GET(request: NextRequest) {
         score: Math.round(report.overallScore * 100) / 100,
       }))
 
-    const totalTeamMembers = reportableMembers.length
-    const totalEvaluations = submittedEvaluationRows.length
+    const totalTeamMembers = analyticsMembers.length
+    const totalEvaluations = submittedEvaluationRows.filter((row) =>
+      analyticsMemberIds.has(row.evaluateeId)
+    ).length
     const totalReports = generatedReports.length
     const avgOverallScore =
       generatedReports.length > 0
@@ -259,13 +264,13 @@ export async function GET(request: NextRequest) {
               100
           ) / 100
         : 0
-    const employeesComplete = reportableMembers.filter(
+    const employeesComplete = analyticsMembers.filter(
       (member) => (completionByEmployee.get(member.id)?.completionRate || 0) >= 99.5
     ).length
     const averageCompletion =
       totalTeamMembers > 0
         ? Math.round(
-            (reportableMembers.reduce(
+            (analyticsMembers.reduce(
               (sum, member) => sum + (completionByEmployee.get(member.id)?.completionRate || 0),
               0
             ) /
