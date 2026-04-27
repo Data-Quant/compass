@@ -6,6 +6,7 @@ import { calculateLeaveDuration } from '@/lib/leave-utils'
 import { safeRecordLeaveAuditEvent } from '@/lib/leave-audit'
 import { calculateWfhDays } from '@/lib/wfh-utils'
 import { normalizeCoverPersonIds } from '@/lib/leave-cover'
+import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -103,35 +104,59 @@ export async function sendMail(to: string, subject: string, html: string) {
   })
 }
 
-export async function queueEmails(periodId: string) {
-  const period = await prisma.evaluationPeriod.findUnique({
-    where: { id: periodId },
-  })
+export async function queueEmails(periodId: string, employeeIds?: string[]) {
+  const period =
+    periodId === 'active'
+      ? await prisma.evaluationPeriod.findFirst({ where: { isActive: true } })
+      : await prisma.evaluationPeriod.findUnique({
+          where: { id: periodId },
+        })
 
   if (!period) {
     throw new Error('Period not found')
   }
 
   const employees = await prisma.user.findMany({
-    where: { role: 'EMPLOYEE' },
+    where:
+      employeeIds && employeeIds.length > 0
+        ? {
+            id: { in: employeeIds },
+          }
+        : undefined,
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      department: true,
+      position: true,
+    },
   })
 
   const queueEntries = []
 
-  for (const employee of employees) {
-    // Check if report exists
-    const report = await prisma.report.findUnique({
+  for (const employee of employees.filter(shouldReceiveConstantEvaluations)) {
+    const detailedReport = await generateDetailedReport(employee.id, period.id)
+
+    const report = await prisma.report.upsert({
       where: {
         employeeId_periodId: {
           employeeId: employee.id,
-          periodId,
+          periodId: period.id,
         },
       },
+      create: {
+        employeeId: employee.id,
+        periodId: period.id,
+        overallScore: detailedReport.overallScore,
+        breakdownJson: detailedReport as any,
+        generatedAt: new Date(),
+      },
+      update: {
+        overallScore: detailedReport.overallScore,
+        breakdownJson: detailedReport as any,
+        generatedAt: new Date(),
+      },
     })
-
-    if (!report) {
-      continue // Skip if no report generated
-    }
 
     // Check if email already queued
     const existingQueue = await prisma.emailQueue.findFirst({
@@ -228,10 +253,19 @@ export async function sendEmail(emailQueueId: string) {
 }
 
 export async function sendBatchEmails(periodId: string) {
+  const period =
+    periodId === 'active'
+      ? await prisma.evaluationPeriod.findFirst({ where: { isActive: true } })
+      : await prisma.evaluationPeriod.findUnique({ where: { id: periodId } })
+
+  if (!period) {
+    throw new Error('Period not found')
+  }
+
   const queueEntries = await prisma.emailQueue.findMany({
     where: {
       report: {
-        periodId,
+        periodId: period.id,
       },
       emailStatus: 'PENDING',
     },

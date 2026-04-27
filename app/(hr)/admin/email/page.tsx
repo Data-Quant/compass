@@ -10,6 +10,10 @@ import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Table,
   TableBody,
@@ -18,15 +22,32 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Mail, Send, Eye, RefreshCw, CheckCircle, Clock, AlertCircle, Plus } from 'lucide-react'
+import { Mail, Send, Eye, RefreshCw, CheckCircle, Clock, AlertCircle, Plus, Users } from 'lucide-react'
+
+type EmailRecipient = {
+  id: string
+  name: string
+  email: string | null
+  department: string | null
+  position: string | null
+  queued: boolean
+  emailStatus: string | null
+}
 
 function EmailPageContent() {
   const searchParams = useSearchParams()
   const periodId = searchParams.get('periodId') || 'active'
   const [queueEntries, setQueueEntries] = useState<any[]>([])
+  const [recipients, setRecipients] = useState<EmailRecipient[]>([])
+  const [selectedRecipientIds, setSelectedRecipientIds] = useState<string[]>([])
+  const [recipientSearch, setRecipientSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [queuing, setQueuing] = useState(false)
+  const [sendingCustom, setSendingCustom] = useState(false)
+  const [customSubject, setCustomSubject] = useState('')
+  const [customMessage, setCustomMessage] = useState('')
+  const [customExtraEmails, setCustomExtraEmails] = useState('')
 
   const [previewModalOpen, setPreviewModalOpen] = useState(false)
   const [previewHtml, setPreviewHtml] = useState('')
@@ -39,37 +60,85 @@ function EmailPageContent() {
     loadEmailQueue()
   }, [periodId])
 
+  const getEntryStatus = (entry: any) => entry.emailStatus || entry.status || 'PENDING'
+
   const loadEmailQueue = async () => {
     try {
       const response = await fetch(`/api/email?periodId=${periodId}`)
       const data = await response.json()
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Failed to load email queue')
+      }
       setQueueEntries(data.queueEntries || [])
+      setRecipients(data.recipients || [])
     } catch (error) {
-      toast.error('Failed to load email queue')
+      const message = error instanceof Error ? error.message : 'Failed to load email queue'
+      toast.error(message)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleQueueEmails = async () => {
+  const handleQueueEmails = async (mode: 'all' | 'selected') => {
+    if (mode === 'selected' && selectedRecipientIds.length === 0) {
+      toast.error('Select at least one recipient')
+      return
+    }
+
     setQueuing(true)
     try {
       const response = await fetch('/api/email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'queue', periodId }),
+        body: JSON.stringify({
+          action: 'queue',
+          periodId,
+          employeeIds: mode === 'selected' ? selectedRecipientIds : undefined,
+        }),
       })
       const data = await response.json()
-      if (data.error) {
-        toast.error(data.error)
-      } else {
-        toast.success(`Queued ${data.count} emails`)
-        loadEmailQueue()
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Failed to queue emails')
       }
+      toast.success(`Queued ${data.count || 0} new emails`)
+      loadEmailQueue()
     } catch (error) {
-      toast.error('Failed to queue emails')
+      const message = error instanceof Error ? error.message : 'Failed to queue emails'
+      toast.error(message)
     } finally {
       setQueuing(false)
+    }
+  }
+
+  const handleSendCustom = async () => {
+    setSendingCustom(true)
+    try {
+      const response = await fetch('/api/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send-custom',
+          employeeIds: selectedRecipientIds,
+          subject: customSubject,
+          message: customMessage,
+          extraEmails: customExtraEmails,
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Failed to send custom email')
+      }
+      toast.success(`Sent ${data.sent || 0} custom emails${data.failed ? `, ${data.failed} failed` : ''}`)
+      if (!data.failed) {
+        setCustomSubject('')
+        setCustomMessage('')
+        setCustomExtraEmails('')
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to send custom email'
+      toast.error(message)
+    } finally {
+      setSendingCustom(false)
     }
   }
 
@@ -80,17 +149,17 @@ function EmailPageContent() {
       const response = await fetch('/api/email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'send-all', periodId }),
+        body: JSON.stringify({ action: 'send-batch', periodId }),
       })
       const data = await response.json()
-      if (data.error) {
-        toast.error(data.error)
-      } else {
-        toast.success(`Sent ${data.sent} emails`)
-        loadEmailQueue()
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Failed to send emails')
       }
+      toast.success(`Sent ${data.sent || 0} emails${data.failed ? `, ${data.failed} failed` : ''}`)
+      loadEmailQueue()
     } catch (error) {
-      toast.error('Failed to send emails')
+      const message = error instanceof Error ? error.message : 'Failed to send emails'
+      toast.error(message)
     } finally {
       setSending(false)
     }
@@ -101,17 +170,17 @@ function EmailPageContent() {
       const response = await fetch('/api/email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'send-single', queueId }),
+        body: JSON.stringify({ action: 'send', emailQueueId: queueId }),
       })
       const data = await response.json()
-      if (data.error) {
-        toast.error(data.error)
-      } else {
-        toast.success('Email sent!')
-        loadEmailQueue()
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Failed to send email')
       }
+      toast.success('Email sent!')
+      loadEmailQueue()
     } catch (error) {
-      toast.error('Failed to send email')
+      const message = error instanceof Error ? error.message : 'Failed to send email'
+      toast.error(message)
     }
   }
 
@@ -149,8 +218,23 @@ function EmailPageContent() {
     }
   }
 
-  const pendingCount = queueEntries.filter(e => e.status === 'PENDING').length
-  const sentCount = queueEntries.filter(e => e.status === 'SENT').length
+  const pendingCount = queueEntries.filter(e => getEntryStatus(e) === 'PENDING').length
+  const sentCount = queueEntries.filter(e => getEntryStatus(e) === 'SENT').length
+  const filteredRecipients = recipients.filter((recipient) => {
+    const haystack = `${recipient.name} ${recipient.email || ''} ${recipient.department || ''}`.toLowerCase()
+    return haystack.includes(recipientSearch.toLowerCase())
+  })
+  const selectedRecipientSet = new Set(selectedRecipientIds)
+  const selectedWithEmailCount = recipients.filter(
+    (recipient) => selectedRecipientSet.has(recipient.id) && recipient.email
+  ).length
+  const toggleRecipient = (recipientId: string) => {
+    setSelectedRecipientIds((current) =>
+      current.includes(recipientId)
+        ? current.filter((id) => id !== recipientId)
+        : [...current, recipientId]
+    )
+  }
 
   if (loading) {
     return (
@@ -200,15 +284,83 @@ function EmailPageContent() {
           </motion.div>
         </div>
 
-        {/* Actions */}
+        {/* Recipients */}
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="mb-6">
           <Card>
             <CardContent className="p-4">
-              <div className="flex flex-wrap gap-3">
-                <Button onClick={handleQueueEmails} disabled={queuing}>
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+                  <div className="relative flex-1">
+                    <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      value={recipientSearch}
+                      onChange={(event) => setRecipientSearch(event.target.value)}
+                      placeholder="Search recipients..."
+                      className="pl-10"
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setSelectedRecipientIds(recipients.map((recipient) => recipient.id))}
+                    >
+                      Select All
+                    </Button>
+                    <Button variant="outline" onClick={() => setSelectedRecipientIds([])}>
+                      Clear
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="max-h-56 overflow-y-auto rounded-md border border-border">
+                  {filteredRecipients.map((recipient) => (
+                    <label
+                      key={recipient.id}
+                      className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 last:border-b-0 hover:bg-muted/40"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <Checkbox
+                          checked={selectedRecipientSet.has(recipient.id)}
+                          onCheckedChange={() => toggleRecipient(recipient.id)}
+                        />
+                        <div className="min-w-0">
+                          <div className="font-medium text-foreground">{recipient.name}</div>
+                          <div className="truncate text-xs text-muted-foreground">
+                            {[recipient.department, recipient.email || 'No email'].filter(Boolean).join(' · ')}
+                          </div>
+                        </div>
+                      </div>
+                      {recipient.emailStatus && (
+                        <Badge variant="outline" className={`shrink-0 border ${getStatusBadgeVariant(recipient.emailStatus)}`}>
+                          {recipient.emailStatus}
+                        </Badge>
+                      )}
+                    </label>
+                  ))}
+                  {filteredRecipients.length === 0 && (
+                    <div className="px-4 py-8 text-center text-sm text-muted-foreground">No recipients found</div>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button onClick={() => handleQueueEmails('all')} disabled={queuing}>
                   <Plus className="w-4 h-4" />
-                  {queuing ? 'Queuing...' : 'Queue New Emails'}
-                </Button>
+                    {queuing ? 'Queuing...' : 'Queue All Reports'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleQueueEmails('selected')}
+                    disabled={queuing || selectedRecipientIds.length === 0}
+                  >
+                    <Plus className="w-4 h-4" />
+                    Queue Selected ({selectedRecipientIds.length})
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                    {selectedWithEmailCount} selected with email
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-3 border-t border-border pt-4">
                 <Button
                   onClick={() => setConfirmDialogOpen(true)}
                   disabled={sending || pendingCount === 0}
@@ -216,12 +368,60 @@ function EmailPageContent() {
                   className="bg-emerald-600 hover:bg-emerald-700"
                 >
                   <Send className="w-4 h-4" />
-                  {sending ? 'Sending...' : `Send All (${pendingCount})`}
+                  {sending ? 'Sending...' : `Send Queued Reports (${pendingCount})`}
                 </Button>
                 <Button variant="outline" onClick={loadEmailQueue}>
                   <RefreshCw className="w-4 h-4" />
                   Refresh
                 </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Custom Email */}
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className="mb-6">
+          <Card>
+            <CardContent className="p-4">
+              <div className="grid gap-4">
+                <div>
+                  <Label htmlFor="custom-subject" className="mb-1 block">Custom Subject</Label>
+                  <Input
+                    id="custom-subject"
+                    value={customSubject}
+                    onChange={(event) => setCustomSubject(event.target.value)}
+                    placeholder="Subject"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="custom-message" className="mb-1 block">Custom Message</Label>
+                  <Textarea
+                    id="custom-message"
+                    value={customMessage}
+                    onChange={(event) => setCustomMessage(event.target.value)}
+                    rows={5}
+                    placeholder="Write your message..."
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="custom-extra-emails" className="mb-1 block">Additional Emails</Label>
+                  <Input
+                    id="custom-extra-emails"
+                    value={customExtraEmails}
+                    onChange={(event) => setCustomExtraEmails(event.target.value)}
+                    placeholder="name@plutus21.com, name@example.com"
+                  />
+                </div>
+                <div>
+                  <Button
+                    onClick={handleSendCustom}
+                    disabled={sendingCustom || (!selectedRecipientIds.length && !customExtraEmails.trim())}
+                  >
+                    <Send className="w-4 h-4" />
+                    {sendingCustom ? 'Sending...' : `Send Custom Email (${selectedWithEmailCount})`}
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -241,7 +441,10 @@ function EmailPageContent() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {queueEntries.map((entry) => (
+                  {queueEntries.map((entry) => {
+                    const status = getEntryStatus(entry)
+
+                    return (
                     <TableRow key={entry.id} className="hover:bg-muted/50">
                       <TableCell className="px-6 py-4">
                         <div className="flex items-center gap-3">
@@ -256,10 +459,13 @@ function EmailPageContent() {
                       </TableCell>
                       <TableCell className="px-6 py-4 text-sm text-muted-foreground">{entry.employee?.email}</TableCell>
                       <TableCell className="px-6 py-4">
-                        <Badge variant="outline" className={`inline-flex items-center gap-1.5 border ${getStatusBadgeVariant(entry.status)}`}>
-                          {getStatusIcon(entry.status)}
-                          {entry.status}
+                        <Badge variant="outline" className={`inline-flex items-center gap-1.5 border ${getStatusBadgeVariant(status)}`}>
+                          {getStatusIcon(status)}
+                          {status}
                         </Badge>
+                        {entry.errorMessage && (
+                          <div className="text-xs text-red-500 mt-1">{entry.errorMessage}</div>
+                        )}
                       </TableCell>
                       <TableCell className="px-6 py-4">
                         <div className="flex items-center gap-2">
@@ -271,7 +477,7 @@ function EmailPageContent() {
                           >
                             <Eye className="w-4 h-4" />
                           </Button>
-                          {entry.status === 'PENDING' && (
+                          {status === 'PENDING' && (
                             <Button
                               variant="ghost"
                               size="icon"
@@ -285,7 +491,8 @@ function EmailPageContent() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    )
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -326,9 +533,9 @@ function EmailPageContent() {
         isOpen={confirmDialogOpen}
         onClose={() => setConfirmDialogOpen(false)}
         onConfirm={handleSendAll}
-        title="Send All Emails"
-        message={`Are you sure you want to send ${pendingCount} emails? This action cannot be undone.`}
-        confirmText="Send All"
+        title="Send Queued Reports"
+        message={`Are you sure you want to send ${pendingCount} queued report emails? This action cannot be undone.`}
+        confirmText="Send Reports"
         variant="info"
       />
     </div>
