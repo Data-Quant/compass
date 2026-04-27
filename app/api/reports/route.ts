@@ -3,7 +3,11 @@ import { getSession } from '@/lib/auth'
 import { generateDetailedReport, formatReportAsHTML } from '@/lib/reports'
 import { prisma } from '@/lib/db'
 import { isAdminRole } from '@/lib/permissions'
-import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
+import {
+  shouldReceiveConstantEvaluations,
+  shouldReceiveReportForPeriod,
+} from '@/lib/evaluation-profile-rules'
+import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 
 async function resolveEvaluationPeriod(periodId: string) {
   return periodId === 'active'
@@ -46,6 +50,7 @@ export async function GET(request: NextRequest) {
         id: true,
         name: true,
         department: true,
+        position: true,
       },
     })
 
@@ -70,6 +75,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         { error: 'Period not found' },
         { status: 404 }
+      )
+    }
+
+    const assignments = await getResolvedEvaluationAssignments(period.id, {
+      evaluateeId: employee.id,
+    })
+    if (!shouldReceiveReportForPeriod(employee, assignments)) {
+      return NextResponse.json(
+        { error: 'This person has no report for this period' },
+        { status: 400 }
       )
     }
 
@@ -123,6 +138,7 @@ export async function POST(request: NextRequest) {
         id: true,
         name: true,
         department: true,
+        position: true,
       },
     })
 
@@ -146,6 +162,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Period not found' },
         { status: 404 }
+      )
+    }
+
+    const assignments = await getResolvedEvaluationAssignments(period.id, {
+      evaluateeId: employee.id,
+    })
+    if (!shouldReceiveReportForPeriod(employee, assignments)) {
+      return NextResponse.json(
+        { error: 'This person has no report for this period' },
+        { status: 400 }
       )
     }
 

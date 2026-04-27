@@ -34,6 +34,7 @@ export interface EvaluationReport {
 function assertCanReceiveWeightedScore(employee: {
   name: string
   department?: string | null
+  position?: string | null
 }) {
   if (!shouldReceiveConstantEvaluations(employee)) {
     throw new Error('This person does not receive incoming evaluations or reports')

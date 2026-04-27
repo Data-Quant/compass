@@ -5,6 +5,11 @@ type RuleUserShape = {
   id: string
   name?: string | null
   department?: string | null
+  position?: string | null
+}
+
+type EvaluationAssignmentShape = {
+  evaluateeId: string
 }
 
 export const PROFILE_CONSTANT_RELATIONSHIP_TYPES: RelationshipType[] = ['HR', 'DEPT']
@@ -39,10 +44,32 @@ export function isNoIncomingEvaluationUser(user: Pick<RuleUserShape, 'name'> | n
   return isNoIncomingEvaluationName(user?.name)
 }
 
-export function shouldReceiveConstantEvaluations(
-  user: Pick<RuleUserShape, 'name' | 'department'> | null | undefined
+export function isPartnerReportExcluded(
+  user: Pick<RuleUserShape, 'department' | 'position'> | null | undefined
 ) {
-  return !isNoIncomingEvaluationUser(user) && !isThreeEDepartment(user?.department)
+  const text = [user?.position, user?.department].filter(Boolean).join(' ')
+  return /\bpartner\b/i.test(text)
+}
+
+export function shouldReceiveConstantEvaluations(
+  user: Pick<RuleUserShape, 'name' | 'department' | 'position'> | null | undefined
+) {
+  return (
+    !isNoIncomingEvaluationUser(user) &&
+    !isPartnerReportExcluded(user) &&
+    !isThreeEDepartment(user?.department)
+  )
+}
+
+export function shouldReceiveReportForPeriod(
+  user: Pick<RuleUserShape, 'id' | 'name' | 'department' | 'position'> | null | undefined,
+  assignments: EvaluationAssignmentShape[]
+) {
+  return (
+    Boolean(user) &&
+    shouldReceiveConstantEvaluations(user) &&
+    assignments.some((assignment) => assignment.evaluateeId === user!.id)
+  )
 }
 
 function getManagementPairIds(input: {
@@ -81,7 +108,7 @@ export function getMappingConstraint(
     const leader = usersById.get(managementPair.leaderId)
     const report = usersById.get(managementPair.reportId)
 
-    if (isNoIncomingEvaluationUser(report)) {
+    if (!shouldReceiveConstantEvaluations(report)) {
       return {
         blocked: true,
         reason: `${report?.name || 'This person'} cannot receive incoming evaluations`,
@@ -89,7 +116,7 @@ export function getMappingConstraint(
       }
     }
 
-    if (isNoIncomingEvaluationUser(leader)) {
+    if (!shouldReceiveConstantEvaluations(leader)) {
       return {
         blocked: false,
         reason: null,
@@ -108,15 +135,20 @@ export function getMappingConstraint(
   const evaluatee = usersById.get(input.evaluateeId)
 
   if (input.relationshipType === 'PEER' || input.relationshipType === 'CROSS_DEPARTMENT') {
-    if (isNoIncomingEvaluationUser(evaluator) || isNoIncomingEvaluationUser(evaluatee)) {
-      const targetName = isNoIncomingEvaluationUser(evaluator) ? evaluator?.name : evaluatee?.name
+    if (
+      !shouldReceiveConstantEvaluations(evaluator) ||
+      !shouldReceiveConstantEvaluations(evaluatee)
+    ) {
+      const targetName = !shouldReceiveConstantEvaluations(evaluator)
+        ? evaluator?.name
+        : evaluatee?.name
       return {
         blocked: true,
         reason: `${targetName || 'This person'} cannot receive incoming evaluations`,
         skipManagementMirror: false,
       }
     }
-  } else if (isNoIncomingEvaluationUser(evaluatee)) {
+  } else if (!shouldReceiveConstantEvaluations(evaluatee)) {
     return {
       blocked: true,
       reason: `${evaluatee?.name || 'This person'} cannot receive incoming evaluations`,

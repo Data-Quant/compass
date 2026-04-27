@@ -6,7 +6,8 @@ import { calculateLeaveDuration } from '@/lib/leave-utils'
 import { safeRecordLeaveAuditEvent } from '@/lib/leave-audit'
 import { calculateWfhDays } from '@/lib/wfh-utils'
 import { normalizeCoverPersonIds } from '@/lib/leave-cover'
-import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
+import { shouldReceiveReportForPeriod } from '@/lib/evaluation-profile-rules'
+import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -131,10 +132,13 @@ export async function queueEmails(periodId: string, employeeIds?: string[]) {
       position: true,
     },
   })
+  const assignments = await getResolvedEvaluationAssignments(period.id)
 
   const queueEntries = []
 
-  for (const employee of employees.filter(shouldReceiveConstantEvaluations)) {
+  for (const employee of employees.filter((candidate) =>
+    shouldReceiveReportForPeriod(candidate, assignments)
+  )) {
     const detailedReport = await generateDetailedReport(employee.id, period.id)
 
     const report = await prisma.report.upsert({

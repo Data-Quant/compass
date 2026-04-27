@@ -6,6 +6,7 @@ import type { RelationshipType } from '@/types'
 import { getResolvedQuestionCount } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import { isThreeEDepartment } from '@/lib/company-branding'
+import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
 import {
   buildSubmittedCountMap,
   collapseAssignmentRequirementsByPool,
@@ -144,6 +145,11 @@ export async function GET() {
       const outboundTotalQuestions = outboundTotalNeededMap.get(member.id) || 0
       const outboundCompletionRate =
         outboundTotalQuestions > 0 ? (outboundCompletedQuestions / outboundTotalQuestions) * 100 : 0
+      const reportEligible =
+        shouldReceiveConstantEvaluations(member) && inboundTotalQuestions > 0
+      const reportReady =
+        reportEligible && (inboundCompletionRate >= 99.5 || reportSet.has(member.id))
+      const reportStatus = reportEligible ? (reportReady ? 'READY' : 'PENDING') : 'NOT_APPLICABLE'
 
       return {
         ...member,
@@ -159,19 +165,27 @@ export async function GET() {
         outboundCompletedQuestions,
         outboundTotalQuestions,
         outboundCompletionRate: Math.round(outboundCompletionRate),
-        reportGenerated: reportSet.has(member.id),
+        reportEligible,
+        reportGenerated: reportReady,
+        reportPersisted: reportSet.has(member.id),
+        reportStatus,
       }
     })
 
     const totalTeamMembers = teamMembers.length
-    const employeesWithReports = statusData.filter((s) => s.reportGenerated).length
+    const reportEligibleCount = statusData.filter((s) => s.reportEligible).length
+    const employeesWithReports = statusData.filter((s) => s.reportStatus === 'READY').length
+    const inboundAveragePopulation = statusData.filter((s) => s.inboundTotalQuestions > 0)
+    const outboundAveragePopulation = statusData.filter((s) => s.outboundTotalQuestions > 0)
     const averageInboundCompletion =
-      totalTeamMembers > 0
-        ? statusData.reduce((sum, s) => sum + s.completionRate, 0) / totalTeamMembers
+      inboundAveragePopulation.length > 0
+        ? inboundAveragePopulation.reduce((sum, s) => sum + s.completionRate, 0) /
+          inboundAveragePopulation.length
         : 0
     const averageOutboundCompletion =
-      totalTeamMembers > 0
-        ? statusData.reduce((sum, s) => sum + s.outboundCompletionRate, 0) / totalTeamMembers
+      outboundAveragePopulation.length > 0
+        ? outboundAveragePopulation.reduce((sum, s) => sum + s.outboundCompletionRate, 0) /
+          outboundAveragePopulation.length
         : 0
 
     return NextResponse.json({
@@ -180,6 +194,7 @@ export async function GET() {
         totalTeamMembers,
         totalEmployees: totalTeamMembers,
         employeesWithReports,
+        reportEligibleCount,
         averageCompletion: Math.round(averageInboundCompletion),
         averageInboundCompletion: Math.round(averageInboundCompletion),
         averageOutboundCompletion: Math.round(averageOutboundCompletion),

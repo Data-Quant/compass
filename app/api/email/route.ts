@@ -3,8 +3,12 @@ import { getSession } from '@/lib/auth'
 import { queueEmails, sendEmail, sendBatchEmails, sendMail } from '@/lib/email'
 import { prisma } from '@/lib/db'
 import { isAdminRole } from '@/lib/permissions'
-import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
+import {
+  shouldReceiveConstantEvaluations,
+  shouldReceiveReportForPeriod,
+} from '@/lib/evaluation-profile-rules'
 import { escapeHtml } from '@/lib/sanitize'
+import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 
 async function resolvePeriodId(periodId: string) {
   if (periodId !== 'active') return periodId
@@ -64,7 +68,7 @@ export async function POST(request: NextRequest) {
         recipientIds.length > 0
           ? await prisma.user.findMany({
               where: { id: { in: recipientIds } },
-              select: { email: true, name: true, department: true },
+              select: { email: true, name: true, department: true, position: true },
             })
           : []
       const selectedUserEmails = selectedUsers
@@ -167,7 +171,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Period not found' }, { status: 404 })
     }
 
-    const [queueEntries, users] = await Promise.all([
+    const [queueEntries, users, assignments] = await Promise.all([
       prisma.emailQueue.findMany({
         where: {
           report: {
@@ -201,11 +205,12 @@ export async function GET(request: NextRequest) {
           name: 'asc',
         },
       }),
+      getResolvedEvaluationAssignments(resolvedPeriodId),
     ])
 
     const queueByEmployeeId = new Map(queueEntries.map((entry) => [entry.employeeId, entry]))
     const recipients = users
-      .filter((candidate) => shouldReceiveConstantEvaluations(candidate))
+      .filter((candidate) => shouldReceiveReportForPeriod(candidate, assignments))
       .map((candidate) => {
         const queueEntry = queueByEmployeeId.get(candidate.id)
         return {

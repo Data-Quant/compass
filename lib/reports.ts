@@ -14,7 +14,10 @@ import {
   getDefaultQuestionBankRelationshipType,
 } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
-import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
+import {
+  shouldReceiveConstantEvaluations,
+  shouldReceiveReportForPeriod,
+} from '@/lib/evaluation-profile-rules'
 import {
   calculateWeightedEvaluationCompletion,
   filterPooledRelationshipEvaluations,
@@ -49,6 +52,7 @@ export interface DetailedReport extends EvaluationReport {
 function assertReportEligibility(employee: {
   name: string
   department?: string | null
+  position?: string | null
 }) {
   if (!shouldReceiveConstantEvaluations(employee)) {
     throw new Error('This person does not receive incoming evaluations or reports')
@@ -102,6 +106,13 @@ export async function generateDetailedReport(
   }
 
   assertReportEligibility(employee)
+
+  const incomingAssignments = await getResolvedEvaluationAssignments(period.id, {
+    evaluateeId: employee.id,
+  })
+  if (incomingAssignments.length === 0) {
+    throw new Error('This person has no incoming evaluations for this period')
+  }
 
   // Try to calculate score, but handle incomplete scores gracefully
   let report: EvaluationReport
@@ -281,6 +292,7 @@ export async function generateReport(
       id: true,
       name: true,
       department: true,
+      position: true,
     },
   })
 
@@ -289,6 +301,13 @@ export async function generateReport(
   }
 
   assertReportEligibility(employee)
+
+  const incomingAssignments = await getResolvedEvaluationAssignments(periodId, {
+    evaluateeId: employee.id,
+  })
+  if (incomingAssignments.length === 0) {
+    throw new Error('This person has no incoming evaluations for this period')
+  }
 
   // Check if report already exists
   const existingReport = await prisma.report.findUnique({
@@ -659,10 +678,6 @@ export async function generateHRSpreadsheet(periodId: string): Promise<Buffer> {
   // All users (role filter removed so HR/OA/SECURITY/EXECUTION members who
   // legitimately receive evaluations aren't dropped). shouldReceiveConstantEvaluations
   // gates the actual eligibility.
-  const employees = (await prisma.user.findMany()).filter((employee) =>
-    shouldReceiveConstantEvaluations(employee)
-  )
-
   // Get period
   const period = await prisma.evaluationPeriod.findUnique({
     where: { id: periodId },
@@ -671,6 +686,10 @@ export async function generateHRSpreadsheet(periodId: string): Promise<Buffer> {
   if (!period) {
     throw new Error('Period not found')
   }
+  const assignments = await getResolvedEvaluationAssignments(period.id)
+  const employees = (await prisma.user.findMany()).filter((employee) =>
+    shouldReceiveReportForPeriod(employee, assignments)
+  )
 
   // Generate reports for all employees
   const reports = []
@@ -864,7 +883,11 @@ export async function generateVerificationCsv(periodId: string): Promise<string>
     ] = cw.weightagePercentage
   }
 
-  const reportable = employees.filter((e) => shouldReceiveConstantEvaluations(e))
+  const mappedEvaluateeIds = new Set(allMappings.map((mapping) => mapping.evaluateeId))
+  const reportable = employees.filter(
+    (employee) =>
+      shouldReceiveConstantEvaluations(employee) && mappedEvaluateeIds.has(employee.id)
+  )
 
   // CSV header
   const header: string[] = [

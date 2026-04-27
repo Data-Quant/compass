@@ -73,7 +73,10 @@ type EmployeeRow = {
   outboundCompletionRate?: number
   outboundCompletedQuestions?: number
   outboundTotalQuestions?: number
+  reportEligible?: boolean
   reportGenerated?: boolean
+  reportPersisted?: boolean
+  reportStatus?: 'READY' | 'PENDING' | 'NOT_APPLICABLE'
 }
 
 type ActivityResponse = {
@@ -513,7 +516,9 @@ export default function AdminPerformanceOverviewPage() {
     if (!dashboardData?.period) return
     setGenerating(true)
     try {
-      const employees = dashboardData.employees || []
+      const employees = (dashboardData.employees || []).filter(
+        (employee: EmployeeRow) => employee.reportEligible
+      )
       let successCount = 0
       let errorCount = 0
       for (const employee of employees) {
@@ -812,7 +817,7 @@ export default function AdminPerformanceOverviewPage() {
               <StatsCard
                 title="Reports Ready"
                 value={dashboardData.summary.employeesWithReports}
-                suffix={`/${dashboardData.summary.totalTeamMembers ?? dashboardData.summary.totalEmployees}`}
+                suffix={`/${dashboardData.summary.reportEligibleCount ?? dashboardData.summary.totalTeamMembers ?? dashboardData.summary.totalEmployees}`}
                 icon={<FileText className="w-5 h-5" />}
               />
             </motion.div>
@@ -917,7 +922,11 @@ export default function AdminPerformanceOverviewPage() {
                       />
                     </TableCell>
                     <TableCell className="px-6 py-4 whitespace-nowrap">
-                      {employee.reportGenerated ? (
+                      {employee.reportStatus === 'NOT_APPLICABLE' || employee.reportEligible === false ? (
+                        <Badge variant="secondary" className="bg-muted text-muted-foreground">
+                          N/A
+                        </Badge>
+                      ) : employee.reportStatus === 'READY' || employee.reportGenerated ? (
                         <Badge variant="secondary" className="bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500/20">
                           <CheckCircle2 className="w-3 h-3 mr-1" /> Ready
                         </Badge>

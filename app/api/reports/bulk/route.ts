@@ -6,7 +6,7 @@ import { calculateRedistributedWeights } from '@/lib/config'
 import { isAdminRole } from '@/lib/permissions'
 import { getEvaluationQuestionMeta } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
-import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
+import { shouldReceiveReportForPeriod } from '@/lib/evaluation-profile-rules'
 import {
   calculateWeightedEvaluationCompletion,
   filterPooledRelationshipEvaluations,
@@ -130,7 +130,7 @@ export async function GET(request: NextRequest) {
     // ── Compute reports for every employee in-memory ──
 
     const reportableEmployees = employees.filter((employee) =>
-      shouldReceiveConstantEvaluations(employee)
+      shouldReceiveReportForPeriod(employee, allMappings)
     )
 
     const reports = reportableEmployees.map((employee) => {
