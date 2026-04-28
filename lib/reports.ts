@@ -436,13 +436,6 @@ export function formatReportAsHTML(
         }
         tr:nth-child(even) { background-color: #f9f9f9; }
         .section { margin: 30px 0; }
-        .feedback-item { 
-          margin: 10px 0; 
-          padding: 10px; 
-          background-color: #f8f9fa; 
-          border-left: 4px solid #3498db; 
-          font-style: italic;
-        }
         .evaluator-name { 
           font-weight: bold; 
           color: #2c3e50; 
@@ -527,45 +520,40 @@ export function formatReportAsHTML(
     for (const section of sections) {
       html += `<div class="evaluator-name">${getSectionTitle(type)} by ${escapeHtml(section.evaluatorName)}</div>`
 
-      // Check if this is a rating-based evaluation
       const hasRatings = section.categories.some((c) => c.rating !== null)
+      const hasFeedback = section.categories.some((c) => c.feedback && c.feedback.trim())
 
-      if (hasRatings) {
+      if (hasRatings || hasFeedback) {
         html += `<table>`
-        html += `<thead><tr><th>Categories</th><th>Rating</th>${section.categories.some(c => c.feedback) ? '<th>Feedback</th>' : ''}</tr></thead>`
+        html += `<thead><tr><th>Categories</th>${hasRatings ? '<th>Rating</th>' : ''}${hasFeedback ? '<th>Feedback</th>' : ''}</tr></thead>`
         html += `<tbody>`
 
         for (const category of section.categories) {
-          if (category.rating !== null) {
+          if (category.rating !== null || (category.feedback && category.feedback.trim())) {
             html += `<tr>`
             html += `<td>${escapeHtml(category.questionText)}</td>`
-            html += `<td>${category.rating.toFixed(2)}</td>`
-            if (section.categories.some(c => c.feedback)) {
-              html += `<td>${escapeHtml(category.feedback) || '—'}</td>`
+            if (hasRatings) {
+              html += `<td>${category.rating !== null ? category.rating.toFixed(2) : '&mdash;'}</td>`
+            }
+            if (hasFeedback) {
+              html += `<td>${escapeHtml(category.feedback) || '&mdash;'}</td>`
             }
             html += `</tr>`
           }
         }
 
-        html += `<tr class="total-row">`
-        html += `<td><strong>Total (Out of ${section.maxTotalScore})</strong></td>`
-        html += `<td><strong>${section.totalScore.toFixed(2)}</strong></td>`
-        if (section.categories.some(c => c.feedback)) {
-          html += `<td></td>`
+        if (hasRatings) {
+          html += `<tr class="total-row">`
+          html += `<td><strong>Total (Out of ${section.maxTotalScore})</strong></td>`
+          html += `<td><strong>${section.totalScore.toFixed(2)}</strong></td>`
+          if (hasFeedback) {
+            html += `<td></td>`
+          }
+          html += `</tr>`
         }
-        html += `</tr>`
         html += `</tbody></table>`
       }
 
-      // Add feedback sections
-      const feedbackCategories = section.categories.filter((c) => c.feedback && c.feedback.trim())
-      if (feedbackCategories.length > 0) {
-        for (const category of feedbackCategories) {
-          if (category.feedback && category.feedback.trim()) {
-            html += `<div class="feedback-item"><strong>${escapeHtml(category.questionText)}:</strong> ${escapeHtml(category.feedback)}</div>`
-          }
-        }
-      }
     }
 
     html += `</div>`
