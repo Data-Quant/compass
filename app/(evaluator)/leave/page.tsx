@@ -425,15 +425,23 @@ export default function LeavePage() {
 
   const calendarDepartments = useMemo(() => {
     const values = new Set<string>()
+    for (const person of users) {
+      const department = person.department?.trim()
+      if (department) values.add(department)
+    }
     for (const event of calendarEvents) {
-      if (event.department) values.add(event.department)
+      const department = event.department?.trim()
+      if (department) values.add(department)
     }
     return Array.from(values).sort((a, b) => a.localeCompare(b))
-  }, [calendarEvents])
+  }, [calendarEvents, users])
 
   const filteredCalendarEvents = useMemo(() => {
     if (departmentFilter === 'ALL') return calendarEvents
-    return calendarEvents.filter((event) => event.isCurrentUser || event.department === departmentFilter)
+    const selectedDepartment = departmentFilter.trim()
+    return calendarEvents.filter(
+      (event) => event.isCurrentUser || event.department?.trim() === selectedDepartment
+    )
   }, [calendarEvents, departmentFilter])
 
   const transitionPlanReminderRequests = useMemo(() => {
@@ -2364,7 +2372,6 @@ export default function LeavePage() {
     </div>
   )
 }
-
 
 
 
