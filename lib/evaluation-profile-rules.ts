@@ -47,8 +47,7 @@ export function isNoIncomingEvaluationUser(user: Pick<RuleUserShape, 'name'> | n
 export function isPartnerReportExcluded(
   user: Pick<RuleUserShape, 'department' | 'position'> | null | undefined
 ) {
-  const text = [user?.position, user?.department].filter(Boolean).join(' ')
-  return /\bpartner\b/i.test(text)
+  return normalizeEvaluationRuleName(user?.position) === 'partner'
 }
 
 export function shouldReceiveConstantEvaluations(

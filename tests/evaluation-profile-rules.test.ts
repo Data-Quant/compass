@@ -21,11 +21,17 @@ test('period report eligibility requires an incoming mapping', () => {
     department: 'Technology',
     position: 'Associate-Backend Engineer',
   }
-  const partner = {
-    id: 'partner',
+  const juniorPartner = {
+    id: 'junior-partner',
     name: 'Ammar Hassan',
     department: 'Technology',
     position: 'Junior Partner',
+  }
+  const partner = {
+    id: 'partner',
+    name: 'Partner Example',
+    department: 'Executive',
+    position: 'Partner',
   }
 
   assert.equal(
@@ -36,6 +42,10 @@ test('period report eligibility requires an incoming mapping', () => {
     true
   )
   assert.equal(shouldReceiveReportForPeriod(employee, [{ evaluateeId: 'other' }]), false)
+  assert.equal(
+    shouldReceiveReportForPeriod(juniorPartner, [{ evaluateeId: 'junior-partner' }]),
+    true
+  )
   assert.equal(shouldReceiveReportForPeriod(partner, [{ evaluateeId: 'partner' }]), false)
 })
 
@@ -85,7 +95,7 @@ test('excluded people cannot receive incoming management or peer evaluations', (
   assert.equal(peerConstraint.blocked, true)
 })
 
-test('constant evaluators are disabled for excluded names, partners, and 3E users', () => {
+test('constant evaluators are disabled for excluded names, exact partner titles, and 3E users', () => {
   assert.equal(
     shouldReceiveConstantEvaluations({ name: 'Hamiz Awan', department: 'Executive' }),
     false
@@ -103,13 +113,37 @@ test('constant evaluators are disabled for excluded names, partners, and 3E user
       name: 'Amal Majjout',
       department: 'Operating Partner-Value Creation',
     }),
-    false
+    true
+  )
+  assert.equal(
+    shouldReceiveConstantEvaluations({
+      name: 'Operating Partner Example',
+      department: 'Executive',
+      position: 'Operating Partner',
+    }),
+    true
   )
   assert.equal(
     shouldReceiveConstantEvaluations({
       name: 'Ammar Hassan',
       department: 'Technology',
       position: 'Junior Partner',
+    }),
+    true
+  )
+  assert.equal(
+    shouldReceiveConstantEvaluations({
+      name: 'Tahir Example',
+      department: 'Operations',
+      position: 'Principal and Junior Partner',
+    }),
+    true
+  )
+  assert.equal(
+    shouldReceiveConstantEvaluations({
+      name: 'Partner Example',
+      department: 'Executive',
+      position: 'Partner',
     }),
     false
   )
