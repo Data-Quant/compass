@@ -145,7 +145,28 @@ export async function PUT(request: NextRequest) {
     }
 
     const nextIsLocked = isLocked ?? existing.isLocked
+    const nextIsActive = isActive ?? existing.isActive
+    const isUnlocking = existing.isLocked && !nextIsLocked
     const shouldSnapshotAssignments = !existing.isLocked && nextIsLocked
+
+    if (isUnlocking && !nextIsActive) {
+      const activePeriod = await prisma.evaluationPeriod.findFirst({
+        where: {
+          isActive: true,
+          id: { not: id },
+        },
+        select: { name: true },
+      })
+
+      return NextResponse.json(
+        {
+          error: activePeriod
+            ? `Cannot unlock this locked historical period while ${activePeriod.name} is active. Activate this period first if it truly needs to be reopened.`
+            : 'Cannot unlock an inactive locked period. Activate this period first if it truly needs to be reopened.',
+        },
+        { status: 400 }
+      )
+    }
 
     const period = await prisma.$transaction(async (tx) => {
       // If setting this period as active, deactivate all others
@@ -167,7 +188,7 @@ export async function PUT(request: NextRequest) {
           startDate: normalizedStartDate,
           endDate: normalizedEndDate,
           reviewStartDate: normalizedReviewStartDate,
-          isActive: isActive ?? existing.isActive,
+          isActive: nextIsActive,
           isLocked: nextIsLocked,
         },
       })
