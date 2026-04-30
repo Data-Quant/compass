@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
+import { snapshotEvaluationPeriodAssignments } from '@/lib/evaluation-assignments'
 
 function toDateOnly(value: string | Date) {
   const date = value instanceof Date ? new Date(value) : new Date(value)
@@ -143,24 +144,33 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: validationError }, { status: 400 })
     }
 
-    // If setting this period as active, deactivate all others
-    if (isActive) {
-      await prisma.evaluationPeriod.updateMany({
-        where: { id: { not: id } },
-        data: { isActive: false },
-      })
-    }
+    const nextIsLocked = isLocked ?? existing.isLocked
+    const shouldSnapshotAssignments = !existing.isLocked && nextIsLocked
 
-    const period = await prisma.evaluationPeriod.update({
-      where: { id },
-      data: {
-        name: name ?? existing.name,
-        startDate: normalizedStartDate,
-        endDate: normalizedEndDate,
-        reviewStartDate: normalizedReviewStartDate,
-        isActive: isActive ?? existing.isActive,
-        isLocked: isLocked ?? existing.isLocked,
-      },
+    const period = await prisma.$transaction(async (tx) => {
+      // If setting this period as active, deactivate all others
+      if (isActive) {
+        await tx.evaluationPeriod.updateMany({
+          where: { id: { not: id } },
+          data: { isActive: false },
+        })
+      }
+
+      if (shouldSnapshotAssignments) {
+        await snapshotEvaluationPeriodAssignments(id, tx)
+      }
+
+      return tx.evaluationPeriod.update({
+        where: { id },
+        data: {
+          name: name ?? existing.name,
+          startDate: normalizedStartDate,
+          endDate: normalizedEndDate,
+          reviewStartDate: normalizedReviewStartDate,
+          isActive: isActive ?? existing.isActive,
+          isLocked: nextIsLocked,
+        },
+      })
     })
 
     return NextResponse.json({ success: true, period })

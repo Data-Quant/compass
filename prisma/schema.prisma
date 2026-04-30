@@ -336,6 +336,8 @@ model User {
   evaluationPeriodOverridesAsEvaluator EvaluationPeriodAssignmentOverride[] @relation("EvaluationPeriodOverrideEvaluator")
   evaluationPeriodOverridesAsEvaluatee EvaluationPeriodAssignmentOverride[] @relation("EvaluationPeriodOverrideEvaluatee")
   evaluationPeriodOverridesCreated EvaluationPeriodAssignmentOverride[] @relation("EvaluationPeriodOverrideCreatedBy")
+  evaluationAssignmentSnapshotsAsEvaluator EvaluationPeriodAssignmentSnapshot[] @relation("EvaluationSnapshotEvaluator")
+  evaluationAssignmentSnapshotsAsEvaluatee EvaluationPeriodAssignmentSnapshot[] @relation("EvaluationSnapshotEvaluatee")
   subscriptionOwnerships SubscriptionOwner[]
 
   @@index([name])
@@ -512,6 +514,7 @@ model EvaluationPeriod {
   evaluations             Evaluation[]
   preEvaluationPreps      PreEvaluationLeadPrep[]
   assignmentOverrides     EvaluationPeriodAssignmentOverride[]
+  assignmentSnapshots      EvaluationPeriodAssignmentSnapshot[]
   preEvaluationTriggeredBy User?                    @relation("PreEvaluationTriggeredBy", fields: [preEvaluationTriggeredById], references: [id], onDelete: SetNull)
 
   @@index([isActive])
@@ -568,6 +571,26 @@ model EvaluationPeriodAssignmentOverride {
   @@index([evaluatorId])
   @@index([evaluateeId])
   @@index([action])
+}
+
+model EvaluationPeriodAssignmentSnapshot {
+  id               String           @id @default(cuid())
+  periodId         String
+  evaluatorId      String
+  evaluateeId      String
+  relationshipType RelationshipType
+  source           String
+  sourceRefId      String?
+  createdAt        DateTime         @default(now())
+
+  period           EvaluationPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  evaluator        User             @relation("EvaluationSnapshotEvaluator", fields: [evaluatorId], references: [id], onDelete: Cascade)
+  evaluatee        User             @relation("EvaluationSnapshotEvaluatee", fields: [evaluateeId], references: [id], onDelete: Cascade)
+
+  @@unique([periodId, evaluatorId, evaluateeId, relationshipType])
+  @@index([periodId])
+  @@index([evaluatorId])
+  @@index([evaluateeId])
 }
 
 model PreEvaluationLeadPrep {

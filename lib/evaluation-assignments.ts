@@ -47,6 +47,16 @@ export type PeriodAssignmentOverrideInput = {
   evaluatee?: UserSummary
 }
 
+type SnapshotAssignment = {
+  evaluatorId: string
+  evaluateeId: string
+  relationshipType: RelationshipType
+  source: string
+  sourceRefId: string | null
+  evaluator?: UserSummary
+  evaluatee?: UserSummary
+}
+
 export interface ResolvedEvaluationAssignment {
   evaluatorId: string
   evaluateeId: string
@@ -184,11 +194,69 @@ export async function getResolvedEvaluationAssignments(
     evaluatorId?: string
     evaluateeId?: string
     includeUsers?: boolean
+    ignoreSnapshots?: boolean
     db?: DbClient
   } = {}
 ) {
   const db = options.db || prisma
   const includeUsers = Boolean(options.includeUsers)
+
+  if (!options.ignoreSnapshots) {
+    const period = await db.evaluationPeriod.findUnique({
+      where: { id: periodId },
+      select: { isLocked: true },
+    })
+
+    if (period?.isLocked) {
+      const snapshotWhere: Prisma.EvaluationPeriodAssignmentSnapshotWhereInput = {
+        periodId,
+      }
+      if (options.evaluatorId) snapshotWhere.evaluatorId = options.evaluatorId
+      if (options.evaluateeId) snapshotWhere.evaluateeId = options.evaluateeId
+
+      const snapshots = await db.evaluationPeriodAssignmentSnapshot.findMany({
+        where: snapshotWhere,
+        ...(includeUsers
+          ? {
+              include: {
+                evaluator: {
+                  select: { id: true, name: true, department: true, position: true },
+                },
+                evaluatee: {
+                  select: { id: true, name: true, department: true, position: true },
+                },
+              },
+            }
+          : {}),
+        orderBy: [
+          { evaluatorId: 'asc' },
+          { evaluateeId: 'asc' },
+          { relationshipType: 'asc' },
+        ],
+      })
+
+      if (snapshots.length > 0) {
+        return snapshots.map((snapshot) => {
+          const row = snapshot as SnapshotAssignment
+          return {
+            evaluatorId: row.evaluatorId,
+            evaluateeId: row.evaluateeId,
+            relationshipType: row.relationshipType,
+            source: row.source as AssignmentSource,
+            mappingId: row.source === 'PERMANENT_MAPPING' ? row.sourceRefId || undefined : undefined,
+            selectionId:
+              row.source === 'PRE_EVALUATION_PEER' ||
+              row.source === 'PRE_EVALUATION_CROSS_DEPARTMENT'
+                ? row.sourceRefId || undefined
+                : undefined,
+            overrideId: row.source === 'PERIOD_OVERRIDE' ? row.sourceRefId || undefined : undefined,
+            evaluator: row.evaluator,
+            evaluatee: row.evaluatee,
+          }
+        })
+      }
+    }
+  }
 
   const mappingWhere: Prisma.EvaluatorMappingWhereInput = {}
   if (options.evaluatorId) mappingWhere.evaluatorId = options.evaluatorId
@@ -335,6 +403,42 @@ export async function getResolvedEvaluationAssignments(
       evaluatee: 'evaluatee' in override ? (override.evaluatee as UserSummary) : undefined,
     })),
   })
+}
+
+export async function snapshotEvaluationPeriodAssignments(
+  periodId: string,
+  db: DbClient = prisma
+) {
+  const assignments = await getResolvedEvaluationAssignments(periodId, {
+    db,
+    ignoreSnapshots: true,
+  })
+
+  await db.evaluationPeriodAssignmentSnapshot.deleteMany({
+    where: { periodId },
+  })
+
+  if (assignments.length === 0) {
+    return { count: 0 }
+  }
+
+  await db.evaluationPeriodAssignmentSnapshot.createMany({
+    data: assignments.map((assignment) => ({
+      periodId,
+      evaluatorId: assignment.evaluatorId,
+      evaluateeId: assignment.evaluateeId,
+      relationshipType: assignment.relationshipType,
+      source: assignment.source,
+      sourceRefId:
+        assignment.mappingId ||
+        assignment.selectionId ||
+        assignment.overrideId ||
+        null,
+    })),
+    skipDuplicates: true,
+  })
+
+  return { count: assignments.length }
 }
 
 export async function getResolvedEvaluationAssignmentForPair(
