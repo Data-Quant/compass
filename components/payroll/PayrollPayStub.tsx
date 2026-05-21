@@ -100,7 +100,7 @@ export function PayrollPayStub({
         <Separator className="my-1.5" />
         <StubRow
           label="Total Taxable Salary"
-          amount={num(earnings.basicSalary) + num(earnings.medicalTaxExemption) + num(earnings.bonus)}
+          amount={num(earnings.basicSalary) + num(earnings.medicalTaxExemption)}
           bold
         />
         <div className="h-2" />

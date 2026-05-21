@@ -119,8 +119,8 @@ export async function generateReceiptPdf(data: ReceiptData): Promise<Buffer> {
       y = drawRow(doc, 'Tax exemption on medical (10%)', money(data.earnings.medicalTaxExemption), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight)
       y = drawRow(doc, 'Bonus', money(data.earnings.bonus), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight)
 
-      // Total Taxable Salary (bold)
-      const totalTaxable = num(data.earnings.basicSalary) + num(data.earnings.medicalTaxExemption) + num(data.earnings.bonus)
+      // Total Taxable Salary (bold) — bonus is non-taxable, excluded from this sum.
+      const totalTaxable = num(data.earnings.basicSalary) + num(data.earnings.medicalTaxExemption)
       y = drawRow(doc, 'Total Taxable Salary', money(totalTaxable), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight, true)
 
       y = drawRow(doc, 'Medical Allowance', money(data.earnings.medicalAllowance), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight)

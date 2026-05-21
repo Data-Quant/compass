@@ -34,6 +34,13 @@ interface AttendanceEntry {
   status: 'PRESENT' | 'ABSENT' | 'PUBLIC_HOLIDAY'
 }
 
+interface HolidayLite {
+  holidayDate: string
+  name: string
+}
+
+const WEEKEND_DAYS = new Set<number>([0, 6]) // Sun + Sat
+
 type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'PUBLIC_HOLIDAY'
 type AttendanceCellStatus = AttendanceStatus | null
 
@@ -71,6 +78,7 @@ export function PayrollAttendancePanel({ periods }: Props) {
   const [periodId, setPeriodId] = useState('')
   const [employees, setEmployees] = useState<EmployeeRow[]>([])
   const [entries, setEntries] = useState<AttendanceEntry[]>([])
+  const [holidays, setHolidays] = useState<HolidayLite[]>([])
   const [workingDays, setWorkingDays] = useState(0)
   const [saving, setSaving] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -97,8 +105,15 @@ export function PayrollAttendancePanel({ periods }: Props) {
 
   const days = useMemo(() => {
     if (!selectedPeriod) return []
-    return daysBetween(selectedPeriod.periodStart, selectedPeriod.periodEnd)
-  }, [selectedPeriod])
+    const holidaySet = new Set(
+      holidays.map((h) => new Date(h.holidayDate).toISOString().slice(0, 10))
+    )
+    return daysBetween(selectedPeriod.periodStart, selectedPeriod.periodEnd).filter((day) => {
+      if (WEEKEND_DAYS.has(day.getUTCDay())) return false
+      if (holidaySet.has(toDateKey(day))) return false
+      return true
+    })
+  }, [selectedPeriod, holidays])
 
   const statusMap = useMemo(() => {
     const map = new Map<string, AttendanceCellStatus>()
@@ -128,6 +143,7 @@ export function PayrollAttendancePanel({ periods }: Props) {
         role: row.role,
       })))
       setEntries(attendanceJson.entries || [])
+      setHolidays(attendanceJson.holidays || [])
       setWorkingDays(attendanceJson.workingDays || 0)
       setDirtyMap({})
     } catch (error) {

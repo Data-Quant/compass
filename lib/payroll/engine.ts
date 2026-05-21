@@ -288,26 +288,26 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
 
     const basicSalary = getNumber(bucket, 'BASIC_SALARY')
     const medicalAllowance = getNumber(bucket, 'MEDICAL_ALLOWANCE')
+    // FBR rule: medical allowance is tax-exempt up to 10% of basic salary.
+    // Stored as a negative value because it offsets taxable income.
     const medicalTaxExemption =
       bucket.MEDICAL_TAX_EXEMPTION !== undefined
         ? getNumber(bucket, 'MEDICAL_TAX_EXEMPTION')
-        : -medicalAllowance
+        : -Math.min(medicalAllowance, basicSalary * 0.1)
     const bonus = getNumber(bucket, 'BONUS')
 
-    const totalTaxableSalary = basicSalary + medicalTaxExemption + bonus + additionalTaxableEarnings
-    // WHT Calculations in the workbook compute tax on (salary + bonus) only,
-    // without the medical exemption adjustment. Use that same base for the
-    // slab-based fallback so carry-forward / manual periods match the workbook.
+    // Bonus is non-taxable — excluded from taxable salary and tax base.
+    const totalTaxableSalary = basicSalary + medicalTaxExemption + additionalTaxableEarnings
     const incomeTax = (() => {
       if (bucket.INCOME_TAX !== undefined) return getNumber(bucket, 'INCOME_TAX')
       if (activeFinancialYear && activeFinancialYear.taxBrackets.length > 0) {
         const annual = calculateAnnualProgressiveTax(
-          Math.max(0, basicSalary + bonus + additionalTaxableEarnings) * 12,
+          Math.max(0, basicSalary + additionalTaxableEarnings) * 12,
           activeFinancialYear.taxBrackets
         )
         return annual / 12
       }
-      return estimateIncomeTaxFromSlabs(periodKey, basicSalary + bonus)
+      return estimateIncomeTaxFromSlabs(periodKey, basicSalary)
     })()
 
     const travelOverride = rows.find((r) => r.componentKey === 'TRAVEL_REIMBURSEMENT' && r.isOverride)
@@ -339,6 +339,7 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
 
     const totalEarnings =
       totalTaxableSalary +
+      bonus +
       medicalAllowance +
       travelReimbursement +
       getNumber(bucket, 'UTILITY_REIMBURSEMENT') +
