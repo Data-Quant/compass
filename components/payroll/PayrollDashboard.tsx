@@ -10,6 +10,8 @@ import { PayrollStatusBadge } from '@/components/payroll/PayrollStatusBadge'
 import { PayrollImportDialog } from '@/components/payroll/PayrollImportDialog'
 import { PayrollAttendancePanel } from '@/components/payroll/PayrollAttendancePanel'
 import { PayrollSettingsPanel } from '@/components/payroll/PayrollSettingsPanel'
+import { canDeletePayrollPeriodStatus } from '@/lib/payroll/period-status'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -30,6 +32,7 @@ import {
   Loader2,
   Plus,
   ReceiptText,
+  Trash2,
   Upload,
   Users,
   Wallet,
@@ -98,6 +101,8 @@ export function PayrollDashboard({
   const [importOpen, setImportOpen] = useState(false)
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [activeTab, setActiveTab] = useState<PayrollViewTab>('runs')
+  const [periodToDelete, setPeriodToDelete] = useState<PeriodRow | null>(null)
+  const [deletingPeriodId, setDeletingPeriodId] = useState<string | null>(null)
 
   // Create period form
   const [label, setLabel] = useState('')
@@ -173,6 +178,25 @@ export function PayrollDashboard({
       toast.error(error instanceof Error ? error.message : 'Failed to create period')
     } finally {
       setCreating(false)
+    }
+  }
+
+  const handleDeletePeriod = async () => {
+    if (!periodToDelete) return
+    const target = periodToDelete
+    try {
+      setDeletingPeriodId(target.id)
+      const res = await fetch(`/api/payroll/periods/${target.id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to delete payroll period')
+
+      toast.success(`Deleted ${target.label}`)
+      setPeriodToDelete(null)
+      await loadData()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to delete payroll period')
+    } finally {
+      setDeletingPeriodId(null)
     }
   }
 
@@ -377,7 +401,7 @@ export function PayrollDashboard({
                       <TableHead>Source</TableHead>
                       <TableHead className="text-right">Inputs</TableHead>
                       <TableHead className="text-right">Receipts</TableHead>
-                      <TableHead></TableHead>
+                      <TableHead className="text-right"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -399,12 +423,33 @@ export function PayrollDashboard({
                         <TableCell className="text-right text-sm">{period._count.inputValues}</TableCell>
                         <TableCell className="text-right text-sm">{period._count.receipts}</TableCell>
                         <TableCell>
-                          <Button size="sm" asChild>
-                            <Link href={`${appBasePath}/payroll/${period.id}`}>
-                              Open
-                              <ArrowRight className="w-3.5 h-3.5" />
-                            </Link>
-                          </Button>
+                          <div className="flex justify-end gap-2">
+                            <Button size="sm" asChild>
+                              <Link href={`${appBasePath}/payroll/${period.id}`}>
+                                Open
+                                <ArrowRight className="w-3.5 h-3.5" />
+                              </Link>
+                            </Button>
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                              disabled={!canDeletePayrollPeriodStatus(period.status) || deletingPeriodId === period.id}
+                              title={
+                                canDeletePayrollPeriodStatus(period.status)
+                                  ? 'Delete period'
+                                  : 'Finalized payroll periods cannot be deleted'
+                              }
+                              onClick={() => setPeriodToDelete(period)}
+                            >
+                              {deletingPeriodId === period.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -424,6 +469,15 @@ export function PayrollDashboard({
         onOpenChange={setImportOpen}
         periods={periods.map((p) => ({ id: p.id, label: p.label }))}
         onComplete={loadData}
+      />
+      <ConfirmDialog
+        isOpen={Boolean(periodToDelete)}
+        onClose={() => setPeriodToDelete(null)}
+        onConfirm={handleDeletePeriod}
+        title="Delete Payroll Period"
+        message={`Delete "${periodToDelete?.label}"? This removes its inputs, computed values, receipts, attendance entries, and approval events. Finalized periods are protected.`}
+        confirmText={deletingPeriodId ? 'Deleting...' : 'Delete'}
+        variant="danger"
       />
     </div>
   )

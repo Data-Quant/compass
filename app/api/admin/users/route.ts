@@ -4,9 +4,26 @@ import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { isAdminRole } from '@/lib/permissions'
 import { ensurePayrollMasterDefaults } from '@/lib/payroll/settings'
+import {
+  decryptSensitivePayrollProfileFields,
+  encryptSensitivePayrollProfileFields,
+} from '@/lib/payroll/sensitive-fields'
 import { isPlutusEmail } from '@/lib/onboarding'
 
 const VALID_USER_ROLES = ['EMPLOYEE', 'HR', 'SECURITY', 'OA', 'EXECUTION'] as const
+const SAFE_USER_RESPONSE_SELECT = {
+  id: true,
+  name: true,
+  email: true,
+  discordId: true,
+  department: true,
+  position: true,
+  role: true,
+  onboardingCompleted: true,
+  benefitCategoryId: true,
+  createdAt: true,
+  updatedAt: true,
+} as const
 
 type PayrollProfilePayload = {
   payrollDepartmentId?: string | null
@@ -53,7 +70,7 @@ async function upsertPayrollProfileAndRevision(args: {
   const { userId, actorId, payload } = args
   if (!payload) return
 
-  const profileData = {
+  const profileData = encryptSensitivePayrollProfileFields({
     departmentId: payload.payrollDepartmentId || null,
     designation: payload.designation || null,
     officialEmail: payload.officialEmail || null,
@@ -67,7 +84,7 @@ async function upsertPayrollProfileAndRevision(args: {
     accountTitle: payload.accountTitle || null,
     accountNumber: payload.accountNumber || null,
     ...(typeof payload.isPayrollActive === 'boolean' ? { isPayrollActive: payload.isPayrollActive } : {}),
-  }
+  })
 
   const profile = await prisma.payrollEmployeeProfile.upsert({
     where: { userId },
@@ -218,7 +235,10 @@ export async function GET(_request: NextRequest) {
     ])
 
     return NextResponse.json({
-      users,
+      users: users.map((entry) => ({
+        ...entry,
+        payrollProfile: decryptSensitivePayrollProfileFields(entry.payrollProfile),
+      })),
       payrollMeta: {
         departments: payrollDepartments,
         employmentTypes,
@@ -345,6 +365,7 @@ export async function POST(request: NextRequest) {
           benefitCategoryId: normalizedBenefitCategoryId || null,
           onboardingCompleted: shouldCreateAsNewHire ? false : true,
         },
+        select: SAFE_USER_RESPONSE_SELECT,
       })
 
       if (shouldCreateAsNewHire && linkedNewHire) {
@@ -459,6 +480,7 @@ export async function PUT(request: NextRequest) {
         role: normalizedRole as (typeof VALID_USER_ROLES)[number],
         ...(benefitCategoryId !== undefined ? { benefitCategoryId: normalizedBenefitCategoryId } : {}),
       },
+      select: SAFE_USER_RESPONSE_SELECT,
     })
 
     if (payrollProfile) {
