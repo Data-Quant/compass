@@ -32,6 +32,19 @@ interface ComputedValue {
   amount: number
 }
 
+interface PayrollReceiptValue {
+  payrollName: string
+  receiptJson?: {
+    deductions?: {
+      incomeTax?: number
+      adjustment?: number
+      loanRepayment?: number
+      additionalDeductions?: number
+      totalDeductions?: number
+    }
+  } | null
+}
+
 interface PreviousData {
   previousInputs: Record<string, Record<string, number>>
   previousComputed: Record<string, Record<string, number>>
@@ -53,6 +66,7 @@ export interface GridRow {
   incomeTax: number
   adjustment: number
   loanRepayment: number
+  additionalDeductions: number
   paid: number
   grossPay: number
   totalReimbursements: number
@@ -102,7 +116,8 @@ const DEDUCTION_COLUMNS: Array<{ key: SortKey; label: string; componentKey?: str
   { key: 'incomeTax', label: 'Income Tax', componentKey: 'INCOME_TAX', editable: true },
   { key: 'adjustment', label: 'Adjustment', componentKey: 'ADJUSTMENT', editable: true },
   { key: 'loanRepayment', label: 'Loan Repayment', componentKey: 'LOAN_REPAYMENT', editable: true },
-  { key: 'paid', label: 'Paid', componentKey: 'PAID', editable: true },
+  { key: 'additionalDeductions', label: 'Other Deductions', editable: false },
+  { key: 'paid', label: 'Paid (Recon)', componentKey: 'PAID', editable: true },
 ]
 
 /* ------------------------------------------------------------------ */
@@ -121,9 +136,11 @@ function money(v: number) {
 function buildGridRows(
   inputValues: InputValue[],
   computedValues: ComputedValue[],
+  receipts: PayrollReceiptValue[] = [],
   users?: Array<{ id?: string; name: string; role?: string }>,
 ): GridRow[] {
   const map = new Map<string, GridRow>()
+  const receiptByName = new Map(receipts.map((receipt) => [receipt.payrollName, receipt.receiptJson || null]))
 
   const ensure = (name: string): GridRow => {
     const key = name.trim()
@@ -137,7 +154,7 @@ function buildGridRows(
         travelReimbursement: 0, utilityReimbursement: 0,
         mealsReimbursement: 0, mobileReimbursement: 0,
         expenseReimbursement: 0, advanceLoan: 0,
-        incomeTax: 0, adjustment: 0, loanRepayment: 0,
+        incomeTax: 0, adjustment: 0, loanRepayment: 0, additionalDeductions: 0,
         paid: 0, grossPay: 0, totalReimbursements: 0,
         totalDeductions: 0, netPay: 0, balance: 0,
       })
@@ -184,11 +201,21 @@ function buildGridRows(
   }
 
   return Array.from(map.values()).map((row) => {
+    const receipt = receiptByName.get(row.payrollName)
+    const receiptDeductions = receipt?.deductions
+    if (receiptDeductions) {
+      row.incomeTax = num(receiptDeductions.incomeTax)
+      row.adjustment = num(receiptDeductions.adjustment)
+      row.loanRepayment = num(receiptDeductions.loanRepayment)
+      row.additionalDeductions = num(receiptDeductions.additionalDeductions)
+      row.totalDeductions = num(receiptDeductions.totalDeductions)
+    }
+
     row.totalReimbursements =
       row.medicalAllowance + row.travelReimbursement + row.utilityReimbursement +
       row.mealsReimbursement + row.mobileReimbursement + row.expenseReimbursement
     if (!row.totalDeductions) {
-      row.totalDeductions = row.incomeTax + row.adjustment + row.loanRepayment
+      row.totalDeductions = row.incomeTax + row.adjustment + row.loanRepayment + row.additionalDeductions
     }
     if (!row.grossPay) {
       row.grossPay = row.basicSalary + row.bonus + row.totalReimbursements + row.advanceLoan
@@ -336,6 +363,7 @@ interface PayrollEmployeeGridProps {
   periodId: string
   inputValues: InputValue[]
   computedValues: ComputedValue[]
+  receipts?: PayrollReceiptValue[]
   previousData: PreviousData | null
   users?: Array<{ id?: string; name: string; role?: string }>
   status: string
@@ -347,6 +375,7 @@ export function PayrollEmployeeGrid({
   periodId,
   inputValues,
   computedValues,
+  receipts,
   previousData,
   users,
   status,
@@ -362,8 +391,8 @@ export function PayrollEmployeeGrid({
   const isLocked = status === 'LOCKED' || status === 'APPROVED' || status === 'SENT'
 
   const rows = useMemo(
-    () => buildGridRows(inputValues, computedValues, users),
-    [inputValues, computedValues, users],
+    () => buildGridRows(inputValues, computedValues, receipts || [], users),
+    [inputValues, computedValues, receipts, users],
   )
 
   const filteredRows = useMemo(() => {
@@ -458,6 +487,12 @@ export function PayrollEmployeeGrid({
   const columns = activeTab === 'earnings' ? EARNINGS_COLUMNS
     : activeTab === 'deductions' ? DEDUCTION_COLUMNS : SUMMARY_COLUMNS
 
+  const helperText = activeTab === 'summary'
+    ? 'Summary values are computed after calculation. Deductions include income tax, adjustment, loan repayment, and any active deduction salary heads.'
+    : activeTab === 'earnings'
+      ? 'Travel is auto-filled during calculation from each employee profile transport mode, distance tier, working days, and attendance. Editing Travel creates a manual override.'
+      : 'Income tax is calculated from the configured tax brackets unless manually overridden. Paid is for reconciliation and rolling balance; it is not subtracted as a payroll deduction.'
+
   const SortIcon = ({ colKey }: { colKey: SortKey }) => {
     if (sortKey !== colKey) return <ArrowUpDown className="w-3 h-3 opacity-40" />
     return sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
@@ -489,6 +524,7 @@ export function PayrollEmployeeGrid({
     incomeTax: 'INCOME_TAX',
     adjustment: 'ADJUSTMENT',
     loanRepayment: 'LOAN_REPAYMENT',
+    additionalDeductions: 'ADDITIONAL_DEDUCTIONS',
     paid: 'PAID',
   }
 
@@ -518,6 +554,10 @@ export function PayrollEmployeeGrid({
             CSV
           </Button>
         </div>
+      </div>
+
+      <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+        {helperText}
       </div>
 
       {/* Grid */}

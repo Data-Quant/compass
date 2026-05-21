@@ -164,7 +164,11 @@ export function PayrollDashboard({
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to create period')
 
-      toast.success('Payroll period created')
+      if (data.warning) {
+        toast.warning(data.warning)
+      } else {
+        toast.success('Payroll period created')
+      }
       setLabel('')
       setBasePeriodId('AUTO')
       setShowCreateForm(false)

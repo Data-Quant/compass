@@ -291,7 +291,7 @@ export function PayrollRunWizard({
                 <div>
                   <h2 className="text-lg font-semibold font-display">Review Employee Pay</h2>
                   <p className="text-sm text-muted-foreground">
-                    Data carried forward from last period. Click any cell to edit.
+                    Review carried-forward, imported, or manual payroll data. Click any editable cell to update it.
                   </p>
                 </div>
               </div>
@@ -299,6 +299,7 @@ export function PayrollRunWizard({
                 periodId={periodId}
                 inputValues={gridRows}
                 computedValues={computedValues}
+                receipts={period.receipts || []}
                 previousData={previousData}
                 users={payrollEmployees}
                 status={period.status}
@@ -332,6 +333,31 @@ export function PayrollRunWizard({
                 </Button>
               </div>
 
+              <Card>
+                <CardContent className="p-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <p className="font-medium">Income tax</p>
+                      <p className="text-muted-foreground mt-1">
+                        Calculated from the active financial year tax brackets using monthly basic salary, bonus, and taxable earning heads. A manual Income Tax value overrides the estimate.
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-medium">Travel allowance</p>
+                      <p className="text-muted-foreground mt-1">
+                        Auto-filled from transport mode, distance tier, working days, and present attendance. If no attendance is entered, the full working month is assumed.
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-medium">Net and balance</p>
+                      <p className="text-muted-foreground mt-1">
+                        Net pay equals total earnings minus payroll deductions. Paid is used only for reconciliation and rolling balance.
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
               {period.status !== 'DRAFT' && (
                 <Card>
                   <CardContent className="p-6">
@@ -363,6 +389,7 @@ export function PayrollRunWizard({
                 periodId={periodId}
                 inputValues={gridRows}
                 computedValues={computedValues}
+                receipts={period.receipts || []}
                 previousData={previousData}
                 users={payrollEmployees}
                 status={period.status}
@@ -381,6 +408,12 @@ export function PayrollRunWizard({
                   Review discrepancies between computed net salary and recorded payments.
                 </p>
               </div>
+
+              <Card>
+                <CardContent className="p-4 text-sm text-muted-foreground">
+                  Reconciliation compares each employee&apos;s computed net salary against the Paid input for this period. If the difference is above the tolerance, the delta is flagged; that same delta rolls into the employee&apos;s balance as previous balance + net salary - paid.
+                </CardContent>
+              </Card>
 
               {mismatches.length === 0 ? (
                 <Card>

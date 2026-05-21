@@ -32,6 +32,7 @@ export interface ReceiptData {
     incomeTax: number
     adjustment: number
     loanRepayment: number
+    additionalDeductions?: number
     totalDeductions: number
   }
   net: {
@@ -137,6 +138,7 @@ export async function generateReceiptPdf(data: ReceiptData): Promise<Buffer> {
       y = drawRow(doc, 'Income Tax', money(data.deductions.incomeTax), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight)
       y = drawRow(doc, 'Adjustment (+Refund/-Deduction)', money(data.deductions.adjustment), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight)
       y = drawRow(doc, 'Loan Repayments', money(data.deductions.loanRepayment), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight)
+      y = drawRow(doc, 'Other Deductions', money(data.deductions.additionalDeductions || 0), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight)
       y = drawRow(doc, 'Total Deductions', money(data.deductions.totalDeductions), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight, true)
 
       y += 8

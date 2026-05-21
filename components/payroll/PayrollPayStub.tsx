@@ -22,6 +22,7 @@ interface ReceiptJson {
     incomeTax?: number
     adjustment?: number
     loanRepayment?: number
+    additionalDeductions?: number
     totalDeductions?: number
   }
   net?: {
@@ -122,6 +123,7 @@ export function PayrollPayStub({
         <StubRow label="Income Tax" amount={num(deductions.incomeTax)} indent />
         <StubRow label="Adjustment (+Refund/-Deduction)" amount={num(deductions.adjustment)} indent />
         <StubRow label="Loan Repayments" amount={num(deductions.loanRepayment)} indent />
+        <StubRow label="Other Deductions" amount={num(deductions.additionalDeductions)} indent />
         <Separator className="my-1.5" />
         <StubRow label="Total Deductions" amount={num(deductions.totalDeductions)} bold />
       </div>

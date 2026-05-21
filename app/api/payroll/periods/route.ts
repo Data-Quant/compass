@@ -7,6 +7,7 @@ import { carryForwardPayrollPeriod } from '@/lib/payroll/periods'
 import { recalculatePayrollPeriod } from '@/lib/payroll/engine'
 import { periodLabelFromKey, toPeriodKey } from '@/lib/payroll/normalizers'
 import { ensurePayrollMasterDefaults } from '@/lib/payroll/settings'
+import type { PayrollPeriod } from '@prisma/client'
 
 const createPeriodSchema = z.object({
   label: z.string().trim().min(1).optional(),
@@ -20,6 +21,10 @@ function parseDate(value: string): Date | null {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return null
   return date
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback
 }
 
 export async function GET() {
@@ -114,13 +119,38 @@ export async function POST(request: NextRequest) {
 
     let carryForwardSummary: unknown = null
     let recalculationSummary: unknown = null
+    let calculationWarning: string | null = null
     if (sourceMode === 'CARRY_FORWARD' && resolvedBasePeriodId) {
-      carryForwardSummary = await carryForwardPayrollPeriod(resolvedBasePeriodId, created.id, user.id)
-      await ensurePayrollMasterDefaults()
-      recalculationSummary = await recalculatePayrollPeriod(created.id)
+      try {
+        carryForwardSummary = await carryForwardPayrollPeriod(resolvedBasePeriodId, created.id, user.id)
+      } catch (error) {
+        await prisma.payrollPeriod.delete({ where: { id: created.id } }).catch(() => null)
+        return NextResponse.json(
+          { error: getErrorMessage(error, 'Failed to carry forward payroll data') },
+          { status: 400 }
+        )
+      }
+
+      try {
+        await ensurePayrollMasterDefaults()
+        recalculationSummary = await recalculatePayrollPeriod(created.id)
+      } catch (error) {
+        calculationWarning = getErrorMessage(error, 'Payroll period was created, but calculation failed')
+        await prisma.payrollPeriod.update({
+          where: { id: created.id },
+          data: {
+            status: 'DRAFT',
+            summaryJson: {
+              carriedForwardFromPeriodId: resolvedBasePeriodId,
+              calculationWarning,
+              calculationFailedAt: new Date().toISOString(),
+            },
+          },
+        })
+      }
     }
 
-    const period = await prisma.payrollPeriod.findUnique({
+    const period: PayrollPeriod | null = await prisma.payrollPeriod.findUnique({
       where: { id: created.id },
     })
 
@@ -129,9 +159,10 @@ export async function POST(request: NextRequest) {
       period: period || created,
       carryForward: carryForwardSummary,
       recalculation: recalculationSummary,
+      warning: calculationWarning,
     })
   } catch (error) {
     console.error('Failed to create payroll period:', error)
-    return NextResponse.json({ error: 'Failed to create payroll period' }, { status: 500 })
+    return NextResponse.json({ error: getErrorMessage(error, 'Failed to create payroll period') }, { status: 500 })
   }
 }
