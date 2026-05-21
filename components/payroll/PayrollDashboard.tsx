@@ -432,9 +432,9 @@ export function PayrollDashboard({
                             </Button>
                             <Button
                               type="button"
-                              size="icon"
+                              size="sm"
                               variant="ghost"
-                              className="h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                              className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                               disabled={!canDeletePayrollPeriodStatus(period.status) || deletingPeriodId === period.id}
                               title={
                                 canDeletePayrollPeriodStatus(period.status)
@@ -448,6 +448,7 @@ export function PayrollDashboard({
                               ) : (
                                 <Trash2 className="h-4 w-4" />
                               )}
+                              Delete
                             </Button>
                           </div>
                         </TableCell>
