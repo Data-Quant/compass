@@ -34,13 +34,17 @@ interface AttendanceEntry {
   status: 'PRESENT' | 'ABSENT' | 'PUBLIC_HOLIDAY'
 }
 
-const STATUS_CYCLE: Array<'PRESENT' | 'ABSENT' | 'PUBLIC_HOLIDAY'> = [
+type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'PUBLIC_HOLIDAY'
+type AttendanceCellStatus = AttendanceStatus | null
+
+const STATUS_CYCLE: AttendanceCellStatus[] = [
   'PRESENT',
   'ABSENT',
   'PUBLIC_HOLIDAY',
+  null,
 ]
 
-const STATUS_LABEL: Record<'PRESENT' | 'ABSENT' | 'PUBLIC_HOLIDAY', string> = {
+const STATUS_LABEL: Record<AttendanceStatus, string> = {
   PRESENT: 'P',
   ABSENT: 'A',
   PUBLIC_HOLIDAY: 'H',
@@ -73,7 +77,7 @@ export function PayrollAttendancePanel({ periods }: Props) {
   const [file, setFile] = useState<File | null>(null)
   const [replaceTiers, setReplaceTiers] = useState(false)
   const [effectiveFrom, setEffectiveFrom] = useState('')
-  const [dirtyMap, setDirtyMap] = useState<Record<string, 'PRESENT' | 'ABSENT' | 'PUBLIC_HOLIDAY'>>({})
+  const [dirtyMap, setDirtyMap] = useState<Record<string, AttendanceCellStatus>>({})
 
   useEffect(() => {
     if (periods.length > 0 && !periodId) {
@@ -97,7 +101,7 @@ export function PayrollAttendancePanel({ periods }: Props) {
   }, [selectedPeriod])
 
   const statusMap = useMemo(() => {
-    const map = new Map<string, 'PRESENT' | 'ABSENT' | 'PUBLIC_HOLIDAY'>()
+    const map = new Map<string, AttendanceCellStatus>()
     for (const entry of entries) {
       map.set(`${entry.userId}:${entry.attendanceDate.slice(0, 10)}`, entry.status)
     }
@@ -134,7 +138,7 @@ export function PayrollAttendancePanel({ periods }: Props) {
   const cycleStatus = (userId: string, date: Date) => {
     const key = `${userId}:${toDateKey(date)}`
     const current = statusMap.get(key)
-    const currentIndex = current ? STATUS_CYCLE.indexOf(current) : -1
+    const currentIndex = current === undefined ? -1 : STATUS_CYCLE.indexOf(current)
     const next = STATUS_CYCLE[(currentIndex + 1) % STATUS_CYCLE.length]
     setDirtyMap((prev) => ({ ...prev, [key]: next }))
   }
@@ -259,7 +263,7 @@ export function PayrollAttendancePanel({ periods }: Props) {
                             type="button"
                             onClick={() => cycleStatus(employee.id, day)}
                             className="w-8 h-8 rounded border border-border hover:bg-muted text-xs font-semibold"
-                            title="Click to cycle P/A/H"
+                            title="Click to cycle P/A/H/-"
                           >
                             {status ? STATUS_LABEL[status] : '-'}
                           </button>
@@ -316,4 +320,3 @@ export function PayrollAttendancePanel({ periods }: Props) {
     </div>
   )
 }
-

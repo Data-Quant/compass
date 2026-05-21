@@ -49,6 +49,16 @@ interface WizardProps {
   onLogout: () => void
 }
 
+interface PayrollEmployeeOption {
+  id: string
+  name: string
+  role?: string
+  position?: string | null
+  payrollProfile?: {
+    designation?: string | null
+  } | null
+}
+
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
@@ -136,17 +146,27 @@ export function PayrollRunWizard({
   const [pendingAction, setPendingAction] = useState<PendingAction>('none')
   const [approvalComment, setApprovalComment] = useState('')
   const [previousData, setPreviousData] = useState<PreviousData | null>(null)
+  const [payrollEmployees, setPayrollEmployees] = useState<PayrollEmployeeOption[]>([])
   const [detailEmployee, setDetailEmployee] = useState<string | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
 
   // Load comparison data
   useEffect(() => {
-    fetch(`/api/payroll/periods/${periodId}/comparison`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.previousInputs || data.previousComputed) {
-          setPreviousData(data)
+    Promise.all([
+      fetch(`/api/payroll/periods/${periodId}/comparison`).then((res) => res.json()),
+      fetch('/api/payroll/employees').then((res) => res.json()),
+    ])
+      .then(([comparisonData, employeesData]) => {
+        if (comparisonData.previousInputs || comparisonData.previousComputed) {
+          setPreviousData(comparisonData)
         }
+        setPayrollEmployees((employeesData.employees || []).map((employee: PayrollEmployeeOption) => ({
+          id: employee.id,
+          name: employee.name,
+          role: employee.payrollProfile?.designation || employee.position || employee.role,
+          position: employee.position,
+          payrollProfile: employee.payrollProfile,
+        })))
       })
       .catch(() => {})
   }, [periodId])
@@ -212,8 +232,9 @@ export function PayrollRunWizard({
   const employeeCount = useMemo(() => {
     const names = new Set<string>()
     for (const iv of gridRows) names.add(iv.payrollName)
+    for (const employee of payrollEmployees) names.add(employee.name)
     return names.size
-  }, [gridRows])
+  }, [gridRows, payrollEmployees])
 
   const handleEmployeeClick = useCallback((payrollName: string) => {
     setDetailEmployee(payrollName)
@@ -279,6 +300,7 @@ export function PayrollRunWizard({
                 inputValues={gridRows}
                 computedValues={computedValues}
                 previousData={previousData}
+                users={payrollEmployees}
                 status={period.status}
                 onEmployeeClick={handleEmployeeClick}
                 onDataChange={onReload}
@@ -342,6 +364,7 @@ export function PayrollRunWizard({
                 inputValues={gridRows}
                 computedValues={computedValues}
                 previousData={previousData}
+                users={payrollEmployees}
                 status={period.status}
                 onEmployeeClick={handleEmployeeClick}
                 onDataChange={onReload}

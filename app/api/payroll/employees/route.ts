@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { canManagePayroll } from '@/lib/permissions'
+import { isEligiblePayrollEmployee } from '@/lib/payroll/employee-eligibility'
 
 export async function GET() {
   try {
@@ -10,7 +11,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const employees = await prisma.user.findMany({
+    const users = await prisma.user.findMany({
       orderBy: { name: 'asc' },
       select: {
         id: true,
@@ -40,10 +41,9 @@ export async function GET() {
       },
     })
 
-    return NextResponse.json({ employees })
+    return NextResponse.json({ employees: users.filter(isEligiblePayrollEmployee) })
   } catch (error) {
     console.error('Failed to fetch payroll employees:', error)
     return NextResponse.json({ error: 'Failed to fetch payroll employees' }, { status: 500 })
   }
 }
-

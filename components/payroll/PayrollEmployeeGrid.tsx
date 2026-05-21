@@ -23,6 +23,7 @@ interface InputValue {
   payrollName: string
   componentKey: string
   amount: number
+  userId?: string | null
 }
 
 interface ComputedValue {
@@ -38,6 +39,7 @@ interface PreviousData {
 
 export interface GridRow {
   payrollName: string
+  userId?: string | null
   role?: string
   basicSalary: number
   medicalAllowance: number
@@ -119,7 +121,7 @@ function money(v: number) {
 function buildGridRows(
   inputValues: InputValue[],
   computedValues: ComputedValue[],
-  users?: Array<{ name: string; role?: string }>,
+  users?: Array<{ id?: string; name: string; role?: string }>,
 ): GridRow[] {
   const map = new Map<string, GridRow>()
 
@@ -129,6 +131,7 @@ function buildGridRows(
     if (!map.has(key)) {
       map.set(key, {
         payrollName: key,
+        userId: undefined,
         role: undefined,
         basicSalary: 0, medicalAllowance: 0, bonus: 0,
         travelReimbursement: 0, utilityReimbursement: 0,
@@ -142,9 +145,17 @@ function buildGridRows(
     return map.get(key)!
   }
 
+  for (const user of users || []) {
+    const row = ensure(user.name)
+    if (!row) continue
+    row.userId = user.id || row.userId
+    row.role = user.role || row.role
+  }
+
   for (const input of inputValues) {
     const row = ensure(input.payrollName)
     if (!row) continue
+    row.userId = input.userId || row.userId
     const amount = num(input.amount)
     switch (input.componentKey) {
       case 'BASIC_SALARY': row.basicSalary += amount; break
@@ -326,6 +337,7 @@ interface PayrollEmployeeGridProps {
   inputValues: InputValue[]
   computedValues: ComputedValue[]
   previousData: PreviousData | null
+  users?: Array<{ id?: string; name: string; role?: string }>
   status: string
   onEmployeeClick?: (payrollName: string) => void
   onDataChange?: () => void
@@ -336,6 +348,7 @@ export function PayrollEmployeeGrid({
   inputValues,
   computedValues,
   previousData,
+  users,
   status,
   onEmployeeClick,
   onDataChange,
@@ -349,8 +362,8 @@ export function PayrollEmployeeGrid({
   const isLocked = status === 'LOCKED' || status === 'APPROVED' || status === 'SENT'
 
   const rows = useMemo(
-    () => buildGridRows(inputValues, computedValues),
-    [inputValues, computedValues],
+    () => buildGridRows(inputValues, computedValues, users),
+    [inputValues, computedValues, users],
   )
 
   const filteredRows = useMemo(() => {
@@ -392,13 +405,18 @@ export function PayrollEmployeeGrid({
     }
   }, [sortKey, sortDir])
 
-  const handleInlineSave = useCallback(async (payrollName: string, componentKey: string, amount: number) => {
+  const handleInlineSave = useCallback(async (
+    payrollName: string,
+    componentKey: string,
+    amount: number,
+    userId?: string | null
+  ) => {
     try {
       const res = await fetch(`/api/payroll/periods/${periodId}/inputs`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          updates: [{ payrollName, componentKey, amount }],
+          updates: [{ payrollName, componentKey, amount, userId: userId || undefined }],
         }),
       })
       if (!res.ok) {
@@ -585,7 +603,7 @@ export function PayrollEmployeeGrid({
                           <InlineEditCell
                             value={value}
                             previousValue={prevValue}
-                            onSave={(newVal) => handleInlineSave(row.payrollName, componentKey, newVal)}
+                            onSave={(newVal) => handleInlineSave(row.payrollName, componentKey, newVal, row.userId)}
                             disabled={isLocked}
                           />
                         ) : (

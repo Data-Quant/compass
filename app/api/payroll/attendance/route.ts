@@ -8,7 +8,7 @@ import { calculateWorkingDays } from '@/lib/payroll/settings'
 const updateItemSchema = z.object({
   userId: z.string().trim().min(1),
   attendanceDate: z.string().trim().min(1),
-  status: z.enum(['PRESENT', 'ABSENT', 'PUBLIC_HOLIDAY']),
+  status: z.enum(['PRESENT', 'ABSENT', 'PUBLIC_HOLIDAY']).nullable(),
   note: z.string().trim().max(500).optional(),
 })
 
@@ -124,6 +124,16 @@ export async function PUT(request: NextRequest) {
           throw new Error(`Date ${row.attendanceDate} is outside period range`)
         }
 
+        if (row.status === null) {
+          await tx.payrollAttendanceEntry.deleteMany({
+            where: {
+              userId: row.userId,
+              attendanceDate,
+            },
+          })
+          continue
+        }
+
         await tx.payrollAttendanceEntry.upsert({
           where: {
             userId_attendanceDate: {
@@ -165,4 +175,3 @@ export async function PUT(request: NextRequest) {
     )
   }
 }
-

@@ -4,7 +4,9 @@ import { prisma } from '@/lib/db'
 import { getSession } from '@/lib/auth'
 import { canManagePayroll } from '@/lib/permissions'
 import { carryForwardPayrollPeriod } from '@/lib/payroll/periods'
+import { recalculatePayrollPeriod } from '@/lib/payroll/engine'
 import { periodLabelFromKey, toPeriodKey } from '@/lib/payroll/normalizers'
+import { ensurePayrollMasterDefaults } from '@/lib/payroll/settings'
 
 const createPeriodSchema = z.object({
   label: z.string().trim().min(1).optional(),
@@ -82,6 +84,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'periodEnd must be on or after periodStart' }, { status: 400 })
     }
 
+    let resolvedBasePeriodId = basePeriodId && basePeriodId !== 'AUTO' ? basePeriodId : undefined
+    if (sourceMode === 'CARRY_FORWARD' && !resolvedBasePeriodId) {
+      const previousPeriod = await prisma.payrollPeriod.findFirst({
+        where: { periodStart: { lt: start } },
+        orderBy: { periodStart: 'desc' },
+        select: { id: true },
+      })
+      if (!previousPeriod) {
+        return NextResponse.json(
+          { error: 'No prior payroll period found to carry forward from' },
+          { status: 400 }
+        )
+      }
+      resolvedBasePeriodId = previousPeriod.id
+    }
+
     const periodKey = toPeriodKey(start)
     const created = await prisma.payrollPeriod.create({
       data: {
@@ -95,14 +113,22 @@ export async function POST(request: NextRequest) {
     })
 
     let carryForwardSummary: unknown = null
-    if (sourceMode === 'CARRY_FORWARD' && basePeriodId) {
-      carryForwardSummary = await carryForwardPayrollPeriod(basePeriodId, created.id, user.id)
+    let recalculationSummary: unknown = null
+    if (sourceMode === 'CARRY_FORWARD' && resolvedBasePeriodId) {
+      carryForwardSummary = await carryForwardPayrollPeriod(resolvedBasePeriodId, created.id, user.id)
+      await ensurePayrollMasterDefaults()
+      recalculationSummary = await recalculatePayrollPeriod(created.id)
     }
+
+    const period = await prisma.payrollPeriod.findUnique({
+      where: { id: created.id },
+    })
 
     return NextResponse.json({
       success: true,
-      period: created,
+      period: period || created,
       carryForward: carryForwardSummary,
+      recalculation: recalculationSummary,
     })
   } catch (error) {
     console.error('Failed to create payroll period:', error)
