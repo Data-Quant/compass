@@ -255,7 +255,7 @@ export function PayrollAttendancePanel({ periods }: Props) {
                 <TableRow>
                   <TableHead className="sticky left-0 bg-card z-10 min-w-[200px]">Employee</TableHead>
                   {days.map((day) => (
-                    <TableHead key={day.toISOString()} className="text-center min-w-[48px]">
+                    <TableHead key={day.toISOString()} className="text-center min-w-[32px] px-1 text-[11px]">
                       {day.getUTCDate()}
                     </TableHead>
                   ))}
@@ -274,11 +274,11 @@ export function PayrollAttendancePanel({ periods }: Props) {
                       const key = `${employee.id}:${toDateKey(day)}`
                       const status = statusMap.get(key)
                       return (
-                        <TableCell key={key} className="p-1 text-center">
+                        <TableCell key={key} className="p-0.5 text-center">
                           <button
                             type="button"
                             onClick={() => cycleStatus(employee.id, day)}
-                            className="w-8 h-8 rounded border border-border hover:bg-muted text-xs font-semibold"
+                            className="w-7 h-7 rounded border border-border hover:bg-muted text-[11px] font-semibold"
                             title="Click to cycle P/A/H/-"
                           >
                             {status ? STATUS_LABEL[status] : '-'}
