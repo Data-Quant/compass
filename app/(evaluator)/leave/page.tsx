@@ -837,13 +837,21 @@ export default function LeavePage() {
   return (
     <div className="p-6 sm:p-8 max-w-7xl mx-auto">
         {/* Page Title */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
           <div>
             <h1 className="text-2xl font-display font-semibold text-foreground">Leave Management</h1>
             <p className="text-muted-foreground">
-              Pick your start date and end date (last day off). Return date is the next day.
+              {isThreeEUser
+                ? 'Apply for leave or request work from home. WFH does not consume leave balance.'
+                : 'Pick your start date and end date (last day off). Return date is the next day.'}
             </p>
           </div>
+          {isThreeEUser && (
+            <Button onClick={() => setIsWfhModalOpen(true)} className="self-start sm:self-auto">
+              <Home className="w-4 h-4" />
+              Request WFH
+            </Button>
+          )}
         </div>
 
         {transitionPlanReminderRequests.length > 0 && (
@@ -2372,7 +2380,6 @@ export default function LeavePage() {
     </div>
   )
 }
-
 
 
 
