@@ -42,7 +42,8 @@ type PortalUser = {
   id: string
   name: string
   department: string | null
-  role: string
+  position?: string | null
+  role?: string | null
 }
 
 type SubscriptionItem = {
@@ -140,6 +141,10 @@ function statusBadgeClass(status: SubscriptionStatus) {
     : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-0'
 }
 
+function getUserDescriptor(user: PortalUser) {
+  return user.position || user.role || 'Team member'
+}
+
 export function SubscriptionManagementWorkspace({ title, description }: WorkspaceProps) {
   const [items, setItems] = useState<SubscriptionItem[]>([])
   const [teams, setTeams] = useState<string[]>([])
@@ -173,7 +178,7 @@ export function SubscriptionManagementWorkspace({ title, description }: Workspac
       return (
         user.name.toLowerCase().includes(query) ||
         (user.department || '').toLowerCase().includes(query) ||
-        user.role.toLowerCase().includes(query)
+        getUserDescriptor(user).toLowerCase().includes(query)
       )
     })
   }, [ownerSearch, users])
@@ -656,7 +661,7 @@ export function SubscriptionManagementWorkspace({ title, description }: Workspac
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-foreground">{user.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {user.department || 'No department'} · {user.role}
+                          {user.department || 'No department'} · {getUserDescriptor(user)}
                         </p>
                       </div>
                     </label>
