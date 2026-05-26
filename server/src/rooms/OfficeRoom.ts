@@ -1,4 +1,4 @@
-import { Room, Client } from 'colyseus'
+import { Room, Client } from '@colyseus/core'
 import { verifyOfficeToken, OfficeTokenPayload } from '../auth'
 import {
   OFFICE_MAP_HEIGHT as MAP_HEIGHT,
