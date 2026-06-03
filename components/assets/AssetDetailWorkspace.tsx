@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
+import { Download, Printer, QrCode } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -137,6 +138,27 @@ export function AssetDetailWorkspace({ assetId, listHref }: AssetDetailWorkspace
     }
   }
 
+  const downloadAssetFile = async (url: string, filename: string) => {
+    try {
+      const res = await fetch(url)
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.error || 'Failed to download file')
+      }
+      const blob = await res.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = objectUrl
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(objectUrl)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to download file')
+    }
+  }
+
   if (loading) {
     return (
       <div className="p-6 sm:p-8 max-w-7xl mx-auto">
@@ -243,6 +265,42 @@ export function AssetDetailWorkspace({ assetId, listHref }: AssetDetailWorkspace
           <div className="md:col-span-4">
             <p className="text-xs text-muted-foreground">Notes</p>
             <p className="text-sm mt-1 whitespace-pre-wrap">{item.notes || '—'}</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="grid gap-4 p-4 md:grid-cols-[180px_1fr]">
+          <div className="flex aspect-square items-center justify-center rounded-lg border border-border bg-white p-3">
+            <img
+              src={`/api/assets/${assetId}/qr`}
+              alt={`QR code for ${item.equipmentId}`}
+              className="h-full w-full object-contain"
+            />
+          </div>
+          <div className="flex flex-col justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <QrCode className="h-4 w-4 text-indigo-500" />
+                <h2 className="font-display text-lg font-semibold text-foreground">QR Label</h2>
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {item.equipmentId} scans to this asset record.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={() => downloadAssetFile(`/api/assets/${assetId}/qr?download=1`, `${item.equipmentId}-qr.png`)}
+              >
+                <Download className="h-4 w-4" /> Image
+              </Button>
+              <Button
+                onClick={() => downloadAssetFile(`/api/assets/${assetId}/qr-label`, `${item.equipmentId}-qr-label.pdf`)}
+              >
+                <Printer className="h-4 w-4" /> Label
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

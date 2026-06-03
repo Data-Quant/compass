@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
@@ -28,6 +29,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  PackageSearch,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -46,6 +48,20 @@ interface DeviceTicket {
   resolvedAt: string | null
   createdAt: string
   updatedAt: string
+}
+
+interface AssignedAsset {
+  id: string
+  equipmentId: string
+  assetName: string
+  category: string
+  brand: string | null
+  model: string | null
+  serialNumber: string | null
+  status: string
+  condition: string
+  warrantyEndDate: string | null
+  location: string | null
 }
 
 const DEVICE_TYPES = [
@@ -78,6 +94,7 @@ const STATUS_CONFIG = {
 export default function DeviceSupportPage() {
   const { branding } = useCompanyBranding()
   const [tickets, setTickets] = useState<DeviceTicket[]>([])
+  const [assignedAssets, setAssignedAssets] = useState<AssignedAsset[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [showForm, setShowForm] = useState(false)
@@ -92,16 +109,23 @@ export default function DeviceSupportPage() {
   const [priority, setPriority] = useState('MEDIUM')
 
   useEffect(() => {
-    loadTickets()
+    loadData()
   }, [])
 
-  const loadTickets = async () => {
+  const loadData = async () => {
     try {
-      const response = await fetch('/api/device-tickets?onlyOwn=true')
-      const data = await response.json()
-      setTickets(data.tickets || [])
+      const [ticketsResponse, assetsResponse] = await Promise.all([
+        fetch('/api/device-tickets?onlyOwn=true'),
+        fetch('/api/assets/my'),
+      ])
+      const [ticketsData, assetsData] = await Promise.all([
+        ticketsResponse.json(),
+        assetsResponse.json(),
+      ])
+      setTickets(ticketsData.tickets || [])
+      setAssignedAssets(assetsData.items || [])
     } catch (error) {
-      toast.error('Failed to load tickets')
+      toast.error('Failed to load device support')
     } finally {
       setLoading(false)
     }
@@ -147,7 +171,7 @@ export default function DeviceSupportPage() {
         setManagerApprovalSelection('')
         setPriority('MEDIUM')
         setShowForm(false)
-        loadTickets()
+        loadData()
       } else {
         toast.error(data.error || 'Failed to submit ticket')
       }
@@ -189,6 +213,49 @@ export default function DeviceSupportPage() {
             New Ticket
           </ShimmerButton>
         </motion.div>
+
+        {assignedAssets.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            className="mb-8"
+          >
+            <h2 className="text-lg font-display font-semibold text-foreground mb-4 flex items-center gap-2">
+              <PackageSearch className="w-5 h-5 text-indigo-500" />
+              Assigned Equipment
+              <Badge variant="secondary" className="bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border-0">
+                {assignedAssets.length}
+              </Badge>
+            </h2>
+            <div className="grid gap-3 md:grid-cols-2">
+              {assignedAssets.map((asset) => (
+                <Card key={asset.id} className="rounded-card border border-border">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium text-foreground truncate">{asset.assetName}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {asset.equipmentId} · {[asset.category, asset.brand, asset.model].filter(Boolean).join(' / ') || 'Equipment'}
+                        </p>
+                      </div>
+                      <Badge variant="outline">{asset.condition}</Badge>
+                    </div>
+                    <div className="mt-4 flex items-end justify-between gap-3">
+                      <div className="text-xs text-muted-foreground">
+                        <p>{asset.status.replace(/_/g, ' ')}</p>
+                        <p>{asset.location || 'No location recorded'}</p>
+                      </div>
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={`/device-support/assets/${encodeURIComponent(asset.equipmentId)}`}>View</Link>
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </motion.div>
+        )}
 
         {/* Ticket Form */}
         <AnimatePresence>

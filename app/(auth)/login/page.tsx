@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
@@ -22,6 +22,11 @@ const ease = {
 }
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+function getSafeNextPath(value: string | null) {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return '/dashboard'
+  return value
+}
 
 /* ────────────────────────────────────────────
  * Animated Compass SVG – plays once on splash
@@ -210,6 +215,7 @@ function SplashScreen({
  * ──────────────────────────────────────────── */
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { branding } = useCompanyBranding()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -279,7 +285,7 @@ export default function LoginPage() {
 
       if (data.success) {
         toast.success('Welcome back')
-        router.push('/dashboard')
+        router.push(getSafeNextPath(searchParams.get('next')))
       } else if (response.status === 429) {
         toast.error('Too many login attempts. Please try again later.')
       } else {

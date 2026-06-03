@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
+import { Printer } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -67,6 +68,8 @@ export function AssetsManagerWorkspace({
   const [assignSubmitting, setAssignSubmitting] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importing, setImporting] = useState(false)
+  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([])
+  const [printingLabels, setPrintingLabels] = useState(false)
 
   const debouncedQuery = useMemo(() => filters.q.trim(), [filters.q])
 
@@ -210,6 +213,55 @@ export function AssetsManagerWorkspace({
     }
   }
 
+  const toggleAssetSelection = (assetId: string, checked: boolean) => {
+    setSelectedAssetIds((prev) =>
+      checked ? [...new Set([...prev, assetId])] : prev.filter((id) => id !== assetId)
+    )
+  }
+
+  const togglePageSelection = (checked: boolean) => {
+    const visibleIds = items.map((item) => item.id)
+    setSelectedAssetIds((prev) =>
+      checked
+        ? [...new Set([...prev, ...visibleIds])]
+        : prev.filter((id) => !visibleIds.includes(id))
+    )
+  }
+
+  const downloadBulkLabels = async () => {
+    if (selectedAssetIds.length === 0) {
+      toast.error('Select at least one asset')
+      return
+    }
+
+    setPrintingLabels(true)
+    try {
+      const res = await fetch('/api/assets/qr-labels', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assetIds: selectedAssetIds }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.error || 'Failed to generate labels')
+      }
+      const blob = await res.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = objectUrl
+      link.download = `asset-qr-labels-${new Date().toISOString().slice(0, 10)}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(objectUrl)
+      toast.success('QR labels generated')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to generate labels')
+    } finally {
+      setPrintingLabels(false)
+    }
+  }
+
   const importCsv = async () => {
     if (!importFile) {
       toast.error('Select a CSV file first')
@@ -273,6 +325,28 @@ export function AssetsManagerWorkspace({
               {importing ? 'Importing...' : 'Import'}
             </Button>
           </div>
+
+          <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              {selectedAssetIds.length} selected for QR labels
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setSelectedAssetIds([])}
+                disabled={selectedAssetIds.length === 0 || printingLabels}
+              >
+                Clear
+              </Button>
+              <Button
+                onClick={downloadBulkLabels}
+                disabled={selectedAssetIds.length === 0 || printingLabels}
+              >
+                <Printer className="h-4 w-4" />
+                {printingLabels ? 'Generating...' : 'Print QR Labels'}
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -284,6 +358,9 @@ export function AssetsManagerWorkspace({
         <AssetTable
           items={items}
           detailBasePath={detailBasePath}
+          selectedIds={selectedAssetIds}
+          onToggleSelected={toggleAssetSelection}
+          onTogglePageSelected={togglePageSelection}
           onAssign={openAssign}
           onUnassign={openUnassign}
         />

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Table,
   TableBody,
@@ -34,11 +35,25 @@ const CONDITION_CLASS: Record<string, string> = {
 interface AssetTableProps {
   items: AssetItem[]
   detailBasePath: string
+  selectedIds: string[]
+  onToggleSelected: (assetId: string, checked: boolean) => void
+  onTogglePageSelected: (checked: boolean) => void
   onAssign: (item: AssetItem) => void
   onUnassign: (item: AssetItem) => void
 }
 
-export function AssetTable({ items, detailBasePath, onAssign, onUnassign }: AssetTableProps) {
+export function AssetTable({
+  items,
+  detailBasePath,
+  selectedIds,
+  onToggleSelected,
+  onTogglePageSelected,
+  onAssign,
+  onUnassign,
+}: AssetTableProps) {
+  const selectedSet = new Set(selectedIds)
+  const allPageSelected = items.length > 0 && items.every((item) => selectedSet.has(item.id))
+
   return (
     <Card>
       <CardContent className="p-0">
@@ -48,6 +63,13 @@ export function AssetTable({ items, detailBasePath, onAssign, onUnassign }: Asse
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={allPageSelected}
+                    onCheckedChange={(value) => onTogglePageSelected(value === true)}
+                    aria-label="Select all visible assets"
+                  />
+                </TableHead>
                 <TableHead>Equipment ID</TableHead>
                 <TableHead>Asset</TableHead>
                 <TableHead>Status</TableHead>
@@ -61,6 +83,13 @@ export function AssetTable({ items, detailBasePath, onAssign, onUnassign }: Asse
             <TableBody>
               {items.map((item) => (
                 <TableRow key={item.id}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selectedSet.has(item.id)}
+                      onCheckedChange={(value) => onToggleSelected(item.id, value === true)}
+                      aria-label={`Select ${item.equipmentId}`}
+                    />
+                  </TableCell>
                   <TableCell className="font-mono text-xs">{item.equipmentId}</TableCell>
                   <TableCell>
                     <div className="space-y-0.5">
