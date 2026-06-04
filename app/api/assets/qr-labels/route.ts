@@ -5,6 +5,8 @@ import { createAssetLabelsPdfBuffer } from '@/lib/asset-qr'
 import { prisma } from '@/lib/db'
 import { canManageAssets } from '@/lib/permissions'
 
+export const runtime = 'nodejs'
+
 const bulkLabelSchema = z.object({
   assetIds: z.array(z.string().trim().min(1)).min(1).max(300),
 })

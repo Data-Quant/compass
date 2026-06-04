@@ -4,6 +4,8 @@ import { createAssetLabelsPdfBuffer } from '@/lib/asset-qr'
 import { prisma } from '@/lib/db'
 import { canManageAssets } from '@/lib/permissions'
 
+export const runtime = 'nodejs'
+
 interface RouteContext {
   params: Promise<{ id: string }>
 }

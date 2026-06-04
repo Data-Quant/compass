@@ -33,6 +33,11 @@ const securityHeaders = [
 
 const nextConfig = {
   reactStrictMode: true,
+  serverExternalPackages: ['pdfkit'],
+  outputFileTracingIncludes: {
+    '/api/assets/**/qr-label*': ['./node_modules/pdfkit/js/data/**/*'],
+    '/api/payroll/**/send-docusign': ['./node_modules/pdfkit/js/data/**/*'],
+  },
   async headers() {
     return [
       {
