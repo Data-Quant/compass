@@ -1,10 +1,24 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragOverEvent,
+  DragStartEvent,
+  PointerSensor,
+  closestCorners,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { SectionGroup } from './SectionGroup'
 import type { PanelTask } from './TaskDetailPanel'
+import { TaskRow } from './TaskRow'
+import { getTaskStatusForSectionName } from '@/lib/project-task-utils'
 
 interface Section {
   id: string
@@ -20,23 +34,141 @@ interface ListViewProps {
   onTasksChange: () => void
 }
 
+const UNSECTIONED_CONTAINER_ID = 'section:unsectioned'
+
+function getSectionContainerId(sectionId: string | null) {
+  return sectionId ? `section:${sectionId}` : UNSECTIONED_CONTAINER_ID
+}
+
+function parseSectionContainerId(containerId: string) {
+  if (!containerId.startsWith('section:')) return undefined
+  const value = containerId.slice('section:'.length)
+  return value === 'unsectioned' ? null : value
+}
+
 export function ListView({ projectId, tasks, sections, onTaskClick, onTasksChange }: ListViewProps) {
   const [addingSectionName, setAddingSectionName] = useState('')
   const [showSectionInput, setShowSectionInput] = useState(false)
+  const [localTasks, setLocalTasks] = useState<PanelTask[]>(tasks)
+  const [activeId, setActiveId] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLocalTasks(tasks)
+  }, [tasks])
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  )
+
+  const sectionStatusById = useMemo(() => {
+    const map = new Map<string, PanelTask['status']>()
+    for (const section of sections) {
+      const status = getTaskStatusForSectionName(section.name)
+      if (status) map.set(section.id, status)
+    }
+    return map
+  }, [sections])
+
+  const activeTask = activeId ? localTasks.find((task) => task.id === activeId) : null
+
+  const getTargetSectionId = (overId: string, sourceTasks = localTasks) => {
+    const containerSectionId = parseSectionContainerId(overId)
+    if (containerSectionId !== undefined) return containerSectionId
+
+    const overTask = sourceTasks.find((task) => task.id === overId)
+    return overTask ? overTask.sectionId : undefined
+  }
 
   // Group tasks by section
-  const unsectionedTasks = tasks.filter((t) => !t.sectionId)
+  const unsectionedTasks = localTasks.filter((t) => !t.sectionId)
   const sectionedTasks = sections.map((s) => ({
     ...s,
-    tasks: tasks.filter((t) => t.sectionId === s.id),
+    tasks: localTasks.filter((t) => t.sectionId === s.id),
   }))
 
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(String(event.active.id))
+  }
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event
+    if (!over) return
+
+    const activeTaskId = String(active.id)
+    const targetSectionId = getTargetSectionId(String(over.id))
+    if (targetSectionId === undefined) return
+
+    setLocalTasks((prev) => {
+      const task = prev.find((item) => item.id === activeTaskId)
+      if (!task) return prev
+
+      const targetStatus = targetSectionId
+        ? sectionStatusById.get(targetSectionId) || task.status
+        : task.status
+
+      if (task.sectionId === targetSectionId && task.status === targetStatus) {
+        return prev
+      }
+
+      return prev.map((item) =>
+        item.id === activeTaskId
+          ? { ...item, sectionId: targetSectionId, status: targetStatus }
+          : item
+      )
+    })
+  }
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event
+    const activeTaskId = String(active.id)
+    setActiveId(null)
+
+    if (!over) {
+      setLocalTasks(tasks)
+      return
+    }
+
+    const task = localTasks.find((item) => item.id === activeTaskId)
+    const original = tasks.find((item) => item.id === activeTaskId)
+    if (!task || !original) return
+
+    const sectionChanged = task.sectionId !== original.sectionId
+    const statusChanged = task.status !== original.status
+    if (!sectionChanged && !statusChanged) return
+
+    const targetSectionTasks = tasks.filter((item) => item.id !== task.id && item.sectionId === task.sectionId)
+    const maxOrderIndex = Math.max(0, ...targetSectionTasks.map((item) => Number(item.orderIndex) || 0))
+
+    try {
+      const res = await fetch(`/api/projects/${projectId}/tasks`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskId: task.id,
+          sectionId: task.sectionId,
+          status: task.status,
+          ...(sectionChanged ? { orderIndex: maxOrderIndex + 1 } : {}),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to update task')
+      }
+      onTasksChange()
+    } catch (error) {
+      setLocalTasks(tasks)
+      toast.error(error instanceof Error ? error.message : 'Failed to move task')
+    }
+  }
+
   const handleAddTask = async (title: string, sectionId: string | null) => {
+    const status = sectionId ? sectionStatusById.get(sectionId) : undefined
+
     try {
       const res = await fetch(`/api/projects/${projectId}/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, sectionId }),
+        body: JSON.stringify({ title, sectionId, ...(status ? { status } : {}) }),
       })
       const data = await res.json()
       if (data.success) {
@@ -97,31 +229,43 @@ export function ListView({ projectId, tasks, sections, onTaskClick, onTasksChang
   }
 
   return (
-    <div className="space-y-1">
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCorners}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="space-y-1">
       {/* Unsectioned tasks */}
       {(unsectionedTasks.length > 0 || sections.length === 0) && (
-        <SectionGroup
-          sectionId={null}
-          sectionName="Tasks"
-          tasks={unsectionedTasks}
-          onTaskClick={onTaskClick}
-          onAddTask={handleAddTask}
-          collapsible={sections.length > 0}
-        />
+        <SortableContext items={unsectionedTasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
+          <SectionGroup
+            sectionId={null}
+            sectionName="Tasks"
+            tasks={unsectionedTasks}
+            onTaskClick={onTaskClick}
+            onAddTask={handleAddTask}
+            collapsible={sections.length > 0}
+            containerId={getSectionContainerId(null)}
+          />
+        </SortableContext>
       )}
 
       {/* Sections */}
       {sectionedTasks.map((section) => (
-        <SectionGroup
-          key={section.id}
-          sectionId={section.id}
-          sectionName={section.name}
-          tasks={section.tasks}
-          onTaskClick={onTaskClick}
-          onAddTask={handleAddTask}
-          onDeleteSection={handleDeleteSection}
-          onRenameSection={handleRenameSection}
-        />
+        <SortableContext key={section.id} items={section.tasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
+          <SectionGroup
+            sectionId={section.id}
+            sectionName={section.name}
+            tasks={section.tasks}
+            onTaskClick={onTaskClick}
+            onAddTask={handleAddTask}
+            onDeleteSection={handleDeleteSection}
+            onRenameSection={handleRenameSection}
+            containerId={getSectionContainerId(section.id)}
+          />
+        </SortableContext>
       ))}
 
       {/* Add section */}
@@ -149,6 +293,15 @@ export function ListView({ projectId, tasks, sections, onTaskClick, onTasksChang
           Add section
         </button>
       )}
-    </div>
+      </div>
+
+      <DragOverlay>
+        {activeTask ? (
+          <div className="rounded-lg border border-border/50 bg-card shadow-xl">
+            <TaskRow task={activeTask} onClick={() => undefined} />
+          </div>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
   )
 }

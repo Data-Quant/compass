@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
-import { useLayoutUser } from '@/components/layout/SidebarLayout'
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { EmptyState } from '@/components/composed/EmptyState'
@@ -52,7 +51,6 @@ const LABEL_COLORS = [
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const user = useLayoutUser()
 
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)

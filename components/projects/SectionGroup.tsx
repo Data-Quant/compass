@@ -1,7 +1,10 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { ChevronRight, Plus, GripVertical, MoreHorizontal, Trash2, Pencil } from 'lucide-react'
+import { ChevronRight, Plus, Trash2, Pencil } from 'lucide-react'
+import { useDroppable } from '@dnd-kit/core'
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { cn } from '@/lib/utils'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { PanelTask } from './TaskDetailPanel'
@@ -16,11 +19,15 @@ interface SectionGroupProps {
   onDeleteSection?: (sectionId: string) => void
   onRenameSection?: (sectionId: string, name: string) => void
   collapsible?: boolean
+  containerId?: string
+  dragDisabled?: boolean
 }
 
 export function SectionGroup({
   sectionId, sectionName, tasks, onTaskClick, onAddTask,
   onDeleteSection, onRenameSection, collapsible = true,
+  containerId = `section:${sectionId || 'unsectioned'}`,
+  dragDisabled = false,
 }: SectionGroupProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [addingTask, setAddingTask] = useState(false)
@@ -28,6 +35,7 @@ export function SectionGroup({
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState(sectionName)
   const inputRef = useRef<HTMLInputElement>(null)
+  const { setNodeRef, isOver } = useDroppable({ id: containerId, disabled: dragDisabled })
 
   const handleAdd = () => {
     if (newTaskTitle.trim()) {
@@ -117,9 +125,23 @@ export function SectionGroup({
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="pl-2">
+            <div
+              ref={setNodeRef}
+              className={cn(
+                'pl-2 rounded-lg transition-colors min-h-[38px]',
+                isOver && 'bg-primary/5'
+              )}
+            >
               {tasks.map((task) => (
-                <TaskRow key={task.id} task={task} onClick={() => onTaskClick(task)} />
+                dragDisabled ? (
+                  <TaskRow key={task.id} task={task} onClick={() => onTaskClick(task)} />
+                ) : (
+                  <SortableTaskRow
+                    key={task.id}
+                    task={task}
+                    onClick={() => onTaskClick(task)}
+                  />
+                )
               ))}
 
               {/* Inline add */}
@@ -152,6 +174,30 @@ export function SectionGroup({
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  )
+}
+
+function SortableTaskRow({ task, onClick }: { task: PanelTask; onClick: () => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className={cn(
+        'rounded-lg',
+        isDragging && 'opacity-50'
+      )}
+    >
+      <TaskRow task={task} onClick={onClick} />
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { getTaskStatusForSectionName, isProjectTaskStatus } from '@/lib/project-task-utils'
 
 const TASK_INCLUDE = {
   assignee: { select: { id: true, name: true } },
@@ -19,11 +20,28 @@ export async function POST(
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id: projectId } = await params
-    const { title, description, assigneeId, priority, startDate, dueDate, sectionId, labelIds } = await request.json()
+    const { title, description, status, assigneeId, priority, startDate, dueDate, sectionId, labelIds } = await request.json()
 
     if (!title?.trim()) {
       return NextResponse.json({ error: 'Task title is required' }, { status: 400 })
     }
+
+    if (status !== undefined && !isProjectTaskStatus(status)) {
+      return NextResponse.json({ error: 'Invalid task status' }, { status: 400 })
+    }
+
+    const section = sectionId
+      ? await prisma.taskSection.findFirst({
+          where: { id: sectionId, projectId },
+          select: { id: true, name: true },
+        })
+      : null
+
+    if (sectionId && !section) {
+      return NextResponse.json({ error: 'Invalid section for this project' }, { status: 400 })
+    }
+
+    const taskStatus = status || getTaskStatusForSectionName(section?.name) || 'TODO'
 
     // Get next order index (within section if specified)
     const lastTask = await prisma.task.findFirst({
@@ -37,6 +55,8 @@ export async function POST(
         sectionId: sectionId || null,
         title: title.trim(),
         description: description?.trim() || null,
+        status: taskStatus,
+        completedAt: taskStatus === 'DONE' ? new Date() : null,
         assigneeId: assigneeId || null,
         priority: priority || 'MEDIUM',
         startDate: startDate ? new Date(startDate) : null,
@@ -59,15 +79,42 @@ export async function POST(
 }
 
 // PUT - Update a task (pass taskId in body)
-export async function PUT(request: NextRequest) {
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+    const { id: projectId } = await params
     const { taskId, title, description, status, priority, assigneeId, startDate, dueDate, sectionId, labelIds, orderIndex } = await request.json()
 
     if (!taskId) {
       return NextResponse.json({ error: 'taskId is required' }, { status: 400 })
+    }
+
+    const existingTask = await prisma.task.findUnique({
+      where: { id: taskId },
+      select: { id: true, projectId: true },
+    })
+
+    if (!existingTask || existingTask.projectId !== projectId) {
+      return NextResponse.json({ error: 'Task not found' }, { status: 404 })
+    }
+
+    if (status !== undefined && !isProjectTaskStatus(status)) {
+      return NextResponse.json({ error: 'Invalid task status' }, { status: 400 })
+    }
+
+    if (sectionId) {
+      const section = await prisma.taskSection.findFirst({
+        where: { id: sectionId, projectId },
+        select: { id: true },
+      })
+      if (!section) {
+        return NextResponse.json({ error: 'Invalid section for this project' }, { status: 400 })
+      }
     }
 
     const updateData: any = {}

@@ -56,6 +56,7 @@ export interface PanelTask {
   dueDate: string | null
   sectionId: string | null
   section: Section | null
+  orderIndex: number
   labelAssignments: LabelAssignment[]
   _count: { comments: number }
 }
