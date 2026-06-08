@@ -10,11 +10,11 @@ export const ASSET_STATUSES = [
 export const ASSET_CONDITIONS = ['NEW', 'GOOD', 'FAIR', 'DAMAGED'] as const
 
 export const ASSET_LOCATIONS = [
-  'Karachi Office',
-  'Islamabad Office',
-  'Lahore Office',
-  'Casablanca Office',
-  'Dallas Office',
+  'Karachi',
+  'Islamabad',
+  'Lahore',
+  'Casablanca',
+  'Dallas',
 ] as const
 
 export type AssetStatus = (typeof ASSET_STATUSES)[number]
@@ -25,19 +25,37 @@ export type WarrantyState = 'NONE' | 'VALID' | 'EXPIRING' | 'EXPIRED'
 const ASSIGNMENT_BLOCKED_STATUSES = new Set<AssetStatus>(['RETIRED', 'LOST', 'DISPOSED'])
 const EQUIPMENT_ID_PREFIX = 'EQUIP'
 const EQUIPMENT_ID_START = 101
+const LEGACY_LOCATION_ALIASES: Record<string, AssetLocation> = {
+  'karachi office': 'Karachi',
+  'islamabad office': 'Islamabad',
+  'lahore office': 'Lahore',
+  'casablanca office': 'Casablanca',
+  'dallas office': 'Dallas',
+}
 
 export function normalizeEquipmentId(input: string): string {
   return input.trim().toUpperCase().replace(/\s+/g, '-')
 }
 
 export function isAssetLocation(value: string | null | undefined): value is AssetLocation {
-  return ASSET_LOCATIONS.includes(value as AssetLocation)
+  return ASSET_LOCATIONS.includes(value as AssetLocation) || Boolean(LEGACY_LOCATION_ALIASES[value?.trim().toLowerCase() || ''])
 }
 
 export function normalizeAssetLocation(input: string | null | undefined): AssetLocation | null {
   const trimmed = input?.trim()
   if (!trimmed) return null
+  const alias = LEGACY_LOCATION_ALIASES[trimmed.toLowerCase()]
+  if (alias) return alias
   return ASSET_LOCATIONS.find((location) => location.toLowerCase() === trimmed.toLowerCase()) || null
+}
+
+export function getAssetLocationValuesForFilter(location: string | null | undefined) {
+  const normalized = normalizeAssetLocation(location)
+  if (!normalized) return []
+  const legacyValues = Object.entries(LEGACY_LOCATION_ALIASES)
+    .filter(([, target]) => target === normalized)
+    .map(([legacy]) => legacy.replace(/\b\w/g, (letter) => letter.toUpperCase()))
+  return [normalized, ...legacyValues]
 }
 
 export function getNextEquipmentId(existingEquipmentIds: Array<string | null | undefined>) {

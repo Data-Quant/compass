@@ -9,6 +9,7 @@ import {
   ASSET_STATUSES,
   ensureWarrantyDateOrder,
   getNextEquipmentId,
+  getAssetLocationValuesForFilter,
   isAssetLocation,
   normalizeEquipmentId,
   normalizeAssetLocation,
@@ -118,7 +119,7 @@ export async function GET(request: NextRequest) {
     if (status) where.status = status as (typeof ASSET_STATUSES)[number]
     if (category) where.category = { equals: category, mode: 'insensitive' }
     if (assigneeId) where.currentAssigneeId = assigneeId
-    if (location) where.location = location
+    if (location) where.location = { in: getAssetLocationValuesForFilter(location) }
 
     if (warranty === 'expiring') {
       const today = new Date()

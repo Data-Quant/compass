@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ASSET_CONDITIONS, ASSET_LOCATIONS, ASSET_STATUSES } from '@/lib/asset-utils'
+import { ASSET_CONDITIONS, ASSET_LOCATIONS, ASSET_STATUSES, normalizeAssetLocation } from '@/lib/asset-utils'
 import type { AssetItem } from './types'
 
 interface AssetFormValues {
@@ -80,7 +80,7 @@ export function AssetFormModal({
     vendor: initial?.vendor || '',
     status: initial?.status || 'IN_STOCK',
     condition: initial?.condition || 'GOOD',
-    location: initial?.location || '',
+    location: normalizeAssetLocation(initial?.location) || initial?.location || '',
     notes: initial?.notes || '',
   }), [initial, suggestedEquipmentId])
 
@@ -211,7 +211,7 @@ export function AssetFormModal({
               onValueChange={(value) => setForm((prev) => ({ ...prev, location: value === '__none__' ? '' : value }))}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Select office location" />
+                <SelectValue placeholder="Select location" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">No location</SelectItem>

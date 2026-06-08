@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { ASSET_LOCATIONS } from '@/lib/asset-utils'
+import { ASSET_LOCATIONS, getAssetLocationValuesForFilter } from '@/lib/asset-utils'
 import { canManageAssets } from '@/lib/permissions'
 
 export async function GET() {
@@ -13,11 +13,22 @@ export async function GET() {
 
     const counts = await prisma.equipmentAsset.groupBy({
       by: ['location'],
-      where: { location: { in: [...ASSET_LOCATIONS] } },
+      where: {
+        OR: ASSET_LOCATIONS.map((location) => ({
+          location: { in: getAssetLocationValuesForFilter(location) },
+        })),
+      },
       _count: { _all: true },
     })
 
-    const countByLocation = new Map(counts.map((item) => [item.location, item._count._all]))
+    const countByLocation = new Map<string, number>()
+    for (const item of counts) {
+      const location = ASSET_LOCATIONS.find((known) =>
+        getAssetLocationValuesForFilter(known).includes(item.location || '')
+      )
+      if (!location) continue
+      countByLocation.set(location, (countByLocation.get(location) || 0) + item._count._all)
+    }
     const locations = ASSET_LOCATIONS.map((location) => ({
       location,
       count: countByLocation.get(location) || 0,
