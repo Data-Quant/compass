@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Download, Printer, QrCode } from 'lucide-react'
+import { Download, Printer, QrCode, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -24,6 +25,7 @@ interface AssetDetailWorkspaceProps {
 }
 
 export function AssetDetailWorkspace({ assetId, listHref }: AssetDetailWorkspaceProps) {
+  const router = useRouter()
   const [item, setItem] = useState<AssetDetailItem | null>(null)
   const [users, setUsers] = useState<AssetAssignee[]>([])
   const [loading, setLoading] = useState(true)
@@ -159,6 +161,28 @@ export function AssetDetailWorkspace({ assetId, listHref }: AssetDetailWorkspace
     }
   }
 
+  const deleteAsset = async () => {
+    if (!item) return
+    if (item.currentAssigneeId) {
+      toast.error('Unassign this asset before deleting it')
+      return
+    }
+    const confirmed = window.confirm(`Delete ${item.equipmentId}? This cannot be undone.`)
+    if (!confirmed) return
+
+    try {
+      const res = await fetch(`/api/assets/${assetId}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Failed to delete asset')
+      }
+      toast.success('Asset deleted')
+      router.push(listHref)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to delete asset')
+    }
+  }
+
   if (loading) {
     return (
       <div className="p-6 sm:p-8 max-w-7xl mx-auto">
@@ -198,6 +222,16 @@ export function AssetDetailWorkspace({ assetId, listHref }: AssetDetailWorkspace
             <Link href={listHref}>Back</Link>
           </Button>
           <Button variant="outline" onClick={() => setFormOpen(true)}>Edit</Button>
+          <Button
+            variant="outline"
+            onClick={deleteAsset}
+            disabled={Boolean(item.currentAssigneeId)}
+            className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+            title={item.currentAssigneeId ? 'Unassign this asset before deleting it' : 'Delete asset'}
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete
+          </Button>
           {item.currentAssignee ? (
             <Button
               onClick={() => {

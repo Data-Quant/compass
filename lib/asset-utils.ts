@@ -9,14 +9,49 @@ export const ASSET_STATUSES = [
 
 export const ASSET_CONDITIONS = ['NEW', 'GOOD', 'FAIR', 'DAMAGED'] as const
 
+export const ASSET_LOCATIONS = [
+  'Karachi Office',
+  'Islamabad Office',
+  'Lahore Office',
+  'Casablanca Office',
+  'Dallas Office',
+] as const
+
 export type AssetStatus = (typeof ASSET_STATUSES)[number]
 export type AssetCondition = (typeof ASSET_CONDITIONS)[number]
+export type AssetLocation = (typeof ASSET_LOCATIONS)[number]
 export type WarrantyState = 'NONE' | 'VALID' | 'EXPIRING' | 'EXPIRED'
 
 const ASSIGNMENT_BLOCKED_STATUSES = new Set<AssetStatus>(['RETIRED', 'LOST', 'DISPOSED'])
+const EQUIPMENT_ID_PREFIX = 'EQUIP'
+const EQUIPMENT_ID_START = 101
 
 export function normalizeEquipmentId(input: string): string {
   return input.trim().toUpperCase().replace(/\s+/g, '-')
+}
+
+export function isAssetLocation(value: string | null | undefined): value is AssetLocation {
+  return ASSET_LOCATIONS.includes(value as AssetLocation)
+}
+
+export function normalizeAssetLocation(input: string | null | undefined): AssetLocation | null {
+  const trimmed = input?.trim()
+  if (!trimmed) return null
+  return ASSET_LOCATIONS.find((location) => location.toLowerCase() === trimmed.toLowerCase()) || null
+}
+
+export function getNextEquipmentId(existingEquipmentIds: Array<string | null | undefined>) {
+  let highest = EQUIPMENT_ID_START - 1
+
+  for (const value of existingEquipmentIds) {
+    const match = normalizeEquipmentId(value || '').match(/^EQUIP-(\d+)$/)
+    if (!match) continue
+    const numeric = Number(match[1])
+    if (Number.isFinite(numeric)) highest = Math.max(highest, numeric)
+  }
+
+  const next = highest + 1
+  return `${EQUIPMENT_ID_PREFIX}-${String(next).padStart(3, '0')}`
 }
 
 export function canAssignInStatus(status: AssetStatus): boolean {

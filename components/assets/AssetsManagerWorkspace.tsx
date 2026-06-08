@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Printer } from 'lucide-react'
+import { MapPin, Printer } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -48,6 +48,7 @@ export function AssetsManagerWorkspace({
     q: '',
     status: '',
     category: '',
+    location: '',
     assigneeId: '',
     warranty: 'all',
   })
@@ -70,17 +71,20 @@ export function AssetsManagerWorkspace({
   const [importing, setImporting] = useState(false)
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([])
   const [printingLabels, setPrintingLabels] = useState(false)
+  const [suggestedEquipmentId, setSuggestedEquipmentId] = useState('')
+  const [locationCounts, setLocationCounts] = useState<Array<{ location: string; count: number }>>([])
 
   const debouncedQuery = useMemo(() => filters.q.trim(), [filters.q])
 
   useEffect(() => {
     loadUsers()
+    loadLocationCounts()
   }, [])
 
   useEffect(() => {
     loadAssets()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.status, filters.category, filters.assigneeId, filters.warranty, pagination.page, pagination.limit, debouncedQuery])
+  }, [filters.status, filters.category, filters.location, filters.assigneeId, filters.warranty, pagination.page, pagination.limit, debouncedQuery])
 
   const loadUsers = async () => {
     try {
@@ -106,6 +110,7 @@ export function AssetsManagerWorkspace({
       if (debouncedQuery) params.set('q', debouncedQuery)
       if (filters.status) params.set('status', filters.status)
       if (filters.category) params.set('category', filters.category)
+      if (filters.location) params.set('location', filters.location)
       if (filters.assigneeId) params.set('assigneeId', filters.assigneeId)
       params.set('warranty', filters.warranty)
       params.set('page', String(pagination.page))
@@ -137,6 +142,39 @@ export function AssetsManagerWorkspace({
     }
   }
 
+  const loadLocationCounts = async () => {
+    try {
+      const res = await fetch('/api/assets/locations')
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to load location counts')
+      }
+      setLocationCounts(data.locations || [])
+    } catch {
+      setLocationCounts([])
+    }
+  }
+
+  const openCreateForm = async () => {
+    setSuggestedEquipmentId('')
+    setFormOpen(true)
+    try {
+      const res = await fetch('/api/assets/next-equipment-id')
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to load next equipment ID')
+      }
+      setSuggestedEquipmentId(data.equipmentId || '')
+    } catch {
+      toast.error('Could not auto-generate the next Equipment ID')
+    }
+  }
+
+  const applyLocationFilter = (location: string) => {
+    setFilters((prev) => ({ ...prev, location }))
+    setPagination((prev) => ({ ...prev, page: 1 }))
+  }
+
   const createAsset = async (payload: Record<string, unknown>) => {
     setFormSubmitting(true)
     try {
@@ -152,6 +190,7 @@ export function AssetsManagerWorkspace({
       toast.success('Asset created')
       setFormOpen(false)
       loadAssets()
+      loadLocationCounts()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to create asset')
     } finally {
@@ -288,6 +327,7 @@ export function AssetsManagerWorkspace({
       }
       setImportFile(null)
       loadAssets()
+      loadLocationCounts()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to import assets')
     } finally {
@@ -302,8 +342,37 @@ export function AssetsManagerWorkspace({
           <h1 className="text-2xl font-display font-semibold text-foreground">{title}</h1>
           <p className="text-muted-foreground mt-1">{description}</p>
         </div>
-        <Button onClick={() => setFormOpen(true)}>Add Asset</Button>
+        <Button onClick={openCreateForm}>Add Asset</Button>
       </div>
+
+      {locationCounts.length > 0 && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {locationCounts.map((item) => {
+            const active = filters.location === item.location
+            return (
+              <button
+                key={item.location}
+                type="button"
+                onClick={() => applyLocationFilter(active ? '' : item.location)}
+                className={`rounded-card border p-4 text-left transition-colors ${
+                  active
+                    ? 'border-primary/50 bg-primary/10'
+                    : 'border-border bg-card hover:border-primary/30 hover:bg-muted/30'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{item.location}</p>
+                    <p className="mt-1 text-2xl font-semibold">{item.count}</p>
+                    <p className="text-xs text-muted-foreground">Assets</p>
+                  </div>
+                  <MapPin className="h-4 w-4 text-primary" />
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       <Card>
         <CardContent className="p-4 space-y-4">
@@ -394,6 +463,7 @@ export function AssetsManagerWorkspace({
         onSubmit={createAsset}
         submitting={formSubmitting}
         title="Add Equipment Asset"
+        suggestedEquipmentId={suggestedEquipmentId}
       />
 
       <AssignAssetModal

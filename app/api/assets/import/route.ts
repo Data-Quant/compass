@@ -4,10 +4,12 @@ import { Prisma } from '@prisma/client'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import {
+  ASSET_LOCATIONS,
   ASSET_CONDITIONS,
   ASSET_STATUSES,
   ensureWarrantyDateOrder,
   normalizeEquipmentId,
+  normalizeAssetLocation,
   parseNullableDate,
   parseNullableNumber,
 } from '@/lib/asset-utils'
@@ -118,7 +120,8 @@ export async function POST(request: NextRequest) {
       const vendor = pickField(row, 'vendor') || null
       const statusRaw = pickField(row, 'status').toUpperCase()
       const conditionRaw = pickField(row, 'condition').toUpperCase()
-      const location = pickField(row, 'location') || null
+      const locationRaw = pickField(row, 'location')
+      const location = normalizeAssetLocation(locationRaw)
       const notes = pickField(row, 'notes') || null
 
       if (!equipmentIdRaw || !assetName || !category) {
@@ -167,8 +170,17 @@ export async function POST(request: NextRequest) {
       try {
         const existing = await prisma.equipmentAsset.findUnique({
           where: { equipmentId },
-          select: { id: true },
+          select: { id: true, location: true },
         })
+
+        if (locationRaw && !location && locationRaw !== existing?.location) {
+          rowErrors.push({
+            row: rowNumber,
+            message: `Invalid location "${locationRaw}". Use one of: ${ASSET_LOCATIONS.join(', ')}`,
+          })
+          continue
+        }
+        const nextLocation = locationRaw && !location ? existing?.location || null : location
 
         if (!existing) {
           const created = await prisma.equipmentAsset.create({
@@ -188,7 +200,7 @@ export async function POST(request: NextRequest) {
               vendor,
               status,
               condition,
-              location,
+              location: nextLocation,
               notes,
             },
             select: { id: true, equipmentId: true },
@@ -228,7 +240,7 @@ export async function POST(request: NextRequest) {
             vendor,
             status,
             condition,
-            location,
+            location: nextLocation,
             notes,
           },
         })

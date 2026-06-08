@@ -62,6 +62,7 @@ export interface AssetFiltersState {
   q: string
   status: string
   category: string
+  location: string
   assigneeId: string
   warranty: 'all' | 'expiring' | 'expired'
 }

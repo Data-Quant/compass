@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ASSET_CONDITIONS, ASSET_STATUSES } from '@/lib/asset-utils'
+import { ASSET_CONDITIONS, ASSET_LOCATIONS, ASSET_STATUSES } from '@/lib/asset-utils'
 import type { AssetItem } from './types'
 
 interface AssetFormValues {
@@ -42,6 +42,7 @@ interface AssetFormModalProps {
   submitting?: boolean
   title: string
   initial?: AssetItem | null
+  suggestedEquipmentId?: string
 }
 
 function toDateInput(value: string | null | undefined) {
@@ -51,6 +52,10 @@ function toDateInput(value: string | null | undefined) {
   return date.toISOString().slice(0, 10)
 }
 
+function isKnownAssetLocation(value: string) {
+  return ASSET_LOCATIONS.some((location) => location === value)
+}
+
 export function AssetFormModal({
   isOpen,
   onClose,
@@ -58,9 +63,10 @@ export function AssetFormModal({
   submitting = false,
   title,
   initial,
+  suggestedEquipmentId,
 }: AssetFormModalProps) {
   const initialValues = useMemo<AssetFormValues>(() => ({
-    equipmentId: initial?.equipmentId || '',
+    equipmentId: initial?.equipmentId || suggestedEquipmentId || '',
     assetName: initial?.assetName || '',
     category: initial?.category || '',
     brand: initial?.brand || '',
@@ -76,9 +82,15 @@ export function AssetFormModal({
     condition: initial?.condition || 'GOOD',
     location: initial?.location || '',
     notes: initial?.notes || '',
-  }), [initial])
+  }), [initial, suggestedEquipmentId])
 
   const [form, setForm] = useState<AssetFormValues>(initialValues)
+  const locationOptions = useMemo(() => {
+    const current = initial?.location?.trim()
+    return current && !isKnownAssetLocation(current)
+      ? [...ASSET_LOCATIONS, current]
+      : [...ASSET_LOCATIONS]
+  }, [initial?.location])
 
   useEffect(() => {
     if (isOpen) {
@@ -118,10 +130,9 @@ export function AssetFormModal({
           <div>
             <Label className="mb-2">Equipment ID</Label>
             <Input
-              required
               value={form.equipmentId}
               onChange={(e) => setForm((prev) => ({ ...prev, equipmentId: e.target.value }))}
-              placeholder="LP-001"
+              placeholder="EQUIP-101"
             />
           </div>
           <div>
@@ -195,10 +206,22 @@ export function AssetFormModal({
           </div>
           <div>
             <Label className="mb-2">Location</Label>
-            <Input
-              value={form.location}
-              onChange={(e) => setForm((prev) => ({ ...prev, location: e.target.value }))}
-            />
+            <Select
+              value={form.location || '__none__'}
+              onValueChange={(value) => setForm((prev) => ({ ...prev, location: value === '__none__' ? '' : value }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select office location" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">No location</SelectItem>
+                {locationOptions.map((location) => (
+                  <SelectItem key={location} value={location}>
+                    {location}{isKnownAssetLocation(location) ? '' : ' (current legacy value)'}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 

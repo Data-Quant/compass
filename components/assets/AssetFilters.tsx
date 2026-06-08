@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ASSET_STATUSES } from '@/lib/asset-utils'
+import { ASSET_LOCATIONS, ASSET_STATUSES } from '@/lib/asset-utils'
 import type { AssetAssignee, AssetFiltersState } from './types'
 
 interface AssetFiltersProps {
@@ -21,8 +21,8 @@ interface AssetFiltersProps {
 
 export function AssetFilters({ value, assignees, categories, onChange }: AssetFiltersProps) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-      <div className="md:col-span-2">
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
+      <div className="md:col-span-2 xl:col-span-2">
         <Label className="mb-2">Search</Label>
         <Input
           placeholder="Equipment ID, name, model, serial..."
@@ -65,6 +65,26 @@ export function AssetFilters({ value, assignees, categories, onChange }: AssetFi
             {categories.map((category) => (
               <SelectItem key={category} value={category}>
                 {category}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div>
+        <Label className="mb-2">Location</Label>
+        <Select
+          value={value.location || 'ALL'}
+          onValueChange={(location) => onChange({ ...value, location: location === 'ALL' ? '' : location })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="All locations" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">All locations</SelectItem>
+            {ASSET_LOCATIONS.map((location) => (
+              <SelectItem key={location} value={location}>
+                {location}
               </SelectItem>
             ))}
           </SelectContent>

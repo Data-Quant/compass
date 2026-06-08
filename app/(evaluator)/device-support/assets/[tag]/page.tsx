@@ -7,6 +7,7 @@ import { WarrantyBadge } from '@/components/assets/WarrantyBadge'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { canManageAssets } from '@/lib/permissions'
+import { Download, QrCode } from 'lucide-react'
 
 interface PageProps {
   params: Promise<{ tag: string }>
@@ -113,6 +114,37 @@ export default async function DeviceSupportAssetDetailPage({ params }: PageProps
           <div className="md:col-span-4">
             <p className="text-xs text-muted-foreground">Notes</p>
             <p className="mt-1 whitespace-pre-wrap text-sm">{asset.notes || '-'}</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="grid gap-4 p-4 md:grid-cols-[160px_1fr]">
+          <div className="flex aspect-square items-center justify-center rounded-lg border border-border bg-white p-3">
+            <img
+              src={`/api/assets/${asset.id}/qr`}
+              alt={`QR code for ${asset.equipmentId}`}
+              className="h-full w-full object-contain"
+            />
+          </div>
+          <div className="flex flex-col justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <QrCode className="h-4 w-4 text-indigo-500" />
+                <h2 className="font-display text-lg font-semibold text-foreground">Device QR Code</h2>
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Scanning this code opens this device record in Compass.
+              </p>
+            </div>
+            <div>
+              <Button asChild variant="outline">
+                <a href={`/api/assets/${asset.id}/qr?download=1`} download={`${asset.equipmentId}-qr.png`}>
+                  <Download className="h-4 w-4" />
+                  Download QR
+                </a>
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

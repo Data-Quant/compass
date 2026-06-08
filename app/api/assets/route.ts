@@ -4,10 +4,14 @@ import { z } from 'zod'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import {
+  ASSET_LOCATIONS,
   ASSET_CONDITIONS,
   ASSET_STATUSES,
   ensureWarrantyDateOrder,
+  getNextEquipmentId,
+  isAssetLocation,
   normalizeEquipmentId,
+  normalizeAssetLocation,
   parseNullableDate,
   parseNullableNumber,
 } from '@/lib/asset-utils'
@@ -23,8 +27,18 @@ const optionalTrimmedString = z.preprocess(
   z.string().max(500).optional()
 )
 
+const optionalEquipmentId = z.preprocess(
+  (value) => {
+    if (value === undefined || value === null) return undefined
+    if (typeof value !== 'string') return value
+    const trimmed = value.trim()
+    return trimmed === '' ? undefined : trimmed
+  },
+  z.string().max(120).optional()
+)
+
 const createAssetSchema = z.object({
-  equipmentId: z.string().trim().min(1).max(120),
+  equipmentId: optionalEquipmentId,
   assetName: z.string().trim().min(1).max(200),
   category: z.string().trim().min(1).max(120),
   brand: optionalTrimmedString,
@@ -51,6 +65,19 @@ const createAssetSchema = z.object({
   ),
 })
 
+function isEquipmentIdUniqueError(error: unknown) {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') return false
+  return String(error.meta?.target || '').includes('equipmentId')
+}
+
+async function loadNextEquipmentId(client: typeof prisma | Prisma.TransactionClient = prisma) {
+  const existing = await client.equipmentAsset.findMany({
+    where: { equipmentId: { startsWith: 'EQUIP-', mode: 'insensitive' } },
+    select: { equipmentId: true },
+  })
+  return getNextEquipmentId(existing.map((asset) => asset.equipmentId))
+}
+
 function parseQueryInt(value: string | null, defaultValue: number, min: number, max: number) {
   if (!value) return defaultValue
   const parsed = Number(value)
@@ -70,12 +97,17 @@ export async function GET(request: NextRequest) {
     const status = (searchParams.get('status') || '').trim()
     const category = (searchParams.get('category') || '').trim()
     const assigneeId = (searchParams.get('assigneeId') || '').trim()
+    const location = (searchParams.get('location') || '').trim()
     const warranty = (searchParams.get('warranty') || 'all').trim().toLowerCase()
     const page = parseQueryInt(searchParams.get('page'), 1, 1, 100000)
     const limit = parseQueryInt(searchParams.get('limit'), 20, 1, 100)
 
     if (status && !ASSET_STATUSES.includes(status as (typeof ASSET_STATUSES)[number])) {
       return NextResponse.json({ error: 'Invalid status filter' }, { status: 400 })
+    }
+
+    if (location && !isAssetLocation(location)) {
+      return NextResponse.json({ error: 'Invalid location filter' }, { status: 400 })
     }
 
     if (!['all', 'expiring', 'expired'].includes(warranty)) {
@@ -86,6 +118,7 @@ export async function GET(request: NextRequest) {
     if (status) where.status = status as (typeof ASSET_STATUSES)[number]
     if (category) where.category = { equals: category, mode: 'insensitive' }
     if (assigneeId) where.currentAssigneeId = assigneeId
+    if (location) where.location = location
 
     if (warranty === 'expiring') {
       const today = new Date()
@@ -113,6 +146,7 @@ export async function GET(request: NextRequest) {
         { model: { contains: q, mode: 'insensitive' } },
         { serialNumber: { contains: q, mode: 'insensitive' } },
         { vendor: { contains: q, mode: 'insensitive' } },
+        { location: { contains: q, mode: 'insensitive' } },
         { currentAssignee: { name: { contains: q, mode: 'insensitive' } } },
       ]
     }
@@ -173,14 +207,21 @@ export async function POST(request: NextRequest) {
     }
 
     const payload = parsed.data
-    const equipmentId = normalizeEquipmentId(payload.equipmentId)
+    const manualEquipmentId = payload.equipmentId ? normalizeEquipmentId(payload.equipmentId) : null
     const purchaseDate = parseNullableDate(payload.purchaseDate)
     const warrantyStartDate = parseNullableDate(payload.warrantyStartDate)
     const warrantyEndDate = parseNullableDate(payload.warrantyEndDate)
     const purchaseCost = parseNullableNumber(payload.purchaseCost)
+    const location = normalizeAssetLocation(payload.location)
 
     if (payload.purchaseCost !== undefined && purchaseCost === null) {
       return NextResponse.json({ error: 'Invalid purchaseCost value' }, { status: 400 })
+    }
+    if (payload.location && !location) {
+      return NextResponse.json(
+        { error: `Location must be one of: ${ASSET_LOCATIONS.join(', ')}` },
+        { status: 400 }
+      )
     }
     if (purchaseCost !== null && purchaseCost < 0) {
       return NextResponse.json({ error: 'purchaseCost cannot be negative' }, { status: 400 })
@@ -191,52 +232,67 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: dateOrderError }, { status: 400 })
     }
 
-    const created = await prisma.$transaction(async (tx) => {
-      const asset = await tx.equipmentAsset.create({
-        data: {
-          equipmentId,
-          assetName: payload.assetName.trim(),
-          category: payload.category.trim(),
-          brand: payload.brand || null,
-          model: payload.model || null,
-          serialNumber: payload.serialNumber || null,
-          specsJson: payload.specsJson === undefined ? Prisma.JsonNull : (payload.specsJson as Prisma.InputJsonValue),
-          purchaseCost,
-          purchaseCurrency: payload.purchaseCurrency || 'PKR',
-          purchaseDate,
-          warrantyStartDate,
-          warrantyEndDate,
-          vendor: payload.vendor || null,
-          status: payload.status || 'IN_STOCK',
-          condition: payload.condition || 'GOOD',
-          location: payload.location || null,
-          notes: payload.notes || null,
-        },
-      })
+    let equipmentId = manualEquipmentId || await loadNextEquipmentId()
+    const attempts = manualEquipmentId ? 1 : 2
 
-      await tx.equipmentEvent.create({
-        data: {
-          assetId: asset.id,
-          actorId: user.id,
-          eventType: 'ASSET_CREATED',
-          payloadJson: {
-            equipmentId: asset.equipmentId,
-            status: asset.status,
-          } as Prisma.InputJsonValue,
-        },
-      })
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        const created = await prisma.$transaction(async (tx) => {
+          const asset = await tx.equipmentAsset.create({
+            data: {
+              equipmentId,
+              assetName: payload.assetName.trim(),
+              category: payload.category.trim(),
+              brand: payload.brand || null,
+              model: payload.model || null,
+              serialNumber: payload.serialNumber || null,
+              specsJson: payload.specsJson === undefined ? Prisma.JsonNull : (payload.specsJson as Prisma.InputJsonValue),
+              purchaseCost,
+              purchaseCurrency: payload.purchaseCurrency || 'PKR',
+              purchaseDate,
+              warrantyStartDate,
+              warrantyEndDate,
+              vendor: payload.vendor || null,
+              status: payload.status || 'IN_STOCK',
+              condition: payload.condition || 'GOOD',
+              location,
+              notes: payload.notes || null,
+            },
+          })
 
-      return tx.equipmentAsset.findUnique({
-        where: { id: asset.id },
-        include: {
-          currentAssignee: {
-            select: { id: true, name: true, department: true, position: true },
-          },
-        },
-      })
-    })
+          await tx.equipmentEvent.create({
+            data: {
+              assetId: asset.id,
+              actorId: user.id,
+              eventType: 'ASSET_CREATED',
+              payloadJson: {
+                equipmentId: asset.equipmentId,
+                status: asset.status,
+              } as Prisma.InputJsonValue,
+            },
+          })
 
-    return NextResponse.json({ success: true, item: created })
+          return tx.equipmentAsset.findUnique({
+            where: { id: asset.id },
+            include: {
+              currentAssignee: {
+                select: { id: true, name: true, department: true, position: true },
+              },
+            },
+          })
+        })
+
+        return NextResponse.json({ success: true, item: created })
+      } catch (error) {
+        if (!manualEquipmentId && attempt === 0 && isEquipmentIdUniqueError(error)) {
+          equipmentId = await loadNextEquipmentId()
+          continue
+        }
+        throw error
+      }
+    }
+
+    return NextResponse.json({ error: 'Failed to create asset' }, { status: 500 })
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&

@@ -5,8 +5,10 @@ import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import {
   ASSET_CONDITIONS,
+  ASSET_LOCATIONS,
   ASSET_STATUSES,
   ensureWarrantyDateOrder,
+  normalizeAssetLocation,
   parseNullableDate,
   parseNullableNumber,
 } from '@/lib/asset-utils'
@@ -124,6 +126,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         id: true,
         status: true,
         currentAssigneeId: true,
+        location: true,
         purchaseDate: true,
         warrantyEndDate: true,
       },
@@ -147,9 +150,24 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         : undefined
     const parsedPurchaseCost =
       payload.purchaseCost !== undefined ? parseNullableNumber(payload.purchaseCost) : undefined
+    const parsedLocation =
+      payload.location === undefined || payload.location === null
+        ? null
+        : normalizeAssetLocation(payload.location)
 
     if (payload.purchaseCost !== undefined && parsedPurchaseCost === null && payload.purchaseCost !== null && payload.purchaseCost !== '') {
       return NextResponse.json({ error: 'Invalid purchaseCost value' }, { status: 400 })
+    }
+    if (
+      payload.location !== undefined &&
+      payload.location !== null &&
+      !parsedLocation &&
+      payload.location !== existing.location
+    ) {
+      return NextResponse.json(
+        { error: `Location must be one of: ${ASSET_LOCATIONS.join(', ')}` },
+        { status: 400 }
+      )
     }
     if (parsedPurchaseCost !== undefined && parsedPurchaseCost !== null && parsedPurchaseCost < 0) {
       return NextResponse.json({ error: 'purchaseCost cannot be negative' }, { status: 400 })
@@ -193,7 +211,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (payload.vendor !== undefined) updateData.vendor = payload.vendor
     if (payload.status !== undefined) updateData.status = payload.status
     if (payload.condition !== undefined) updateData.condition = payload.condition
-    if (payload.location !== undefined) updateData.location = payload.location
+    if (payload.location !== undefined) {
+      updateData.location = payload.location === existing.location ? payload.location : parsedLocation
+    }
     if (payload.notes !== undefined) updateData.notes = payload.notes
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -235,6 +255,43 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
     console.error('Failed to update asset:', error)
     return NextResponse.json({ error: 'Failed to update asset' }, { status: 500 })
+  }
+}
+
+export async function DELETE(_request: NextRequest, context: RouteContext) {
+  try {
+    const user = await getSession()
+    if (!user || !canManageAssets(user.role)) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { id } = await context.params
+    const existing = await prisma.equipmentAsset.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        equipmentId: true,
+        currentAssigneeId: true,
+      },
+    })
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Asset not found' }, { status: 404 })
+    }
+
+    if (existing.currentAssigneeId) {
+      return NextResponse.json(
+        { error: 'Assigned assets must be unassigned before deletion' },
+        { status: 400 }
+      )
+    }
+
+    await prisma.equipmentAsset.delete({ where: { id } })
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('Failed to delete asset:', error)
+    return NextResponse.json({ error: 'Failed to delete asset' }, { status: 500 })
   }
 }
 

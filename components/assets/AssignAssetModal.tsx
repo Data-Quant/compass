@@ -106,6 +106,9 @@ export function AssignAssetModal({
                 <SelectItem value="IN_REPAIR">In Repair</SelectItem>
               </SelectContent>
             </Select>
+            <p className="mt-2 text-xs text-muted-foreground">
+              This is only the return workflow status. Retired, lost, and disposed lifecycle statuses can be set from Edit after the asset is unassigned.
+            </p>
           </div>
         )}
 
