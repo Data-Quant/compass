@@ -13,6 +13,11 @@ export interface MyTaskLabel {
   color: string
 }
 
+export interface MyTaskUser {
+  id: string
+  name: string
+}
+
 export interface MyTaskRecord {
   id: string
   title: string
@@ -24,6 +29,8 @@ export interface MyTaskRecord {
   startDate: string | null
   createdAt: string
   project: MyTaskProject
+  parentTask?: { id: string; title: string; assigneeId: string | null; assignee: MyTaskUser | null } | null
+  assistants?: Array<{ user: MyTaskUser }>
   labelAssignments: Array<{ label: MyTaskLabel }>
   _count: { comments: number }
 }

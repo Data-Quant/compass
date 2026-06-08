@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { SMART_BUCKET_LABELS, groupTasksByBucket } from '@/lib/my-tasks/buckets'
 import type { MyTaskRecord, SmartBucket } from '@/lib/my-tasks/types'
-import { CalendarDays, MessageSquare } from 'lucide-react'
+import { CalendarDays, MessageSquare, Users } from 'lucide-react'
 
 interface MyTasksListViewProps {
   tasks: MyTaskRecord[]
@@ -72,6 +72,12 @@ export function MyTasksListView({ tasks, onTaskClick }: MyTasksListViewProps) {
                           <p className="font-medium text-sm">{task.title}</p>
                           {task.description && (
                             <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{task.description}</p>
+                          )}
+                          {task.assistants && task.assistants.length > 0 && (
+                            <p className="text-xs text-muted-foreground mt-1 inline-flex items-center gap-1.5">
+                              <Users className="w-3 h-3" />
+                              Assistants: {task.assistants.map((assistant) => assistant.user.name).join(', ')}
+                            </p>
                           )}
                         </div>
                       </TableCell>

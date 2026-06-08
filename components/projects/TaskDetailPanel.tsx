@@ -9,7 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import {
   X, Trash2, Calendar as CalendarIcon, Flag, Tag, Users, MessageSquare,
-  Send, FolderOpen, ChevronDown, Check
+  Send, FolderOpen, ChevronDown, Check, GitBranch, Plus, UserRoundCheck
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -44,6 +44,30 @@ interface Comment {
   author: TaskUser
 }
 
+interface ParentTaskSummary {
+  id: string
+  title: string
+  assigneeId: string | null
+  assignee: TaskUser | null
+}
+
+interface ChildTaskSummary {
+  id: string
+  title: string
+  status: 'TODO' | 'IN_PROGRESS' | 'DONE'
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
+  assigneeId: string | null
+  dueDate: string | null
+  parentTaskId: string | null
+  assignee: TaskUser | null
+  _count: { comments: number }
+}
+
+interface TaskAssistant {
+  id: string
+  user: TaskUser
+}
+
 export interface PanelTask {
   id: string
   title: string
@@ -57,6 +81,10 @@ export interface PanelTask {
   sectionId: string | null
   section: Section | null
   orderIndex: number
+  parentTaskId?: string | null
+  parentTask?: ParentTaskSummary | null
+  childTasks?: ChildTaskSummary[]
+  assistants?: TaskAssistant[]
   labelAssignments: LabelAssignment[]
   _count: { comments: number }
 }
@@ -71,6 +99,8 @@ interface TaskDetailPanelProps {
   onClose: () => void
   onTaskUpdate: (task: any) => void
   onTaskDelete: (taskId: string) => void
+  onTasksChange?: () => Promise<void> | void
+  onOpenTask?: (taskId: string) => void
 }
 
 const PRIORITY_CONFIG: Record<string, { color: string; label: string }> = {
@@ -158,14 +188,16 @@ function Dropdown({ trigger, children, className }: {
 
 export function TaskDetailPanel({
   task, projectId, members, sections, labels,
-  open, onClose, onTaskUpdate, onTaskDelete,
+  open, onClose, onTaskUpdate, onTaskDelete, onTasksChange, onOpenTask,
 }: TaskDetailPanelProps) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [comments, setComments] = useState<Comment[]>([])
   const [newComment, setNewComment] = useState('')
+  const [newChildTitle, setNewChildTitle] = useState('')
   const [loadingComments, setLoadingComments] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [creatingChild, setCreatingChild] = useState(false)
   const [dueDateOpen, setDueDateOpen] = useState(false)
   const titleRef = useRef<HTMLInputElement>(null)
   const saveTimeout = useRef<NodeJS.Timeout | null>(null)
@@ -175,6 +207,7 @@ export function TaskDetailPanel({
     if (task) {
       setTitle(task.title)
       setDescription(task.description || '')
+      setNewChildTitle('')
       setDueDateOpen(false)
       loadComments(task.id)
     }
@@ -261,9 +294,55 @@ export function TaskDetailPanel({
     updateTask({ labelIds: next })
   }
 
+  const toggleAssistant = async (memberId: string) => {
+    if (!task || memberId === task.assigneeId) return
+    const current = (task.assistants || []).map((assistant) => assistant.user.id)
+    const next = current.includes(memberId)
+      ? current.filter((id) => id !== memberId)
+      : [...current, memberId]
+    updateTask({ assistantIds: next })
+  }
+
+  const clearAssistants = async () => {
+    if (!task || !task.assistants?.length) return
+    updateTask({ assistantIds: [] })
+  }
+
+  const createChildTask = async () => {
+    if (!task || !newChildTitle.trim()) return
+    setCreatingChild(true)
+    try {
+      const res = await fetch(`/api/projects/${projectId}/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newChildTitle.trim(),
+          parentTaskId: task.id,
+          sectionId: task.sectionId,
+          status: 'TODO',
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to create child task')
+      }
+      setNewChildTitle('')
+      toast.success('Child task created')
+      await onTasksChange?.()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to create child task')
+    } finally {
+      setCreatingChild(false)
+    }
+  }
+
   if (!task) return null
 
   const assignedLabels = task.labelAssignments.map((la) => la.label.id)
+  const assistants = task.assistants || []
+  const assistantIds = assistants.map((assistant) => assistant.user.id)
+  const childTasks = task.childTasks || []
+  const availableAssistantMembers = members.filter((member) => member.id !== task.assigneeId)
 
   return (
     <Sheet open={open} onOpenChange={(o) => { if (!o) onClose() }}>
@@ -384,6 +463,66 @@ export function TaskDetailPanel({
                       {m.name}
                     </button>
                   ))}
+                </div>
+              </Dropdown>
+            </FieldRow>
+
+            {/* Assistants */}
+            <FieldRow icon={<UserRoundCheck className="w-4 h-4" />} label="Assistants">
+              <Dropdown
+                trigger={
+                  <span className="inline-flex max-w-full items-center gap-2 rounded-md px-2.5 py-1 text-sm hover:bg-muted/30 transition-colors">
+                    {assistants.length > 0 ? (
+                      <>
+                        <span className="flex -space-x-1.5">
+                          {assistants.slice(0, 3).map((assistant) => (
+                            <UserAvatar
+                              key={assistant.user.id}
+                              name={assistant.user.name}
+                              size="xs"
+                              className="ring-2 ring-background"
+                            />
+                          ))}
+                        </span>
+                        <span className="truncate">
+                          {assistants.slice(0, 2).map((assistant) => assistant.user.name).join(', ')}
+                          {assistants.length > 2 ? ` +${assistants.length - 2}` : ''}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">No assistants</span>
+                    )}
+                    <ChevronDown className="w-3 h-3 opacity-60 shrink-0" />
+                  </span>
+                }
+                className="min-w-[220px]"
+              >
+                <div className="p-1 max-h-56 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                  {assistants.length > 0 && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); clearAssistants() }}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors text-muted-foreground"
+                    >
+                      Clear assistants
+                    </button>
+                  )}
+                  {availableAssistantMembers.map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={(e) => { e.stopPropagation(); toggleAssistant(m.id) }}
+                      className={cn(
+                        'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors',
+                        assistantIds.includes(m.id) && 'bg-muted/50'
+                      )}
+                    >
+                      <UserAvatar name={m.name} size="xs" />
+                      <span className="flex-1 text-left">{m.name}</span>
+                      {assistantIds.includes(m.id) && <Check className="w-3.5 h-3.5 text-primary" />}
+                    </button>
+                  ))}
+                  {availableAssistantMembers.length === 0 && (
+                    <p className="px-3 py-2 text-sm text-muted-foreground">No other project members available.</p>
+                  )}
                 </div>
               </Dropdown>
             </FieldRow>
@@ -543,6 +682,111 @@ export function TaskDetailPanel({
                 </Dropdown>
               </FieldRow>
             )}
+          </div>
+
+          {/* Divider */}
+          <div className="mx-5 border-t border-border/40" />
+
+          {/* Parent and child tasks */}
+          <div className="px-5 py-4 space-y-4">
+            {task.parentTask && (
+              <div>
+                <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
+                  <GitBranch className="w-3.5 h-3.5" />
+                  Parent task
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => onOpenTask?.(task.parentTask!.id)}
+                  className="w-full rounded-lg border border-border/40 bg-muted/10 px-3 py-2 text-left text-sm transition-colors hover:bg-muted/30"
+                >
+                  <span className="font-medium">{task.parentTask.title}</span>
+                  {task.parentTask.assignee && (
+                    <span className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <UserAvatar name={task.parentTask.assignee.name} size="xs" />
+                      {task.parentTask.assignee.name}
+                    </span>
+                  )}
+                </button>
+              </div>
+            )}
+
+            <div>
+              <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
+                <GitBranch className="w-3.5 h-3.5" />
+                Child tasks ({childTasks.length})
+              </h4>
+
+              <div className="space-y-2">
+                {childTasks.length === 0 ? (
+                  <p className="text-sm text-muted-foreground/60 py-1">No child tasks yet.</p>
+                ) : (
+                  childTasks.map((child) => {
+                    const status = STATUS_CONFIG[child.status]
+                    return (
+                      <button
+                        key={child.id}
+                        type="button"
+                        onClick={() => onOpenTask?.(child.id)}
+                        className="w-full rounded-lg border border-border/40 bg-muted/10 px-3 py-2 text-left transition-colors hover:bg-muted/30"
+                      >
+                        <div className="flex items-start gap-2">
+                          <span className={cn('mt-1.5 h-2 w-2 rounded-full shrink-0', status.color.replace('text-', 'bg-'))} />
+                          <div className="min-w-0 flex-1">
+                            <p className={cn(
+                              'text-sm font-medium truncate',
+                              child.status === 'DONE' && 'line-through text-muted-foreground'
+                            )}>
+                              {child.title}
+                            </p>
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                              <span>{status.label}</span>
+                              {child.assignee && (
+                                <span className="inline-flex items-center gap-1">
+                                  <UserAvatar name={child.assignee.name} size="xs" />
+                                  {child.assignee.name}
+                                </span>
+                              )}
+                              {child.dueDate && (
+                                <span>{formatTaskDate(child.dueDate)}</span>
+                              )}
+                              {child._count.comments > 0 && (
+                                <span className="inline-flex items-center gap-1">
+                                  <MessageSquare className="w-3 h-3" />
+                                  {child._count.comments}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+
+              <div className="mt-3 flex items-center gap-2">
+                <input
+                  value={newChildTitle}
+                  onChange={(e) => setNewChildTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') createChildTask()
+                    if (e.key === 'Escape') setNewChildTitle('')
+                  }}
+                  placeholder="Add child task"
+                  className="min-w-0 flex-1 rounded-lg border border-border/30 bg-muted/20 px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground/40 focus:border-primary/30"
+                />
+                <button
+                  type="button"
+                  onClick={createChildTask}
+                  disabled={!newChildTitle.trim() || creatingChild}
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-30"
+                  title="Create child task"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Divider */}

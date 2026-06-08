@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { sendChildTaskCompletedNotification } from '@/lib/project-task-notifications'
 
 export async function PATCH(
   request: NextRequest,
@@ -15,7 +16,7 @@ export async function PATCH(
 
     const task = await prisma.task.findUnique({
       where: { id },
-      select: { id: true, assigneeId: true, startDate: true, dueDate: true },
+      select: { id: true, assigneeId: true, status: true, parentTaskId: true, startDate: true, dueDate: true },
     })
 
     if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 })
@@ -64,10 +65,30 @@ export async function PATCH(
         project: { select: { id: true, name: true, color: true } },
         assignee: { select: { id: true, name: true } },
         section: { select: { id: true, name: true } },
+        parentTask: {
+          select: {
+            id: true,
+            title: true,
+            assigneeId: true,
+            assignee: { select: { id: true, name: true } },
+          },
+        },
+        assistants: {
+          include: { user: { select: { id: true, name: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
         labelAssignments: { include: { label: true } },
         _count: { select: { comments: true } },
       },
     })
+
+    if (body.status === 'DONE' && task.status !== 'DONE' && task.parentTaskId) {
+      try {
+        await sendChildTaskCompletedNotification(task.id, request.nextUrl.origin)
+      } catch (notificationError) {
+        console.error('Failed to send child task completion notification:', notificationError)
+      }
+    }
 
     return NextResponse.json({ success: true, task: updatedTask })
   } catch (error) {

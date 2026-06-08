@@ -85,7 +85,13 @@ export default function ProjectDetailPage() {
     try {
       const res = await fetch(`/api/projects/${id}`)
       const data = await res.json()
-      if (data.project) setProject(data.project)
+      if (data.project) {
+        setProject(data.project)
+        setSelectedTask((current) => {
+          if (!current) return current
+          return data.project.tasks.find((task: PanelTask) => task.id === current.id) || current
+        })
+      }
     } catch {
       toast.error('Failed to load project')
     } finally {
@@ -109,6 +115,13 @@ export default function ProjectDetailPage() {
     setPanelOpen(false)
     setSelectedTask(null)
     loadProject()
+  }
+
+  const handleOpenTaskById = (taskId: string) => {
+    const nextTask = project?.tasks.find((task) => task.id === taskId)
+    if (!nextTask) return
+    setSelectedTask(nextTask)
+    setPanelOpen(true)
   }
 
   const handleDeleteProject = async () => {
@@ -388,6 +401,8 @@ export default function ProjectDetailPage() {
         onClose={() => { setPanelOpen(false); setSelectedTask(null) }}
         onTaskUpdate={handleTaskUpdate}
         onTaskDelete={handleTaskDelete}
+        onTasksChange={loadProject}
+        onOpenTask={handleOpenTaskById}
       />
 
       {/* Member Manager Modal */}

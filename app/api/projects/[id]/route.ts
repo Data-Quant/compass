@@ -24,6 +24,32 @@ export async function GET(
           include: {
             assignee: { select: { id: true, name: true } },
             section: { select: { id: true, name: true } },
+            parentTask: {
+              select: {
+                id: true,
+                title: true,
+                assigneeId: true,
+                assignee: { select: { id: true, name: true } },
+              },
+            },
+            childTasks: {
+              select: {
+                id: true,
+                title: true,
+                status: true,
+                priority: true,
+                assigneeId: true,
+                dueDate: true,
+                parentTaskId: true,
+                assignee: { select: { id: true, name: true } },
+                _count: { select: { comments: true } },
+              },
+              orderBy: [{ status: 'asc' }, { orderIndex: 'asc' }, { createdAt: 'asc' }],
+            },
+            assistants: {
+              include: { user: { select: { id: true, name: true } } },
+              orderBy: { createdAt: 'asc' },
+            },
             labelAssignments: { include: { label: true } },
             _count: { select: { comments: true } },
           },

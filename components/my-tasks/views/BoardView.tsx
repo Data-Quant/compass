@@ -18,7 +18,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { SMART_BUCKET_LABELS, groupTasksByBucket } from '@/lib/my-tasks/buckets'
 import type { MyTaskRecord, SmartBucket } from '@/lib/my-tasks/types'
-import { CalendarDays, MessageSquare } from 'lucide-react'
+import { CalendarDays, MessageSquare, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface MyTasksBoardViewProps {
@@ -74,6 +74,12 @@ function TaskCard({
         <Badge variant="outline" className="text-[10px]">{task.status.replace('_', ' ')}</Badge>
         <Badge variant="outline" className="text-[10px]">{task.priority}</Badge>
       </div>
+      {task.assistants && task.assistants.length > 0 && (
+        <p className="mt-2 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+          <Users className="w-3.5 h-3.5" />
+          {task.assistants.map((assistant) => assistant.user.name).join(', ')}
+        </p>
+      )}
     </div>
   )
 }
