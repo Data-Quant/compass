@@ -19,6 +19,13 @@ export async function POST(request: NextRequest) {
   try {
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const blobToken = process.env.BLOB_READ_WRITE_TOKEN
+    if (!blobToken) {
+      return NextResponse.json(
+        { error: 'Image uploads are not configured. Add BLOB_READ_WRITE_TOKEN in Vercel.' },
+        { status: 500 }
+      )
+    }
 
     const formData = await request.formData()
     const projectId = String(formData.get('projectId') || '').trim()
@@ -55,12 +62,16 @@ export async function POST(request: NextRequest) {
       {
         access: 'public',
         addRandomSuffix: true,
+        token: blobToken,
       }
     )
 
     return NextResponse.json({ url: blob.url })
   } catch (error) {
     console.error('Failed to upload project task image:', error)
-    return NextResponse.json({ error: 'Failed to upload image' }, { status: 500 })
+    const message = error instanceof Error && error.message.includes('BLOB_READ_WRITE_TOKEN')
+      ? 'Image uploads are not configured. Add BLOB_READ_WRITE_TOKEN in Vercel.'
+      : 'Failed to upload image'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

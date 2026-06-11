@@ -175,8 +175,81 @@ function appendMarkdownImage(content: string, url: string) {
   return `${prefix}![image](${url})`
 }
 
+function normalizeLinkHref(value: string) {
+  return value.startsWith('http://') || value.startsWith('https://') ? value : `https://${value}`
+}
+
+function renderLinkedText(text: string, keyPrefix: string) {
+  const markdownLinkRegex = /\[([^\]]+)\]\(((?:https?:\/\/|www\.)[^)\s]+)\)/g
+  const nodes: React.ReactNode[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  const renderBareLinks = (segment: string, segmentKey: string) => {
+    const bareUrlRegex = /\b((?:https?:\/\/|www\.)[^\s<>()]+)/g
+    const parts: React.ReactNode[] = []
+    let segmentLastIndex = 0
+    let bareMatch: RegExpExecArray | null
+
+    while ((bareMatch = bareUrlRegex.exec(segment)) !== null) {
+      if (bareMatch.index > segmentLastIndex) {
+        parts.push(segment.slice(segmentLastIndex, bareMatch.index))
+      }
+
+      const rawUrl = bareMatch[1]
+      const trailingPunctuation = rawUrl.match(/[.,!?;:]+$/)?.[0] ?? ''
+      const linkText = trailingPunctuation ? rawUrl.slice(0, -trailingPunctuation.length) : rawUrl
+
+      parts.push(
+        <a
+          key={`${segmentKey}-url-${bareMatch.index}`}
+          href={normalizeLinkHref(linkText)}
+          target="_blank"
+          rel="noreferrer"
+          className="break-all text-primary underline underline-offset-2 hover:text-primary/80"
+        >
+          {linkText}
+        </a>
+      )
+      if (trailingPunctuation) parts.push(trailingPunctuation)
+      segmentLastIndex = bareMatch.index + rawUrl.length
+    }
+
+    if (segmentLastIndex < segment.length) {
+      parts.push(segment.slice(segmentLastIndex))
+    }
+
+    return parts
+  }
+
+  while ((match = markdownLinkRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(...renderBareLinks(text.slice(lastIndex, match.index), `${keyPrefix}-text-${lastIndex}`))
+    }
+
+    nodes.push(
+      <a
+        key={`${keyPrefix}-link-${match.index}`}
+        href={normalizeLinkHref(match[2])}
+        target="_blank"
+        rel="noreferrer"
+        className="break-all text-primary underline underline-offset-2 hover:text-primary/80"
+      >
+        {match[1]}
+      </a>
+    )
+    lastIndex = markdownLinkRegex.lastIndex
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(...renderBareLinks(text.slice(lastIndex), `${keyPrefix}-text-${lastIndex}`))
+  }
+
+  return nodes
+}
+
 function RichTextContent({ content }: { content: string }) {
-  const imageRegex = /!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g
+  const imageRegex = /!\[([^\]]*)\]\(((?:https?:\/\/|www\.)[^)\s]+)\)/g
   const nodes: React.ReactNode[] = []
   let lastIndex = 0
   let match: RegExpExecArray | null
@@ -185,18 +258,25 @@ function RichTextContent({ content }: { content: string }) {
     if (match.index > lastIndex) {
       nodes.push(
         <span key={`text-${lastIndex}`} className="whitespace-pre-wrap">
-          {content.slice(lastIndex, match.index)}
+          {renderLinkedText(content.slice(lastIndex, match.index), `text-${lastIndex}`)}
         </span>
       )
     }
     nodes.push(
-      <img
-        key={`image-${match.index}`}
-        src={match[2]}
-        alt={match[1] || 'Task image'}
-        loading="lazy"
-        className="my-2 max-h-72 max-w-full rounded-lg border border-border/50 object-contain"
-      />
+      <a
+        key={`image-link-${match.index}`}
+        href={normalizeLinkHref(match[2])}
+        target="_blank"
+        rel="noreferrer"
+        className="block"
+      >
+        <img
+          src={normalizeLinkHref(match[2])}
+          alt={match[1] || 'Task image'}
+          loading="lazy"
+          className="my-2 max-h-72 max-w-full rounded-lg border border-border/50 object-contain"
+        />
+      </a>
     )
     lastIndex = imageRegex.lastIndex
   }
@@ -204,7 +284,7 @@ function RichTextContent({ content }: { content: string }) {
   if (lastIndex < content.length) {
     nodes.push(
       <span key={`text-${lastIndex}`} className="whitespace-pre-wrap">
-        {content.slice(lastIndex)}
+        {renderLinkedText(content.slice(lastIndex), `text-${lastIndex}`)}
       </span>
     )
   }
