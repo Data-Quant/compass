@@ -10,7 +10,7 @@ import { UserAvatar } from '@/components/composed/UserAvatar'
 import {
   X, Trash2, Calendar as CalendarIcon, Flag, Tag, Users, MessageSquare,
   Send, ChevronDown, Check, GitBranch, Plus, UserRoundCheck, Image as ImageIcon,
-  History, Loader2
+  History, Loader2, Bold, Underline, List
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -180,30 +180,49 @@ function normalizeLinkHref(value: string) {
   return value.startsWith('http://') || value.startsWith('https://') ? value : `https://${value}`
 }
 
-function renderLinkedText(text: string, keyPrefix: string) {
-  const markdownLinkRegex = /\[([^\]]+)\]\(((?:https?:\/\/|www\.)[^)\s]+)\)/g
+function renderInlineText(text: string, keyPrefix: string, depth = 0): React.ReactNode[] {
+  const inlineRegex = /\[([^\]]+)\]\(((?:https?:\/\/|www\.)[^)\s]+)\)|\*\*([^*]+)\*\*|<u>(.*?)<\/u>|\b((?:https?:\/\/|www\.)[^\s<>()]+)/gi
   const nodes: React.ReactNode[] = []
   let lastIndex = 0
   let match: RegExpExecArray | null
 
-  const renderBareLinks = (segment: string, segmentKey: string) => {
-    const bareUrlRegex = /\b((?:https?:\/\/|www\.)[^\s<>()]+)/g
-    const parts: React.ReactNode[] = []
-    let segmentLastIndex = 0
-    let bareMatch: RegExpExecArray | null
+  while ((match = inlineRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, match.index))
+    }
 
-    while ((bareMatch = bareUrlRegex.exec(segment)) !== null) {
-      if (bareMatch.index > segmentLastIndex) {
-        parts.push(segment.slice(segmentLastIndex, bareMatch.index))
-      }
-
-      const rawUrl = bareMatch[1]
+    if (match[1] && match[2]) {
+      nodes.push(
+        <a
+          key={`${keyPrefix}-link-${match.index}`}
+          href={normalizeLinkHref(match[2])}
+          target="_blank"
+          rel="noreferrer"
+          className="break-all text-primary underline underline-offset-2 hover:text-primary/80"
+        >
+          {match[1]}
+        </a>
+      )
+    } else if (match[3]) {
+      nodes.push(
+        <strong key={`${keyPrefix}-bold-${match.index}`} className="font-semibold text-foreground/90">
+          {depth < 2 ? renderInlineText(match[3], `${keyPrefix}-bold-${match.index}`, depth + 1) : match[3]}
+        </strong>
+      )
+    } else if (match[4]) {
+      nodes.push(
+        <span key={`${keyPrefix}-underline-${match.index}`} className="underline underline-offset-2">
+          {depth < 2 ? renderInlineText(match[4], `${keyPrefix}-underline-${match.index}`, depth + 1) : match[4]}
+        </span>
+      )
+    } else if (match[5]) {
+      const rawUrl = match[5]
       const trailingPunctuation = rawUrl.match(/[.,!?;:]+$/)?.[0] ?? ''
       const linkText = trailingPunctuation ? rawUrl.slice(0, -trailingPunctuation.length) : rawUrl
 
-      parts.push(
+      nodes.push(
         <a
-          key={`${segmentKey}-url-${bareMatch.index}`}
+          key={`${keyPrefix}-url-${match.index}`}
           href={normalizeLinkHref(linkText)}
           target="_blank"
           rel="noreferrer"
@@ -212,41 +231,71 @@ function renderLinkedText(text: string, keyPrefix: string) {
           {linkText}
         </a>
       )
-      if (trailingPunctuation) parts.push(trailingPunctuation)
-      segmentLastIndex = bareMatch.index + rawUrl.length
+      if (trailingPunctuation) nodes.push(trailingPunctuation)
     }
 
-    if (segmentLastIndex < segment.length) {
-      parts.push(segment.slice(segmentLastIndex))
-    }
-
-    return parts
-  }
-
-  while ((match = markdownLinkRegex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      nodes.push(...renderBareLinks(text.slice(lastIndex, match.index), `${keyPrefix}-text-${lastIndex}`))
-    }
-
-    nodes.push(
-      <a
-        key={`${keyPrefix}-link-${match.index}`}
-        href={normalizeLinkHref(match[2])}
-        target="_blank"
-        rel="noreferrer"
-        className="break-all text-primary underline underline-offset-2 hover:text-primary/80"
-      >
-        {match[1]}
-      </a>
-    )
-    lastIndex = markdownLinkRegex.lastIndex
+    lastIndex = inlineRegex.lastIndex
   }
 
   if (lastIndex < text.length) {
-    nodes.push(...renderBareLinks(text.slice(lastIndex), `${keyPrefix}-text-${lastIndex}`))
+    nodes.push(text.slice(lastIndex))
   }
 
   return nodes
+}
+
+function renderTextBlocks(text: string, keyPrefix: string) {
+  const lines = text.split('\n')
+  const blocks: React.ReactNode[] = []
+  let paragraph: string[] = []
+  let bullets: string[] = []
+
+  const flushParagraph = () => {
+    if (paragraph.length === 0) return
+    const content = paragraph.join('\n')
+    blocks.push(
+      <p key={`${keyPrefix}-p-${blocks.length}`} className="whitespace-pre-wrap">
+        {renderInlineText(content, `${keyPrefix}-p-${blocks.length}`)}
+      </p>
+    )
+    paragraph = []
+  }
+
+  const flushBullets = () => {
+    if (bullets.length === 0) return
+    blocks.push(
+      <ul key={`${keyPrefix}-ul-${blocks.length}`} className="list-disc space-y-1 pl-5">
+        {bullets.map((item, index) => (
+          <li key={`${keyPrefix}-li-${blocks.length}-${index}`}>
+            {renderInlineText(item, `${keyPrefix}-li-${blocks.length}-${index}`)}
+          </li>
+        ))}
+      </ul>
+    )
+    bullets = []
+  }
+
+  for (const line of lines) {
+    const bulletMatch = line.match(/^\s*[-*]\s+(.+)$/)
+    if (bulletMatch) {
+      flushParagraph()
+      bullets.push(bulletMatch[1])
+      continue
+    }
+
+    flushBullets()
+    if (line.trim() === '') {
+      flushParagraph()
+      blocks.push(<div key={`${keyPrefix}-space-${blocks.length}`} className="h-2" />)
+    } else {
+      paragraph.push(line)
+    }
+  }
+
+  flushParagraph()
+  flushBullets()
+
+  return blocks
 }
 
 function RichTextContent({ content }: { content: string }) {
@@ -258,9 +307,9 @@ function RichTextContent({ content }: { content: string }) {
   while ((match = imageRegex.exec(content)) !== null) {
     if (match.index > lastIndex) {
       nodes.push(
-        <span key={`text-${lastIndex}`} className="whitespace-pre-wrap">
-          {renderLinkedText(content.slice(lastIndex, match.index), `text-${lastIndex}`)}
-        </span>
+        <div key={`text-${lastIndex}`} className="space-y-2">
+          {renderTextBlocks(content.slice(lastIndex, match.index), `text-${lastIndex}`)}
+        </div>
       )
     }
     nodes.push(
@@ -284,13 +333,13 @@ function RichTextContent({ content }: { content: string }) {
 
   if (lastIndex < content.length) {
     nodes.push(
-      <span key={`text-${lastIndex}`} className="whitespace-pre-wrap">
-        {renderLinkedText(content.slice(lastIndex), `text-${lastIndex}`)}
-      </span>
+      <div key={`text-${lastIndex}`} className="space-y-2">
+        {renderTextBlocks(content.slice(lastIndex), `text-${lastIndex}`)}
+      </div>
     )
   }
 
-  return <div className="text-sm text-muted-foreground/80">{nodes}</div>
+  return <div className="space-y-2 text-sm text-muted-foreground/80">{nodes}</div>
 }
 
 /* ─── Dropdown Helper ─────────────────────────────────────────────────── */
@@ -356,6 +405,8 @@ export function TaskDetailPanel({
   const [uploadingImage, setUploadingImage] = useState<'description' | 'comment' | null>(null)
   const [dueDateOpen, setDueDateOpen] = useState(false)
   const titleRef = useRef<HTMLInputElement>(null)
+  const descriptionTextareaRef = useRef<HTMLTextAreaElement>(null)
+  const commentTextareaRef = useRef<HTMLTextAreaElement>(null)
   const descriptionImageInputRef = useRef<HTMLInputElement>(null)
   const commentImageInputRef = useRef<HTMLInputElement>(null)
 
@@ -489,6 +540,53 @@ export function TaskDetailPanel({
     }
   }
 
+  const applyTextFormat = (target: 'description' | 'comment', format: 'bold' | 'underline' | 'bullet') => {
+    const textarea = target === 'description' ? descriptionTextareaRef.current : commentTextareaRef.current
+    const value = target === 'description' ? description : newComment
+    const setValue = target === 'description' ? setDescription : setNewComment
+    const start = textarea?.selectionStart ?? value.length
+    const end = textarea?.selectionEnd ?? value.length
+    const selected = value.slice(start, end)
+    let nextText = ''
+    let cursorStart = start
+    let cursorEnd = end
+
+    if (format === 'bold') {
+      const fallback = selected || 'bold text'
+      nextText = `**${fallback}**`
+      cursorStart = start + 2
+      cursorEnd = start + 2 + fallback.length
+    } else if (format === 'underline') {
+      const fallback = selected || 'underlined text'
+      nextText = `<u>${fallback}</u>`
+      cursorStart = start + 3
+      cursorEnd = start + 3 + fallback.length
+    } else {
+      const lineStart = value.lastIndexOf('\n', Math.max(start - 1, 0)) + 1
+      const lineEndIndex = value.indexOf('\n', end)
+      const lineEnd = lineEndIndex === -1 ? value.length : lineEndIndex
+      const block = value.slice(lineStart, lineEnd)
+      const formatted = block.trim()
+        ? block.split('\n').map((line) => line.trim() ? (line.match(/^\s*[-*]\s+/) ? line : `- ${line}`) : line).join('\n')
+        : '- '
+      const nextValue = `${value.slice(0, lineStart)}${formatted}${value.slice(lineEnd)}`
+      setValue(nextValue)
+      window.requestAnimationFrame(() => {
+        textarea?.focus()
+        const nextPosition = lineStart + formatted.length
+        textarea?.setSelectionRange(nextPosition, nextPosition)
+      })
+      return
+    }
+
+    const nextValue = `${value.slice(0, start)}${nextText}${value.slice(end)}`
+    setValue(nextValue)
+    window.requestAnimationFrame(() => {
+      textarea?.focus()
+      textarea?.setSelectionRange(cursorStart, cursorEnd)
+    })
+  }
+
   const toggleLabel = async (labelId: string) => {
     if (!task) return
     const current = task.labelAssignments.map((la) => la.label.id)
@@ -546,6 +644,43 @@ export function TaskDetailPanel({
   const assistantIds = assistants.map((assistant) => assistant.user.id)
   const childTasks = task.childTasks || []
   const availableAssistantMembers = members.filter((member) => member.id !== task.assigneeId)
+  const renderFormatToolbar = (target: 'description' | 'comment') => (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        onClick={() => applyTextFormat(target, 'bold')}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+        title="Bold"
+      >
+        <Bold className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={() => applyTextFormat(target, 'underline')}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+        title="Underline"
+      >
+        <Underline className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={() => applyTextFormat(target, 'bullet')}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+        title="Bulleted list"
+      >
+        <List className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={() => (target === 'description' ? descriptionImageInputRef.current : commentImageInputRef.current)?.click()}
+        disabled={uploadingImage === target}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+        title="Image"
+      >
+        {uploadingImage === target ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageIcon className="h-3.5 w-3.5" />}
+      </button>
+    </div>
+  )
 
   return (
     <Sheet open={open} onOpenChange={(o) => { if (!o) onClose() }}>
@@ -973,15 +1108,7 @@ export function TaskDetailPanel({
           <div className="px-5 py-4">
             <div className="mb-2 flex items-center justify-between gap-2">
               <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Description</h4>
-              <button
-                type="button"
-                onClick={() => descriptionImageInputRef.current?.click()}
-                disabled={uploadingImage === 'description'}
-                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {uploadingImage === 'description' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageIcon className="h-3.5 w-3.5" />}
-                Image
-              </button>
+              {renderFormatToolbar('description')}
               <input
                 ref={descriptionImageInputRef}
                 type="file"
@@ -991,6 +1118,7 @@ export function TaskDetailPanel({
               />
             </div>
             <textarea
+              ref={descriptionTextareaRef}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               onBlur={handleDescBlur}
@@ -1046,7 +1174,11 @@ export function TaskDetailPanel({
             {/* New comment */}
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
+                <div className="mb-1 flex items-center justify-end">
+                  {renderFormatToolbar('comment')}
+                </div>
                 <textarea
+                  ref={commentTextareaRef}
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
                   onKeyDown={(e) => {
@@ -1070,14 +1202,7 @@ export function TaskDetailPanel({
                 onChange={(event) => void uploadImage(event.target.files?.[0], 'comment')}
               />
               <button
-                onClick={() => commentImageInputRef.current?.click()}
-                disabled={uploadingImage === 'comment'}
-                className="p-2.5 rounded-lg bg-muted/30 text-muted-foreground hover:bg-muted/50 hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                title="Add image"
-              >
-                {uploadingImage === 'comment' ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />}
-              </button>
-              <button
+                type="button"
                 onClick={postComment}
                 disabled={!newComment.trim()}
                 className="p-2.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all"

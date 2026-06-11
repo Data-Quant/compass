@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db'
 import { sendMail } from '@/lib/email'
+import { queueOrSendProjectNotification } from '@/lib/project-notification-digests'
 import { escapeHtml } from '@/lib/sanitize'
 
 function normalizeBaseUrl(value: string | null | undefined) {
@@ -71,7 +72,7 @@ export async function sendProjectInvitationNotification(input: {
     select: { id: true, name: true },
   })
   const [recipient, actor] = await Promise.all([
-    prisma.user.findUnique({ where: { id: input.userId }, select: { name: true, email: true } }),
+    prisma.user.findUnique({ where: { id: input.userId }, select: { id: true, name: true, email: true } }),
     prisma.user.findUnique({ where: { id: input.actorId }, select: { name: true } }),
   ])
 
@@ -80,19 +81,32 @@ export async function sendProjectInvitationNotification(input: {
   }
 
   const projectUrl = `${getAppBaseUrl(input.origin)}/projects/${encodeURIComponent(project.id)}`
-  const info = await sendProjectMail({
-    to: recipient.email,
-    subject: `You were added to ${project.name}`,
-    heading: 'Project invitation',
-    greetingName: recipient.name,
-    bodyHtml: `
+  const subject = `You were added to ${project.name}`
+  const heading = 'Project invitation'
+  const bodyHtml = `
       <p>${escapeHtml(actor?.name || 'A teammate')} added you to <strong>${escapeHtml(project.name)}</strong> in Compass.</p>
-    `,
+    `
+  const info = await queueOrSendProjectNotification({
+    recipient,
+    type: 'PROJECT_INVITATION',
+    projectId: project.id,
+    subject,
+    heading,
+    bodyHtml,
     actionUrl: projectUrl,
     actionLabel: 'Open project in Compass',
+    sendNow: () => sendProjectMail({
+      to: recipient.email!,
+      subject,
+      heading,
+      greetingName: recipient.name,
+      bodyHtml,
+      actionUrl: projectUrl,
+      actionLabel: 'Open project in Compass',
+    }),
   })
 
-  return { success: true, messageId: info.messageId }
+  return { success: true, messageId: info.messageId, queued: info.queued }
 }
 
 export async function sendTaskAssignmentNotification(input: {
@@ -125,7 +139,7 @@ export async function sendTaskAssignmentNotification(input: {
 
   const actorEmail = actor?.email?.trim().toLowerCase()
   const projectUrl = `${getAppBaseUrl(input.origin)}/projects/${encodeURIComponent(task.project.id)}`
-  const results: Array<{ userId: string; email: string; success: boolean; error?: string }> = []
+  const results: Array<{ userId: string; email: string; success: boolean; queued?: boolean; error?: string }> = []
 
   for (const recipient of recipients) {
     const email = recipient.email?.trim()
@@ -133,19 +147,33 @@ export async function sendTaskAssignmentNotification(input: {
 
     try {
       const label = input.context === 'assistant' ? 'added you as an assistant on' : 'assigned you to'
-      await sendProjectMail({
-        to: email,
-        subject: `Compass task: ${task.title}`,
-        heading: input.context === 'assistant' ? 'Task assistant added' : 'Task assigned',
-        greetingName: recipient.name,
-        bodyHtml: `
+      const subject = `Compass task: ${task.title}`
+      const heading = input.context === 'assistant' ? 'Task assistant added' : 'Task assigned'
+      const bodyHtml = `
           <p>${escapeHtml(actor?.name || 'A teammate')} ${label} <strong>${escapeHtml(task.title)}</strong>.</p>
           <p><strong>Project:</strong> ${escapeHtml(task.project.name)}</p>
-        `,
+        `
+      const info = await queueOrSendProjectNotification({
+        recipient,
+        type: input.context === 'assistant' ? 'TASK_ASSISTANT' : 'TASK_ASSIGNMENT',
+        projectId: task.project.id,
+        taskId: task.id,
+        subject,
+        heading,
+        bodyHtml,
         actionUrl: projectUrl,
         actionLabel: 'Open task project',
+        sendNow: () => sendProjectMail({
+          to: email,
+          subject,
+          heading,
+          greetingName: recipient.name,
+          bodyHtml,
+          actionUrl: projectUrl,
+          actionLabel: 'Open task project',
+        }),
       })
-      results.push({ userId: recipient.id, email, success: true })
+      results.push({ userId: recipient.id, email, success: true, ...(info.queued ? { queued: true } : {}) })
     } catch (error) {
       results.push({
         userId: recipient.id,
@@ -174,45 +202,65 @@ export async function sendTaskActivityNotification(input: {
         select: {
           id: true,
           name: true,
-          owner: { select: { email: true } },
+          owner: { select: { id: true, name: true, email: true } },
         },
       },
-      assignee: { select: { name: true, email: true } },
+      assignee: { select: { id: true, name: true, email: true } },
     },
   })
 
   if (!task) return { success: false, skipped: true, reason: 'Task not found' }
 
   const actor = input.actorId
-    ? await prisma.user.findUnique({ where: { id: input.actorId }, select: { email: true } })
+    ? await prisma.user.findUnique({ where: { id: input.actorId }, select: { id: true, email: true } })
     : null
   const actorEmail = actor?.email?.trim().toLowerCase()
-  const recipients = uniqueEmails([task.assignee?.email, task.project.owner.email])
-    .filter((email) => email.toLowerCase() !== actorEmail)
+  const recipientsById = new Map<string, { id: string; name: string | null; email: string | null }>()
+  if (task.assignee?.id) recipientsById.set(task.assignee.id, task.assignee)
+  recipientsById.set(task.project.owner.id, task.project.owner)
+  const recipients = [...recipientsById.values()].filter((recipient) => {
+    const email = recipient.email?.trim().toLowerCase()
+    return email && recipient.id !== actor?.id && email !== actorEmail
+  })
 
   if (recipients.length === 0) {
     return { success: false, skipped: true, reason: 'No notification recipients found' }
   }
 
   const projectUrl = `${getAppBaseUrl(input.origin)}/projects/${encodeURIComponent(task.project.id)}`
-  const results: Array<{ email: string; success: boolean; error?: string }> = []
+  const results: Array<{ email: string; success: boolean; queued?: boolean; error?: string }> = []
 
-  for (const email of recipients) {
+  for (const recipient of recipients) {
+    const email = recipient.email!.trim()
     try {
-      await sendProjectMail({
-        to: email,
-        subject: `Task updated: ${task.title}`,
-        heading: 'Task updated',
-        greetingName: email.toLowerCase() === task.assignee?.email?.trim().toLowerCase() ? task.assignee?.name : null,
-        bodyHtml: `
+      const subject = `Task updated: ${task.title}`
+      const heading = 'Task updated'
+      const bodyHtml = `
           <p>${escapeHtml(input.summary)}</p>
           <p><strong>Project:</strong> ${escapeHtml(task.project.name)}</p>
           <p><strong>Task:</strong> ${escapeHtml(task.title)}</p>
-        `,
+        `
+      const info = await queueOrSendProjectNotification({
+        recipient,
+        type: 'TASK_ACTIVITY',
+        projectId: task.project.id,
+        taskId: task.id,
+        subject,
+        heading,
+        bodyHtml,
         actionUrl: projectUrl,
         actionLabel: 'Open task project',
+        sendNow: () => sendProjectMail({
+          to: email,
+          subject,
+          heading,
+          greetingName: recipient.name,
+          bodyHtml,
+          actionUrl: projectUrl,
+          actionLabel: 'Open task project',
+        }),
       })
-      results.push({ email, success: true })
+      results.push({ email, success: true, ...(info.queued ? { queued: true } : {}) })
     } catch (error) {
       results.push({
         email,
@@ -236,26 +284,32 @@ export async function sendChildTaskCompletedNotification(taskId: string, origin?
         select: {
           id: true,
           title: true,
-          assignee: { select: { name: true, email: true } },
+          assignee: { select: { id: true, name: true, email: true } },
         },
       },
     },
   })
 
   const parentTask = childTask?.parentTask
-  const recipientEmail = parentTask?.assignee?.email?.trim()
-  if (!childTask || !parentTask || !recipientEmail) {
+  const parentAssignee = parentTask?.assignee
+  const recipientEmail = parentAssignee?.email?.trim()
+  if (!childTask || !parentTask || !parentAssignee || !recipientEmail) {
     return { success: false, skipped: true, reason: 'No parent assignee email found' }
   }
 
   const projectUrl = `${getAppBaseUrl(origin)}/projects/${encodeURIComponent(childTask.project.id)}`
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #111827; line-height: 1.5;">
-      <h2 style="color: #2563eb; margin-bottom: 8px;">Child Task Completed</h2>
-      <p>Hi ${escapeHtml(parentTask.assignee?.name || 'there')},</p>
+  const subject = `Child task completed: ${childTask.title}`
+  const heading = 'Child Task Completed'
+  const bodyHtml = `
       <p>The child task <strong>${escapeHtml(childTask.title)}</strong> has been completed.</p>
       <p><strong>Parent task:</strong> ${escapeHtml(parentTask.title)}</p>
       <p><strong>Project:</strong> ${escapeHtml(childTask.project.name)}</p>
+  `
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #111827; line-height: 1.5;">
+      <h2 style="color: #2563eb; margin-bottom: 8px;">Child Task Completed</h2>
+      <p>Hi ${escapeHtml(parentAssignee.name || 'there')},</p>
+      ${bodyHtml}
       <p>
         <a href="${projectUrl}" style="display: inline-block; background: #4f46e5; color: #ffffff; padding: 10px 14px; border-radius: 8px; text-decoration: none;">
           Open project in Compass
@@ -264,11 +318,18 @@ export async function sendChildTaskCompletedNotification(taskId: string, origin?
     </div>
   `
 
-  const info = await sendMail(
-    recipientEmail,
-    `Child task completed: ${childTask.title}`,
-    html
-  )
+  const info = await queueOrSendProjectNotification({
+    recipient: parentAssignee,
+    type: 'CHILD_TASK_COMPLETED',
+    projectId: childTask.project.id,
+    taskId: childTask.id,
+    subject,
+    heading,
+    bodyHtml,
+    actionUrl: projectUrl,
+    actionLabel: 'Open project in Compass',
+    sendNow: () => sendMail(recipientEmail, subject, html),
+  })
 
-  return { success: true, messageId: info.messageId }
+  return { success: true, messageId: info.messageId, queued: info.queued }
 }

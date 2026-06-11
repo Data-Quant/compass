@@ -4,6 +4,7 @@ import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { sendMail } from '@/lib/email'
 import { isAdminRole } from '@/lib/permissions'
+import { queueOrSendProjectNotification } from '@/lib/project-notification-digests'
 import { escapeHtml } from '@/lib/sanitize'
 
 export const runtime = 'nodejs'
@@ -126,16 +127,27 @@ function buildDeadlineReminderEmail(input: {
   today: Date
   tasks: PendingTask[]
 }) {
+  const bodyHtml = buildDeadlineReminderBodyHtml(input)
   return `
     <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #111827; line-height: 1.5;">
       <h2 style="color: #2563eb; margin-bottom: 8px;">Task Deadline Reminder</h2>
       <p>Hi ${escapeHtml(input.assigneeName)},</p>
+      ${bodyHtml}
+    </div>
+  `
+}
+
+function buildDeadlineReminderBodyHtml(input: {
+  appBaseUrl: string
+  today: Date
+  tasks: PendingTask[]
+}) {
+  return `
       <p>You have <strong>${input.tasks.length}</strong> pending Compass task${input.tasks.length === 1 ? '' : 's'} with upcoming or overdue deadlines.</p>
       <ul style="padding-left: 20px; margin: 16px 0;">
         ${buildTaskListHtml(input.tasks, input.appBaseUrl, input.today)}
       </ul>
       <p style="font-size: 13px; color: #6b7280;">This automated reminder is based on task due dates in Compass.</p>
-    </div>
   `
 }
 
@@ -210,27 +222,44 @@ async function runProjectTaskDeadlineReminders(input: {
   }
 
   const appBaseUrl = getAppBaseUrl(input.origin)
-  const results: Array<{ userId: string; email: string; success: boolean; taskCount: number; error?: string }> = []
+  const results: Array<{ userId: string; email: string; success: boolean; queued?: boolean; taskCount: number; error?: string }> = []
 
   for (const group of tasksByAssignee.values()) {
     const email = group.assignee.email?.trim()
     if (!email) continue
 
     try {
-      await sendMail(
-        email,
-        `Compass task deadlines: ${group.tasks.length} pending`,
-        buildDeadlineReminderEmail({
-          assigneeName: group.assignee.name,
-          appBaseUrl,
-          today,
-          tasks: group.tasks,
-        })
-      )
+      const subject = `Compass task deadlines: ${group.tasks.length} pending`
+      const bodyHtml = buildDeadlineReminderBodyHtml({
+        appBaseUrl,
+        today,
+        tasks: group.tasks,
+      })
+      const info = await queueOrSendProjectNotification({
+        recipient: group.assignee,
+        type: 'TASK_DEADLINE_REMINDER',
+        subject,
+        heading: 'Task Deadline Reminder',
+        bodyHtml,
+        actionUrl: `${appBaseUrl}/projects`,
+        actionLabel: 'Open projects in Compass',
+        dedupeKey: `task-deadline:${group.assignee.id}:${today.toISOString().slice(0, 10)}:${daysBeforeDue}:${includeOverdue ? 'with-overdue' : 'upcoming-only'}`,
+        sendNow: () => sendMail(
+          email,
+          subject,
+          buildDeadlineReminderEmail({
+            assigneeName: group.assignee.name,
+            appBaseUrl,
+            today,
+            tasks: group.tasks,
+          })
+        ),
+      })
       results.push({
         userId: group.assignee.id,
         email,
         success: true,
+        queued: Boolean(info.queued),
         taskCount: group.tasks.length,
       })
     } catch (error) {

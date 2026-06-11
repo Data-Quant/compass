@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -26,6 +27,8 @@ import {
   Eye,
   EyeOff,
   Palette,
+  Bell,
+  Clock,
 } from 'lucide-react'
 import {
   SKIN_TONES,
@@ -48,6 +51,16 @@ import {
 } from '@/shared/avatar-v2'
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const WEEKDAYS = [
+  { value: '0', label: 'Sunday' },
+  { value: '1', label: 'Monday' },
+  { value: '2', label: 'Tuesday' },
+  { value: '3', label: 'Wednesday' },
+  { value: '4', label: 'Thursday' },
+  { value: '5', label: 'Friday' },
+  { value: '6', label: 'Saturday' },
+] as const
+type DigestFrequency = 'HOURLY' | 'DAILY' | 'WEEKLY'
 
 // ─── Avatar Preview Drawing (matches OfficeSprites.ts character renderer) ────
 
@@ -191,6 +204,12 @@ export default function ProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [savingPassword, setSavingPassword] = useState(false)
+  const [loadingNotifications, setLoadingNotifications] = useState(true)
+  const [savingNotifications, setSavingNotifications] = useState(false)
+  const [digestEnabled, setDigestEnabled] = useState(false)
+  const [digestFrequency, setDigestFrequency] = useState<DigestFrequency>('DAILY')
+  const [digestTime, setDigestTime] = useState('09:00')
+  const [digestWeekday, setDigestWeekday] = useState('1')
 
   // Avatar state (v2 only)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -222,6 +241,31 @@ export default function ProfilePage() {
       setAvatarAccessories(Array.isArray(user.avatarAccessories) ? (user.avatarAccessories as AvatarAccessory[]) : [])
     }
   }, [user])
+
+  useEffect(() => {
+    let active = true
+    async function loadNotificationPreferences() {
+      setLoadingNotifications(true)
+      try {
+        const res = await fetch('/api/projects/notification-preferences')
+        const data = await res.json()
+        if (!active) return
+        const preference = data.preference
+        if (preference) {
+          setDigestEnabled(Boolean(preference.digestEnabled))
+          setDigestFrequency((preference.digestFrequency || 'DAILY') as DigestFrequency)
+          setDigestTime(preference.digestTime || '09:00')
+          setDigestWeekday(String(preference.digestWeekday ?? 1))
+        }
+      } catch {
+        if (active) toast.error('Failed to load notification preferences')
+      } finally {
+        if (active) setLoadingNotifications(false)
+      }
+    }
+    loadNotificationPreferences()
+    return () => { active = false }
+  }, [])
 
   // Redraw avatar preview when any avatar setting changes (v2 only).
   const redrawAvatar = useCallback(() => {
@@ -359,6 +403,31 @@ export default function ProfilePage() {
     }
   }
 
+  const handleNotificationSave = async () => {
+    setSavingNotifications(true)
+    try {
+      const res = await fetch('/api/projects/notification-preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          digestEnabled,
+          digestFrequency,
+          digestTime,
+          digestWeekday: Number(digestWeekday),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to save notification preferences')
+      }
+      toast.success('Notification preferences saved')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to save notification preferences')
+    } finally {
+      setSavingNotifications(false)
+    }
+  }
+
   return (
     <div className="p-6 sm:p-8 max-w-2xl mx-auto">
       {/* Header */}
@@ -445,6 +514,85 @@ export default function ProfilePage() {
                 {savingProfile ? 'Saving...' : 'Save Contact Details'}
               </Button>
             </form>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Project Notification Preferences */}
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
+        <Card className="mb-6">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <Bell className="h-5 w-5 text-primary" />
+                <div>
+                  <h3 className="text-lg font-semibold text-foreground">Project Notifications</h3>
+                  <p className="text-sm text-muted-foreground">Bundle project emails into a scheduled digest.</p>
+                </div>
+              </div>
+              <Switch
+                checked={digestEnabled}
+                onCheckedChange={setDigestEnabled}
+                disabled={loadingNotifications || savingNotifications}
+                aria-label="Bundle project notification emails"
+              />
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <Label>Frequency</Label>
+                <Select value={digestFrequency} onValueChange={(value) => setDigestFrequency(value as DigestFrequency)} disabled={!digestEnabled}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="HOURLY">Hourly</SelectItem>
+                    <SelectItem value="DAILY">Daily</SelectItem>
+                    <SelectItem value="WEEKLY">Weekly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="digest-time">Delivery time</Label>
+                <div className="relative mt-1">
+                  <Clock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="digest-time"
+                    type="time"
+                    value={digestTime}
+                    onChange={(e) => setDigestTime(e.target.value)}
+                    disabled={!digestEnabled}
+                    className="pl-9"
+                  />
+                </div>
+              </div>
+
+              {digestFrequency === 'WEEKLY' && (
+                <div>
+                  <Label>Day</Label>
+                  <Select value={digestWeekday} onValueChange={setDigestWeekday} disabled={!digestEnabled}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {WEEKDAYS.map((day) => (
+                        <SelectItem key={day.value} value={day.value}>{day.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5 flex flex-col sm:flex-row sm:items-center gap-3 border-t border-border pt-4">
+              <Button type="button" onClick={handleNotificationSave} disabled={loadingNotifications || savingNotifications}>
+                {savingNotifications ? 'Saving...' : 'Save Notification Settings'}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Times are scheduled in Asia/Karachi. Hourly digests use the minute from the selected time.
+              </p>
+            </div>
           </CardContent>
         </Card>
       </motion.div>

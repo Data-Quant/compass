@@ -318,6 +318,8 @@ model User {
   taskAssistancesAssigned TaskAssistant[]         @relation("TaskAssistantAssignedBy")
   taskComments            TaskComment[]           @relation("TaskCommentAuthor")
   taskActivities          TaskActivity[]          @relation("TaskActivityActor")
+  projectNotificationPreference ProjectNotificationPreference?
+  projectNotificationDigestItems ProjectNotificationDigestItem[] @relation("ProjectNotificationDigestRecipient")
   teamLeadPositions       Position[]              @relation("PositionTeamLead")
   newHiresAsTeamLead      NewHire[]               @relation("NewHireTeamLead")
   newHiresAsBuddy         NewHire[]               @relation("NewHireBuddy")
@@ -1586,6 +1588,12 @@ enum TaskPriority {
   URGENT
 }
 
+enum ProjectNotificationDigestFrequency {
+  HOURLY
+  DAILY
+  WEEKLY
+}
+
 model Project {
   id          String        @id @default(cuid())
   name        String
@@ -1720,6 +1728,48 @@ model TaskActivity {
   @@index([taskId])
   @@index([actorId])
   @@index([createdAt])
+}
+
+model ProjectNotificationPreference {
+  id              String                             @id @default(cuid())
+  userId          String                             @unique
+  digestEnabled   Boolean                            @default(false)
+  digestFrequency ProjectNotificationDigestFrequency @default(DAILY)
+  digestTime      String                             @default("09:00")
+  digestWeekday   Int                                @default(1)
+  digestTimezone  String                             @default("Asia/Karachi")
+  lastDigestSentAt DateTime?
+  nextDigestAt    DateTime?
+  createdAt       DateTime                           @default(now())
+  updatedAt       DateTime                           @updatedAt
+
+  user            User                               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([digestEnabled, nextDigestAt])
+}
+
+model ProjectNotificationDigestItem {
+  id          String    @id @default(cuid())
+  recipientId String
+  projectId   String?
+  taskId      String?
+  type        String
+  subject     String
+  heading     String
+  bodyHtml    String
+  actionUrl   String?
+  actionLabel String?
+  dedupeKey   String?   @unique
+  sentAt      DateTime?
+  skippedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  recipient   User      @relation("ProjectNotificationDigestRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, sentAt, skippedAt, createdAt])
+  @@index([sentAt, skippedAt, createdAt])
+  @@index([projectId])
+  @@index([taskId])
 }
 
 model TaskLabel {

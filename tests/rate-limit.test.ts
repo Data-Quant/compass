@@ -12,11 +12,11 @@ test('normalizeClientIp strips IPv4 port suffix', () => {
   assert.equal(ip, '198.51.100.5')
 })
 
-test('checkRateLimit blocks after max attempts per key', () => {
+test('checkRateLimit blocks after max attempts per key', async () => {
   const key = `tests:${Date.now()}:${Math.random()}`
-  const first = checkRateLimit(key, 2)
-  const second = checkRateLimit(key, 2)
-  const third = checkRateLimit(key, 2)
+  const first = await checkRateLimit(key, 2)
+  const second = await checkRateLimit(key, 2)
+  const third = await checkRateLimit(key, 2)
 
   assert.equal(first.allowed, true)
   assert.equal(second.allowed, true)

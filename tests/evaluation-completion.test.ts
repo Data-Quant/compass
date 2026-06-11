@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   buildEvaluationPairKey,
+  buildAssignmentTripleKey,
   calculateWeightedEvaluationCompletion,
   collapseAssignmentRequirementsByPool,
   filterPooledRelationshipEvaluations,
@@ -132,7 +133,7 @@ test('non-HR pooled filtering leaves other relationship types untouched', () => 
 })
 
 test('partial submitted rows do not mark a non-HR evaluation complete', () => {
-  const submittedCounts = new Map([[buildEvaluationPairKey('peer-a', 'imam'), 8]])
+  const submittedCounts = new Map([[buildAssignmentTripleKey('peer-a', 'imam', 'PEER'), 8]])
 
   const state = getAssignmentCompletionState({
     assignment: {
