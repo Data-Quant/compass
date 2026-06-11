@@ -317,6 +317,7 @@ model User {
   taskAssistances         TaskAssistant[]         @relation("TaskAssistantUser")
   taskAssistancesAssigned TaskAssistant[]         @relation("TaskAssistantAssignedBy")
   taskComments            TaskComment[]           @relation("TaskCommentAuthor")
+  taskActivities          TaskActivity[]          @relation("TaskActivityActor")
   teamLeadPositions       Position[]              @relation("PositionTeamLead")
   newHiresAsTeamLead      NewHire[]               @relation("NewHireTeamLead")
   newHiresAsBuddy         NewHire[]               @relation("NewHireBuddy")
@@ -1645,6 +1646,7 @@ model Task {
   assignee    User?        @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   assistants  TaskAssistant[]
   comments    TaskComment[]
+  activities   TaskActivity[]
   labelAssignments TaskLabelAssignment[]
 
   @@index([projectId])
@@ -1676,6 +1678,10 @@ model TaskSection {
   id         String   @id @default(cuid())
   projectId  String
   name       String
+  color      String   @default("#6366f1")
+  canonicalStatus TaskStatus @default(IN_PROGRESS)
+  isDefault  Boolean  @default(false)
+  isDone     Boolean  @default(false)
   orderIndex Int      @default(0)
   createdAt  DateTime @default(now())
 
@@ -1697,6 +1703,23 @@ model TaskComment {
 
   @@index([taskId])
   @@index([authorId])
+}
+
+model TaskActivity {
+  id        String   @id @default(cuid())
+  taskId    String
+  actorId   String?
+  summary   String
+  kind      String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  actor     User?    @relation("TaskActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([taskId])
+  @@index([actorId])
+  @@index([createdAt])
 }
 
 model TaskLabel {

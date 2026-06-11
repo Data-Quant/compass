@@ -9,7 +9,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import {
   X, Trash2, Calendar as CalendarIcon, Flag, Tag, Users, MessageSquare,
-  Send, FolderOpen, ChevronDown, Check, GitBranch, Plus, UserRoundCheck
+  Send, ChevronDown, Check, GitBranch, Plus, UserRoundCheck, Image as ImageIcon,
+  History, Loader2
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -32,9 +33,14 @@ interface TaskUser {
   name: string
 }
 
-interface Section {
+export interface ProjectStatusSection {
   id: string
   name: string
+  color: string
+  canonicalStatus: 'TODO' | 'IN_PROGRESS' | 'DONE'
+  isDefault: boolean
+  isDone: boolean
+  orderIndex: number
 }
 
 interface Comment {
@@ -42,6 +48,14 @@ interface Comment {
   content: string
   createdAt: string
   author: TaskUser
+}
+
+interface TaskActivity {
+  id: string
+  summary: string
+  kind: string
+  createdAt: string
+  actor: TaskUser | null
 }
 
 interface ParentTaskSummary {
@@ -58,8 +72,10 @@ interface ChildTaskSummary {
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
   assigneeId: string | null
   dueDate: string | null
+  sectionId: string | null
   parentTaskId: string | null
   assignee: TaskUser | null
+  section?: Pick<ProjectStatusSection, 'id' | 'name' | 'color' | 'canonicalStatus' | 'isDone'> | null
   _count: { comments: number }
 }
 
@@ -79,7 +95,7 @@ export interface PanelTask {
   startDate: string | null
   dueDate: string | null
   sectionId: string | null
-  section: Section | null
+  section: ProjectStatusSection | null
   orderIndex: number
   parentTaskId?: string | null
   parentTask?: ParentTaskSummary | null
@@ -93,7 +109,7 @@ interface TaskDetailPanelProps {
   task: PanelTask | null
   projectId: string
   members: { id: string; name: string; role: string }[]
-  sections: Section[]
+  sections: ProjectStatusSection[]
   labels: Label[]
   open: boolean
   onClose: () => void
@@ -114,6 +130,12 @@ const STATUS_CONFIG: Record<string, { color: string; label: string; bg: string }
   TODO: { color: 'text-slate-400', bg: 'bg-slate-400/10', label: 'To Do' },
   IN_PROGRESS: { color: 'text-blue-400', bg: 'bg-blue-400/10', label: 'In Progress' },
   DONE: { color: 'text-emerald-400', bg: 'bg-emerald-400/10', label: 'Done' },
+}
+
+const STATUS_HEX: Record<string, string> = {
+  TODO: '#94a3b8',
+  IN_PROGRESS: '#60a5fa',
+  DONE: '#22c55e',
 }
 
 function toLocalDateValue(date: Date) {
@@ -138,6 +160,56 @@ function formatTaskDate(value: string | null | undefined) {
     day: 'numeric',
     year: 'numeric',
   })
+}
+
+function statusLabelForTask(task: Pick<PanelTask, 'status' | 'section'>) {
+  return task.section?.name || STATUS_CONFIG[task.status]?.label || task.status
+}
+
+function statusColorForSection(section: ProjectStatusSection | Pick<ProjectStatusSection, 'color' | 'canonicalStatus'> | null | undefined, status?: string) {
+  return section?.color || STATUS_HEX[section?.canonicalStatus || status || 'IN_PROGRESS'] || STATUS_HEX.IN_PROGRESS
+}
+
+function appendMarkdownImage(content: string, url: string) {
+  const prefix = content.trim() ? `${content.trimEnd()}\n\n` : ''
+  return `${prefix}![image](${url})`
+}
+
+function RichTextContent({ content }: { content: string }) {
+  const imageRegex = /!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g
+  const nodes: React.ReactNode[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  while ((match = imageRegex.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(
+        <span key={`text-${lastIndex}`} className="whitespace-pre-wrap">
+          {content.slice(lastIndex, match.index)}
+        </span>
+      )
+    }
+    nodes.push(
+      <img
+        key={`image-${match.index}`}
+        src={match[2]}
+        alt={match[1] || 'Task image'}
+        loading="lazy"
+        className="my-2 max-h-72 max-w-full rounded-lg border border-border/50 object-contain"
+      />
+    )
+    lastIndex = imageRegex.lastIndex
+  }
+
+  if (lastIndex < content.length) {
+    nodes.push(
+      <span key={`text-${lastIndex}`} className="whitespace-pre-wrap">
+        {content.slice(lastIndex)}
+      </span>
+    )
+  }
+
+  return <div className="text-sm text-muted-foreground/80">{nodes}</div>
 }
 
 /* ─── Dropdown Helper ─────────────────────────────────────────────────── */
@@ -193,14 +265,18 @@ export function TaskDetailPanel({
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [comments, setComments] = useState<Comment[]>([])
+  const [activities, setActivities] = useState<TaskActivity[]>([])
   const [newComment, setNewComment] = useState('')
   const [newChildTitle, setNewChildTitle] = useState('')
   const [loadingComments, setLoadingComments] = useState(false)
+  const [loadingActivities, setLoadingActivities] = useState(false)
   const [saving, setSaving] = useState(false)
   const [creatingChild, setCreatingChild] = useState(false)
+  const [uploadingImage, setUploadingImage] = useState<'description' | 'comment' | null>(null)
   const [dueDateOpen, setDueDateOpen] = useState(false)
   const titleRef = useRef<HTMLInputElement>(null)
-  const saveTimeout = useRef<NodeJS.Timeout | null>(null)
+  const descriptionImageInputRef = useRef<HTMLInputElement>(null)
+  const commentImageInputRef = useRef<HTMLInputElement>(null)
 
   // Reset state when task changes
   useEffect(() => {
@@ -210,6 +286,7 @@ export function TaskDetailPanel({
       setNewChildTitle('')
       setDueDateOpen(false)
       loadComments(task.id)
+      loadActivities(task.id)
     }
   }, [task?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -223,6 +300,16 @@ export function TaskDetailPanel({
     setLoadingComments(false)
   }
 
+  const loadActivities = async (taskId: string) => {
+    setLoadingActivities(true)
+    try {
+      const res = await fetch(`/api/projects/${projectId}/task-activities?taskId=${taskId}`)
+      const data = await res.json()
+      setActivities(data.activities || [])
+    } catch { /* ignore */ }
+    setLoadingActivities(false)
+  }
+
   const updateTask = useCallback(async (updates: Record<string, any>) => {
     if (!task) return
     setSaving(true)
@@ -233,7 +320,10 @@ export function TaskDetailPanel({
         body: JSON.stringify({ taskId: task.id, ...updates }),
       })
       const data = await res.json()
-      if (data.success) onTaskUpdate(data.task)
+      if (data.success) {
+        onTaskUpdate(data.task)
+        void loadActivities(task.id)
+      }
     } catch {
       toast.error('Failed to update task')
     }
@@ -279,9 +369,42 @@ export function TaskDetailPanel({
       if (data.success) {
         setComments((prev) => [...prev, data.comment])
         setNewComment('')
+        void loadActivities(task.id)
       }
     } catch {
       toast.error('Failed to post comment')
+    }
+  }
+
+  const uploadImage = async (file: File | undefined, target: 'description' | 'comment') => {
+    if (!file || !task) return
+    try {
+      setUploadingImage(target)
+      const formData = new FormData()
+      formData.set('projectId', projectId)
+      formData.set('file', file)
+      const res = await fetch('/api/projects/images', {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (!res.ok || !data.url) {
+        throw new Error(data.error || 'Failed to upload image')
+      }
+
+      if (target === 'description') {
+        const nextDescription = appendMarkdownImage(description, data.url)
+        setDescription(nextDescription)
+        await updateTask({ description: nextDescription })
+      } else {
+        setNewComment((prev) => appendMarkdownImage(prev, data.url))
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to upload image')
+    } finally {
+      setUploadingImage(null)
+      if (descriptionImageInputRef.current) descriptionImageInputRef.current.value = ''
+      if (commentImageInputRef.current) commentImageInputRef.current.value = ''
     }
   }
 
@@ -319,7 +442,6 @@ export function TaskDetailPanel({
           title: newChildTitle.trim(),
           parentTaskId: task.id,
           sectionId: task.sectionId,
-          status: 'TODO',
         }),
       })
       const data = await res.json()
@@ -399,27 +521,35 @@ export function TaskDetailPanel({
             <FieldRow icon={<Check className="w-4 h-4" />} label="Status">
               <Dropdown
                 trigger={
-                  <span className={cn(
-                    'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-sm font-medium',
-                    STATUS_CONFIG[task.status].bg, STATUS_CONFIG[task.status].color
-                  )}>
-                    {STATUS_CONFIG[task.status].label}
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm font-medium"
+                    style={{
+                      backgroundColor: `${statusColorForSection(task.section, task.status)}22`,
+                      color: statusColorForSection(task.section, task.status),
+                    }}
+                  >
+                    <span
+                      className="h-2 w-2 rounded-full"
+                      style={{ backgroundColor: statusColorForSection(task.section, task.status) }}
+                    />
+                    {statusLabelForTask(task)}
                     <ChevronDown className="w-3 h-3 opacity-60" />
                   </span>
                 }
               >
-                <div className="p-1">
-                  {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
+                <div className="max-h-56 overflow-y-auto p-1">
+                  {sections.map((section) => (
                     <button
-                      key={key}
-                      onClick={() => updateTask({ status: key })}
+                      key={section.id}
+                      onClick={() => updateTask({ sectionId: section.id })}
                       className={cn(
                         'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors',
-                        task.status === key && 'bg-muted/50'
+                        task.sectionId === section.id && 'bg-muted/50'
                       )}
                     >
-                      <span className={cn('w-2 h-2 rounded-full', cfg.color.replace('text-', 'bg-'))} />
-                      {cfg.label}
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: section.color }} />
+                      <span className="flex-1 text-left">{section.name}</span>
+                      {section.isDone && <Check className="w-3.5 h-3.5 text-emerald-400" />}
                     </button>
                   ))}
                 </div>
@@ -604,41 +734,6 @@ export function TaskDetailPanel({
               </Dropdown>
             </FieldRow>
 
-            {/* Section */}
-            {sections.length > 0 && (
-              <FieldRow icon={<FolderOpen className="w-4 h-4" />} label="Section">
-                <Dropdown
-                  trigger={
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-sm hover:bg-muted/30 transition-colors">
-                      {task.section?.name || <span className="text-muted-foreground">None</span>}
-                      <ChevronDown className="w-3 h-3 opacity-60" />
-                    </span>
-                  }
-                >
-                  <div className="p-1">
-                    <button
-                      onClick={() => updateTask({ sectionId: null })}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors text-muted-foreground"
-                    >
-                      None
-                    </button>
-                    {sections.map((s) => (
-                      <button
-                        key={s.id}
-                        onClick={() => updateTask({ sectionId: s.id })}
-                        className={cn(
-                          'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors',
-                          task.sectionId === s.id && 'bg-muted/50'
-                        )}
-                      >
-                        {s.name}
-                      </button>
-                    ))}
-                  </div>
-                </Dropdown>
-              </FieldRow>
-            )}
-
             {/* Labels */}
             {labels.length > 0 && (
               <FieldRow icon={<Tag className="w-4 h-4" />} label="Labels">
@@ -722,7 +817,8 @@ export function TaskDetailPanel({
                   <p className="text-sm text-muted-foreground/60 py-1">No child tasks yet.</p>
                 ) : (
                   childTasks.map((child) => {
-                    const status = STATUS_CONFIG[child.status]
+                    const status = STATUS_CONFIG[child.status] || STATUS_CONFIG.IN_PROGRESS
+                    const childStatusColor = statusColorForSection(child.section, child.status)
                     return (
                       <button
                         key={child.id}
@@ -731,7 +827,7 @@ export function TaskDetailPanel({
                         className="w-full rounded-lg border border-border/40 bg-muted/10 px-3 py-2 text-left transition-colors hover:bg-muted/30"
                       >
                         <div className="flex items-start gap-2">
-                          <span className={cn('mt-1.5 h-2 w-2 rounded-full shrink-0', status.color.replace('text-', 'bg-'))} />
+                          <span className="mt-1.5 h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: childStatusColor }} />
                           <div className="min-w-0 flex-1">
                             <p className={cn(
                               'text-sm font-medium truncate',
@@ -740,7 +836,7 @@ export function TaskDetailPanel({
                               {child.title}
                             </p>
                             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                              <span>{status.label}</span>
+                              <span>{child.section?.name || status.label}</span>
                               {child.assignee && (
                                 <span className="inline-flex items-center gap-1">
                                   <UserAvatar name={child.assignee.name} size="xs" />
@@ -794,7 +890,25 @@ export function TaskDetailPanel({
 
           {/* Description */}
           <div className="px-5 py-4">
-            <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Description</h4>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Description</h4>
+              <button
+                type="button"
+                onClick={() => descriptionImageInputRef.current?.click()}
+                disabled={uploadingImage === 'description'}
+                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {uploadingImage === 'description' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageIcon className="h-3.5 w-3.5" />}
+                Image
+              </button>
+              <input
+                ref={descriptionImageInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(event) => void uploadImage(event.target.files?.[0], 'description')}
+              />
+            </div>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -803,6 +917,11 @@ export function TaskDetailPanel({
               className="w-full min-h-[80px] bg-muted/20 rounded-lg p-3 text-sm border border-border/30 outline-none resize-y placeholder:text-muted-foreground/40 focus:border-primary/30 transition-colors"
               rows={3}
             />
+            {description.trim() && (
+              <div className="mt-3 rounded-lg border border-border/30 bg-muted/10 p-3">
+                <RichTextContent content={description} />
+              </div>
+            )}
           </div>
 
           {/* Divider */}
@@ -834,7 +953,9 @@ export function TaskDetailPanel({
                           {new Date(c.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
-                      <p className="text-sm text-muted-foreground/80 mt-0.5">{c.content}</p>
+                      <div className="mt-0.5">
+                        <RichTextContent content={c.content} />
+                      </div>
                     </div>
                   </div>
                 ))
@@ -843,16 +964,38 @@ export function TaskDetailPanel({
 
             {/* New comment */}
             <div className="flex items-start gap-2">
-              <textarea
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); postComment() }
-                }}
-                placeholder="Write a comment..."
-                className="flex-1 bg-muted/20 rounded-lg p-2.5 text-sm border border-border/30 outline-none resize-none placeholder:text-muted-foreground/40 focus:border-primary/30 transition-colors"
-                rows={2}
+              <div className="min-w-0 flex-1">
+                <textarea
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); postComment() }
+                  }}
+                  placeholder="Write a comment..."
+                  className="w-full bg-muted/20 rounded-lg p-2.5 text-sm border border-border/30 outline-none resize-none placeholder:text-muted-foreground/40 focus:border-primary/30 transition-colors"
+                  rows={2}
+                />
+                {newComment.trim() && (
+                  <div className="mt-2 rounded-lg border border-border/30 bg-muted/10 p-2.5">
+                    <RichTextContent content={newComment} />
+                  </div>
+                )}
+              </div>
+              <input
+                ref={commentImageInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(event) => void uploadImage(event.target.files?.[0], 'comment')}
               />
+              <button
+                onClick={() => commentImageInputRef.current?.click()}
+                disabled={uploadingImage === 'comment'}
+                className="p-2.5 rounded-lg bg-muted/30 text-muted-foreground hover:bg-muted/50 hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                title="Add image"
+              >
+                {uploadingImage === 'comment' ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />}
+              </button>
               <button
                 onClick={postComment}
                 disabled={!newComment.trim()}
@@ -861,6 +1004,42 @@ export function TaskDetailPanel({
                 <Send className="w-4 h-4" />
               </button>
             </div>
+          </div>
+
+          {/* Divider */}
+          <div className="mx-5 border-t border-border/40" />
+
+          {/* Activity */}
+          <div className="px-5 py-4">
+            <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+              <History className="w-3.5 h-3.5" />
+              Activity
+            </h4>
+            {loadingActivities ? (
+              <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
+                <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                Loading...
+              </div>
+            ) : activities.length === 0 ? (
+              <p className="text-sm text-muted-foreground/60 py-1">No activity yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {activities.map((activity) => (
+                  <div key={activity.id} className="rounded-lg border border-border/30 bg-muted/10 px-3 py-2">
+                    <p className="text-sm text-foreground/90">{activity.summary}</p>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground">
+                      {new Date(activity.createdAt).toLocaleString(undefined, {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </SheetContent>

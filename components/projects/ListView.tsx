@@ -16,20 +16,13 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { SectionGroup } from './SectionGroup'
-import type { PanelTask } from './TaskDetailPanel'
+import type { PanelTask, ProjectStatusSection } from './TaskDetailPanel'
 import { TaskRow } from './TaskRow'
-import { getTaskStatusForSectionName } from '@/lib/project-task-utils'
-
-interface Section {
-  id: string
-  name: string
-  orderIndex: number
-}
 
 interface ListViewProps {
   projectId: string
   tasks: PanelTask[]
-  sections: Section[]
+  sections: ProjectStatusSection[]
   onTaskClick: (task: PanelTask) => void
   onTasksChange: () => void
 }
@@ -63,8 +56,7 @@ export function ListView({ projectId, tasks, sections, onTaskClick, onTasksChang
   const sectionStatusById = useMemo(() => {
     const map = new Map<string, PanelTask['status']>()
     for (const section of sections) {
-      const status = getTaskStatusForSectionName(section.name)
-      if (status) map.set(section.id, status)
+      map.set(section.id, section.canonicalStatus)
     }
     return map
   }, [sections])
@@ -102,8 +94,11 @@ export function ListView({ projectId, tasks, sections, onTaskClick, onTasksChang
       const task = prev.find((item) => item.id === activeTaskId)
       if (!task) return prev
 
+      const targetSection = targetSectionId
+        ? sections.find((section) => section.id === targetSectionId) || null
+        : null
       const targetStatus = targetSectionId
-        ? sectionStatusById.get(targetSectionId) || task.status
+        ? targetSection?.canonicalStatus || sectionStatusById.get(targetSectionId) || task.status
         : task.status
 
       if (task.sectionId === targetSectionId && task.status === targetStatus) {
@@ -112,7 +107,7 @@ export function ListView({ projectId, tasks, sections, onTaskClick, onTasksChang
 
       return prev.map((item) =>
         item.id === activeTaskId
-          ? { ...item, sectionId: targetSectionId, status: targetStatus }
+          ? { ...item, sectionId: targetSectionId, section: targetSection, status: targetStatus }
           : item
       )
     })
@@ -162,13 +157,11 @@ export function ListView({ projectId, tasks, sections, onTaskClick, onTasksChang
   }
 
   const handleAddTask = async (title: string, sectionId: string | null) => {
-    const status = sectionId ? sectionStatusById.get(sectionId) : undefined
-
     try {
       const res = await fetch(`/api/projects/${projectId}/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, sectionId, ...(status ? { status } : {}) }),
+        body: JSON.stringify({ title, sectionId }),
       })
       const data = await res.json()
       if (data.success) {
@@ -261,7 +254,7 @@ export function ListView({ projectId, tasks, sections, onTaskClick, onTasksChang
             tasks={section.tasks}
             onTaskClick={onTaskClick}
             onAddTask={handleAddTask}
-            onDeleteSection={handleDeleteSection}
+            onDeleteSection={section.isDefault ? undefined : handleDeleteSection}
             onRenameSection={handleRenameSection}
             containerId={getSectionContainerId(section.id)}
           />
@@ -280,7 +273,7 @@ export function ListView({ projectId, tasks, sections, onTaskClick, onTasksChang
               if (e.key === 'Escape') { setShowSectionInput(false); setAddingSectionName('') }
             }}
             onBlur={handleAddSection}
-            placeholder="Section name"
+            placeholder="Status name"
             className="flex-1 bg-transparent border-b border-primary/40 outline-none text-sm font-semibold py-1 placeholder:text-muted-foreground/40"
           />
         </div>
@@ -290,7 +283,7 @@ export function ListView({ projectId, tasks, sections, onTaskClick, onTasksChang
           className="flex items-center gap-2 px-4 py-2.5 text-sm text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/20 rounded-lg transition-colors w-full"
         >
           <Plus className="w-4 h-4" />
-          Add section
+          Add status
         </button>
       )}
       </div>

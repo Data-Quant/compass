@@ -103,13 +103,15 @@ export function SectionGroup({
               >
                 <Pencil className="w-3.5 h-3.5" />
               </button>
-              <button
-                onClick={() => onDeleteSection?.(sectionId)}
-                className="p-1 rounded hover:bg-red-400/10 text-muted-foreground hover:text-red-400 transition-colors"
-                title="Delete section"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+              {onDeleteSection && (
+                <button
+                  onClick={() => onDeleteSection(sectionId)}
+                  className="p-1 rounded hover:bg-red-400/10 text-muted-foreground hover:text-red-400 transition-colors"
+                  title="Delete status"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
             </>
           )}
         </div>

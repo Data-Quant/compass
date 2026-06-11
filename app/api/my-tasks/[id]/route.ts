@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { sendChildTaskCompletedNotification } from '@/lib/project-task-notifications'
+import { recordTaskActivity } from '@/lib/project-task-activity'
+import {
+  ensureProjectStatusSections,
+  getTaskStatusForSection,
+  resolveTaskStatusSection,
+} from '@/lib/project-status-sections'
 
 export async function PATCH(
   request: NextRequest,
@@ -16,7 +22,17 @@ export async function PATCH(
 
     const task = await prisma.task.findUnique({
       where: { id },
-      select: { id: true, assigneeId: true, status: true, parentTaskId: true, startDate: true, dueDate: true },
+      select: {
+        id: true,
+        projectId: true,
+        assigneeId: true,
+        status: true,
+        parentTaskId: true,
+        startDate: true,
+        dueDate: true,
+        sectionId: true,
+        section: { select: { name: true } },
+      },
     })
 
     if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 })
@@ -51,12 +67,23 @@ export async function PATCH(
     }
 
     const updateData: Record<string, any> = {}
-    if (body.status !== undefined) updateData.status = body.status
+    let nextSection: Awaited<ReturnType<typeof resolveTaskStatusSection>> | null = null
+    if (body.status !== undefined) {
+      await ensureProjectStatusSections(task.projectId)
+      nextSection = await resolveTaskStatusSection({
+        projectId: task.projectId,
+        status: body.status,
+        fallbackStatus: body.status,
+      })
+      if (!nextSection) return NextResponse.json({ error: 'Invalid status section' }, { status: 400 })
+      const nextStatus = getTaskStatusForSection(nextSection)
+      updateData.status = nextStatus
+      updateData.sectionId = nextSection.id
+      updateData.completedAt = nextStatus === 'DONE' ? new Date() : null
+    }
     if (body.priority !== undefined) updateData.priority = body.priority
     if (body.startDate !== undefined) updateData.startDate = effectiveStart
     if (body.dueDate !== undefined) updateData.dueDate = effectiveDue
-    if (body.status === 'DONE') updateData.completedAt = new Date()
-    if (body.status && body.status !== 'DONE') updateData.completedAt = null
 
     const updatedTask = await prisma.task.update({
       where: { id },
@@ -64,7 +91,7 @@ export async function PATCH(
       include: {
         project: { select: { id: true, name: true, color: true } },
         assignee: { select: { id: true, name: true } },
-        section: { select: { id: true, name: true } },
+        section: { select: { id: true, name: true, color: true, canonicalStatus: true, isDefault: true, isDone: true, orderIndex: true } },
         parentTask: {
           select: {
             id: true,
@@ -82,7 +109,30 @@ export async function PATCH(
       },
     })
 
-    if (body.status === 'DONE' && task.status !== 'DONE' && task.parentTaskId) {
+    const actorName = sessionUser.name || 'Someone'
+    if (body.status !== undefined && (updatedTask.sectionId !== task.sectionId || updatedTask.status !== task.status)) {
+      await recordTaskActivity({
+        taskId: task.id,
+        actorId: sessionUser.id,
+        summary: `${actorName} moved the task to ${updatedTask.section?.name || updatedTask.status}`,
+        kind: 'status',
+        origin: request.nextUrl.origin,
+      })
+    }
+    if (body.dueDate !== undefined && (task.dueDate?.toISOString().slice(0, 10) || null) !== (updatedTask.dueDate?.toISOString().slice(0, 10) || null)) {
+      const dueLabel = updatedTask.dueDate
+        ? updatedTask.dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        : 'no deadline'
+      await recordTaskActivity({
+        taskId: task.id,
+        actorId: sessionUser.id,
+        summary: `${actorName} changed the deadline to ${dueLabel}`,
+        kind: 'dueDate',
+        origin: request.nextUrl.origin,
+      })
+    }
+
+    if (updatedTask.status === 'DONE' && task.status !== 'DONE' && task.parentTaskId) {
       try {
         await sendChildTaskCompletedNotification(task.id, request.nextUrl.origin)
       } catch (notificationError) {

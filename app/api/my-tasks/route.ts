@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
       include: {
         project: { select: { id: true, name: true, color: true } },
         assignee: { select: { id: true, name: true } },
-        section: { select: { id: true, name: true } },
+        section: { select: { id: true, name: true, color: true, canonicalStatus: true, isDefault: true, isDone: true, orderIndex: true } },
         parentTask: {
           select: {
             id: true,

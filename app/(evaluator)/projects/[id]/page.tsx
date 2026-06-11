@@ -9,7 +9,7 @@ import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { EmptyState } from '@/components/composed/EmptyState'
 import { ListView } from '@/components/projects/ListView'
 import { BoardView } from '@/components/projects/BoardView'
-import { TaskDetailPanel, type PanelTask } from '@/components/projects/TaskDetailPanel'
+import { TaskDetailPanel, type PanelTask, type ProjectStatusSection } from '@/components/projects/TaskDetailPanel'
 import { MemberManager } from '@/components/projects/MemberManager'
 import {
   List, LayoutGrid, UserPlus, Settings, ListTodo,
@@ -19,7 +19,6 @@ import { cn } from '@/lib/utils'
 
 /* ─── Types ───────────────────────────────────────────────────────────── */
 
-interface Section { id: string; name: string; orderIndex: number }
 interface Label { id: string; name: string; color: string }
 interface Member { id: string; name: string; role: string }
 
@@ -31,7 +30,7 @@ interface Project {
   status: string
   owner: { id: string; name: string }
   members: Array<{ user: { id: string; name: string }; role: string }>
-  sections: Section[]
+  sections: ProjectStatusSection[]
   labels: Label[]
   tasks: PanelTask[]
 }
@@ -182,9 +181,10 @@ export default function ProjectDetailPage() {
   if (!project) return <EmptyState icon={<ListTodo className="h-12 w-12" />} title="Project not found" />
 
   const members = project.members.map((m) => ({ ...m.user, role: m.role }))
-  const todoCount = project.tasks.filter((t) => t.status === 'TODO').length
-  const inProgressCount = project.tasks.filter((t) => t.status === 'IN_PROGRESS').length
-  const doneCount = project.tasks.filter((t) => t.status === 'DONE').length
+  const statusCounts = project.sections.map((section) => ({
+    section,
+    count: project.tasks.filter((task) => task.sectionId === section.id).length,
+  }))
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
@@ -276,9 +276,11 @@ export default function ProjectDetailPage() {
         {/* Stats + Labels row */}
         <div className="flex items-center gap-4 mt-4 flex-wrap">
           <div className="flex items-center gap-3 text-sm">
-            <span className="text-muted-foreground">{todoCount} to do</span>
-            <span className="text-blue-400">{inProgressCount} in progress</span>
-            <span className="text-emerald-400">{doneCount} done</span>
+            {statusCounts.map(({ section, count }) => (
+              <span key={section.id} style={{ color: section.color }}>
+                {count} {section.name.toLowerCase()}
+              </span>
+            ))}
           </div>
 
           <div className="flex-1" />
@@ -384,6 +386,7 @@ export default function ProjectDetailPage() {
           <BoardView
             projectId={id}
             tasks={project.tasks}
+            sections={project.sections}
             onTaskClick={handleTaskClick}
             onTasksChange={loadProject}
           />

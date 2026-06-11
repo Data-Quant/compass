@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { sendProjectInvitationNotification } from '@/lib/project-task-notifications'
 
 async function ensureProjectOwner(projectId: string, actorId: string) {
   const project = await prisma.project.findUnique({
@@ -37,6 +38,17 @@ export async function POST(
       data: { projectId, userId, role: 'MEMBER' },
       include: { user: { select: { id: true, name: true } } },
     })
+
+    try {
+      await sendProjectInvitationNotification({
+        projectId,
+        userId,
+        actorId: user.id,
+        origin: request.nextUrl.origin,
+      })
+    } catch (emailError) {
+      console.error('Failed to send project invitation notification:', emailError)
+    }
 
     return NextResponse.json({ success: true, member })
   } catch (error: any) {

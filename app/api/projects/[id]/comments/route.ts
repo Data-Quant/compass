@@ -1,15 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { recordTaskActivity } from '@/lib/project-task-activity'
 
-export async function GET(request: NextRequest) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+    const { id: projectId } = await params
     const { searchParams } = new URL(request.url)
     const taskId = searchParams.get('taskId')
     if (!taskId) return NextResponse.json({ error: 'taskId required' }, { status: 400 })
+
+    const task = await prisma.task.findFirst({
+      where: { id: taskId, projectId },
+      select: { id: true },
+    })
+    if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 })
 
     const comments = await prisma.taskComment.findMany({
       where: { taskId },
@@ -24,15 +35,25 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+    const { id: projectId } = await params
     const { taskId, content } = await request.json()
     if (!taskId || !content?.trim()) {
       return NextResponse.json({ error: 'taskId and content required' }, { status: 400 })
     }
+
+    const task = await prisma.task.findFirst({
+      where: { id: taskId, projectId },
+      select: { id: true },
+    })
+    if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 })
 
     const comment = await prisma.taskComment.create({
       data: {
@@ -41,6 +62,15 @@ export async function POST(request: NextRequest) {
         content: content.trim(),
       },
       include: { author: { select: { id: true, name: true } } },
+    })
+
+    await recordTaskActivity({
+      taskId,
+      actorId: user.id,
+      summary: `${user.name || 'Someone'} commented on this task`,
+      kind: 'comment',
+      metadata: { commentId: comment.id },
+      origin: request.nextUrl.origin,
     })
 
     return NextResponse.json({ success: true, comment })

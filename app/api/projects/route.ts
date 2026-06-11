@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { DEFAULT_STATUS_SECTIONS } from '@/lib/project-status-sections'
+import { sendProjectInvitationNotification } from '@/lib/project-task-notifications'
 
 // GET - List projects for the current user
 export async function GET() {
@@ -57,6 +59,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Project name is required' }, { status: 400 })
     }
 
+    const projectMemberIds = [
+      ...new Set(
+        (Array.isArray(memberIds) ? memberIds : [])
+          .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+          .map((id) => id.trim())
+          .filter((id) => id !== user.id)
+      ),
+    ]
+
     const project = await prisma.project.create({
       data: {
         name: name.trim(),
@@ -66,17 +77,18 @@ export async function POST(request: NextRequest) {
         members: {
           create: [
             { userId: user.id, role: 'OWNER' },
-            ...(memberIds || [])
-              .filter((id: string) => id !== user.id)
-              .map((id: string) => ({ userId: id, role: 'MEMBER' })),
+            ...projectMemberIds.map((id: string) => ({ userId: id, role: 'MEMBER' })),
           ],
         },
         sections: {
-          create: [
-            { name: 'To Do', orderIndex: 0 },
-            { name: 'In Progress', orderIndex: 1 },
-            { name: 'Done', orderIndex: 2 },
-          ],
+          create: DEFAULT_STATUS_SECTIONS.map((section) => ({
+            name: section.name,
+            color: section.color,
+            canonicalStatus: section.canonicalStatus,
+            isDefault: true,
+            isDone: section.isDone,
+            orderIndex: section.orderIndex,
+          })),
         },
       },
       include: {
@@ -85,6 +97,21 @@ export async function POST(request: NextRequest) {
         sections: true,
       },
     })
+
+    await Promise.all(
+      projectMemberIds.map(async (userId: string) => {
+        try {
+          await sendProjectInvitationNotification({
+            projectId: project.id,
+            userId,
+            actorId: user.id,
+            origin: request.nextUrl.origin,
+          })
+        } catch (emailError) {
+          console.error('Failed to send project invitation notification:', emailError)
+        }
+      })
+    )
 
     return NextResponse.json({ success: true, project })
   } catch (error) {

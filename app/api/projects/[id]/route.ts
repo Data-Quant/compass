@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { ensureProjectStatusSections } from '@/lib/project-status-sections'
 
 // GET - Get project detail with tasks
 export async function GET(
@@ -12,6 +13,7 @@ export async function GET(
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id } = await params
+    await ensureProjectStatusSections(id)
 
     const project = await prisma.project.findUnique({
       where: { id },
@@ -40,11 +42,13 @@ export async function GET(
                 priority: true,
                 assigneeId: true,
                 dueDate: true,
+                sectionId: true,
                 parentTaskId: true,
                 assignee: { select: { id: true, name: true } },
+                section: { select: { id: true, name: true, color: true, canonicalStatus: true, isDone: true } },
                 _count: { select: { comments: true } },
               },
-              orderBy: [{ status: 'asc' }, { orderIndex: 'asc' }, { createdAt: 'asc' }],
+              orderBy: [{ orderIndex: 'asc' }, { createdAt: 'asc' }],
             },
             assistants: {
               include: { user: { select: { id: true, name: true } } },
