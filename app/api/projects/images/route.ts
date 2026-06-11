@@ -60,13 +60,15 @@ export async function POST(request: NextRequest) {
       `project-task-images/${projectId}/${Date.now()}-${safeFileName(file.name)}`,
       file,
       {
-        access: 'public',
+        access: 'private',
         addRandomSuffix: true,
         token: blobToken,
       }
     )
 
-    return NextResponse.json({ url: blob.url })
+    return NextResponse.json({
+      url: `/api/projects/images/file?pathname=${encodeURIComponent(blob.pathname)}`,
+    })
   } catch (error) {
     console.error('Failed to upload project task image:', error)
     const message = error instanceof Error && error.message.includes('BLOB_READ_WRITE_TOKEN')

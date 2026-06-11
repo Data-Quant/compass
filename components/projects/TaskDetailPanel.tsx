@@ -176,6 +176,7 @@ function appendMarkdownImage(content: string, url: string) {
 }
 
 function normalizeLinkHref(value: string) {
+  if (value.startsWith('/')) return value
   return value.startsWith('http://') || value.startsWith('https://') ? value : `https://${value}`
 }
 
@@ -249,7 +250,7 @@ function renderLinkedText(text: string, keyPrefix: string) {
 }
 
 function RichTextContent({ content }: { content: string }) {
-  const imageRegex = /!\[([^\]]*)\]\(((?:https?:\/\/|www\.)[^)\s]+)\)/g
+  const imageRegex = /!\[([^\]]*)\]\(((?:https?:\/\/|www\.|\/)[^)\s]+)\)/g
   const nodes: React.ReactNode[] = []
   let lastIndex = 0
   let match: RegExpExecArray | null
