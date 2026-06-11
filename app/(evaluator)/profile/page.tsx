@@ -60,7 +60,7 @@ const WEEKDAYS = [
   { value: '5', label: 'Friday' },
   { value: '6', label: 'Saturday' },
 ] as const
-type DigestFrequency = 'HOURLY' | 'DAILY' | 'WEEKLY'
+type DigestFrequency = 'DAILY' | 'WEEKLY'
 
 // ─── Avatar Preview Drawing (matches OfficeSprites.ts character renderer) ────
 
@@ -546,7 +546,6 @@ export default function ProfilePage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="HOURLY">Hourly</SelectItem>
                     <SelectItem value="DAILY">Daily</SelectItem>
                     <SelectItem value="WEEKLY">Weekly</SelectItem>
                   </SelectContent>
@@ -590,7 +589,7 @@ export default function ProfilePage() {
                 {savingNotifications ? 'Saving...' : 'Save Notification Settings'}
               </Button>
               <p className="text-xs text-muted-foreground">
-                Times are scheduled in Asia/Karachi. Hourly digests use the minute from the selected time.
+                Times use Asia/Karachi. On Vercel Hobby, project digests are checked once daily.
               </p>
             </div>
           </CardContent>

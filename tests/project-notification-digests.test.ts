@@ -34,22 +34,6 @@ test('daily project digest schedules tomorrow when the selected time already pas
   assert.equal(next.toISOString(), '2026-06-12T04:00:00.000Z')
 })
 
-test('hourly project digest uses the selected minute and moves to the next hour when needed', () => {
-  const upcoming = calculateNextProjectNotificationDigestAt({
-    digestFrequency: 'HOURLY',
-    digestTime: '09:45',
-    from: new Date('2026-06-11T03:30:00.000Z'), // 08:30 Asia/Karachi
-  })
-  const nextHour = calculateNextProjectNotificationDigestAt({
-    digestFrequency: 'HOURLY',
-    digestTime: '09:45',
-    from: new Date('2026-06-11T03:50:00.000Z'), // 08:50 Asia/Karachi
-  })
-
-  assert.equal(upcoming.toISOString(), '2026-06-11T03:45:00.000Z')
-  assert.equal(nextHour.toISOString(), '2026-06-11T04:45:00.000Z')
-})
-
 test('weekly project digest schedules same weekday if still upcoming, otherwise next week', () => {
   const sameDay = calculateNextProjectNotificationDigestAt({
     digestFrequency: 'WEEKLY',

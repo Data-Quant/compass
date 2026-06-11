@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db'
 import { sendMail } from '@/lib/email'
 import { escapeHtml } from '@/lib/sanitize'
 
-export const PROJECT_NOTIFICATION_FREQUENCIES: ProjectNotificationDigestFrequency[] = ['HOURLY', 'DAILY', 'WEEKLY']
+export const PROJECT_NOTIFICATION_FREQUENCIES: ProjectNotificationDigestFrequency[] = ['DAILY', 'WEEKLY']
 export const DEFAULT_PROJECT_NOTIFICATION_TIME = '09:00'
 export const DEFAULT_PROJECT_NOTIFICATION_WEEKDAY = 1
 export const PROJECT_NOTIFICATION_TIMEZONE = 'Asia/Karachi'
