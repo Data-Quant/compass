@@ -85,6 +85,7 @@ export function PayrollAttendancePanel({ periods }: Props) {
   const [file, setFile] = useState<File | null>(null)
   const [replaceTiers, setReplaceTiers] = useState(false)
   const [effectiveFrom, setEffectiveFrom] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
   const [dirtyMap, setDirtyMap] = useState<Record<string, AttendanceCellStatus>>({})
 
   useEffect(() => {
@@ -125,6 +126,16 @@ export function PayrollAttendancePanel({ periods }: Props) {
     }
     return map
   }, [entries, dirtyMap])
+
+  const filteredEmployees = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase()
+    if (!query) return employees
+
+    return employees.filter((employee) => {
+      const haystack = `${employee.name} ${employee.role || ''}`.toLowerCase()
+      return haystack.includes(query)
+    })
+  }, [employees, searchTerm])
 
   const loadData = async (nextPeriodId: string) => {
     try {
@@ -242,6 +253,14 @@ export function PayrollAttendancePanel({ periods }: Props) {
               <Label>Working Days (auto)</Label>
               <Input value={String(workingDays)} readOnly />
             </div>
+            <div className="space-y-1.5 min-w-[260px]">
+              <Label>Search Employees</Label>
+              <Input
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search name or role..."
+              />
+            </div>
             <div className="ml-auto">
               <Button onClick={saveChanges} disabled={saving || Object.keys(dirtyMap).length === 0}>
                 {saving ? 'Saving...' : `Save ${Object.keys(dirtyMap).length || ''} Changes`}
@@ -249,20 +268,23 @@ export function PayrollAttendancePanel({ periods }: Props) {
             </div>
           </div>
 
-          <div className="overflow-auto border border-border rounded-lg">
+          <div className="rounded-lg border border-border [&>div]:max-h-[65vh] [&>div]:overflow-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="sticky left-0 bg-card z-10 min-w-[200px]">Employee</TableHead>
+                  <TableHead className="sticky left-0 top-0 z-30 min-w-[200px] bg-card">Employee</TableHead>
                   {days.map((day) => (
-                    <TableHead key={day.toISOString()} className="text-center min-w-[32px] px-1 text-[11px]">
+                    <TableHead
+                      key={day.toISOString()}
+                      className="sticky top-0 z-20 min-w-[32px] bg-card px-1 text-center text-[11px]"
+                    >
                       {day.getUTCDate()}
                     </TableHead>
                   ))}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {employees.map((employee) => (
+                {filteredEmployees.map((employee) => (
                   <TableRow key={employee.id}>
                     <TableCell className="sticky left-0 bg-card z-10">
                       <div>
@@ -288,16 +310,21 @@ export function PayrollAttendancePanel({ periods }: Props) {
                     })}
                   </TableRow>
                 ))}
-                {!employees.length && (
+                {!filteredEmployees.length && (
                   <TableRow>
                     <TableCell colSpan={days.length + 1} className="text-center text-muted-foreground py-6">
-                      No employees found
+                      {employees.length ? 'No employees match that search' : 'No employees found'}
                     </TableCell>
                   </TableRow>
                 )}
               </TableBody>
             </Table>
           </div>
+          {employees.length > 0 && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Showing {filteredEmployees.length} of {employees.length} employees
+            </p>
+          )}
         </CardContent>
       </Card>
 
