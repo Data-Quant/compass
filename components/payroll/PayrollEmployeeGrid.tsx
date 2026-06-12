@@ -561,18 +561,17 @@ export function PayrollEmployeeGrid({
       </div>
 
       {/* Grid */}
-      <div className="rounded-xl border border-border overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className="rounded-xl border border-border [&>div]:max-h-[max(20rem,calc(100vh-29rem))] [&>div]:overflow-auto">
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50">
-                <TableHead className="w-10">
+                <TableHead className="sticky left-0 z-30 w-10 bg-card">
                   <Checkbox
                     checked={selected.size === filteredRows.length && filteredRows.length > 0}
                     onCheckedChange={toggleSelectAll}
                   />
                 </TableHead>
-                <TableHead>
+                <TableHead className="sticky left-10 z-30 min-w-[180px] bg-card">
                   <button
                     type="button"
                     className="inline-flex items-center gap-1 text-xs font-medium"
@@ -597,7 +596,7 @@ export function PayrollEmployeeGrid({
             <TableBody>
               {filteredRows.map((row) => (
                 <TableRow key={row.payrollName} className="group/row">
-                  <TableCell className="w-10">
+                  <TableCell className="sticky left-0 z-10 w-10 bg-card">
                     <Checkbox
                       checked={selected.has(row.payrollName)}
                       onCheckedChange={(checked) => {
@@ -610,7 +609,7 @@ export function PayrollEmployeeGrid({
                       }}
                     />
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="sticky left-10 z-10 bg-card">
                     <button
                       type="button"
                       className="text-left hover:text-primary transition-colors"
@@ -663,9 +662,9 @@ export function PayrollEmployeeGrid({
               )}
               {/* Totals footer */}
               {filteredRows.length > 0 && (
-                <TableRow className="bg-muted/40 font-semibold border-t-2">
-                  <TableCell />
-                  <TableCell className="text-sm">
+                <TableRow className="sticky bottom-0 z-20 bg-muted font-semibold border-t-2 shadow-[0_-1px_0_0_hsl(var(--border))]">
+                  <TableCell className="sticky left-0 bg-muted" />
+                  <TableCell className="sticky left-10 bg-muted text-sm">
                     Total ({filteredRows.length} employees)
                   </TableCell>
                   {columns.map((col) => (
@@ -677,7 +676,6 @@ export function PayrollEmployeeGrid({
               )}
             </TableBody>
           </Table>
-        </div>
       </div>
     </div>
   )

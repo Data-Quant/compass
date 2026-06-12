@@ -217,6 +217,11 @@ export function PayrollRunWizard({
     [period],
   )
 
+  const travelSkips = useMemo(
+    () => (period?.summaryJson as any)?.travelSkips || [],
+    [period],
+  )
+
   const gridRows = period?.inputValues || []
   const computedValues = period?.computedValues || []
 
@@ -243,7 +248,8 @@ export function PayrollRunWizard({
 
   return (
     <div className="p-6 sm:p-8">
-      {/* Step header */}
+      {/* Frozen top section: step header + period info bar stay pinned while content scrolls */}
+      <div className="sticky top-0 z-40 bg-background">
       <StepHeader
         currentStep={currentStep}
         onStepClick={handleStepClick}
@@ -274,6 +280,7 @@ export function PayrollRunWizard({
             </div>
           </div>
         </div>
+      </div>
       </div>
 
       {/* Content */}
@@ -339,7 +346,7 @@ export function PayrollRunWizard({
                     <div>
                       <p className="font-medium">Income tax</p>
                       <p className="text-muted-foreground mt-1">
-                        Calculated from the active financial year tax brackets using monthly basic salary, bonus, and taxable earning heads. A manual Income Tax value overrides the estimate.
+                        Calculated from the active financial year tax brackets using the monthly taxable salary: basic salary less the medical tax exemption, plus taxable earning heads. Bonus is treated as non-taxable. A manual Income Tax value overrides the estimate.
                       </p>
                     </div>
                     <div>
@@ -380,6 +387,35 @@ export function PayrollRunWizard({
                         <p className="text-xl font-semibold mt-1">{period.receipts?.length || 0}</p>
                       </div>
                     </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {travelSkips.length > 0 && (
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-500" />
+                      <span className="text-sm font-medium">
+                        Travel allowance was not auto-calculated for {travelSkips.length} employee{travelSkips.length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    <ul className="text-sm text-muted-foreground space-y-0.5 list-disc pl-5">
+                      {travelSkips.map((skip: any) => (
+                        <li key={skip.payrollName}>
+                          <span className="font-medium text-foreground">{skip.payrollName}</span>
+                          {' — '}
+                          {skip.reason === 'MISSING_TRANSPORT_PROFILE'
+                            ? 'no transport mode or distance set on the payroll profile'
+                            : skip.reason === 'NO_TIER_MATCH'
+                              ? 'no travel tier covers this transport mode and distance'
+                              : 'payroll name is not mapped to a user'}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Set Distance (KM) and Transport Mode on the employee&apos;s payroll profile (Admin &rarr; Users), then run the calculation again. A manually edited Travel value always takes precedence.
+                    </p>
                   </CardContent>
                 </Card>
               )}

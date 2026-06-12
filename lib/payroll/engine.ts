@@ -5,7 +5,7 @@ import { toPeriodKey, normalizePayrollName } from '@/lib/payroll/normalizers'
 import { calculateAnnualProgressiveTax, calculatePresentDays, calculateWorkingDays, resolveTravelTier } from '@/lib/payroll/settings'
 import type { Prisma } from '@prisma/client'
 
-type InputBucket = Record<string, number>
+export type InputBucket = Record<string, number>
 
 function bucketInputs(rows: Array<{ componentKey: string; amount: number }>): InputBucket {
   const bucket: InputBucket = {}
@@ -35,6 +35,47 @@ const KNOWN_EARNING_KEYS = new Set([
 
 const KNOWN_DEDUCTION_KEYS = new Set(['INCOME_TAX', 'ADJUSTMENT', 'LOAN_REPAYMENT', 'PAID'])
 
+export interface SalaryHeadLite {
+  type: string
+  isTaxable: boolean
+}
+
+export interface EarningsBreakdown {
+  additionalEarnings: number
+  additionalTaxableEarnings: number
+  additionalNonTaxableEarnings: number
+}
+
+export function computeEarningsBreakdown(
+  bucket: InputBucket,
+  salaryHeadByCode: Map<string, SalaryHeadLite>
+): EarningsBreakdown {
+  let additionalEarnings = 0
+  let additionalTaxableEarnings = 0
+  for (const [componentKey, amount] of Object.entries(bucket)) {
+    const code = componentKey.toUpperCase()
+    // Known engine keys (BASIC_SALARY, MEDICAL_ALLOWANCE, ...) are already handled
+    // explicitly in the calculation; only custom salary heads count as "additional".
+    if (KNOWN_EARNING_KEYS.has(code)) continue
+    const head = salaryHeadByCode.get(code)
+    if (!head || head.type !== 'EARNING') continue
+    additionalEarnings += amount
+    if (head.isTaxable) additionalTaxableEarnings += amount
+  }
+  return {
+    additionalEarnings,
+    additionalTaxableEarnings,
+    additionalNonTaxableEarnings: additionalEarnings - additionalTaxableEarnings,
+  }
+}
+
+export type TravelSkipReason = 'UNMAPPED_EMPLOYEE' | 'MISSING_TRANSPORT_PROFILE' | 'NO_TIER_MATCH'
+
+export interface TravelSkip {
+  payrollName: string
+  reason: TravelSkipReason
+}
+
 export interface RecalculateResult {
   periodId: string
   periodKey: string
@@ -42,6 +83,7 @@ export interface RecalculateResult {
   computedCount: number
   mismatchCount: number
   mismatches: PayrollReconciliationMismatch[]
+  travelSkips: TravelSkip[]
   appliedFixes: string[]
 }
 
@@ -221,6 +263,7 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
     userId: string
     amount: number
   }> = []
+  const travelSkips: TravelSkip[] = []
 
   const mismatches: PayrollReconciliationMismatch[] = []
   const computedInserts: Array<{
@@ -262,13 +305,8 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
       }
     }
 
-    const additionalEarnings = Object.entries(bucket).reduce((sum, [componentKey, amount]) => {
-      const code = componentKey.toUpperCase()
-      if (KNOWN_EARNING_KEYS.has(code)) return sum
-      const head = salaryHeadByCode.get(code)
-      if (!head || head.type !== 'EARNING') return sum
-      return sum + amount
-    }, 0)
+    const { additionalEarnings, additionalTaxableEarnings, additionalNonTaxableEarnings } =
+      computeEarningsBreakdown(bucket, salaryHeadByCode)
 
     const additionalDeductions = Object.entries(bucket).reduce((sum, [componentKey, amount]) => {
       const code = componentKey.toUpperCase()
@@ -277,14 +315,6 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
       if (!head || head.type !== 'DEDUCTION') return sum
       return sum + amount
     }, 0)
-
-    const additionalTaxableEarnings = Object.entries(bucket).reduce((sum, [componentKey, amount]) => {
-      const code = componentKey.toUpperCase()
-      const head = salaryHeadByCode.get(code)
-      if (!head || head.type !== 'EARNING' || !head.isTaxable) return sum
-      return sum + amount
-    }, 0)
-    const additionalNonTaxableEarnings = additionalEarnings - additionalTaxableEarnings
 
     const basicSalary = getNumber(bucket, 'BASIC_SALARY')
     const medicalAllowance = getNumber(bucket, 'MEDICAL_ALLOWANCE')
@@ -300,40 +330,42 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
     const totalTaxableSalary = basicSalary + medicalTaxExemption + additionalTaxableEarnings
     const incomeTax = (() => {
       if (bucket.INCOME_TAX !== undefined) return getNumber(bucket, 'INCOME_TAX')
+      const monthlyTaxBase = Math.max(0, totalTaxableSalary)
       if (activeFinancialYear && activeFinancialYear.taxBrackets.length > 0) {
-        const annual = calculateAnnualProgressiveTax(
-          Math.max(0, basicSalary + additionalTaxableEarnings) * 12,
-          activeFinancialYear.taxBrackets
-        )
+        const annual = calculateAnnualProgressiveTax(monthlyTaxBase * 12, activeFinancialYear.taxBrackets)
         return annual / 12
       }
-      return estimateIncomeTaxFromSlabs(periodKey, basicSalary)
+      return estimateIncomeTaxFromSlabs(periodKey, monthlyTaxBase)
     })()
 
     const travelOverride = rows.find((r) => r.componentKey === 'TRAVEL_REIMBURSEMENT' && r.isOverride)
     let travelReimbursement = getNumber(bucket, 'TRAVEL_REIMBURSEMENT')
-    if (!travelOverride && userId) {
-      const profile = profileByUserId.get(userId)
-      const tier = resolveTravelTier(
-        travelTiers,
-        profile?.transportMode,
-        profile?.distanceKm ?? null,
-        period.periodStart
-      )
-      if (tier && workingDays > 0) {
-        const userAttendance = attendanceByUserId.get(userId) || []
-        const presentDays =
-          userAttendance.length > 0
-            ? calculatePresentDays(userAttendance, period.periodStart, period.periodEnd)
-            : workingDays
-        const payable = Math.max(0, (tier.monthlyRate * presentDays) / workingDays)
-        travelReimbursement = Number(payable.toFixed(2))
-        travelAutoUpserts.push({
-          periodId,
-          payrollName,
-          userId,
-          amount: travelReimbursement,
-        })
+    if (!travelOverride) {
+      const profile = userId ? profileByUserId.get(userId) : undefined
+      if (!userId) {
+        travelSkips.push({ payrollName, reason: 'UNMAPPED_EMPLOYEE' })
+      } else if (!profile || !profile.transportMode || profile.distanceKm === null || profile.distanceKm === undefined) {
+        travelSkips.push({ payrollName, reason: 'MISSING_TRANSPORT_PROFILE' })
+      } else {
+        // Resolve against period end so tiers that become effective mid-period still apply.
+        const tier = resolveTravelTier(travelTiers, profile.transportMode, profile.distanceKm, period.periodEnd)
+        if (!tier) {
+          travelSkips.push({ payrollName, reason: 'NO_TIER_MATCH' })
+        } else if (workingDays > 0) {
+          const userAttendance = attendanceByUserId.get(userId) || []
+          const presentDays =
+            userAttendance.length > 0
+              ? calculatePresentDays(userAttendance, period.periodStart, period.periodEnd)
+              : workingDays
+          const payable = Math.max(0, (tier.monthlyRate * presentDays) / workingDays)
+          travelReimbursement = Number(payable.toFixed(2))
+          travelAutoUpserts.push({
+            periodId,
+            payrollName,
+            userId,
+            amount: travelReimbursement,
+          })
+        }
       }
     }
 
@@ -491,6 +523,7 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
           tolerance,
           mismatchCount: mismatches.length,
           mismatches,
+          travelSkips,
           appliedFixes: Object.values(FIX_IDS),
           computedAt: new Date().toISOString(),
         } as unknown as Prisma.InputJsonValue,
@@ -505,6 +538,7 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
     computedCount: computedInserts.length,
     mismatchCount: mismatches.length,
     mismatches,
+    travelSkips,
     appliedFixes: Object.values(FIX_IDS),
   }
 }
