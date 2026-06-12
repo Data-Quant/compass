@@ -490,7 +490,7 @@ export function PayrollEmployeeGrid({
   const helperText = activeTab === 'summary'
     ? 'Summary values are computed after calculation. Deductions include income tax, adjustment, loan repayment, and any active deduction salary heads.'
     : activeTab === 'earnings'
-      ? 'Travel is auto-filled during calculation from each employee profile transport mode, distance tier, working days, and attendance. Editing Travel creates a manual override.'
+      ? 'Medical is auto-set to 10% of basic salary (the FBR tax-exempt portion). Travel is auto-filled from each employee profile transport mode, distance tier, working days, and attendance. Editing Medical or Travel creates a manual override.'
       : 'Income tax is calculated from the configured tax brackets unless manually overridden. Paid is for reconciliation and rolling balance; it is not subtracted as a payroll deduction.'
 
   const SortIcon = ({ colKey }: { colKey: SortKey }) => {

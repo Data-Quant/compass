@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { computeEarningsBreakdown, type SalaryHeadLite } from '../lib/payroll/engine'
+import { computeAutoMedicalAllowance, computeEarningsBreakdown, type SalaryHeadLite } from '../lib/payroll/engine'
 
 const heads = new Map<string, SalaryHeadLite>([
   ['BASIC_SALARY', { type: 'EARNING', isTaxable: true }],
@@ -49,4 +49,14 @@ test('computeEarningsBreakdown ignores deduction heads and unknown component key
 
   assert.equal(breakdown.additionalEarnings, 0)
   assert.equal(breakdown.additionalTaxableEarnings, 0)
+})
+
+test('computeAutoMedicalAllowance carves 10% of basic salary', () => {
+  assert.equal(computeAutoMedicalAllowance(270_000), 27_000)
+  assert.equal(computeAutoMedicalAllowance(125_555), 12_555.5)
+})
+
+test('computeAutoMedicalAllowance returns zero for non-positive basic', () => {
+  assert.equal(computeAutoMedicalAllowance(0), 0)
+  assert.equal(computeAutoMedicalAllowance(-50_000), 0)
 })

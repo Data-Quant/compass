@@ -69,6 +69,14 @@ export function computeEarningsBreakdown(
   }
 }
 
+// FBR rule: medical allowance is tax-exempt up to 10% of basic salary, so the
+// payroll structure carves exactly 10% of basic out as the medical allowance.
+export const MEDICAL_ALLOWANCE_RATE = 0.1
+
+export function computeAutoMedicalAllowance(basicSalary: number): number {
+  return Number((Math.max(0, basicSalary) * MEDICAL_ALLOWANCE_RATE).toFixed(2))
+}
+
 export type TravelSkipReason = 'UNMAPPED_EMPLOYEE' | 'MISSING_TRANSPORT_PROFILE' | 'NO_TIER_MATCH'
 
 export interface TravelSkip {
@@ -257,11 +265,13 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
     periodEnd: period.periodEnd,
     holidays: holidays.map((h) => h.holidayDate),
   })
-  const travelAutoUpserts: Array<{
+  const autoInputUpserts: Array<{
     periodId: string
     payrollName: string
-    userId: string
+    userId: string | null
+    componentKey: string
     amount: number
+    generatedBy: string
   }> = []
   const travelSkips: TravelSkip[] = []
 
@@ -317,6 +327,22 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
     }, 0)
 
     const basicSalary = getNumber(bucket, 'BASIC_SALARY')
+
+    // Auto-carve 10% of basic salary as the medical allowance unless the cell
+    // was manually overridden. A salary-revision value is also replaced: the
+    // 10% structure is uniform, and only grid overrides opt out of it.
+    const medicalOverride = rows.some((r) => r.componentKey === 'MEDICAL_ALLOWANCE' && r.isOverride)
+    if (!medicalOverride && basicSalary > 0) {
+      bucket.MEDICAL_ALLOWANCE = computeAutoMedicalAllowance(basicSalary)
+      autoInputUpserts.push({
+        periodId,
+        payrollName,
+        userId,
+        componentKey: 'MEDICAL_ALLOWANCE',
+        amount: bucket.MEDICAL_ALLOWANCE,
+        generatedBy: 'AUTO_MEDICAL_10PCT',
+      })
+    }
     const medicalAllowance = getNumber(bucket, 'MEDICAL_ALLOWANCE')
     // FBR rule: medical allowance is tax-exempt up to 10% of basic salary.
     // Stored as a negative value because it offsets taxable income.
@@ -359,11 +385,13 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
               : workingDays
           const payable = Math.max(0, (tier.monthlyRate * presentDays) / workingDays)
           travelReimbursement = Number(payable.toFixed(2))
-          travelAutoUpserts.push({
+          autoInputUpserts.push({
             periodId,
             payrollName,
             userId,
+            componentKey: 'TRAVEL_REIMBURSEMENT',
             amount: travelReimbursement,
+            generatedBy: 'ATTENDANCE_TRAVEL',
           })
         }
       }
@@ -462,42 +490,54 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
     })
   }
 
+  // Split auto-generated inputs into batch creates and value-changed updates so
+  // the transaction stays well under the interactive-transaction timeout.
+  const existingInputByKey = new Map(inputs.map((row) => [`${row.payrollName}|${row.componentKey}`, row]))
+  const autoCreates = autoInputUpserts.filter((row) => !existingInputByKey.has(`${row.payrollName}|${row.componentKey}`))
+  const autoUpdates = autoInputUpserts.filter((row) => {
+    const existing = existingInputByKey.get(`${row.payrollName}|${row.componentKey}`)
+    return existing !== undefined && (existing.amount !== row.amount || existing.userId !== row.userId)
+  })
+
   await prisma.$transaction(async (tx) => {
-    if (travelAutoUpserts.length > 0) {
-      for (const row of travelAutoUpserts) {
-        await tx.payrollInputValue.upsert({
-          where: {
-            periodId_payrollName_componentKey: {
-              periodId: row.periodId,
-              payrollName: row.payrollName,
-              componentKey: 'TRAVEL_REIMBURSEMENT',
-            },
+    if (autoCreates.length > 0) {
+      await tx.payrollInputValue.createMany({
+        data: autoCreates.map((row) => ({
+          periodId: row.periodId,
+          payrollName: row.payrollName,
+          userId: row.userId,
+          componentKey: row.componentKey,
+          amount: row.amount,
+          sourceMethod: 'MANUAL',
+          isOverride: false,
+          provenanceJson: {
+            generatedBy: row.generatedBy,
+            generatedAt: new Date().toISOString(),
           },
-          update: {
-            userId: row.userId,
-            amount: row.amount,
-            sourceMethod: 'MANUAL',
-            isOverride: false,
-            provenanceJson: {
-              generatedBy: 'ATTENDANCE_TRAVEL',
-              generatedAt: new Date().toISOString(),
-            },
-          },
-          create: {
+        })),
+      })
+    }
+
+    for (const row of autoUpdates) {
+      await tx.payrollInputValue.update({
+        where: {
+          periodId_payrollName_componentKey: {
             periodId: row.periodId,
             payrollName: row.payrollName,
-            userId: row.userId,
-            componentKey: 'TRAVEL_REIMBURSEMENT',
-            amount: row.amount,
-            sourceMethod: 'MANUAL',
-            isOverride: false,
-            provenanceJson: {
-              generatedBy: 'ATTENDANCE_TRAVEL',
-              generatedAt: new Date().toISOString(),
-            },
+            componentKey: row.componentKey,
           },
-        })
-      }
+        },
+        data: {
+          userId: row.userId,
+          amount: row.amount,
+          sourceMethod: 'MANUAL',
+          isOverride: false,
+          provenanceJson: {
+            generatedBy: row.generatedBy,
+            generatedAt: new Date().toISOString(),
+          },
+        },
+      })
     }
 
     await tx.payrollComputedValue.deleteMany({ where: { periodId } })
@@ -529,7 +569,7 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
         } as unknown as Prisma.InputJsonValue,
       },
     })
-  })
+  }, { timeout: 60_000, maxWait: 10_000 })
 
   return {
     periodId,

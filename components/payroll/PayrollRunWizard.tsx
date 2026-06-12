@@ -346,7 +346,7 @@ export function PayrollRunWizard({
                     <div>
                       <p className="font-medium">Income tax</p>
                       <p className="text-muted-foreground mt-1">
-                        Calculated from the active financial year tax brackets using the monthly taxable salary: basic salary less the medical tax exemption, plus taxable earning heads. Bonus is treated as non-taxable. A manual Income Tax value overrides the estimate.
+                        Calculated from the active financial year tax brackets using the monthly taxable salary: basic salary less the 10% medical allowance carve-out, plus taxable earning heads. Bonus is treated as non-taxable. A manual Income Tax value overrides the estimate.
                       </p>
                     </div>
                     <div>
