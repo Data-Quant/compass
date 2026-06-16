@@ -14,6 +14,7 @@ import { MemberManager } from '@/components/projects/MemberManager'
 import {
   List, LayoutGrid, UserPlus, Settings, ListTodo,
   ChevronLeft, MoreHorizontal, Pencil, Archive, Trash2, Tag, Plus,
+  CheckCircle2, RotateCcw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -147,6 +148,21 @@ export default function ProjectDetailPage() {
     }
   }
 
+  const handleToggleComplete = async () => {
+    const nextStatus = project?.status === 'COMPLETED' ? 'ACTIVE' : 'COMPLETED'
+    try {
+      await fetch(`/api/projects/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus }),
+      })
+      loadProject()
+      toast.success(nextStatus === 'COMPLETED' ? 'Project marked complete' : 'Project reopened')
+    } catch {
+      toast.error('Failed to update project')
+    }
+  }
+
   const handleAddLabel = async () => {
     if (!newLabelName.trim()) { setShowLabelInput(false); return }
     try {
@@ -205,9 +221,23 @@ export default function ProjectDetailPage() {
               <span className="w-3 h-10 rounded-full shrink-0" style={{ backgroundColor: project.color }} />
             )}
             <div>
-              <h1 className="text-2xl sm:text-3xl font-display font-light tracking-tight text-foreground">
-                {project.name}
-              </h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl sm:text-3xl font-display font-light tracking-tight text-foreground">
+                  {project.name}
+                </h1>
+                {project.status !== 'ACTIVE' && (
+                  <span
+                    className={cn(
+                      'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
+                      project.status === 'COMPLETED'
+                        ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                        : 'bg-muted text-muted-foreground'
+                    )}
+                  >
+                    {project.status === 'COMPLETED' ? 'Completed' : 'Archived'}
+                  </span>
+                )}
+              </div>
               {project.description && (
                 <p className="text-sm text-muted-foreground mt-0.5">{project.description}</p>
               )}
@@ -251,6 +281,24 @@ export default function ProjectDetailPage() {
                     onClick={() => setShowMenu(false)}
                   >
                     <div className="p-1">
+                      {project.status !== 'ARCHIVED' && (
+                        <button
+                          onClick={handleToggleComplete}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors"
+                        >
+                          {project.status === 'COMPLETED' ? (
+                            <>
+                              <RotateCcw className="w-4 h-4" />
+                              Reopen project
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 className="w-4 h-4" />
+                              Mark complete
+                            </>
+                          )}
+                        </button>
+                      )}
                       <button
                         onClick={handleArchiveProject}
                         className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors"

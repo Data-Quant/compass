@@ -12,6 +12,7 @@ import {
   resolveTaskStatusSection,
 } from '@/lib/project-status-sections'
 import { isProjectTaskStatus } from '@/lib/project-task-utils'
+import { syncProjectCompletion } from '@/lib/project-completion'
 
 const TASK_INCLUDE = {
   assignee: { select: { id: true, name: true } },
@@ -298,6 +299,12 @@ export async function POST(
       }
     }
 
+    try {
+      await syncProjectCompletion(projectId)
+    } catch (syncError) {
+      console.error('Failed to sync project completion status:', syncError)
+    }
+
     return NextResponse.json({ success: true, task })
   } catch (error) {
     console.error('Failed to create task:', error)
@@ -489,6 +496,12 @@ export async function PUT(
       }
     }
 
+    try {
+      await syncProjectCompletion(projectId)
+    } catch (syncError) {
+      console.error('Failed to sync project completion status:', syncError)
+    }
+
     return NextResponse.json({ success: true, task })
   } catch (error) {
     console.error('Failed to update task:', error)
@@ -523,6 +536,12 @@ export async function DELETE(
     }
 
     await prisma.task.delete({ where: { id: taskId } })
+
+    try {
+      await syncProjectCompletion(projectId)
+    } catch (syncError) {
+      console.error('Failed to sync project completion status:', syncError)
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {

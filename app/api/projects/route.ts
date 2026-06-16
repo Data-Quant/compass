@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { DEFAULT_STATUS_SECTIONS } from '@/lib/project-status-sections'
+import { resolveProjectStatusForCompletion } from '@/lib/project-completion'
 import { sendProjectInvitationNotification } from '@/lib/project-task-notifications'
 
 // GET - List projects for the current user
@@ -26,12 +27,29 @@ export async function GET() {
       orderBy: { updatedAt: 'desc' },
     })
 
+    // Self-heal stale statuses so projects that already hit 100% show as
+    // completed without waiting for the next task change. Promote only here;
+    // demotion happens on task mutations so a manual completion is not undone
+    // on every list load.
+    const corrections = projects.flatMap((p) => {
+      const next = resolveProjectStatusForCompletion(p.status, p._count.tasks, p.tasks.length, {
+        allowDemote: false,
+      })
+      return next ? [{ id: p.id, status: next }] : []
+    })
+    if (corrections.length > 0) {
+      await Promise.all(
+        corrections.map((c) => prisma.project.update({ where: { id: c.id }, data: { status: c.status } }))
+      )
+    }
+    const correctedStatusById = new Map(corrections.map((c) => [c.id, c.status]))
+
     const result = projects.map((p) => ({
       id: p.id,
       name: p.name,
       description: p.description,
       color: p.color,
-      status: p.status,
+      status: correctedStatusById.get(p.id) ?? p.status,
       owner: p.owner,
       members: p.members.map((m) => ({ ...m.user, role: m.role })),
       taskCount: p._count.tasks,
