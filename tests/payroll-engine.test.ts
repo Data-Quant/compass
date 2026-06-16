@@ -1,6 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { computeAutoMedicalAllowance, computeEarningsBreakdown, type SalaryHeadLite } from '../lib/payroll/engine'
+import {
+  computeAutoMedicalAllowance,
+  computeEarningsBreakdown,
+  computeTravelPayable,
+  type SalaryHeadLite,
+} from '../lib/payroll/engine'
 
 const heads = new Map<string, SalaryHeadLite>([
   ['BASIC_SALARY', { type: 'EARNING', isTaxable: true }],
@@ -59,4 +64,24 @@ test('computeAutoMedicalAllowance carves 10% of basic salary', () => {
 test('computeAutoMedicalAllowance returns zero for non-positive basic', () => {
   assert.equal(computeAutoMedicalAllowance(0), 0)
   assert.equal(computeAutoMedicalAllowance(-50_000), 0)
+})
+
+test('computeTravelPayable prorates the monthly rate by attendance', () => {
+  // 14 of 21 days present at a 40,000 monthly rate.
+  assert.equal(computeTravelPayable(40_000, 14, 21), 26666.67)
+  // Full attendance pays the full rate.
+  assert.equal(computeTravelPayable(32_000, 21, 21), 32_000)
+})
+
+test('computeTravelPayable pays nothing for zero present days', () => {
+  assert.equal(computeTravelPayable(40_000, 0, 21), 0)
+})
+
+test('computeTravelPayable never exceeds the full monthly rate', () => {
+  // Present days above working days (e.g. extra logged days) are capped.
+  assert.equal(computeTravelPayable(40_000, 25, 21), 40_000)
+})
+
+test('computeTravelPayable returns zero when there are no working days', () => {
+  assert.equal(computeTravelPayable(40_000, 10, 0), 0)
 })

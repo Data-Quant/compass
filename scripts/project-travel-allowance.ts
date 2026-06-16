@@ -50,7 +50,7 @@ async function main() {
   const project = (mode: TransportMode, distanceKm: number, present: number) => {
     const tier = resolveTravelTier(tiers, mode, distanceKm, period.periodEnd)
     if (!tier) return null
-    return Math.round(Math.max(0, (tier.monthlyRate * present) / workingDays))
+    return Math.round(Math.max(0, (tier.monthlyRate * Math.min(present, workingDays)) / workingDays))
   }
 
   console.log(`PERIOD: ${period.label} | working days: ${workingDays}\n`)
@@ -58,8 +58,17 @@ async function main() {
   console.log('NAME'.padEnd(28), 'DIST'.padStart(5), 'PRESENT'.padStart(8), 'BIKE'.padStart(9), 'CAR/PUBLIC'.padStart(11))
   for (const p of profiles.sort((a, b) => (a.user?.name || '').localeCompare(b.user?.name || ''))) {
     const att = attByUser.get(p.userId) || []
-    const present = att.length > 0 ? calculatePresentDays(att, period.periodStart, period.periodEnd) : workingDays
     const dist = p.distanceKm!
+    if (att.length === 0) {
+      console.log(
+        (p.user?.name || '?').padEnd(28),
+        String(dist).padStart(5),
+        'unmarked'.padStart(8),
+        'attendance not marked — travel will not calculate'.padStart(9)
+      )
+      continue
+    }
+    const present = calculatePresentDays(att, period.periodStart, period.periodEnd)
     const bike = project('BIKE', dist, present)
     const car = project('CAR', dist, present)
     console.log(

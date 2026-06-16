@@ -77,7 +77,19 @@ export function computeAutoMedicalAllowance(basicSalary: number): number {
   return Number((Math.max(0, basicSalary) * MEDICAL_ALLOWANCE_RATE).toFixed(2))
 }
 
-export type TravelSkipReason = 'UNMAPPED_EMPLOYEE' | 'MISSING_TRANSPORT_PROFILE' | 'NO_TIER_MATCH'
+// Travel allowance is prorated by attendance: the monthly tier rate is paid in
+// proportion to days present out of the period's working days.
+export function computeTravelPayable(monthlyRate: number, presentDays: number, workingDays: number): number {
+  if (workingDays <= 0) return 0
+  const clampedPresent = Math.min(Math.max(0, presentDays), workingDays)
+  return Number(Math.max(0, (monthlyRate * clampedPresent) / workingDays).toFixed(2))
+}
+
+export type TravelSkipReason =
+  | 'UNMAPPED_EMPLOYEE'
+  | 'MISSING_TRANSPORT_PROFILE'
+  | 'NO_TIER_MATCH'
+  | 'NO_ATTENDANCE_MARKED'
 
 export interface TravelSkip {
   payrollName: string
@@ -379,20 +391,22 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
           travelSkips.push({ payrollName, reason: 'NO_TIER_MATCH' })
         } else if (workingDays > 0) {
           const userAttendance = attendanceByUserId.get(userId) || []
-          const presentDays =
-            userAttendance.length > 0
-              ? calculatePresentDays(userAttendance, period.periodStart, period.periodEnd)
-              : workingDays
-          const payable = Math.max(0, (tier.monthlyRate * presentDays) / workingDays)
-          travelReimbursement = Number(payable.toFixed(2))
-          autoInputUpserts.push({
-            periodId,
-            payrollName,
-            userId,
-            componentKey: 'TRAVEL_REIMBURSEMENT',
-            amount: travelReimbursement,
-            generatedBy: 'ATTENDANCE_TRAVEL',
-          })
+          if (userAttendance.length === 0) {
+            // Travel is attendance-driven; without any marked attendance there is
+            // no basis to pay it, so flag it rather than assume a full month.
+            travelSkips.push({ payrollName, reason: 'NO_ATTENDANCE_MARKED' })
+          } else {
+            const presentDays = calculatePresentDays(userAttendance, period.periodStart, period.periodEnd)
+            travelReimbursement = computeTravelPayable(tier.monthlyRate, presentDays, workingDays)
+            autoInputUpserts.push({
+              periodId,
+              payrollName,
+              userId,
+              componentKey: 'TRAVEL_REIMBURSEMENT',
+              amount: travelReimbursement,
+              generatedBy: 'ATTENDANCE_TRAVEL',
+            })
+          }
         }
       }
     }
