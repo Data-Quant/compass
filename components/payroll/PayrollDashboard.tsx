@@ -9,6 +9,7 @@ import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { PayrollStatusBadge } from '@/components/payroll/PayrollStatusBadge'
 import { PayrollImportDialog } from '@/components/payroll/PayrollImportDialog'
 import { PayrollAttendancePanel } from '@/components/payroll/PayrollAttendancePanel'
+import { PayrollEmployeesPanel } from '@/components/payroll/PayrollEmployeesPanel'
 import { PayrollSettingsPanel } from '@/components/payroll/PayrollSettingsPanel'
 import { canDeletePayrollPeriodStatus } from '@/lib/payroll/period-status'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -72,7 +73,7 @@ interface DashboardPayload {
 }
 
 type SourceMode = 'WORKBOOK' | 'MANUAL' | 'CARRY_FORWARD'
-type PayrollViewTab = 'runs' | 'attendance' | 'settings'
+type PayrollViewTab = 'runs' | 'attendance' | 'employees' | 'settings'
 
 function canAccessPayrollWorkspace(role: string | null | undefined, appBasePath: WorkspaceProps['appBasePath']) {
   if (appBasePath === '/admin') return role === 'HR'
@@ -297,9 +298,10 @@ export function PayrollDashboard({
           transition={{ delay: 0.06 }}
         >
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as PayrollViewTab)}>
-            <TabsList className="grid grid-cols-3 w-full max-w-lg">
+            <TabsList className="grid grid-cols-4 w-full max-w-xl">
               <TabsTrigger value="runs">Period Runs</TabsTrigger>
               <TabsTrigger value="attendance">Attendance</TabsTrigger>
+              <TabsTrigger value="employees">Employees</TabsTrigger>
               <TabsTrigger value="settings">Settings</TabsTrigger>
             </TabsList>
           </Tabs>
@@ -465,6 +467,7 @@ export function PayrollDashboard({
         )}
 
         {activeTab === 'attendance' && <PayrollAttendancePanel periods={periods} />}
+        {activeTab === 'employees' && <PayrollEmployeesPanel />}
         {activeTab === 'settings' && <PayrollSettingsPanel canEdit={canEditMaster} />}
 
       {/* Import Dialog */}

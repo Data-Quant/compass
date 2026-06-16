@@ -12,9 +12,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const includePayrollDetails =
-      request.nextUrl.searchParams.get('includePayrollDetails') === 'true' ||
-      request.nextUrl.searchParams.get('includePayrollDetails') === '1'
+    const param = (key: string) =>
+      request.nextUrl.searchParams.get(key) === 'true' || request.nextUrl.searchParams.get(key) === '1'
+
+    // includePayrollDetails returns sensitive fields (bank, CNIC, salary) and is
+    // for HR screens. includeOperational returns only logistical fields (distance,
+    // transport, dates) safe to surface to O&A.
+    const includePayrollDetails = param('includePayrollDetails')
+    const includeOperational = param('includeOperational')
+    const wantOperational = includePayrollDetails || includeOperational
 
     const users = await prisma.user.findMany({
       orderBy: { name: 'asc' },
@@ -30,14 +36,18 @@ export async function GET(request: NextRequest) {
             designation: true,
             department: { select: { name: true } },
             employmentType: { select: { name: true } },
-            ...(includePayrollDetails
+            ...(wantOperational
               ? {
-                  officialEmail: true,
-                  cnicNumber: true,
                   joiningDate: true,
                   exitDate: true,
                   distanceKm: true,
                   transportMode: true,
+                }
+              : {}),
+            ...(includePayrollDetails
+              ? {
+                  officialEmail: true,
+                  cnicNumber: true,
                   bankName: true,
                   accountTitle: true,
                   accountNumber: true,
@@ -72,7 +82,7 @@ export async function GET(request: NextRequest) {
                 ? decryptSensitivePayrollProfileFields(entry.payrollProfile)
                 : entry.payrollProfile,
             },
-            { includePayrollDetails }
+            { includePayrollDetails, includeOperational }
           )
         ),
     })

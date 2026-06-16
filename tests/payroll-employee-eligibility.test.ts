@@ -115,3 +115,38 @@ test('payroll employee list item can include payroll details for authorized payr
   assert.equal(employee.payrollProfile?.accountNumber, '001122')
   assert.equal(employee.payrollProfile?.salaryRevisions?.length, 1)
 })
+
+test('operational mode exposes logistics but never sensitive fields', () => {
+  const employee = toPayrollEmployeeListItem(
+    {
+      id: 'u1',
+      name: 'Ayesha',
+      role: 'EMPLOYEE',
+      department: 'Technology',
+      position: 'Associate',
+      payrollProfile: {
+        isPayrollActive: true,
+        designation: 'Backend Engineer',
+        department: { name: 'Technology' },
+        employmentType: { name: 'Full Time' },
+        distanceKm: 12,
+        transportMode: 'BIKE',
+        cnicNumber: '12345-1234567-1',
+        bankName: 'Bank',
+        accountNumber: '001122',
+        salaryRevisions: [{ id: 'revision-1' }],
+      },
+    },
+    { includeOperational: true }
+  )
+
+  // Logistical fields are present...
+  assert.equal(employee.payrollProfile?.distanceKm, 12)
+  assert.equal(employee.payrollProfile?.transportMode, 'BIKE')
+  // ...but sensitive fields are not even serialized.
+  const profile = employee.payrollProfile as Record<string, unknown>
+  assert.equal('cnicNumber' in profile, false)
+  assert.equal('bankName' in profile, false)
+  assert.equal('accountNumber' in profile, false)
+  assert.equal('salaryRevisions' in profile, false)
+})

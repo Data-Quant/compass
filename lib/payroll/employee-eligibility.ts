@@ -26,9 +26,10 @@ export type PayrollEligibilityUser = {
 
 export function toPayrollEmployeeListItem(
   user: PayrollEligibilityUser,
-  options: { includePayrollDetails?: boolean } = {}
+  options: { includePayrollDetails?: boolean; includeOperational?: boolean } = {}
 ) {
   const profile = user.payrollProfile
+  const wantOperational = options.includePayrollDetails || options.includeOperational
 
   return {
     id: user.id || '',
@@ -42,14 +43,18 @@ export function toPayrollEmployeeListItem(
           designation: profile.designation || null,
           department: profile.department?.name ? { name: profile.department.name } : null,
           employmentType: profile.employmentType?.name ? { name: profile.employmentType.name } : null,
-          ...(options.includePayrollDetails
+          ...(wantOperational
             ? {
-                officialEmail: profile.officialEmail || null,
-                cnicNumber: profile.cnicNumber || null,
                 joiningDate: profile.joiningDate || null,
                 exitDate: profile.exitDate || null,
                 distanceKm: profile.distanceKm ?? null,
                 transportMode: profile.transportMode || null,
+              }
+            : {}),
+          ...(options.includePayrollDetails
+            ? {
+                officialEmail: profile.officialEmail || null,
+                cnicNumber: profile.cnicNumber || null,
                 bankName: profile.bankName || null,
                 accountTitle: profile.accountTitle || null,
                 accountNumber: profile.accountNumber || null,
