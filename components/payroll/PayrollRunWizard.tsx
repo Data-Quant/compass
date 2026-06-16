@@ -409,9 +409,7 @@ export function PayrollRunWizard({
                             ? 'no transport mode or distance set on the payroll profile'
                             : skip.reason === 'NO_TIER_MATCH'
                               ? 'no travel tier covers this transport mode and distance'
-                              : skip.reason === 'NO_ATTENDANCE_MARKED'
-                                ? 'no attendance marked for this period — travel is prorated by present days, so mark attendance to calculate it'
-                                : 'payroll name is not mapped to a user'}
+                              : 'payroll name is not mapped to a user'}
                         </li>
                       ))}
                     </ul>

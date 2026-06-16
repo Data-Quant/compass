@@ -10,7 +10,7 @@ async function snapshot(periodId: string) {
     where: { periodId },
     select: { payrollName: true, receiptJson: true },
   })
-  const map = new Map<string, { incomeTax: number; net: number; medical: number; gross: number }>()
+  const map = new Map<string, { incomeTax: number; net: number; medical: number; gross: number; travel: number }>()
   for (const r of receipts) {
     const json = r.receiptJson as any
     map.set(r.payrollName, {
@@ -18,6 +18,7 @@ async function snapshot(periodId: string) {
       net: json?.net?.netSalary ?? 0,
       medical: json?.earnings?.medicalAllowance ?? 0,
       gross: json?.earnings?.totalEarnings ?? 0,
+      travel: json?.earnings?.travelReimbursement ?? 0,
     })
   }
   return map
@@ -38,12 +39,13 @@ async function main() {
   const after = await snapshot(period.id)
 
   console.log(`PERIOD: ${period.label} | computed=${result.computedCount} | mismatches=${result.mismatchCount}`)
-  console.log('\nBEFORE -> AFTER (monthly):')
+  console.log('\nTRAVEL BEFORE -> AFTER:')
   for (const [name, prev] of [...before.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
     const next = after.get(name)
-    console.log(
-      ` ${name}: tax ${Math.round(prev.incomeTax)} -> ${next ? Math.round(next.incomeTax) : '?'} | medical ${Math.round(prev.medical)} -> ${next ? Math.round(next.medical) : '?'} | gross ${Math.round(prev.gross)} -> ${next ? Math.round(next.gross) : '?'} | net ${Math.round(prev.net)} -> ${next ? Math.round(next.net) : '?'}`
-    )
+    const travelBefore = Math.round(prev.travel)
+    const travelAfter = next ? Math.round(next.travel) : 0
+    const flag = travelBefore !== travelAfter ? '  <-- changed' : ''
+    console.log(` ${name}: travel ${travelBefore} -> ${travelAfter}${flag}`)
   }
 
   console.log('\nTRAVEL SKIPS:')

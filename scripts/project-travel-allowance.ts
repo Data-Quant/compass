@@ -59,24 +59,17 @@ async function main() {
   for (const p of profiles.sort((a, b) => (a.user?.name || '').localeCompare(b.user?.name || ''))) {
     const att = attByUser.get(p.userId) || []
     const dist = p.distanceKm!
-    if (att.length === 0) {
-      console.log(
-        (p.user?.name || '?').padEnd(28),
-        String(dist).padStart(5),
-        'unmarked'.padStart(8),
-        'attendance not marked — travel will not calculate'.padStart(9)
-      )
-      continue
-    }
+    // Unmarked attendance is treated as absent (0 present days), same as the engine.
     const present = calculatePresentDays(att, period.periodStart, period.periodEnd)
     const bike = project('BIKE', dist, present)
     const car = project('CAR', dist, present)
+    const note = att.length === 0 ? ' (no attendance marked → absent)' : ''
     console.log(
       (p.user?.name || '?').padEnd(28),
       String(dist).padStart(5),
       String(present).padStart(8),
       (bike === null ? 'no tier' : bike.toLocaleString()).padStart(9),
-      (car === null ? 'no tier' : car.toLocaleString()).padStart(11)
+      (car === null ? 'no tier' : car.toLocaleString()).padStart(11) + note
     )
   }
 }

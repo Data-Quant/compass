@@ -89,7 +89,6 @@ export type TravelSkipReason =
   | 'UNMAPPED_EMPLOYEE'
   | 'MISSING_TRANSPORT_PROFILE'
   | 'NO_TIER_MATCH'
-  | 'NO_ATTENDANCE_MARKED'
 
 export interface TravelSkip {
   payrollName: string
@@ -390,23 +389,21 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
         if (!tier) {
           travelSkips.push({ payrollName, reason: 'NO_TIER_MATCH' })
         } else if (workingDays > 0) {
+          // Unmarked attendance is treated exactly like absence: present days come
+          // straight from marked PRESENT entries (0 when nothing is marked), so
+          // travel prorates down to 0 instead of paying a full month. The value is
+          // always persisted, overwriting any stale auto-written amount.
           const userAttendance = attendanceByUserId.get(userId) || []
-          if (userAttendance.length === 0) {
-            // Travel is attendance-driven; without any marked attendance there is
-            // no basis to pay it, so flag it rather than assume a full month.
-            travelSkips.push({ payrollName, reason: 'NO_ATTENDANCE_MARKED' })
-          } else {
-            const presentDays = calculatePresentDays(userAttendance, period.periodStart, period.periodEnd)
-            travelReimbursement = computeTravelPayable(tier.monthlyRate, presentDays, workingDays)
-            autoInputUpserts.push({
-              periodId,
-              payrollName,
-              userId,
-              componentKey: 'TRAVEL_REIMBURSEMENT',
-              amount: travelReimbursement,
-              generatedBy: 'ATTENDANCE_TRAVEL',
-            })
-          }
+          const presentDays = calculatePresentDays(userAttendance, period.periodStart, period.periodEnd)
+          travelReimbursement = computeTravelPayable(tier.monthlyRate, presentDays, workingDays)
+          autoInputUpserts.push({
+            periodId,
+            payrollName,
+            userId,
+            componentKey: 'TRAVEL_REIMBURSEMENT',
+            amount: travelReimbursement,
+            generatedBy: 'ATTENDANCE_TRAVEL',
+          })
         }
       }
     }
