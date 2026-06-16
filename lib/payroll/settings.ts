@@ -210,15 +210,34 @@ export function resolveTravelTier(
 ) {
   if (!transportMode || distanceKm === null || distanceKm === undefined) return null
   const targetDate = normalizeDate(onDate).getTime()
-  const tier = tiers.find((row) => {
+
+  const candidates = tiers.filter((row) => {
     if (!row.isActive) return false
     if (row.transportMode !== transportMode) return false
     const starts = normalizeDate(row.effectiveFrom).getTime() <= targetDate
     const ends = row.effectiveTo ? normalizeDate(row.effectiveTo).getTime() >= targetDate : true
-    const inRange = distanceKm >= row.minKm && (row.maxKm === null || distanceKm <= row.maxKm)
-    return starts && ends && inRange
+    return starts && ends
   })
-  return tier || null
+  if (candidates.length === 0) return null
+
+  const exact = candidates.find(
+    (row) => distanceKm >= row.minKm && (row.maxKm === null || distanceKm <= row.maxKm)
+  )
+  if (exact) return exact
+
+  // Clamp distances beyond the highest configured band to that top band, so a
+  // 52 km commute still earns the 31-40 km rate. The source travel schedule
+  // treats its highest tier as open-ended ("31-40 KMs and above").
+  const highestBand = candidates.reduce((top, row) => {
+    if (row.maxKm === null) return row
+    if (top.maxKm === null) return top
+    return row.maxKm > top.maxKm ? row : top
+  })
+  if (highestBand.maxKm === null || distanceKm > highestBand.maxKm) {
+    return highestBand
+  }
+
+  return null
 }
 
 export function eachDayBetween(start: Date, end: Date): Date[] {

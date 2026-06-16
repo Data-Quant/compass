@@ -949,6 +949,11 @@ export default function UsersPage() {
                     <SelectItem value="PUBLIC_TRANSPORT">Public Transport</SelectItem>
                   </SelectContent>
                 </Select>
+                {payrollForm.distanceKm.trim() !== '' && !payrollForm.transportMode && (
+                  <p className="mt-1 text-xs text-amber-600">
+                    Select a transport mode — travel allowance needs both distance and mode to calculate (Bike and Car/Public use different rates).
+                  </p>
+                )}
               </div>
               <div>
                 <Label className="mb-1">Bank Name</Label>

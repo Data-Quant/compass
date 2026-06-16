@@ -26,33 +26,56 @@ test('calculateWorkingDays excludes weekends and holidays', () => {
   assert.equal(days, 18)
 })
 
-test('resolveTravelTier selects matching mode and distance range', () => {
-  const tier = resolveTravelTier(
-    [
-      {
-        transportMode: 'BIKE',
-        minKm: 0,
-        maxKm: 5,
-        monthlyRate: 7500,
-        effectiveFrom: new Date(Date.UTC(2025, 0, 1)),
-        effectiveTo: null,
-        isActive: true,
-      },
-      {
-        transportMode: 'BIKE',
-        minKm: 6,
-        maxKm: 10,
-        monthlyRate: 12000,
-        effectiveFrom: new Date(Date.UTC(2025, 0, 1)),
-        effectiveTo: null,
-        isActive: true,
-      },
-    ],
-    'BIKE',
-    7,
-    new Date(Date.UTC(2026, 1, 1))
-  )
+const BIKE_TIERS = [
+  {
+    transportMode: 'BIKE' as const,
+    minKm: 0,
+    maxKm: 5,
+    monthlyRate: 7500,
+    effectiveFrom: new Date(Date.UTC(2025, 0, 1)),
+    effectiveTo: null,
+    isActive: true,
+  },
+  {
+    transportMode: 'BIKE' as const,
+    minKm: 6,
+    maxKm: 10,
+    monthlyRate: 12000,
+    effectiveFrom: new Date(Date.UTC(2025, 0, 1)),
+    effectiveTo: null,
+    isActive: true,
+  },
+  {
+    transportMode: 'BIKE' as const,
+    minKm: 31,
+    maxKm: 40,
+    monthlyRate: 32000,
+    effectiveFrom: new Date(Date.UTC(2025, 0, 1)),
+    effectiveTo: null,
+    isActive: true,
+  },
+]
 
+test('resolveTravelTier selects matching mode and distance range', () => {
+  const tier = resolveTravelTier(BIKE_TIERS, 'BIKE', 7, new Date(Date.UTC(2026, 1, 1)))
   assert.equal(tier?.monthlyRate, 12000)
+})
+
+test('resolveTravelTier clamps distances beyond the top band to the highest tier', () => {
+  // 52 km exceeds the highest configured band (31-40); it should still resolve
+  // to the top tier rather than returning no match.
+  const tier = resolveTravelTier(BIKE_TIERS, 'BIKE', 52, new Date(Date.UTC(2026, 1, 1)))
+  assert.equal(tier?.monthlyRate, 32000)
+  assert.equal(tier?.maxKm, 40)
+})
+
+test('resolveTravelTier returns null when transport mode is missing', () => {
+  const tier = resolveTravelTier(BIKE_TIERS, null, 7, new Date(Date.UTC(2026, 1, 1)))
+  assert.equal(tier, null)
+})
+
+test('resolveTravelTier returns null when no tier exists for the mode', () => {
+  const tier = resolveTravelTier(BIKE_TIERS, 'CAR', 7, new Date(Date.UTC(2026, 1, 1)))
+  assert.equal(tier, null)
 })
 
