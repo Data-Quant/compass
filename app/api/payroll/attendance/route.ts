@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
             lte: period.periodEnd,
           },
         },
-        select: { holidayDate: true, name: true },
+        select: { id: true, holidayDate: true, name: true },
         orderBy: { holidayDate: 'asc' },
       }),
     ])

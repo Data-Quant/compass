@@ -35,6 +35,7 @@ interface AttendanceEntry {
 }
 
 interface HolidayLite {
+  id: string
   holidayDate: string
   name: string
 }
@@ -87,6 +88,8 @@ export function PayrollAttendancePanel({ periods }: Props) {
   const [effectiveFrom, setEffectiveFrom] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [dirtyMap, setDirtyMap] = useState<Record<string, AttendanceCellStatus>>({})
+  const [holidayForm, setHolidayForm] = useState({ holidayDate: '', name: '' })
+  const [savingHoliday, setSavingHoliday] = useState(false)
 
   useEffect(() => {
     if (periods.length > 0 && !periodId) {
@@ -196,6 +199,51 @@ export function PayrollAttendancePanel({ periods }: Props) {
       toast.error(error instanceof Error ? error.message : 'Failed to save attendance')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const periodBounds = useMemo(() => {
+    if (!selectedPeriod) return { min: '', max: '' }
+    return {
+      min: selectedPeriod.periodStart.slice(0, 10),
+      max: selectedPeriod.periodEnd.slice(0, 10),
+    }
+  }, [selectedPeriod])
+
+  const submitHoliday = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!holidayForm.holidayDate || !holidayForm.name.trim()) {
+      toast.error('Enter a date and a name for the holiday')
+      return
+    }
+    try {
+      setSavingHoliday(true)
+      const res = await fetch('/api/payroll/public-holidays', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ holidayDate: holidayForm.holidayDate, name: holidayForm.name.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to add holiday')
+      toast.success('Public holiday added')
+      setHolidayForm({ holidayDate: '', name: '' })
+      if (periodId) await loadData(periodId)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to add holiday')
+    } finally {
+      setSavingHoliday(false)
+    }
+  }
+
+  const deleteHoliday = async (id: string) => {
+    try {
+      const res = await fetch(`/api/payroll/public-holidays?id=${id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to remove holiday')
+      toast.success('Public holiday removed')
+      if (periodId) await loadData(periodId)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to remove holiday')
     }
   }
 
@@ -325,6 +373,67 @@ export function PayrollAttendancePanel({ periods }: Props) {
               Showing {filteredEmployees.length} of {employees.length} employees
             </p>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div>
+              <h3 className="text-lg font-semibold font-display">Public Holidays</h3>
+              <p className="text-sm text-muted-foreground">
+                Mark public holidays for this period. Holidays on weekdays reduce the working days used for attendance and travel proration.
+              </p>
+            </div>
+            {selectedPeriod && (
+              <span className="text-sm text-muted-foreground">
+                Working days: <span className="font-medium text-foreground">{workingDays}</span>
+              </span>
+            )}
+          </div>
+
+          <div className="space-y-2 mb-4">
+            {holidays.map((holiday) => (
+              <div key={holiday.id} className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2">
+                <div>
+                  <p className="text-sm font-medium">{holiday.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(holiday.holidayDate).toLocaleDateString(undefined, { timeZone: 'UTC' })}
+                  </p>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => deleteHoliday(holiday.id)}>
+                  Remove
+                </Button>
+              </div>
+            ))}
+            {!holidays.length && (
+              <p className="text-sm text-muted-foreground">No public holidays in this period.</p>
+            )}
+          </div>
+
+          <form onSubmit={submitHoliday} className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+            <div className="space-y-1.5">
+              <Label>Date</Label>
+              <Input
+                type="date"
+                value={holidayForm.holidayDate}
+                min={periodBounds.min || undefined}
+                max={periodBounds.max || undefined}
+                onChange={(e) => setHolidayForm({ ...holidayForm, holidayDate: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Holiday Name</Label>
+              <Input
+                value={holidayForm.name}
+                onChange={(e) => setHolidayForm({ ...holidayForm, name: e.target.value })}
+                placeholder="e.g. Eid Holiday"
+              />
+            </div>
+            <Button type="submit" disabled={savingHoliday}>
+              {savingHoliday ? 'Adding...' : 'Add Holiday'}
+            </Button>
+          </form>
         </CardContent>
       </Card>
 

@@ -531,7 +531,7 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
         <CardContent className="p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold font-display">Public Holidays</h3>
-            {!canEdit && <p className="text-xs text-muted-foreground">Read-only for O&A</p>}
+            {!canEdit && <p className="text-xs text-muted-foreground">O&A can manage holidays in the Attendance tab</p>}
           </div>
           <div className="space-y-2">
             {publicHolidays.map((holiday) => (

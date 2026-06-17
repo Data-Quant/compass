@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { canEditPayrollMaster, canManagePayroll } from '@/lib/permissions'
+import { canManagePayroll } from '@/lib/permissions'
 
 const createSchema = z.object({
   holidayDate: z.string().trim().min(1),
@@ -57,7 +57,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const user = await getSession()
-    if (!user || !canEditPayrollMaster(user.role)) {
+    // Payroll managers (HR + O&A) can mark public holidays, which adjusts the
+    // working-day count used for attendance and travel proration.
+    if (!user || !canManagePayroll(user.role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -81,6 +83,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, holiday })
   } catch (error) {
+    if (error instanceof Error && 'code' in error && (error as { code?: string }).code === 'P2002') {
+      return NextResponse.json({ error: 'A public holiday already exists on that date' }, { status: 400 })
+    }
     console.error('Failed to create payroll public holiday:', error)
     return NextResponse.json({ error: 'Failed to create payroll public holiday' }, { status: 500 })
   }
@@ -89,7 +94,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const user = await getSession()
-    if (!user || !canEditPayrollMaster(user.role)) {
+    if (!user || !canManagePayroll(user.role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
