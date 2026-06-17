@@ -271,13 +271,24 @@ export function calculateWorkingDays(params: {
 export function calculatePresentDays(
   attendanceEntries: Array<{ attendanceDate: Date; status: AttendanceStatus }>,
   periodStart: Date,
-  periodEnd: Date
+  periodEnd: Date,
+  options?: { holidays?: Date[]; weekendDays?: number[] }
 ): number {
   const start = normalizeDate(periodStart).getTime()
   const end = normalizeDate(periodEnd).getTime()
+  const weekendDays = options?.weekendDays || [0, 6]
+  const holidaySet = new Set((options?.holidays || []).map((d) => normalizeDate(d).toISOString()))
+  // Only count PRESENT marks that land on actual working days. Attendance may have
+  // been marked before a public holiday was added (or on a weekend), and those
+  // marks must not inflate present days beyond the working-day denominator.
   return attendanceEntries.filter((entry) => {
-    const date = normalizeDate(entry.attendanceDate).getTime()
-    return date >= start && date <= end && entry.status === 'PRESENT'
+    const normalized = normalizeDate(entry.attendanceDate)
+    const date = normalized.getTime()
+    if (date < start || date > end) return false
+    if (entry.status !== 'PRESENT') return false
+    if (weekendDays.includes(normalized.getUTCDay())) return false
+    if (holidaySet.has(normalized.toISOString())) return false
+    return true
   }).length
 }
 

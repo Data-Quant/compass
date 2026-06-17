@@ -1,6 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { calculateAnnualProgressiveTax, calculateWorkingDays, resolveTravelTier } from '../lib/payroll/settings'
+import {
+  calculateAnnualProgressiveTax,
+  calculatePresentDays,
+  calculateWorkingDays,
+  resolveTravelTier,
+} from '../lib/payroll/settings'
 
 test('calculateAnnualProgressiveTax applies bracket fixed + variable logic', () => {
   const tax = calculateAnnualProgressiveTax(2_500_000, [
@@ -55,6 +60,29 @@ const BIKE_TIERS = [
     isActive: true,
   },
 ]
+
+test('calculatePresentDays excludes PRESENT marks on holidays and weekends', () => {
+  const periodStart = new Date(Date.UTC(2026, 4, 1)) // May 2026
+  const periodEnd = new Date(Date.UTC(2026, 4, 31))
+  const entries = [
+    { attendanceDate: new Date(Date.UTC(2026, 4, 4)), status: 'PRESENT' as const }, // Mon - working
+    { attendanceDate: new Date(Date.UTC(2026, 4, 5)), status: 'PRESENT' as const }, // Tue - working
+    { attendanceDate: new Date(Date.UTC(2026, 4, 6)), status: 'PRESENT' as const }, // Wed - but a holiday below
+    { attendanceDate: new Date(Date.UTC(2026, 4, 9)), status: 'PRESENT' as const }, // Sat - weekend
+    { attendanceDate: new Date(Date.UTC(2026, 4, 7)), status: 'ABSENT' as const }, // Thu - working, absent
+  ]
+
+  // Weekends are always excluded, so the Saturday PRESENT mark never counts (3 of 4).
+  assert.equal(calculatePresentDays(entries, periodStart, periodEnd), 3)
+
+  // Excluding the May 6 holiday too leaves only the two true working-day PRESENTs.
+  assert.equal(
+    calculatePresentDays(entries, periodStart, periodEnd, {
+      holidays: [new Date(Date.UTC(2026, 4, 6))],
+    }),
+    2
+  )
+})
 
 test('resolveTravelTier selects matching mode and distance range', () => {
   const tier = resolveTravelTier(BIKE_TIERS, 'BIKE', 7, new Date(Date.UTC(2026, 1, 1)))

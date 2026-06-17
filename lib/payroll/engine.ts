@@ -416,7 +416,9 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
           // travel prorates down to 0 instead of paying a full month. The value is
           // always persisted, overwriting any stale auto-written amount.
           const userAttendance = attendanceByUserId.get(userId) || []
-          const presentDays = calculatePresentDays(userAttendance, period.periodStart, period.periodEnd)
+          const presentDays = calculatePresentDays(userAttendance, period.periodStart, period.periodEnd, {
+            holidays: holidays.map((h) => h.holidayDate),
+          })
           travelReimbursement = computeTravelPayable(tier.monthlyRate, presentDays, workingDays)
           autoInputUpserts.push({
             periodId,
