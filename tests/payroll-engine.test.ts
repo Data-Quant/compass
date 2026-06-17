@@ -4,6 +4,7 @@ import {
   computeAutoMedicalAllowance,
   computeEarningsBreakdown,
   computeTravelPayable,
+  resolveValidUserId,
   type SalaryHeadLite,
 } from '../lib/payroll/engine'
 
@@ -84,4 +85,14 @@ test('computeTravelPayable never exceeds the full monthly rate', () => {
 
 test('computeTravelPayable returns zero when there are no working days', () => {
   assert.equal(computeTravelPayable(40_000, 10, 0), 0)
+})
+
+test('resolveValidUserId keeps existing users and nulls dangling/empty ones', () => {
+  const valid = new Set(['u1', 'u2'])
+  assert.equal(resolveValidUserId('u1', valid), 'u1')
+  // A carried-forward userId for a since-deleted user must become null so the
+  // receipt foreign key does not abort the calculation.
+  assert.equal(resolveValidUserId('deleted-user', valid), null)
+  assert.equal(resolveValidUserId(null, valid), null)
+  assert.equal(resolveValidUserId(undefined, valid), null)
 })

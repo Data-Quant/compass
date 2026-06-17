@@ -85,6 +85,17 @@ export function computeTravelPayable(monthlyRate: number, presentDays: number, w
   return Number(Math.max(0, (monthlyRate * clampedPresent) / workingDays).toFixed(2))
 }
 
+// A user can be deleted after a period is calculated, leaving carried-forward
+// inputs pointing at a userId that no longer exists. PayrollReceipt.userId has a
+// foreign key, so writing one would abort the whole calculation — coerce unknown
+// userIds to null instead.
+export function resolveValidUserId(
+  userId: string | null | undefined,
+  validUserIds: Set<string>
+): string | null {
+  return userId && validUserIds.has(userId) ? userId : null
+}
+
 export type TravelSkipReason =
   | 'UNMAPPED_EMPLOYEE'
   | 'MISSING_TRANSPORT_PROFILE'
@@ -205,7 +216,7 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
     if (mappedUserId) userIds.add(mappedUserId)
   }
 
-  const [profiles, attendanceEntries, salaryRevisions] = await Promise.all([
+  const [profiles, attendanceEntries, salaryRevisions, existingUsers] = await Promise.all([
     prisma.payrollEmployeeProfile.findMany({
       where: { userId: { in: [...userIds] } },
       select: {
@@ -251,8 +262,16 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
         },
       },
     }),
+    // A user can be deleted after a period is calculated, leaving dangling
+    // userIds on carried-forward inputs. Track which ones still exist so we
+    // never write a receipt FK that references a missing user.
+    prisma.user.findMany({
+      where: { id: { in: [...userIds] } },
+      select: { id: true },
+    }),
   ])
 
+  const validUserIds = new Set(existingUsers.map((u) => u.id))
   const profileByUserId = new Map(profiles.map((row) => [row.userId, row]))
   const latestRevisionByUserId = new Map<string, (typeof salaryRevisions)[number]>()
   for (const revision of salaryRevisions) {
@@ -309,7 +328,10 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
   for (const [payrollName, rows] of rowsByPayroll.entries()) {
     const bucket = bucketInputs(rows)
     const normalized = normalizedByPayroll.get(payrollName) || normalizePayrollName(payrollName)
-    const userId = rows.find((r) => r.userId)?.userId || userIdByNormalized.get(normalized) || null
+    const resolvedUserId = rows.find((r) => r.userId)?.userId || userIdByNormalized.get(normalized) || null
+    // Drop userIds that no longer reference an existing user so receipts/computed
+    // rows are written with null rather than a dangling foreign key.
+    const userId = resolveValidUserId(resolvedUserId, validUserIds)
 
     if (userId) {
       const revision = latestRevisionByUserId.get(userId)
