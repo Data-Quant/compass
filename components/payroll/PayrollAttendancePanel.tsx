@@ -277,9 +277,9 @@ export function PayrollAttendancePanel({ periods }: Props) {
   }
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardContent className="p-6">
+    <div className="flex flex-1 min-h-0 flex-col gap-4">
+      <Card className="flex flex-1 min-h-0 flex-col">
+        <CardContent className="p-6 flex flex-1 min-h-0 flex-col">
           <div className="flex flex-wrap items-end gap-3 mb-4">
             <div className="space-y-1.5 min-w-[220px]">
               <Label>Payroll Period</Label>
@@ -316,7 +316,7 @@ export function PayrollAttendancePanel({ periods }: Props) {
             </div>
           </div>
 
-          <div className="rounded-lg border border-border [&>div]:max-h-[65vh] [&>div]:overflow-auto">
+          <div className="flex-1 min-h-0 rounded-lg border border-border [&>div]:h-full [&>div]:overflow-auto">
             <Table>
               <TableHeader>
                 <TableRow>
