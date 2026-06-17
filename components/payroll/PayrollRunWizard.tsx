@@ -20,6 +20,7 @@ import {
   FileSignature,
   Loader2,
   RefreshCcw,
+  RotateCcw,
   Users,
   Wallet,
   CalendarDays,
@@ -31,7 +32,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 type WizardStep = 0 | 1 | 2 | 3 | 4
-type PendingAction = 'recalculate' | 'approve' | 'send' | 'sync' | 'none'
+type PendingAction = 'recalculate' | 'approve' | 'unapprove' | 'send' | 'sync' | 'none'
 
 interface PreviousData {
   previousInputs: Record<string, Record<string, number>>
@@ -192,6 +193,10 @@ export function PayrollRunWizard({
         endpoint = `/api/payroll/periods/${periodId}/approve`
         body = { comment: approvalComment || undefined }
       }
+      if (action === 'unapprove') {
+        endpoint = `/api/payroll/periods/${periodId}/unapprove`
+        body = { comment: approvalComment || undefined }
+      }
       if (action === 'send') endpoint = `/api/payroll/periods/${periodId}/send-docusign`
       if (action === 'sync') endpoint = `/api/payroll/periods/${periodId}/docusign/sync`
 
@@ -202,7 +207,7 @@ export function PayrollRunWizard({
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || `Failed to ${action}`)
-      if (action === 'approve') setApprovalComment('')
+      if (action === 'approve' || action === 'unapprove') setApprovalComment('')
       toast.success(`Payroll ${action} completed`)
       await onReload()
     } catch (error) {
@@ -552,19 +557,41 @@ export function PayrollRunWizard({
                         rows={3}
                       />
                     </div>
-                    <Button
-                      onClick={() => runAction('approve')}
-                      disabled={pendingAction !== 'none'}
-                      className="w-full"
-                      size="lg"
-                    >
-                      {pendingAction === 'approve' ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <CheckCircle2 className="w-4 h-4" />
-                      )}
-                      Approve Period
-                    </Button>
+                    {period.status === 'APPROVED' ? (
+                      <div className="space-y-2">
+                        <Button
+                          onClick={() => runAction('unapprove')}
+                          disabled={pendingAction !== 'none'}
+                          variant="outline"
+                          className="w-full"
+                          size="lg"
+                        >
+                          {pendingAction === 'unapprove' ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <RotateCcw className="w-4 h-4" />
+                          )}
+                          Un-approve Period
+                        </Button>
+                        <p className="text-xs text-muted-foreground text-center">
+                          Reverts to Calculated so inputs can be edited and recalculated. Only available before receipts are sent.
+                        </p>
+                      </div>
+                    ) : (
+                      <Button
+                        onClick={() => runAction('approve')}
+                        disabled={pendingAction !== 'none' || period.status !== 'CALCULATED'}
+                        className="w-full"
+                        size="lg"
+                      >
+                        {pendingAction === 'approve' ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="w-4 h-4" />
+                        )}
+                        Approve Period
+                      </Button>
+                    )}
                   </CardContent>
                 </Card>
 
