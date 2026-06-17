@@ -106,8 +106,6 @@ export function PayrollPayStub({
         <div className="h-2" />
         <StubRow label="Medical Allowance" amount={num(earnings.medicalAllowance)} indent />
         <StubRow label="Travel Reimbursement" amount={num(earnings.travelReimbursement)} indent />
-        <StubRow label="Utility Bills Reimbursement" amount={num(earnings.utilityReimbursement)} indent />
-        <StubRow label="Meals & Entertainment" amount={num(earnings.mealsReimbursement)} indent />
         <StubRow label="Mobile Internet" amount={num(earnings.mobileReimbursement)} indent />
         <StubRow label="Reimbursements (Personal/Office)" amount={num(earnings.expenseReimbursement)} indent />
         <StubRow label="Advance Salary (Loan)" amount={num(earnings.advanceLoan)} indent />

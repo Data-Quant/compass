@@ -105,10 +105,8 @@ const EARNINGS_COLUMNS: Array<{ key: SortKey; label: string; componentKey?: stri
   { key: 'medicalAllowance', label: 'Medical', componentKey: 'MEDICAL_ALLOWANCE', editable: true },
   { key: 'bonus', label: 'Bonus', componentKey: 'BONUS', editable: true },
   { key: 'travelReimbursement', label: 'Travel', componentKey: 'TRAVEL_REIMBURSEMENT', editable: true },
-  { key: 'utilityReimbursement', label: 'Utility', componentKey: 'UTILITY_REIMBURSEMENT', editable: true },
-  { key: 'mealsReimbursement', label: 'Meals', componentKey: 'MEALS_REIMBURSEMENT', editable: true },
   { key: 'mobileReimbursement', label: 'Mobile', componentKey: 'MOBILE_REIMBURSEMENT', editable: true },
-  { key: 'expenseReimbursement', label: 'Expenses', componentKey: 'EXPENSE_REIMBURSEMENT', editable: true },
+  { key: 'expenseReimbursement', label: 'Reimbursements', componentKey: 'EXPENSE_REIMBURSEMENT', editable: true },
   { key: 'advanceLoan', label: 'Advance Loan', componentKey: 'ADVANCE_LOAN', editable: true },
 ]
 
