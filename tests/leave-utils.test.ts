@@ -5,8 +5,19 @@ import {
   calculateLeaveDuration,
   hasLeaveEnded,
   isValidLeaveDateRange,
+  leaveHasStarted,
   leaveRequiresLeadApproval,
 } from '../lib/leave-utils'
+
+test('leaveHasStarted is true on/after the start date, false before', () => {
+  const now = new Date('2026-06-22T12:00:00.000Z')
+  // Starts tomorrow -> not started (can still cancel/disapprove)
+  assert.equal(leaveHasStarted(new Date('2026-06-23T00:00:00.000Z'), now), false)
+  // Starts today -> started (availed, locked)
+  assert.equal(leaveHasStarted(new Date('2026-06-22T00:00:00.000Z'), now), true)
+  // Started in the past -> started
+  assert.equal(leaveHasStarted(new Date('2026-06-16T00:00:00.000Z'), now), true)
+})
 
 test('calculateLeaveDays includes both start and end weekdays', () => {
   const start = new Date('2026-02-02T00:00:00.000Z') // Monday

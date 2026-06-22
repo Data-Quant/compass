@@ -336,7 +336,12 @@ export default function LeavePage() {
         throw new Error(data.error || 'Failed to process request')
       }
 
-      toast.success(action === 'approve' ? 'Leave approved' : 'Leave rejected')
+      const toastMessage = action === 'approve'
+        ? 'Leave approved'
+        : data.status === 'CANCELLED'
+          ? 'Leave cancelled'
+          : 'Leave rejected'
+      toast.success(toastMessage)
       await Promise.all([loadData(), loadCalendarEvents()])
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to process request')
@@ -1263,15 +1268,17 @@ export default function LeavePage() {
                                 )}
                                 <p className="text-[11px] text-muted-foreground truncate">{request.reason}</p>
                                 <div className="flex items-center gap-2 mt-2">
-                                  <Button
-                                    size="sm"
-                                    className="h-7 px-2.5 text-xs bg-emerald-600 hover:bg-emerald-700"
-                                    disabled={processing}
-                                    onClick={() => handleApprovalDecision(request.id, 'approve')}
-                                  >
-                                    <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-                                    Approve
-                                  </Button>
+                                  {request.status !== 'APPROVED' && (
+                                    <Button
+                                      size="sm"
+                                      className="h-7 px-2.5 text-xs bg-emerald-600 hover:bg-emerald-700"
+                                      disabled={processing}
+                                      onClick={() => handleApprovalDecision(request.id, 'approve')}
+                                    >
+                                      <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                                      Approve
+                                    </Button>
+                                  )}
                                   <Button
                                     size="sm"
                                     variant="destructive"
@@ -1280,7 +1287,7 @@ export default function LeavePage() {
                                     onClick={() => handleApprovalDecision(request.id, 'reject')}
                                   >
                                     <XCircle className="w-3.5 h-3.5 mr-1" />
-                                    Reject
+                                    {request.status === 'APPROVED' ? 'Disapprove' : 'Reject'}
                                   </Button>
                                 </div>
                               </div>

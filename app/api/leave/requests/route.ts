@@ -6,10 +6,11 @@ import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import {
   calculateLeaveDuration,
-  hasLeaveEnded,
   isValidLeaveDateRange,
+  leaveHasStarted,
   leaveRequiresLeadApproval,
 } from '@/lib/leave-utils'
+import { restoreUnstartedLeaveBalance } from '@/lib/leave-balance'
 import { stripHtml } from '@/lib/sanitize'
 import { normalizeLeaveTimeZone } from '@/lib/leave-timezone'
 import { isAdminRole } from '@/lib/permissions'
@@ -273,47 +274,55 @@ export async function GET(request: NextRequest) {
       where.status = parsedStatus.data
     }
     
-    // If admin user wants to see requests pending their approval
-    if (forApproval && isAdminRole(user.role)) {
-      where.status = { in: ['PENDING', 'LEAD_APPROVED'] }
-    }
-    
-    // If non-admin user (lead) wants to see requests for their team
-    if (forApproval && !isAdminRole(user.role)) {
-      // Get people this user leads (TEAM_LEAD relationship)
+    // Approval queue. A user may be HR, a team lead, or both — show the union so
+    // a dual-role user (e.g. HR who also leads a team) never loses sight of items
+    // that need them as the lead.
+    if (forApproval) {
+      const isHR = isAdminRole(user.role)
       const leadMappings = await prisma.evaluatorMapping.findMany({
-        where: {
-          evaluatorId: user.id,
-          relationshipType: 'TEAM_LEAD',
-        },
+        where: { evaluatorId: user.id, relationshipType: 'TEAM_LEAD' },
         select: { evaluateeId: true },
       })
-      
-      const teamMemberIds = leadMappings.map(m => m.evaluateeId)
+      const teamMemberIds = leadMappings.map((m) => m.evaluateeId)
 
-      const requests = await prisma.leaveRequest.findMany({
-        where: {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+
+      const orConditions: Prisma.LeaveRequestWhereInput[] = []
+      if (isHR) {
+        // HR approval queue: anything awaiting HR finalization (any employee).
+        orConditions.push({ status: { in: ['PENDING', 'LEAD_APPROVED'] } })
+      }
+      if (teamMemberIds.length > 0) {
+        // Lead queue: a lead can approve a pending team request or disapprove one
+        // HR has finalized (APPROVED) — but only while it has not started yet.
+        orConditions.push({
           employeeId: { in: teamMemberIds },
-          status: { in: ['PENDING', 'HR_APPROVED'] },
+          status: { in: ['PENDING', 'LEAD_APPROVED', 'HR_APPROVED', 'APPROVED'] },
+          startDate: { gte: today },
           OR: [
             { isHalfDay: false },
             { isHalfDay: true, leaveType: 'CASUAL' },
           ],
-        },
+        })
+      }
+
+      if (orConditions.length === 0) {
+        return NextResponse.json({ requests: [] })
+      }
+
+      const requests = await prisma.leaveRequest.findMany({
+        where: { OR: orConditions },
         include: {
-          employee: {
-            select: { id: true, name: true, department: true, position: true },
-          },
-          coverPerson: {
-            select: { id: true, name: true },
-          },
+          employee: { select: { id: true, name: true, department: true, position: true } },
+          coverPerson: { select: { id: true, name: true } },
         },
         orderBy: { createdAt: 'desc' },
       })
 
       return NextResponse.json({ requests: await attachCoverPeople(requests) })
     }
-    
+
     const requests = await prisma.leaveRequest.findMany({
       where,
       include: {
@@ -326,7 +335,7 @@ export async function GET(request: NextRequest) {
       },
       orderBy: { createdAt: 'desc' },
     })
-    
+
     return NextResponse.json({ requests: await attachCoverPeople(requests) })
   } catch (error) {
     console.error('Failed to fetch leave requests:', error)
@@ -800,44 +809,13 @@ export async function DELETE(request: NextRequest) {
     }
     
     const isHR = isAdminRole(user.role)
-    const restoreApprovedLeaveBalance = async (tx: Prisma.TransactionClient) => {
-      const start = new Date(leaveRequest.startDate)
-      const end = new Date(leaveRequest.endDate)
-      const daysUsed = calculateLeaveDuration(start, end, leaveRequest.isHalfDay)
-      const usedField = `${leaveRequest.leaveType.toLowerCase()}Used` as 'casualUsed' | 'sickUsed' | 'annualUsed'
-
-      const balance = await tx.leaveBalance.findUnique({
-        where: {
-          employeeId_year: {
-            employeeId: leaveRequest.employeeId,
-            year: start.getFullYear(),
-          },
-        },
-      })
-
-      if (!balance) return
-
-      const decrementBy = Math.min(balance[usedField], daysUsed)
-      if (decrementBy <= 0) return
-
-      await tx.leaveBalance.update({
-        where: {
-          employeeId_year: {
-            employeeId: leaveRequest.employeeId,
-            year: start.getFullYear(),
-          },
-        },
-        data: {
-          [usedField]: { decrement: decrementBy },
-        },
-      })
-    }
 
     if (isHR) {
       await prisma.$transaction(async (tx) => {
-        // Roll back used balance if removing an approved entry.
+        // Roll back used balance only if removing a not-yet-started approved
+        // entry; days for a leave already availed are never clawed back.
         if (leaveRequest.status === 'APPROVED') {
-          await restoreApprovedLeaveBalance(tx)
+          await restoreUnstartedLeaveBalance(tx, leaveRequest)
         }
 
         await tx.leaveRequest.delete({
@@ -859,9 +837,9 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
     }
 
-    if (hasLeaveEnded(new Date(leaveRequest.endDate))) {
+    if (leaveHasStarted(new Date(leaveRequest.startDate))) {
       return NextResponse.json(
-        { error: 'Past leave requests cannot be cancelled' },
+        { error: 'This leave has already started or been taken and cannot be cancelled.' },
         { status: 400 }
       )
     }
@@ -873,7 +851,7 @@ export async function DELETE(request: NextRequest) {
     if (leaveRequest.status !== 'CANCELLED') {
       await prisma.$transaction(async (tx) => {
         if (leaveRequest.status === 'APPROVED') {
-          await restoreApprovedLeaveBalance(tx)
+          await restoreUnstartedLeaveBalance(tx, leaveRequest)
         }
 
         await tx.leaveRequest.update({

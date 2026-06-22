@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getSession } from '@/lib/auth'
-import { sendLeaveApprovalNotification } from '@/lib/email'
+import { sendLeaveApprovalNotification, sendLeaveCancellationNotification } from '@/lib/email'
 import { LeaveStatus, Prisma } from '@prisma/client'
 import { z } from 'zod'
-import { calculateLeaveDuration, leaveRequiresLeadApproval } from '@/lib/leave-utils'
+import { calculateLeaveDuration, leaveHasStarted } from '@/lib/leave-utils'
+import { restoreUnstartedLeaveBalance } from '@/lib/leave-balance'
 import { isAdminRole } from '@/lib/permissions'
 import { removeLeaveCalendarEvent, syncLeaveCalendarEvent } from '@/lib/google-calendar'
 import { stripHtml } from '@/lib/sanitize'
@@ -51,27 +52,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Leave request not found' }, { status: 404 })
     }
 
-    // Some senior members (for example team leads / junior partners) do not have
-    // an upstream TEAM_LEAD mapping. Those requests should be HR-only approvals.
-    // Sick half-day leave is also HR-only, while casual half-day still needs lead approval.
-    const superiorLeadCount = await prisma.evaluatorMapping.count({
-      where: {
-        evaluateeId: leaveRequest.employeeId,
-        relationshipType: 'TEAM_LEAD',
-      },
-    })
     const isHR = isAdminRole(user.role)
 
+    // Half-day sick leave is HR-only.
     if (leaveRequest.isHalfDay && leaveRequest.leaveType === 'SICK' && !isHR) {
       return NextResponse.json({ error: 'Half-day sick leave requests are approved by HR only' }, { status: 403 })
     }
 
-    const requiresLeadApproval = leaveRequiresLeadApproval(
-      leaveRequest.leaveType,
-      leaveRequest.isHalfDay,
-      superiorLeadCount
-    )
-    
     // Check if user is a lead for this employee (if not HR)
     let isLead = false
     if (!isHR) {
@@ -90,10 +77,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Not authorized to approve this request' }, { status: 403 })
     }
     
-    // Handle rejection
+    // Handle rejection / disapproval
     if (action === 'reject') {
-      if (leaveRequest.status === 'APPROVED' || leaveRequest.status === 'CANCELLED') {
-        return NextResponse.json({ error: `Cannot reject a ${leaveRequest.status.toLowerCase()} request` }, { status: 400 })
+      if (leaveRequest.status === 'CANCELLED') {
+        return NextResponse.json({ error: 'Cannot reject a cancelled request' }, { status: 400 })
       }
       if (leaveRequest.status === 'REJECTED') {
         try {
@@ -104,6 +91,45 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true, status: 'REJECTED' })
       }
 
+      // Disapproving an already-finalized (APPROVED) leave cancels it: restore
+      // the balance and remove the calendar invite — but only if it has not been
+      // availed yet. Once the leave has started, those days are committed.
+      if (leaveRequest.status === 'APPROVED') {
+        if (leaveHasStarted(new Date(leaveRequest.startDate))) {
+          return NextResponse.json(
+            { error: 'This leave has already started or been taken and cannot be reversed. Contact HR for any correction.' },
+            { status: 400 }
+          )
+        }
+
+        await prisma.$transaction(async (tx) => {
+          await restoreUnstartedLeaveBalance(tx, leaveRequest)
+          await tx.leaveRequest.update({
+            where: { id: requestId },
+            data: {
+              status: 'CANCELLED',
+              rejectedBy: user.id,
+              rejectedAt: new Date(),
+              rejectionReason: comment || null,
+            },
+          })
+        })
+
+        try {
+          await removeLeaveCalendarEvent(requestId)
+        } catch (e) {
+          console.error('Failed to remove cancelled leave from Google Calendar:', e)
+        }
+        try {
+          await sendLeaveCancellationNotification(requestId, user.name, comment)
+        } catch (e) {
+          console.error('Failed to send leave cancellation notification:', e)
+        }
+
+        return NextResponse.json({ success: true, status: 'CANCELLED' })
+      }
+
+      // Plain rejection of a not-yet-finalized request (no balance was deducted).
       await prisma.leaveRequest.update({
         where: { id: requestId },
         data: {
@@ -119,14 +145,13 @@ export async function POST(request: NextRequest) {
       } catch (e) {
         console.error('Failed to remove rejected leave from Google Calendar:', e)
       }
-      
-      // Send notification
+
       try {
         await sendLeaveApprovalNotification(requestId, 'rejected', user.name, comment)
       } catch (e) {
         console.error('Failed to send rejection notification:', e)
       }
-      
+
       return NextResponse.json({ success: true, status: 'REJECTED' })
     }
     
@@ -148,20 +173,14 @@ export async function POST(request: NextRequest) {
       const updateData: Prisma.LeaveRequestUpdateInput = {}
       
       if (isHR) {
-        if (leaveRequest.status === 'HR_APPROVED' && leaveRequest.hrApprovedBy) {
-          return NextResponse.json({ success: true, status: 'HR_APPROVED' })
-        }
-
         updateData.hrApprovedBy = user.id
         updateData.hrApprovedAt = new Date()
         updateData.hrComment = comment || null
-        
-        // Check if lead has already approved
-        if (leaveRequest.status === 'LEAD_APPROVED' || leaveRequest.leadApprovedBy) {
-          newStatus = 'APPROVED'
-        } else {
-          newStatus = requiresLeadApproval ? 'HR_APPROVED' : 'APPROVED'
-        }
+
+        // HR approval finalizes the leave on its own (balance deducted +
+        // calendar invite created), regardless of lead approval. A lead can
+        // still disapprove afterwards, which cancels it.
+        newStatus = 'APPROVED'
       } else if (isLead) {
         if (leaveRequest.status === 'LEAD_APPROVED' && leaveRequest.leadApprovedBy) {
           return NextResponse.json({ success: true, status: 'LEAD_APPROVED' })

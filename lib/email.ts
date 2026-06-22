@@ -782,6 +782,120 @@ export async function sendLeaveApprovalNotification(
   }
 }
 
+// Notifies ALL parties (employee, HR, configured fallback, lead(s), cover
+// people) that a finalized leave has been cancelled — used when a team lead
+// disapproves a leave that HR had already approved.
+export async function sendLeaveCancellationNotification(
+  requestId: string,
+  cancelledByName: string,
+  reason?: string
+) {
+  const leaveRequest = await prisma.leaveRequest.findUnique({
+    where: { id: requestId },
+    include: { employee: true, coverPerson: true },
+  })
+  if (!leaveRequest) {
+    return { success: false, message: 'Leave request not found' }
+  }
+
+  const employee = leaveRequest.employee
+  const startDateValue = new Date(leaveRequest.startDate)
+  const endDateValue = new Date(leaveRequest.endDate)
+  const startDate = startDateValue.toLocaleDateString()
+  const endDate = endDateValue.toLocaleDateString()
+  const daysCount = calculateLeaveDuration(startDateValue, endDateValue, leaveRequest.isHalfDay)
+  const durationLabel = getLeaveDurationLabel(daysCount)
+  const subject = `Leave Cancelled: ${employee.name} - ${leaveRequest.leaveType} (${startDate} to ${endDate})`
+
+  const hrEmails = await getHrRecipientEmails()
+  const fallbackRecipients = parseRecipientList(
+    process.env.LEAVE_FALLBACK_RECIPIENTS || 'hr@plutus21.com,execution@plutus21.com'
+  )
+
+  const leadMappings = await prisma.evaluatorMapping.findMany({
+    where: { evaluateeId: employee.id, relationshipType: 'TEAM_LEAD' },
+    include: { evaluator: true },
+  })
+  const leadEmails = leadMappings.filter((m) => m.evaluator.email).map((m) => m.evaluator.email!)
+
+  const coverPersonIds = normalizeCoverPersonIds(
+    leaveRequest.coverPersonIds,
+    leaveRequest.coverPerson?.id ?? null,
+    employee.id
+  )
+  const coverPeople = coverPersonIds.length > 0
+    ? await prisma.user.findMany({ where: { id: { in: coverPersonIds } }, select: { email: true } })
+    : []
+  const coverPersonEmails = coverPeople.filter((c) => c.email).map((c) => c.email!)
+
+  const recipients = [...new Set([
+    ...(employee.email ? [employee.email] : []),
+    ...hrEmails,
+    ...fallbackRecipients,
+    ...leadEmails,
+    ...coverPersonEmails,
+  ])]
+  if (recipients.length === 0) {
+    return { success: false, message: 'No recipients configured for leave cancellation notification' }
+  }
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #EF4444;">Leave Cancelled</h2>
+      <div style="background: #FEE2E2; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p style="font-size: 16px; color: #B91C1C; margin: 0;">
+          ${escapeHtml(employee.name)}'s ${leaveRequest.leaveType.toLowerCase()} leave has been <strong>cancelled</strong>.
+        </p>
+      </div>
+      <div style="background: #F8FAFC; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>Leave Type:</strong> ${escapeHtml(leaveRequest.leaveType)}</p>
+        <p><strong>Start Date (first day off):</strong> ${startDate}</p>
+        <p><strong>End Date (last day off):</strong> ${endDate}</p>
+        <p><strong>Duration (working days):</strong> ${durationLabel}</p>
+        ${getHalfDayDetailsHtml(leaveRequest)}
+        <p><strong>Cancelled by:</strong> ${escapeHtml(cancelledByName)}</p>
+        ${reason ? `<p><strong>Reason:</strong> ${escapeHtml(reason)}</p>` : ''}
+      </div>
+      <p style="color: #64748B; font-size: 14px;">
+        The leave balance has been restored and the calendar invite removed. Contact HR with any questions.
+      </p>
+    </div>
+  `
+
+  try {
+    const info = await transporter.sendMail({
+      from: `P21 Compass <${FROM_EMAIL}>`,
+      to: recipients.join(', '),
+      subject,
+      html: htmlContent,
+    })
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId: requestId,
+      channel: 'EMAIL',
+      eventType: 'APPROVAL_NOTIFICATION',
+      status: 'SUCCESS',
+      recipients,
+      subject,
+      providerMessageId: info.messageId || null,
+      metadata: { approvalStatus: 'cancelled', cancelledBy: cancelledByName },
+    })
+    return { success: true, data: { messageId: info.messageId } }
+  } catch (error: any) {
+    console.error('Failed to send leave cancellation notification:', error)
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId: requestId,
+      channel: 'EMAIL',
+      eventType: 'APPROVAL_NOTIFICATION',
+      status: 'FAILED',
+      recipients,
+      subject,
+      metadata: { approvalStatus: 'cancelled', cancelledBy: cancelledByName },
+      error,
+    })
+    return { success: false, error: error.message }
+  }
+}
+
 export async function sendTransitionPlanReminderNotification(requestId: string) {
   const leaveRequest = await prisma.leaveRequest.findUnique({
     where: { id: requestId },

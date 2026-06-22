@@ -70,3 +70,9 @@ export function leaveRequiresLeadApproval(
 export function hasLeaveEnded(endDate: Date, now = new Date()): boolean {
   return toUtcDateOnly(endDate).getTime() < toUtcDateOnly(now).getTime()
 }
+
+// A leave is considered "started" (availed) once its start date is today or
+// earlier. Cancellations/disapprovals may only restore balance before this.
+export function leaveHasStarted(startDate: Date, now = new Date()): boolean {
+  return toUtcDateOnly(startDate).getTime() <= toUtcDateOnly(now).getTime()
+}
