@@ -1,45 +1,82 @@
 /**
- * READ-ONLY preview of the leave backlog that the new "HR approval finalizes"
- * rule would clear. Lists requests stuck in HR_APPROVED (HR signed off, lead
- * never did, so they never deducted balance / created a calendar invite).
- * No data is changed.
+ * READ-ONLY preview of the HR_APPROVED leave backlog (stuck, never finalized,
+ * so balance was never deducted). Lists past vs upcoming and the per-employee
+ * balance impact of finalizing. No data is changed.
  */
 import { prisma } from '../lib/db'
 import { calculateLeaveDuration, leaveHasStarted } from '../lib/leave-utils'
 
+type Row = {
+  employeeId: string
+  name: string
+  leaveType: string
+  startKey: string
+  endKey: string
+  days: number
+  started: boolean
+}
+
 async function main() {
   const stuck = await prisma.leaveRequest.findMany({
     where: { status: 'HR_APPROVED' },
-    include: { employee: { select: { name: true } } },
-    orderBy: { startDate: 'asc' },
+    include: { employee: { select: { id: true, name: true } } },
+    orderBy: [{ startDate: 'asc' }],
   })
 
-  console.log(`HR_APPROVED backlog (stuck, never finalized): ${stuck.length} request(s)\n`)
-  if (stuck.length === 0) return
-
-  let pastCount = 0
-  let futureCount = 0
-  for (const r of stuck) {
+  const rows: Row[] = stuck.map((r) => {
     const start = new Date(r.startDate)
-    const days = calculateLeaveDuration(start, new Date(r.endDate), r.isHalfDay)
-    const started = leaveHasStarted(start)
-    if (started) pastCount++
-    else futureCount++
-    console.log(
-      ` ${r.employee.name.padEnd(24)} | ${r.leaveType.padEnd(6)} | ${start.toISOString().slice(0, 10)}..${new Date(r.endDate)
-        .toISOString()
-        .slice(0, 10)} | ${days}d | ${started ? 'ALREADY TAKEN (past/started)' : 'upcoming'}`
-    )
+    return {
+      employeeId: r.employee.id,
+      name: r.employee.name,
+      leaveType: r.leaveType,
+      startKey: start.toISOString().slice(0, 10),
+      endKey: new Date(r.endDate).toISOString().slice(0, 10),
+      days: calculateLeaveDuration(start, new Date(r.endDate), r.isHalfDay),
+      started: leaveHasStarted(start),
+    }
+  })
+
+  const fmt = (r: Row) =>
+    ` ${r.name.padEnd(24)} | ${r.leaveType.padEnd(6)} | ${r.startKey}${r.startKey !== r.endKey ? `..${r.endKey}` : '        '} | ${r.days}d`
+
+  const past = rows.filter((r) => r.started)
+  const upcoming = rows.filter((r) => !r.started)
+
+  console.log(`=== PAST / ALREADY-TAKEN (${past.length}) — taken but never deducted ===`)
+  past.forEach((r) => console.log(fmt(r)))
+  console.log(`\n=== UPCOMING (${upcoming.length}) — approved, not yet started ===`)
+  upcoming.forEach((r) => console.log(fmt(r)))
+
+  // Per-employee, per-type balance impact
+  const byEmpType = new Map<string, { name: string; type: string; empId: string; days: number }>()
+  for (const r of rows) {
+    const key = `${r.employeeId}|${r.leaveType}`
+    const cur = byEmpType.get(key) || { name: r.name, type: r.leaveType, empId: r.employeeId, days: 0 }
+    cur.days += r.days
+    byEmpType.set(key, cur)
   }
 
-  console.log(`\nSummary: ${pastCount} already taken, ${futureCount} upcoming.`)
-  console.log('Finalizing would: set status APPROVED and DEDUCT the leave days for each.')
-  console.log(' - Upcoming ones also get a calendar invite.')
-  console.log(' - Already-taken ones: deduction is correct IF the person actually took the leave.')
-
-  // Show current balances for affected employees so deductions are sanity-checked.
-  const empNames = [...new Set(stuck.map((r) => r.employee.name))]
-  console.log(`\nAffected employees: ${empNames.length}`)
+  const year = new Date().getFullYear()
+  console.log(`\n=== BALANCE IMPACT IF FINALIZED (year ${year}) ===`)
+  console.log('EMPLOYEE'.padEnd(24), 'TYPE'.padEnd(7), 'used/total now'.padEnd(16), 'deduct', ' -> available after')
+  for (const v of [...byEmpType.values()].sort((a, b) => a.name.localeCompare(b.name))) {
+    const bal = await prisma.leaveBalance.findUnique({
+      where: { employeeId_year: { employeeId: v.empId, year } },
+    })
+    const totalField = `${v.type.toLowerCase()}Days` as 'casualDays' | 'sickDays' | 'annualDays'
+    const usedField = `${v.type.toLowerCase()}Used` as 'casualUsed' | 'sickUsed' | 'annualUsed'
+    const total = bal ? bal[totalField] : 0
+    const used = bal ? bal[usedField] : 0
+    const availAfter = total - (used + v.days)
+    const flag = availAfter < 0 ? '  <-- WOULD GO NEGATIVE' : ''
+    console.log(
+      v.name.padEnd(24),
+      v.type.padEnd(7),
+      `${used}/${total}`.padEnd(16),
+      String(v.days).padStart(5),
+      ` -> ${availAfter}${flag}`
+    )
+  }
 }
 
 main().catch((e) => { console.error(e); process.exit(1) }).finally(() => prisma.$disconnect())
