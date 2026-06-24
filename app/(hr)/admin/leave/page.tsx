@@ -204,6 +204,9 @@ export default function HRLeavePage() {
     casualDays: '',
     sickDays: '',
     annualDays: '',
+    casualUsed: '',
+    sickUsed: '',
+    annualUsed: '',
   })
   const [createForm, setCreateForm] = useState({
     employeeId: '',
@@ -254,6 +257,9 @@ export default function HRLeavePage() {
         casualDays: '',
         sickDays: '',
         annualDays: '',
+        casualUsed: '',
+        sickUsed: '',
+        annualUsed: '',
       })
       return
     }
@@ -262,6 +268,9 @@ export default function HRLeavePage() {
       casualDays: selectedBalance.casualDays.toString(),
       sickDays: selectedBalance.sickDays.toString(),
       annualDays: selectedBalance.annualDays.toString(),
+      casualUsed: selectedBalance.casualUsed.toString(),
+      sickUsed: selectedBalance.sickUsed.toString(),
+      annualUsed: selectedBalance.annualUsed.toString(),
     })
   }, [selectedBalance])
 
@@ -392,6 +401,29 @@ export default function HRLeavePage() {
       }
     }
 
+    const parsedUsed = {
+      casualUsed: Number(balanceForm.casualUsed),
+      sickUsed: Number(balanceForm.sickUsed),
+      annualUsed: Number(balanceForm.annualUsed),
+    }
+
+    for (const [field, value] of Object.entries(parsedUsed)) {
+      const label = field.replace('Used', '')
+      if (!Number.isFinite(value) || value < 0) {
+        toast.error(`${label} used must be 0 or higher`)
+        return
+      }
+      if (value * 2 !== Math.round(value * 2)) {
+        toast.error(`${label} used must be in steps of 0.5`)
+        return
+      }
+      const total = parsedTotals[`${field.replace('Used', 'Days')}` as keyof typeof parsedTotals]
+      if (value > total) {
+        toast.error(`${label} used (${value}) cannot exceed its total (${total})`)
+        return
+      }
+    }
+
     setSavingBalance(true)
     try {
       const res = await fetch('/api/leave/balance', {
@@ -401,14 +433,15 @@ export default function HRLeavePage() {
           employeeId: balanceEmployeeId,
           year: balanceYear,
           ...parsedTotals,
+          ...parsedUsed,
         }),
       })
       const data = await res.json()
       if (!res.ok || data.error) {
-        throw new Error(data.error || 'Failed to update leave allocation')
+        throw new Error(data.error || 'Failed to update leave balance')
       }
 
-      toast.success('Leave allocation updated')
+      toast.success('Leave balance updated')
       await loadLeaveBalance(balanceEmployeeId, balanceYear)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to update leave allocation')
@@ -1199,60 +1232,65 @@ export default function HRLeavePage() {
                 <CardContent className="p-5 space-y-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <p className="text-base font-semibold text-foreground">Edit Yearly Allocation</p>
+                      <p className="text-base font-semibold text-foreground">Edit Allocation &amp; Balance</p>
                       <p className="text-sm text-muted-foreground">
-                        Defaults start at the standard company allocation. HR can override this employee&apos;s totals for contract-specific leave.
+                        Set this employee&apos;s yearly totals and manually adjust the used (taken) days. Remaining = Total &minus; Used.
                       </p>
                     </div>
                     <Button onClick={handleSaveBalance} disabled={savingBalance}>
-                      {savingBalance ? 'Saving...' : 'Save Allocation'}
+                      {savingBalance ? 'Saving...' : 'Save'}
                     </Button>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <Label htmlFor="casual-allocation" className="mb-2">Casual Total</Label>
-                      <Input
-                        id="casual-allocation"
-                        type="number"
-                        min={0}
-                        step={1}
-                        value={balanceForm.casualDays}
-                        onChange={(e) =>
-                          setBalanceForm((prev) => ({ ...prev, casualDays: e.target.value }))
-                        }
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="sick-allocation" className="mb-2">Sick Total</Label>
-                      <Input
-                        id="sick-allocation"
-                        type="number"
-                        min={0}
-                        step={1}
-                        value={balanceForm.sickDays}
-                        onChange={(e) =>
-                          setBalanceForm((prev) => ({ ...prev, sickDays: e.target.value }))
-                        }
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="annual-allocation" className="mb-2">Annual Total</Label>
-                      <Input
-                        id="annual-allocation"
-                        type="number"
-                        min={0}
-                        step={1}
-                        value={balanceForm.annualDays}
-                        onChange={(e) =>
-                          setBalanceForm((prev) => ({ ...prev, annualDays: e.target.value }))
-                        }
-                      />
-                    </div>
+                    {([
+                      { key: 'casual', label: 'Casual', totalField: 'casualDays', usedField: 'casualUsed' },
+                      { key: 'sick', label: 'Sick', totalField: 'sickDays', usedField: 'sickUsed' },
+                      { key: 'annual', label: 'Annual', totalField: 'annualDays', usedField: 'annualUsed' },
+                    ] as const).map((item) => {
+                      const total = Number(balanceForm[item.totalField]) || 0
+                      const used = Number(balanceForm[item.usedField]) || 0
+                      const remaining = total - used
+                      return (
+                        <div key={item.key} className="rounded-lg border border-border/70 bg-card p-3 space-y-3">
+                          <p className="text-sm font-medium text-foreground">{item.label}</p>
+                          <div>
+                            <Label htmlFor={`${item.key}-allocation`} className="mb-1 text-xs text-muted-foreground">Total (allocation)</Label>
+                            <Input
+                              id={`${item.key}-allocation`}
+                              type="number"
+                              min={0}
+                              step={1}
+                              value={balanceForm[item.totalField]}
+                              onChange={(e) =>
+                                setBalanceForm((prev) => ({ ...prev, [item.totalField]: e.target.value }))
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor={`${item.key}-used`} className="mb-1 text-xs text-muted-foreground">Used (taken)</Label>
+                            <Input
+                              id={`${item.key}-used`}
+                              type="number"
+                              min={0}
+                              step={0.5}
+                              value={balanceForm[item.usedField]}
+                              onChange={(e) =>
+                                setBalanceForm((prev) => ({ ...prev, [item.usedField]: e.target.value }))
+                              }
+                            />
+                          </div>
+                          <p className={`text-xs ${remaining < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                            Remaining: <span className="font-medium">{remaining}</span>
+                          </p>
+                        </div>
+                      )
+                    })}
                   </div>
 
                   <p className="text-xs text-muted-foreground">
-                    Used leave stays intact. Totals cannot be set below already-used leave for the selected year.
+                    Used days can be set in steps of 0.5 and cannot exceed the total allocation. Editing here overrides the
+                    auto-tracked balance (e.g. to correct a record); approving or cancelling leave still adjusts it normally.
                   </p>
                 </CardContent>
               </Card>
