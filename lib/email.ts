@@ -1563,3 +1563,33 @@ export async function sendPreEvaluationLeadPrepNotification(
     return { success: false, error: error.message }
   }
 }
+
+export async function sendSelfEvaluationInvite(opts: {
+  to: string
+  employeeName: string
+  periodName: string
+  appUrl?: string
+}): Promise<void> {
+  if (!opts.to) return
+  const base = opts.appUrl || process.env.NEXT_PUBLIC_APP_URL || 'https://compass-blond.vercel.app'
+  const link = `${base}/evaluations`
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; color: #0f172a;">
+      <h2 style="margin: 0 0 12px;">Self-Evaluation — ${escapeHtml(opts.periodName)}</h2>
+      <p>Hi ${escapeHtml(opts.employeeName)},</p>
+      <p>Please complete your self-evaluation for <strong>${escapeHtml(opts.periodName)}</strong>.
+      Your reflections are shared with your team lead as additional context for your review.</p>
+      <p style="margin: 20px 0;">
+        <a href="${link}" style="display: inline-block; padding: 10px 18px; background: #4F46E5; color: #ffffff; border-radius: 6px; text-decoration: none;">Complete self-evaluation</a>
+      </p>
+      <p style="color: #64748B; font-size: 13px;">You can also find it on your dashboard.</p>
+    </div>
+  `
+
+  await transporter.sendMail({
+    from: `P21 Compass <${FROM_EMAIL}>`,
+    to: opts.to,
+    subject: `Self-Evaluation — ${opts.periodName}`,
+    html,
+  })
+}
