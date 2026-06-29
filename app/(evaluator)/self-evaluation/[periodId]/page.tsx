@@ -21,6 +21,7 @@ export default function SelfEvaluationPage() {
   const [notFound, setNotFound] = useState(false)
   const [status, setStatus] = useState<'DRAFT' | 'SUBMITTED'>('DRAFT')
   const [submittedAt, setSubmittedAt] = useState<string | null>(null)
+  const [locked, setLocked] = useState(false)
   const [questions, setQuestions] = useState<SelfEvalQuestion[]>([])
   const [responses, setResponses] = useState<Record<string, ResponseValue>>({})
   const [submittedAnswers, setSubmittedAnswers] = useState<SelfEvaluationAnswer[]>([])
@@ -41,6 +42,7 @@ export default function SelfEvaluationPage() {
         if (cancelled) return
         setStatus(data.selfEvaluation.status)
         setSubmittedAt(data.selfEvaluation.submittedAt)
+        setLocked(Boolean(data.locked))
         setQuestions(data.questions)
         const answers: SelfEvaluationAnswer[] = Array.isArray(data.selfEvaluation.answers)
           ? data.selfEvaluation.answers
@@ -168,19 +170,31 @@ export default function SelfEvaluationPage() {
         </Card>
       ) : (
         <>
-          <SelfEvaluationForm questions={questions} responses={responses} onChange={handleChange} />
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              {lastSaved && (
-                <>
-                  <Clock className="w-3 h-3" /> Auto-saved {lastSaved.toLocaleTimeString()}
-                </>
-              )}
+          {locked && (
+            <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground">
+              This evaluation period is locked. Self-evaluations are closed and can no longer be edited or submitted.
             </div>
-            <Button onClick={handleSubmit} disabled={submitting}>
-              <Send className="w-4 h-4" /> {submitting ? 'Submitting...' : 'Submit self-evaluation'}
-            </Button>
-          </div>
+          )}
+          <SelfEvaluationForm
+            questions={questions}
+            responses={responses}
+            onChange={handleChange}
+            disabled={locked}
+          />
+          {!locked && (
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                {lastSaved && (
+                  <>
+                    <Clock className="w-3 h-3" /> Auto-saved {lastSaved.toLocaleTimeString()}
+                  </>
+                )}
+              </div>
+              <Button onClick={handleSubmit} disabled={submitting}>
+                <Send className="w-4 h-4" /> {submitting ? 'Submitting...' : 'Submit self-evaluation'}
+              </Button>
+            </div>
+          )}
         </>
       )}
     </div>

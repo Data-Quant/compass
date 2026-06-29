@@ -24,6 +24,7 @@ export async function GET(
   const [selfEvaluation, questions] = await Promise.all([
     prisma.selfEvaluation.findUnique({
       where: { periodId_employeeId: { periodId, employeeId: user.id } },
+      include: { period: { select: { isLocked: true } } },
     }),
     loadActiveQuestions(),
   ])
@@ -40,6 +41,7 @@ export async function GET(
       answers: selfEvaluation.answers,
       submittedAt: selfEvaluation.submittedAt,
     },
+    locked: selfEvaluation.period.isLocked,
     questions,
   })
 }
@@ -58,11 +60,18 @@ export async function PUT(
 
   const current = await prisma.selfEvaluation.findUnique({
     where: { periodId_employeeId: { periodId, employeeId: user.id } },
+    include: { period: { select: { isLocked: true } } },
   })
   if (!current) {
     return NextResponse.json(
       { error: 'No self-evaluation assigned for this period' },
       { status: 404 }
+    )
+  }
+  if (current.period.isLocked) {
+    return NextResponse.json(
+      { error: 'This evaluation period is locked. Submissions are no longer accepted.' },
+      { status: 403 }
     )
   }
   if (current.status === 'SUBMITTED') {
