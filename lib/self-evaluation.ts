@@ -56,10 +56,16 @@ export function isEligibleEmployee(p: {
   return true
 }
 
+// Upper bounds keep narrative answers from bloating the JSONB column.
+const MAX_TEXT = 10_000
+const MAX_LIST_ITEM = 2_000
+const MAX_LIST_ITEMS = 50
+const MAX_GOAL_ROWS = 30
+
 const goalRowSchema = z.object({
-  goal: z.string().default(''),
+  goal: z.string().max(500).default(''),
   status: z.enum(['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED', 'EXCEEDED']),
-  comments: z.string().default(''),
+  comments: z.string().max(MAX_TEXT).default(''),
 })
 
 /**
@@ -78,16 +84,18 @@ export function validateAnswers(
     if (!q) continue
     let value: SelfEvaluationAnswer['value']
     if (q.type === 'TEXT') {
-      value = z.string().parse(raw.value)
+      value = z.string().max(MAX_TEXT).parse(raw.value)
     } else if (q.type === 'LIST') {
       value = z
-        .array(z.string())
+        .array(z.string().max(MAX_LIST_ITEM))
+        .max(MAX_LIST_ITEMS)
         .parse(raw.value)
         .map((s) => s.trim())
         .filter(Boolean)
     } else {
       value = z
         .array(goalRowSchema)
+        .max(MAX_GOAL_ROWS)
         .parse(raw.value)
         .filter((r) => r.goal.trim() || r.comments.trim())
     }

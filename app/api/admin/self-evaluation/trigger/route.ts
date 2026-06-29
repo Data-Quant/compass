@@ -54,12 +54,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Period not found' }, { status: 404 })
   }
 
+  // Enforce eligibility server-side: ignore any requested id that is not an eligible
+  // employee (managers/leads/partners/HR cannot be assigned a self-evaluation even via a
+  // direct API call). The HR dialog can only narrow this set, never widen it.
+  const eligible = await getEligibleCandidates()
+  const eligibleSet = new Set(eligible.map((c) => c.id))
+  const requestedIds: string[] = employeeIds.filter((id: string) => eligibleSet.has(id))
+
   const existing = await prisma.selfEvaluation.findMany({
-    where: { periodId, employeeId: { in: employeeIds } },
+    where: { periodId, employeeId: { in: requestedIds } },
     select: { employeeId: true },
   })
   const existingSet = new Set(existing.map((e) => e.employeeId))
-  const toCreate: string[] = employeeIds.filter((id: string) => !existingSet.has(id))
+  const toCreate: string[] = requestedIds.filter((id) => !existingSet.has(id))
 
   if (toCreate.length > 0) {
     await prisma.selfEvaluation.createMany({

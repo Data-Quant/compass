@@ -67,3 +67,12 @@ test('validateAnswers: rejects bad goal status', () => {
 test('validateAnswers: rejects TEXT given an array', () => {
   assert.throws(() => validateAnswers(Q, [{ questionId: 'q1', value: ['x'] }]))
 })
+
+test('validateAnswers: rejects oversized TEXT', () => {
+  assert.throws(() => validateAnswers(Q, [{ questionId: 'q1', value: 'x'.repeat(10_001) }]))
+})
+
+test('validateAnswers: rejects LIST with too many items', () => {
+  const tooMany = Array.from({ length: 51 }, (_, i) => `item ${i}`)
+  assert.throws(() => validateAnswers(Q, [{ questionId: 'q2', value: tooMany }]))
+})
