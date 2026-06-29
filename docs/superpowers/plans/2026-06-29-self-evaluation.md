@@ -27,8 +27,10 @@
 ### Task 1: Prisma models, migration, and question seed
 
 **Files:**
-- Modify: `prisma/schema.prisma` (add 2 enums, 2 models, 2 fields + 2 relations on `EvaluationPeriod`, 1 relation on `User`)
+- Modify: `prisma/schema.prisma` (add 2 enums, 2 models, 2 fields + 2 relations on `EvaluationPeriod`, 2 relations on `User`)
 - Create: `prisma/migrations/20260629120000_add_self_evaluation/migration.sql`
+
+**Deploy note:** `package.json` build runs `prisma migrate deploy` — the migration (incl. the seeded questions, appended as `INSERT`s à la `20260423103000_seed_dept_evaluation_questions`) applies automatically on the next Vercel deploy. Do **not** run `migrate deploy` against the shared DB manually. `prisma generate` is local-only and safe.
 
 **Interfaces:**
 - Produces: Prisma models `SelfEvaluationQuestion`, `SelfEvaluation`; enums `SelfEvaluationQuestionType`, `SelfEvaluationStatus`; `EvaluationPeriod.selfEvaluationTriggeredAt/ById`.
