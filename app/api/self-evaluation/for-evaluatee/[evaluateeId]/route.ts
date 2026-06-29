@@ -20,9 +20,16 @@ export async function GET(
   }
   const { evaluateeId } = await params
 
-  // Authorization: the caller must be an assigned evaluator of this evaluatee for the period.
-  const assignment = await getResolvedEvaluationAssignmentForPair(periodId, user.id, evaluateeId)
-  if (!assignment) {
+  // Authorization: only the evaluatee's TEAM LEAD may view the self-evaluation. Self-
+  // reflections (e.g. career aspirations, feedback for management) are meant for the lead,
+  // not peers/cross-department/HR-pool evaluators of the same person.
+  const assignment = await getResolvedEvaluationAssignmentForPair(
+    periodId,
+    user.id,
+    evaluateeId,
+    'TEAM_LEAD'
+  )
+  if (!assignment || assignment.relationshipType !== 'TEAM_LEAD') {
     return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
   }
 

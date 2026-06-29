@@ -81,7 +81,7 @@ function renderField(
   }
 
   if (q.type === 'LIST') {
-    const items = ((value as string[]) || ['']).length ? (value as string[]) : ['']
+    const items = Array.isArray(value) && value.length > 0 ? (value as string[]) : ['']
     const update = (next: string[]) => onChange(q.id, next)
     return (
       <div className="space-y-2">
@@ -117,7 +117,7 @@ function renderField(
 
   // GOAL_TABLE
   const emptyRow: GoalRow = { goal: '', status: 'NOT_STARTED', comments: '' }
-  const rows = ((value as GoalRow[]) || [emptyRow]).length ? (value as GoalRow[]) : [emptyRow]
+  const rows = Array.isArray(value) && value.length > 0 ? (value as GoalRow[]) : [emptyRow]
   const update = (next: GoalRow[]) => onChange(q.id, next)
   return (
     <div className="space-y-3">
