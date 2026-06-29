@@ -54,7 +54,7 @@ interface LeaveBalance {
 }
 
 interface ProjectSummary {
-  id: string; name: string; taskCount: number; completedTasks: number
+  id: string; name: string; taskCount: number; completedTasks: number; status: string
 }
 
 interface LeaveRequest {
@@ -149,6 +149,7 @@ export default function DashboardPage() {
   const [period, setPeriod] = useState<any>(null)
   const [leaveBalance, setLeaveBalance] = useState<LeaveBalance | null>(null)
   const [projects, setProjects] = useState<ProjectSummary[]>([])
+  const [activeProjectCount, setActiveProjectCount] = useState(0)
   const [pendingLeave, setPendingLeave] = useState<LeaveRequest[]>([])
   const [upcomingTeamLeaves, setUpcomingTeamLeaves] = useState<LeaveRequest[]>([])
   const [openTickets, setOpenTickets] = useState<DeviceTicket[]>([])
@@ -204,7 +205,12 @@ export default function DashboardPage() {
     try {
       const res = await fetch('/api/projects')
       const data = await res.json()
-      if (data.projects) setProjects(data.projects.slice(0, 3))
+      if (data.projects) {
+        // Only active projects belong on the dashboard — exclude COMPLETED/ARCHIVED.
+        const active = (data.projects as ProjectSummary[]).filter((p) => p.status === 'ACTIVE')
+        setProjects(active.slice(0, 3))
+        setActiveProjectCount(active.length)
+      }
     } catch { /* silent */ }
   }
 
@@ -295,7 +301,7 @@ export default function DashboardPage() {
       + (leaveBalance.annualDays - leaveBalance.annualUsed)
     : 0
 
-  const activeProjects = projects.length
+  const activeProjects = activeProjectCount
 
   const isHR = user?.role === 'HR'
   const isSecurity = user?.role === 'SECURITY'
