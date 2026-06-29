@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { EmptyState } from '@/components/composed/EmptyState'
+import { SelfEvaluationPrompt } from '@/components/self-evaluation/SelfEvaluationPrompt'
 import {
   Select,
   SelectContent,
@@ -284,6 +285,9 @@ export default function EvaluationsPage() {
 
   return (
     <div className="p-6 sm:p-8 max-w-5xl mx-auto">
+      <div className="mb-6">
+        <SelfEvaluationPrompt />
+      </div>
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
         <h1 className="text-2xl sm:text-3xl font-display font-light tracking-tight text-foreground">
           Performance Evaluations

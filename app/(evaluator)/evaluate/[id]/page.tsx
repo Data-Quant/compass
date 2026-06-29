@@ -22,6 +22,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { ShimmerButton } from '@/components/magicui/shimmer-button'
+import { SelfEvaluationContextPanel } from '@/components/self-evaluation/SelfEvaluationContextPanel'
 import { CheckCircle, Clock, Send } from 'lucide-react'
 
 interface Question {
@@ -298,6 +299,9 @@ export default function EvaluatePage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Employee self-evaluation context (read-only) */}
+        <SelfEvaluationContextPanel evaluateeId={evaluateeId} />
 
         {/* Questions */}
         <div className="space-y-6">

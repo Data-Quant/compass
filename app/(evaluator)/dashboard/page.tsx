@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { StatsCard } from '@/components/composed/StatsCard'
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import { EmptyState } from '@/components/composed/EmptyState'
+import { SelfEvaluationPrompt } from '@/components/self-evaluation/SelfEvaluationPrompt'
 import {
   ClipboardCheck,
   Calendar,
@@ -303,6 +304,9 @@ export default function DashboardPage() {
 
   return (
     <div className="p-6 sm:p-8 max-w-6xl mx-auto">
+      <div className="mb-6">
+        <SelfEvaluationPrompt />
+      </div>
       {/* Welcome banner */}
       <motion.div
         initial={{ opacity: 0, y: 16 }}
