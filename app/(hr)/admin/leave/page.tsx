@@ -12,6 +12,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { calculateLeaveDuration } from '@/lib/leave-utils'
+import { TransitionPlanView } from '@/components/leave/TransitionPlanView'
+import { validateTransitionTasks, type TransitionTask } from '@/lib/leave-transition-plan'
 import {
   Select,
   SelectContent,
@@ -63,6 +65,10 @@ interface LeaveRequest {
   endDate: string
   reason: string
   transitionPlan: string
+  transitionPlanTasks?: TransitionTask[] | null
+  transitionPlanSubmittedAt?: string | null
+  transitionPlanLeadStatus?: 'PENDING' | 'APPROVED' | 'DISAPPROVED'
+  transitionPlanDisapprovalReason?: string | null
   status: string
   employee: {
     id: string
@@ -171,6 +177,23 @@ const getRequestCoverPeople = (request: LeaveRequest) =>
     : request.coverPerson
       ? [request.coverPerson]
       : []
+
+const coerceTasks = (raw: unknown): TransitionTask[] => {
+  try {
+    return validateTransitionTasks(raw)
+  } catch {
+    return []
+  }
+}
+
+const hasLeaveEnded = (endDate: string) => {
+  const parsed = parseInputDateAsLocal(toDateKey(endDate))
+  if (!parsed) return false
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  parsed.setHours(0, 0, 0, 0)
+  return parsed.getTime() < today.getTime()
+}
 
 export default function HRLeavePage() {
   const [requests, setRequests] = useState<LeaveRequest[]>([])
@@ -807,13 +830,41 @@ export default function HRLeavePage() {
                           <TypeIcon className={`w-5 h-5 ${typeConfig.color}`} />
                         </div>
                         <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
                             <span className="font-medium text-foreground">{request.employee.name}</span>
                             <span className="text-muted-foreground text-sm">-</span>
                             <span className="text-sm text-muted-foreground">{request.employee.department || 'No dept'}</span>
                             <Badge variant="outline" className={`${statusConfig.bg} ${statusConfig.color} border-0`}>
                               {statusConfig.label}
                             </Badge>
+                            {(() => {
+                              const relevant =
+                                request.status !== 'REJECTED' &&
+                                request.status !== 'CANCELLED' &&
+                                !hasLeaveEnded(request.endDate)
+                              if (request.transitionPlanLeadStatus === 'DISAPPROVED') {
+                                return (
+                                  <Badge variant="outline" className="bg-red-100 text-red-800 border-0">
+                                    Plan disapproved
+                                  </Badge>
+                                )
+                              }
+                              if (relevant && !request.transitionPlanSubmittedAt) {
+                                return (
+                                  <Badge variant="outline" className="bg-amber-100 text-amber-800 border-0">
+                                    Plan missing
+                                  </Badge>
+                                )
+                              }
+                              if (request.transitionPlanSubmittedAt) {
+                                return (
+                                  <Badge variant="outline" className="bg-blue-100 text-blue-800 border-0">
+                                    Plan submitted
+                                  </Badge>
+                                )
+                              }
+                              return null
+                            })()}
                           </div>
                           <p className="text-sm text-foreground">
                             <span className="font-medium">{typeConfig.label} Leave</span>
@@ -830,12 +881,24 @@ export default function HRLeavePage() {
                           <p className="text-sm text-muted-foreground mt-1">{request.reason}</p>
                           
                           {/* Transition Plan */}
-                          <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-500/10 rounded-lg">
-                            <div className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400 mb-1">
+                          <div className="mt-2 p-2 bg-muted/50 rounded-lg">
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground mb-2">
                               <FileText className="w-3 h-3" />
                               Transition Plan
                             </div>
-                            <p className="text-sm text-amber-800 dark:text-amber-300">{request.transitionPlan}</p>
+                            {request.transitionPlanSubmittedAt || coerceTasks(request.transitionPlanTasks).length > 0 ? (
+                              <TransitionPlanView
+                                tasks={coerceTasks(request.transitionPlanTasks)}
+                                submittedAt={request.transitionPlanSubmittedAt}
+                                leadStatus={request.transitionPlanLeadStatus}
+                                disapprovalReason={request.transitionPlanDisapprovalReason}
+                                generalNotes={request.transitionPlan}
+                              />
+                            ) : request.transitionPlan?.trim() ? (
+                              <p className="text-sm text-foreground whitespace-pre-wrap">{request.transitionPlan}</p>
+                            ) : (
+                              <p className="text-sm text-muted-foreground">Not submitted yet.</p>
+                            )}
                           </div>
                           
                           {getRequestCoverPeople(request).length > 0 && (

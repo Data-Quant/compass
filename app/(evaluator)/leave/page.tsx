@@ -39,6 +39,13 @@ import {
 import { StatsCard } from '@/components/composed/StatsCard'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { Textarea } from '@/components/ui/textarea'
+import { TransitionPlanTable } from '@/components/leave/TransitionPlanTable'
+import { TransitionPlanView } from '@/components/leave/TransitionPlanView'
+import {
+  canSubmitTransitionPlan,
+  validateTransitionTasks,
+  type TransitionTask,
+} from '@/lib/leave-transition-plan'
 import { calculateLeaveDuration } from '@/lib/leave-utils'
 import { detectBrowserLeaveTimeZone } from '@/lib/leave-timezone'
 import { isThreeEDepartment } from '@/lib/company-branding'
@@ -69,6 +76,10 @@ interface LeaveRequest {
   endDate: string
   reason: string
   transitionPlan: string
+  transitionPlanTasks?: TransitionTask[] | null
+  transitionPlanSubmittedAt?: string | null
+  transitionPlanLeadStatus?: 'PENDING' | 'APPROVED' | 'DISAPPROVED'
+  transitionPlanDisapprovalReason?: string | null
   status: string
   coverPerson?: { id: string; name: string }
   coverPeople?: Array<{ id: string; name: string }>
@@ -206,6 +217,17 @@ const hasLeaveEnded = (endDate: string) => {
   return parsed.getTime() < today.getTime()
 }
 
+const isLeaveNotStarted = (startDate: string) => {
+  const parsed = parseInputDateAsLocal(toDateKey(startDate))
+  if (!parsed) return true
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  parsed.setHours(0, 0, 0, 0)
+
+  return parsed.getTime() >= today.getTime()
+}
+
 export default function LeavePage() {
   const layoutUser = useLayoutUser()
   const [user, setUser] = useState<any>(null)
@@ -280,6 +302,13 @@ export default function LeavePage() {
     reason: '',
     workPlan: '',
   })
+
+  // Structured transition plan state
+  const [createTasks, setCreateTasks] = useState<TransitionTask[]>([])
+  const [detailTasks, setDetailTasks] = useState<TransitionTask[]>([])
+  const [planSavingDraft, setPlanSavingDraft] = useState(false)
+  const [planSubmitting, setPlanSubmitting] = useState(false)
+  const [planReviewProcessingId, setPlanReviewProcessingId] = useState<string | null>(null)
 
   useEffect(() => {
     if (layoutUser) setUser(layoutUser)
@@ -455,7 +484,7 @@ export default function LeavePage() {
 
     return requests.filter((request) => {
       if (!editableStatuses.has(request.status) && request.status !== 'APPROVED') return false
-      if (request.transitionPlan?.trim()) return false
+      if (request.transitionPlanSubmittedAt) return false
       const start = parseInputDateAsLocal(toDateKey(request.startDate))
       if (!start) return false
       start.setHours(0, 0, 0, 0)
@@ -620,6 +649,21 @@ export default function LeavePage() {
       const data = await res.json()
 
       if (data.success) {
+        // If the applicant filled the structured plan up front, submit it against the new
+        // request so it counts as done (and notifies the team lead). Non-fatal on failure —
+        // the reminder cron will still chase an unsubmitted plan.
+        const newId = data.request?.id
+        if (newId && canSubmitTransitionPlan(createTasks)) {
+          try {
+            await fetch(`/api/leave/requests/${newId}/transition-plan`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ tasks: createTasks }),
+            })
+          } catch {
+            // ignore — plan can be submitted later from the request details
+          }
+        }
         toast.success('Leave request submitted!')
         setIsModalOpen(false)
         setSelectedRange({ start: null, end: null })
@@ -636,6 +680,7 @@ export default function LeavePage() {
           coverPersonIds: [],
           additionalNotifyIds: [],
         })
+        setCreateTasks([])
         loadData()
         loadCalendarEvents()
       } else {
@@ -648,9 +693,97 @@ export default function LeavePage() {
     }
   }
 
+  const coerceTasks = (raw: unknown): TransitionTask[] => {
+    try {
+      return validateTransitionTasks(raw)
+    } catch {
+      return []
+    }
+  }
+
   const openRequestDetails = (request: LeaveRequest) => {
     setSelectedRequest(request)
+    setDetailTasks(coerceTasks(request.transitionPlanTasks))
     setIsDetailsModalOpen(true)
+  }
+
+  const savePlanDraft = async () => {
+    if (!selectedRequest) return
+    setPlanSavingDraft(true)
+    try {
+      const res = await fetch(`/api/leave/requests/${selectedRequest.id}/transition-plan`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tasks: detailTasks }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        toast.success('Transition plan draft saved')
+        loadData()
+      } else {
+        toast.error(data.error || 'Failed to save draft')
+      }
+    } catch {
+      toast.error('Failed to save draft')
+    } finally {
+      setPlanSavingDraft(false)
+    }
+  }
+
+  const submitPlan = async () => {
+    if (!selectedRequest) return
+    if (!canSubmitTransitionPlan(detailTasks)) {
+      toast.error('Add at least one task before submitting')
+      return
+    }
+    setPlanSubmitting(true)
+    try {
+      const res = await fetch(`/api/leave/requests/${selectedRequest.id}/transition-plan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tasks: detailTasks }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        toast.success('Transition plan submitted')
+        setIsDetailsModalOpen(false)
+        setSelectedRequest(null)
+        loadData()
+      } else {
+        toast.error(data.error || 'Failed to submit transition plan')
+      }
+    } catch {
+      toast.error('Failed to submit transition plan')
+    } finally {
+      setPlanSubmitting(false)
+    }
+  }
+
+  const handleTransitionPlanReview = async (requestId: string, action: 'APPROVE' | 'DISAPPROVE') => {
+    let reason = ''
+    if (action === 'DISAPPROVE') {
+      reason = (window.prompt('Reason for disapproving this transition plan:') || '').trim()
+      if (!reason) return
+    }
+    setPlanReviewProcessingId(requestId)
+    try {
+      const res = await fetch(`/api/leave/requests/${requestId}/transition-plan/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, reason }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        toast.success(action === 'APPROVE' ? 'Transition plan approved' : 'Transition plan disapproved')
+        loadData()
+      } else {
+        toast.error(data.error || 'Failed to review transition plan')
+      }
+    } catch {
+      toast.error('Failed to review transition plan')
+    } finally {
+      setPlanReviewProcessingId(null)
+    }
   }
 
   const openEditModal = (request: LeaveRequest) => {
@@ -1290,6 +1423,44 @@ export default function LeavePage() {
                                     {request.status === 'APPROVED' ? 'Disapprove' : 'Reject'}
                                   </Button>
                                 </div>
+                                {request.transitionPlanSubmittedAt ? (
+                                  <div className="mt-3 rounded-lg border border-border bg-muted/40 p-3">
+                                    <p className="text-xs font-semibold text-foreground mb-2">Transition plan</p>
+                                    <TransitionPlanView
+                                      tasks={coerceTasks(request.transitionPlanTasks)}
+                                      submittedAt={request.transitionPlanSubmittedAt}
+                                      leadStatus={request.transitionPlanLeadStatus}
+                                      disapprovalReason={request.transitionPlanDisapprovalReason}
+                                      generalNotes={request.transitionPlan}
+                                    />
+                                    {request.transitionPlanLeadStatus !== 'APPROVED' && (
+                                      <div className="flex flex-wrap gap-2 mt-3">
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="h-7 px-2.5 text-xs"
+                                          disabled={planReviewProcessingId === request.id}
+                                          onClick={() => handleTransitionPlanReview(request.id, 'APPROVE')}
+                                        >
+                                          Approve plan
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="h-7 px-2.5 text-xs text-red-600 border-red-200 hover:bg-red-50 dark:border-red-900/40 dark:hover:bg-red-500/10"
+                                          disabled={planReviewProcessingId === request.id}
+                                          onClick={() => handleTransitionPlanReview(request.id, 'DISAPPROVE')}
+                                        >
+                                          Disapprove plan
+                                        </Button>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <p className="mt-2 text-[11px] text-muted-foreground">
+                                    No transition plan submitted yet.
+                                  </p>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -1695,16 +1866,28 @@ export default function LeavePage() {
 
           {/* Transition Plan */}
           <div>
-            <Label htmlFor="transitionPlan" className="mb-2">
+            <Label className="mb-1">
               Transition Plan
               <span className="text-muted-foreground font-normal ml-1">(optional, can be added later)</span>
+            </Label>
+            <p className="text-xs text-muted-foreground mb-2">
+              List each thing that needs covering while you are away. Filling it here submits it
+              with your request; otherwise you can add it from the request details before your leave.
+            </p>
+            <TransitionPlanTable tasks={createTasks} onChange={setCreateTasks} />
+          </div>
+
+          <div>
+            <Label htmlFor="transitionPlan" className="mb-2">
+              General handover notes
+              <span className="text-muted-foreground font-normal ml-1">(optional)</span>
             </Label>
             <Textarea
               id="transitionPlan"
               rows={3}
               value={formData.transitionPlan}
               onChange={(e) => setFormData({ ...formData, transitionPlan: e.target.value })}
-              placeholder="List your current tasks and handover plan (you can fill this later)."
+              placeholder="Any extra context for whoever covers your work."
             />
           </div>
 
@@ -2046,9 +2229,59 @@ export default function LeavePage() {
 
             <div>
               <Label className="text-muted-foreground">Transition Plan</Label>
-              <p className="text-sm text-foreground mt-1 whitespace-pre-wrap">
-                {selectedRequest.transitionPlan?.trim() || 'Not added yet'}
-              </p>
+              {(() => {
+                const submitted = Boolean(selectedRequest.transitionPlanSubmittedAt)
+                const disapproved = selectedRequest.transitionPlanLeadStatus === 'DISAPPROVED'
+                const closed = selectedRequest.status === 'REJECTED' || selectedRequest.status === 'CANCELLED'
+                const editable = !closed && isLeaveNotStarted(selectedRequest.startDate) && (!submitted || disapproved)
+
+                if (editable) {
+                  return (
+                    <div className="mt-2 space-y-3">
+                      {disapproved && selectedRequest.transitionPlanDisapprovalReason?.trim() && (
+                        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                          <span className="font-medium">Team Lead asked for changes:</span>{' '}
+                          {selectedRequest.transitionPlanDisapprovalReason}
+                        </div>
+                      )}
+                      <TransitionPlanTable tasks={detailTasks} onChange={setDetailTasks} />
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={savePlanDraft}
+                          disabled={planSavingDraft || planSubmitting}
+                        >
+                          {planSavingDraft ? 'Saving...' : 'Save draft'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={submitPlan}
+                          disabled={planSubmitting || !canSubmitTransitionPlan(detailTasks)}
+                        >
+                          {planSubmitting
+                            ? 'Submitting...'
+                            : submitted
+                              ? 'Resubmit plan'
+                              : 'Submit transition plan'}
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                }
+
+                return (
+                  <div className="mt-2">
+                    <TransitionPlanView
+                      tasks={coerceTasks(selectedRequest.transitionPlanTasks)}
+                      submittedAt={selectedRequest.transitionPlanSubmittedAt}
+                      leadStatus={selectedRequest.transitionPlanLeadStatus}
+                      disapprovalReason={selectedRequest.transitionPlanDisapprovalReason}
+                      generalNotes={selectedRequest.transitionPlan}
+                    />
+                  </div>
+                )
+              })()}
             </div>
 
             <div>
@@ -2273,10 +2506,13 @@ export default function LeavePage() {
           </div>
 
           <div>
-            <Label htmlFor="edit-transition-plan" className="mb-2">
-              Transition Plan
-              <span className="text-muted-foreground font-normal ml-1">(optional, can be added later)</span>
+            <Label htmlFor="edit-transition-plan" className="mb-1">
+              General handover notes
+              <span className="text-muted-foreground font-normal ml-1">(optional)</span>
             </Label>
+            <p className="text-xs text-muted-foreground mb-2">
+              The structured transition plan is managed from the request details.
+            </p>
             <Textarea
               id="edit-transition-plan"
               rows={3}
