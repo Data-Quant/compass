@@ -13,7 +13,6 @@ import {
   Home,
   Palmtree,
   Plus,
-  Search,
   Sun,
   Thermometer,
   TriangleAlert,
@@ -41,6 +40,7 @@ import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { Textarea } from '@/components/ui/textarea'
 import { TransitionPlanTable } from '@/components/leave/TransitionPlanTable'
 import { TransitionPlanView } from '@/components/leave/TransitionPlanView'
+import { MemberMultiSelect } from '@/components/leave/MemberMultiSelect'
 import {
   canSubmitTransitionPlan,
   validateTransitionTasks,
@@ -254,10 +254,6 @@ export default function LeavePage() {
   const [selectedDayEvents, setSelectedDayEvents] = useState<CalendarEvent[]>([])
   const [departmentFilter, setDepartmentFilter] = useState<string>('ALL')
   const [reminderNoticeShown, setReminderNoticeShown] = useState(false)
-  const [coverSearch, setCoverSearch] = useState('')
-  const [notifySearch, setNotifySearch] = useState('')
-  const [editCoverSearch, setEditCoverSearch] = useState('')
-  const [editNotifySearch, setEditNotifySearch] = useState('')
 
   // Calendar state
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth())
@@ -424,31 +420,6 @@ export default function LeavePage() {
   const isThreeEUser = useMemo(() => isThreeEDepartment(user?.department), [user?.department])
   const showMyWfhCard = isThreeEUser || wfhRequests.length > 0
   const showWfhSection = showMyWfhCard || wfhApprovalQueue.length > 0
-  const filterNotifyUsers = (searchTerm: string) => {
-    const normalized = searchTerm.trim().toLowerCase()
-    if (!normalized) return availableNotifyUsers
-    return availableNotifyUsers.filter(
-      (u) =>
-        u.name.toLowerCase().includes(normalized) ||
-        u.department?.toLowerCase().includes(normalized)
-    )
-  }
-  const filteredNotifyUsers = useMemo(
-    () => filterNotifyUsers(notifySearch),
-    [availableNotifyUsers, notifySearch]
-  )
-  const filteredCoverUsers = useMemo(
-    () => filterNotifyUsers(coverSearch),
-    [availableNotifyUsers, coverSearch]
-  )
-  const filteredEditCoverUsers = useMemo(
-    () => filterNotifyUsers(editCoverSearch),
-    [availableNotifyUsers, editCoverSearch]
-  )
-  const filteredEditNotifyUsers = useMemo(
-    () => filterNotifyUsers(editNotifySearch),
-    [availableNotifyUsers, editNotifySearch]
-  )
 
   const getRequestCoverPeople = (request: LeaveRequest) =>
     Array.isArray(request.coverPeople) && request.coverPeople.length > 0
@@ -788,8 +759,6 @@ export default function LeavePage() {
 
   const openEditModal = (request: LeaveRequest) => {
     setSelectedRequest(request)
-    setEditCoverSearch('')
-    setEditNotifySearch('')
     setEditFormData({
       id: request.id,
       leaveType: request.leaveType,
@@ -955,8 +924,6 @@ export default function LeavePage() {
   const clearSelection = () => {
     setSelectedRange({ start: null, end: null })
     setSelectingEnd(false)
-    setCoverSearch('')
-    setNotifySearch('')
     setFormData({
       ...formData,
       startDate: '',
@@ -1899,38 +1866,13 @@ export default function LeavePage() {
             <p className="text-xs text-muted-foreground mb-2">
               Selected cover teammates will be notified by email.
             </p>
-            <div className="relative mb-2">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                value={coverSearch}
-                onChange={(e) => setCoverSearch(e.target.value)}
-                placeholder="Search cover teammates by name or department..."
-                className="pl-10"
-              />
-            </div>
-            <div className="max-h-32 overflow-y-auto border border-input rounded-md p-2 bg-muted space-y-1.5">
-              {filteredCoverUsers.map((u) => (
-                <label key={u.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted/80 rounded px-2 py-1.5">
-                  <Checkbox
-                    checked={formData.coverPersonIds.includes(u.id)}
-                    onCheckedChange={(checked) => {
-                      const ids = checked === true
-                        ? [...formData.coverPersonIds, u.id]
-                        : formData.coverPersonIds.filter((id) => id !== u.id)
-                      setFormData((prev) => ({ ...prev, coverPersonIds: ids }))
-                    }}
-                  />
-                  <span className="text-sm text-foreground">{u.name}</span>
-                  {u.department && <span className="text-xs text-muted-foreground">({u.department})</span>}
-                </label>
-              ))}
-              {availableNotifyUsers.length === 0 && (
-                <p className="text-xs text-muted-foreground py-2">No other team members</p>
-              )}
-              {availableNotifyUsers.length > 0 && filteredCoverUsers.length === 0 && (
-                <p className="text-xs text-muted-foreground py-2">No matches found</p>
-              )}
-            </div>
+            <MemberMultiSelect
+              members={availableNotifyUsers}
+              selectedIds={formData.coverPersonIds}
+              onChange={(ids) => setFormData((prev) => ({ ...prev, coverPersonIds: ids }))}
+              placeholder="Search cover teammates by name or department..."
+              emptyPoolText="No other team members"
+            />
           </div>
 
           {/* Additional notify (email only, not approval) */}
@@ -1942,38 +1884,13 @@ export default function LeavePage() {
             <p className="text-xs text-muted-foreground mb-2">
               These people will receive an email notification. Approval still goes to your lead and HR only.
             </p>
-            <div className="relative mb-2">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                value={notifySearch}
-                onChange={(e) => setNotifySearch(e.target.value)}
-                placeholder="Search by name or department..."
-                className="pl-10"
-              />
-            </div>
-            <div className="max-h-32 overflow-y-auto border border-input rounded-md p-2 bg-muted space-y-1.5">
-              {filteredNotifyUsers.map((u) => (
-                <label key={u.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted/80 rounded px-2 py-1.5">
-                  <Checkbox
-                    checked={formData.additionalNotifyIds.includes(u.id)}
-                    onCheckedChange={(checked) => {
-                      const ids = checked === true
-                        ? [...formData.additionalNotifyIds, u.id]
-                        : formData.additionalNotifyIds.filter(id => id !== u.id)
-                      setFormData({ ...formData, additionalNotifyIds: ids })
-                    }}
-                  />
-                  <span className="text-sm text-foreground">{u.name}</span>
-                  {u.department && <span className="text-xs text-muted-foreground">({u.department})</span>}
-                </label>
-              ))}
-              {availableNotifyUsers.length === 0 && (
-                <p className="text-xs text-muted-foreground py-2">No other team members</p>
-              )}
-              {availableNotifyUsers.length > 0 && filteredNotifyUsers.length === 0 && (
-                <p className="text-xs text-muted-foreground py-2">No matches found</p>
-              )}
-            </div>
+            <MemberMultiSelect
+              members={availableNotifyUsers}
+              selectedIds={formData.additionalNotifyIds}
+              onChange={(ids) => setFormData((prev) => ({ ...prev, additionalNotifyIds: ids }))}
+              placeholder="Search by name or department..."
+              emptyPoolText="No other team members"
+            />
           </div>
 
           {/* Submit */}
@@ -2529,38 +2446,13 @@ export default function LeavePage() {
             <p className="text-xs text-muted-foreground mb-2">
               Selected cover teammates will be notified by email.
             </p>
-            <div className="relative mb-2">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                value={editCoverSearch}
-                onChange={(e) => setEditCoverSearch(e.target.value)}
-                placeholder="Search cover teammates by name or department..."
-                className="pl-10"
-              />
-            </div>
-            <div className="max-h-32 overflow-y-auto border border-input rounded-md p-2 bg-muted space-y-1.5">
-              {filteredEditCoverUsers.map((u) => (
-                <label key={u.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted/80 rounded px-2 py-1.5">
-                  <Checkbox
-                    checked={editFormData.coverPersonIds.includes(u.id)}
-                    onCheckedChange={(checked) => {
-                      const ids = checked === true
-                        ? [...editFormData.coverPersonIds, u.id]
-                        : editFormData.coverPersonIds.filter((id) => id !== u.id)
-                      setEditFormData((prev) => ({ ...prev, coverPersonIds: ids }))
-                    }}
-                  />
-                  <span className="text-sm text-foreground">{u.name}</span>
-                  {u.department && <span className="text-xs text-muted-foreground">({u.department})</span>}
-                </label>
-              ))}
-              {availableNotifyUsers.length === 0 && (
-                <p className="text-xs text-muted-foreground py-2">No other team members</p>
-              )}
-              {availableNotifyUsers.length > 0 && filteredEditCoverUsers.length === 0 && (
-                <p className="text-xs text-muted-foreground py-2">No matches found</p>
-              )}
-            </div>
+            <MemberMultiSelect
+              members={availableNotifyUsers}
+              selectedIds={editFormData.coverPersonIds}
+              onChange={(ids) => setEditFormData((prev) => ({ ...prev, coverPersonIds: ids }))}
+              placeholder="Search cover teammates by name or department..."
+              emptyPoolText="No other team members"
+            />
           </div>
 
           <div>
@@ -2568,38 +2460,13 @@ export default function LeavePage() {
               Notify additional team members
               <span className="text-muted-foreground font-normal ml-1">(optional)</span>
             </Label>
-            <div className="relative mb-2">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                value={editNotifySearch}
-                onChange={(e) => setEditNotifySearch(e.target.value)}
-                placeholder="Search by name or department..."
-                className="pl-10"
-              />
-            </div>
-            <div className="max-h-32 overflow-y-auto border border-input rounded-md p-2 bg-muted space-y-1.5">
-              {filteredEditNotifyUsers.map((u) => (
-                <label key={u.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted/80 rounded px-2 py-1.5">
-                  <Checkbox
-                    checked={editFormData.additionalNotifyIds.includes(u.id)}
-                    onCheckedChange={(checked) => {
-                      const ids = checked === true
-                        ? [...editFormData.additionalNotifyIds, u.id]
-                        : editFormData.additionalNotifyIds.filter((id) => id !== u.id)
-                      setEditFormData((prev) => ({ ...prev, additionalNotifyIds: ids }))
-                    }}
-                  />
-                  <span className="text-sm text-foreground">{u.name}</span>
-                  {u.department && <span className="text-xs text-muted-foreground">({u.department})</span>}
-                </label>
-              ))}
-              {availableNotifyUsers.length === 0 && (
-                <p className="text-xs text-muted-foreground py-2">No other team members</p>
-              )}
-              {availableNotifyUsers.length > 0 && filteredEditNotifyUsers.length === 0 && (
-                <p className="text-xs text-muted-foreground py-2">No matches found</p>
-              )}
-            </div>
+            <MemberMultiSelect
+              members={availableNotifyUsers}
+              selectedIds={editFormData.additionalNotifyIds}
+              onChange={(ids) => setEditFormData((prev) => ({ ...prev, additionalNotifyIds: ids }))}
+              placeholder="Search by name or department..."
+              emptyPoolText="No other team members"
+            />
           </div>
 
           <div className="flex justify-end gap-3 pt-2">
@@ -2607,8 +2474,6 @@ export default function LeavePage() {
               type="button"
               variant="outline"
               onClick={() => {
-                setEditCoverSearch('')
-                setEditNotifySearch('')
                 setIsEditModalOpen(false)
               }}
             >
