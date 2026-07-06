@@ -115,8 +115,17 @@ enum LeaveAuditEventType {
   REQUEST_NOTIFICATION
   APPROVAL_NOTIFICATION
   TRANSITION_PLAN_REMINDER
+  TRANSITION_PLAN_SUBMITTED
+  TRANSITION_PLAN_DISAPPROVED
+  TRANSITION_PLAN_ESCALATION
   CALENDAR_SYNC
   CALENDAR_REMOVE
+}
+
+enum LeaveTransitionPlanLeadStatus {
+  PENDING
+  APPROVED
+  DISAPPROVED
 }
 
 enum LeaveAuditStatus {
@@ -791,7 +800,14 @@ model LeaveRequest {
   startDate       DateTime
   endDate         DateTime
   reason          String
-  transitionPlan  String      // Tasks and handover details
+  transitionPlan  String      // Legacy free-text handover notes (optional general notes)
+  transitionPlanTasks             Json?     // Structured task rows (see lib/leave-transition-plan.ts)
+  transitionPlanSubmittedAt       DateTime? // The "submitted/done" signal
+  transitionPlanLeadStatus        LeaveTransitionPlanLeadStatus @default(PENDING)
+  transitionPlanLeadReviewedAt    DateTime?
+  transitionPlanLeadReviewedById  String?
+  transitionPlanDisapprovalReason String?
+  hrRepresentative                String?   // Header field (optional)
   coverPersonId   String?     // Who covers their tasks
   coverPersonIds  Json?       // Array of cover person user IDs (first item mirrors coverPersonId)
   additionalNotifyIds Json?   // Array of user IDs to CC on email (notification only, not approval)
