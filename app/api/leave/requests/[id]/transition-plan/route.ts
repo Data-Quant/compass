@@ -5,6 +5,20 @@ import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { validateTransitionTasks, canSubmitTransitionPlan } from '@/lib/leave-transition-plan'
 import { sendTransitionPlanSubmittedNotification } from '@/lib/email'
+import { stripHtml } from '@/lib/sanitize'
+
+// Mirror the bounds/sanitization the main leave create/update endpoint applies to the same
+// columns, so these secondary write paths can't push oversized or raw-HTML content.
+const GENERAL_NOTES_MAX = 6000
+const HR_REPRESENTATIVE_MAX = 200
+
+function sanitizeGeneralNotes(value: unknown): string {
+  return stripHtml(String(value ?? '')).trim().slice(0, GENERAL_NOTES_MAX)
+}
+
+function sanitizeHrRepresentative(value: unknown): string | null {
+  return stripHtml(String(value ?? '')).trim().slice(0, HR_REPRESENTATIVE_MAX) || null
+}
 
 async function loadOwnedRequest(id: string, userId: string, isAdmin: boolean) {
   const leaveRequest = await prisma.leaveRequest.findUnique({ where: { id } })
@@ -53,10 +67,16 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       where: { id },
       data: {
         transitionPlanTasks: tasks as unknown as Prisma.InputJsonValue,
+        // A draft edit invalidates any prior team-lead review, so a stale APPROVED/DISAPPROVED
+        // status can never linger over content the lead never actually saw.
+        transitionPlanLeadStatus: 'PENDING',
+        transitionPlanLeadReviewedAt: null,
+        transitionPlanLeadReviewedById: null,
+        transitionPlanDisapprovalReason: null,
         ...(body.hrRepresentative !== undefined
-          ? { hrRepresentative: String(body.hrRepresentative).trim() || null }
+          ? { hrRepresentative: sanitizeHrRepresentative(body.hrRepresentative) }
           : {}),
-        ...(body.generalNotes !== undefined ? { transitionPlan: String(body.generalNotes).trim() } : {}),
+        ...(body.generalNotes !== undefined ? { transitionPlan: sanitizeGeneralNotes(body.generalNotes) } : {}),
       },
     })
     return NextResponse.json({ success: true })
@@ -101,9 +121,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         transitionPlanLeadReviewedById: null,
         transitionPlanDisapprovalReason: null,
         ...(body.hrRepresentative !== undefined
-          ? { hrRepresentative: String(body.hrRepresentative).trim() || null }
+          ? { hrRepresentative: sanitizeHrRepresentative(body.hrRepresentative) }
           : {}),
-        ...(body.generalNotes !== undefined ? { transitionPlan: String(body.generalNotes).trim() } : {}),
+        ...(body.generalNotes !== undefined ? { transitionPlan: sanitizeGeneralNotes(body.generalNotes) } : {}),
       },
     })
   } catch (err) {

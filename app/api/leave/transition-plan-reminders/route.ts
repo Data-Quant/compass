@@ -53,10 +53,13 @@ async function runTransitionPlanReminders(reminderWindow = 5, dryRun = false) {
     orderBy: { startDate: 'asc' },
   })
 
-  // Which candidates have already had an HR escalation (so we don't email HR daily).
+  // Which candidates have already had a *successful* HR escalation (so we don't email HR daily).
+  // Only SUCCESS counts as done — a failed/skipped attempt must be retried next run, otherwise a
+  // transient SMTP error or an empty HR list would silence the escalation permanently.
   const escalatedRows = await prisma.leaveAuditEvent.findMany({
     where: {
       eventType: 'TRANSITION_PLAN_ESCALATION',
+      status: 'SUCCESS',
       leaveRequestId: { in: candidates.map((c) => c.id) },
     },
     select: { leaveRequestId: true },
@@ -93,10 +96,14 @@ async function runTransitionPlanReminders(reminderWindow = 5, dryRun = false) {
 
   for (const requestId of toRemind) {
     const result = await sendTransitionPlanReminderNotification(requestId)
-    if (result.success) results.reminded += 1
-    else if ('message' in result && result.message) {
-      // treat guard skips (already provided / not active) as no-ops, not failures
+    if (result.success) {
+      results.reminded += 1
+    } else if ('error' in result && result.error) {
+      // Real send failure (guard skips return `message`, not `error`).
+      results.failed += 1
+      results.errors.push(`${requestId} (reminder): ${result.error}`)
     }
+    // otherwise a guard skip (not active / already submitted) — a no-op, not a failure
   }
 
   for (const requestId of toEscalate) {

@@ -912,8 +912,10 @@ export async function sendTransitionPlanReminderNotification(requestId: string) 
     return { success: false, message: 'Leave request is not active' }
   }
 
-  if ((leaveRequest.transitionPlan || '').trim()) {
-    return { success: false, message: 'Transition plan already provided' }
+  // "Done" means the structured plan was submitted (transitionPlanSubmittedAt set) — not that
+  // the optional free-text "general notes" (transitionPlan) has some text in it.
+  if (leaveRequest.transitionPlanSubmittedAt) {
+    return { success: false, message: 'Transition plan already submitted' }
   }
 
   if (!leaveRequest.employee.email) {
