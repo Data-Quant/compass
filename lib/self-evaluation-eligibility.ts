@@ -7,18 +7,21 @@ export interface SelfEvalCandidate {
   email: string | null
   department: string | null
   position: string | null
+  role: string
+  /** Pre-checked in the send dialog. Regular employees are; functional-role staff are opt-in. */
+  autoSelect: boolean
 }
 
 /**
- * Auto-selected self-evaluation recipients: active EMPLOYEE-role users who are not a
- * team lead of anyone and not manager/partner level by position. HR can adjust the list
- * in the trigger dialog before sending.
+ * Self-evaluation recipients: users of any login role who are not a team lead of anyone and not
+ * manager/partner level by position. Regular EMPLOYEE-role users are pre-selected in the trigger
+ * dialog; functional-role staff (HR, OA, Security, Execution) appear too but unchecked, so HR
+ * opts them in deliberately. HR can adjust the whole list before sending.
  */
 export async function getEligibleCandidates(): Promise<SelfEvalCandidate[]> {
   const [users, leadMappings] = await Promise.all([
     prisma.user.findMany({
-      where: { role: 'EMPLOYEE' },
-      select: { id: true, name: true, email: true, department: true, position: true },
+      select: { id: true, name: true, email: true, department: true, position: true, role: true },
       orderBy: { name: 'asc' },
     }),
     prisma.evaluatorMapping.findMany({
@@ -27,7 +30,15 @@ export async function getEligibleCandidates(): Promise<SelfEvalCandidate[]> {
     }),
   ])
   const leads = new Set(leadMappings.map((m) => m.evaluatorId))
-  return users.filter((u) =>
-    isEligibleEmployee({ role: 'EMPLOYEE', position: u.position, leadsAnyone: leads.has(u.id) }),
-  )
+  return users
+    .filter((u) => isEligibleEmployee({ position: u.position, leadsAnyone: leads.has(u.id) }))
+    .map((u) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      department: u.department,
+      position: u.position,
+      role: u.role,
+      autoSelect: u.role === 'EMPLOYEE',
+    }))
 }

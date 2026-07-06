@@ -45,6 +45,8 @@ interface Candidate {
   email: string | null
   department: string | null
   position: string | null
+  role: string
+  autoSelect: boolean
 }
 
 const TYPE_LABELS: Record<SelfEvaluationQuestionType, string> = {
@@ -200,8 +202,10 @@ export default function AdminSelfEvaluationPage() {
         toast.error(data.error || 'Failed to load recipients')
         return
       }
-      setCandidates(data.candidates || [])
-      setSelectedIds(new Set((data.candidates || []).map((c: Candidate) => c.id)))
+      const list: Candidate[] = data.candidates || []
+      setCandidates(list)
+      // Pre-check regular employees only; functional-role staff (HR/OA/etc.) are opt-in.
+      setSelectedIds(new Set(list.filter((c) => c.autoSelect).map((c) => c.id)))
       setAlreadyTriggered(Boolean(data.alreadyTriggered))
       setExistingCount(data.existingCount || 0)
     } catch {
@@ -398,6 +402,7 @@ export default function AdminSelfEvaluationPage() {
                           {[c.position, c.department].filter(Boolean).join(' · ')}
                         </span>
                       </span>
+                      {c.role !== 'EMPLOYEE' && <Badge variant="secondary">{c.role}</Badge>}
                       {!c.email && <Badge variant="outline">no email</Badge>}
                     </label>
                   ))}

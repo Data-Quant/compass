@@ -40,12 +40,16 @@ export interface SelfEvaluationAnswer {
  */
 export const SELF_EVAL_EXCLUDED_POSITIONS = ['Manager', 'Partner', 'Principal', 'Managing Partner']
 
+/**
+ * Whether a person should receive a self-evaluation. Eligibility is based on org standing, not
+ * login role: anyone who is not a team lead of someone and not at manager/partner level by
+ * position self-evaluates — regardless of whether their role is EMPLOYEE, HR, OA, SECURITY, or
+ * EXECUTION. (Functional-role staff are people too and can be sent a self-evaluation.)
+ */
 export function isEligibleEmployee(p: {
-  role: string
   position: string | null
   leadsAnyone: boolean
 }): boolean {
-  if (p.role !== 'EMPLOYEE') return false
   if (p.leadsAnyone) return false
   if (
     p.position &&

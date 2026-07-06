@@ -13,24 +13,26 @@ const Q: SelfEvaluationQuestionLike[] = [
 ]
 
 test('isEligibleEmployee: plain employee who leads no one is eligible', () => {
-  assert.equal(isEligibleEmployee({ role: 'EMPLOYEE', position: 'Analyst', leadsAnyone: false }), true)
+  assert.equal(isEligibleEmployee({ position: 'Analyst', leadsAnyone: false }), true)
 })
 
 test('isEligibleEmployee: team lead excluded', () => {
-  assert.equal(isEligibleEmployee({ role: 'EMPLOYEE', position: 'Analyst', leadsAnyone: true }), false)
+  assert.equal(isEligibleEmployee({ position: 'Analyst', leadsAnyone: true }), false)
 })
 
 test('isEligibleEmployee: partner/manager position excluded (case-insensitive)', () => {
-  assert.equal(isEligibleEmployee({ role: 'EMPLOYEE', position: 'Principal', leadsAnyone: false }), false)
-  assert.equal(isEligibleEmployee({ role: 'EMPLOYEE', position: 'manager', leadsAnyone: false }), false)
+  assert.equal(isEligibleEmployee({ position: 'Principal', leadsAnyone: false }), false)
+  assert.equal(isEligibleEmployee({ position: 'manager', leadsAnyone: false }), false)
 })
 
-test('isEligibleEmployee: non-employee role excluded', () => {
-  assert.equal(isEligibleEmployee({ role: 'HR', position: 'Analyst', leadsAnyone: false }), false)
+test('isEligibleEmployee: eligibility is role-independent (functional-role staff included)', () => {
+  // A non-lead, non-manager person self-evaluates regardless of login role. Role no longer gates.
+  assert.equal(isEligibleEmployee({ position: 'Analyst', leadsAnyone: false }), true)
+  assert.equal(isEligibleEmployee({ position: 'Partner', leadsAnyone: false }), false)
 })
 
 test('isEligibleEmployee: null position is fine', () => {
-  assert.equal(isEligibleEmployee({ role: 'EMPLOYEE', position: null, leadsAnyone: false }), true)
+  assert.equal(isEligibleEmployee({ position: null, leadsAnyone: false }), true)
 })
 
 test('validateAnswers: coerces and trims per type, fills snapshot fields', () => {
