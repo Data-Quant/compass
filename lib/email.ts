@@ -1593,3 +1593,207 @@ export async function sendSelfEvaluationInvite(opts: {
     html,
   })
 }
+
+function getLeavePageUrl() {
+  const base = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || '').replace(/\/$/, '')
+  return base ? `${base}/leave` : ''
+}
+
+function leaveDateRangeLabels(leaveRequest: { startDate: Date; endDate: Date }) {
+  const start = new Date(leaveRequest.startDate).toLocaleDateString()
+  const end = new Date(leaveRequest.endDate).toLocaleDateString()
+  return { start, end }
+}
+
+// Notify the applicant's team lead(s) that a transition plan was submitted for review.
+export async function sendTransitionPlanSubmittedNotification(requestId: string) {
+  const leaveRequest = await prisma.leaveRequest.findUnique({
+    where: { id: requestId },
+    include: { employee: true },
+  })
+  if (!leaveRequest) return { success: false, message: 'Leave request not found' }
+
+  const leadMappings = await prisma.evaluatorMapping.findMany({
+    where: { evaluateeId: leaveRequest.employeeId, relationshipType: 'TEAM_LEAD' },
+    select: { evaluatorId: true },
+  })
+  const leads = await prisma.user.findMany({
+    where: { id: { in: leadMappings.map((m) => m.evaluatorId) }, email: { not: null } },
+    select: { name: true, email: true },
+  })
+  const recipients = leads.map((l) => l.email).filter(Boolean) as string[]
+
+  if (recipients.length === 0) {
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId: requestId,
+      channel: 'EMAIL',
+      eventType: 'TRANSITION_PLAN_SUBMITTED',
+      status: 'SKIPPED',
+      recipients: [],
+      subject: null,
+      metadata: { reason: 'No team lead email' },
+    })
+    return { success: false, message: 'No team lead email' }
+  }
+
+  const { start, end } = leaveDateRangeLabels(leaveRequest)
+  const leavePageUrl = getLeavePageUrl()
+  const subject = `Transition plan submitted: ${leaveRequest.employee.name} (${start} to ${end})`
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #4F46E5;">Transition Plan Submitted</h2>
+      <p><strong>${escapeHtml(leaveRequest.employee.name)}</strong> submitted a transition plan for their leave (${start} to ${end}).</p>
+      <p>Please review the handover tasks. If anything needs changing, you can disapprove it and the applicant will be asked to revise.</p>
+      ${leavePageUrl ? `<p><a href="${leavePageUrl}" style="display:inline-block;background:#4F46E5;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;">Review Transition Plan</a></p>` : ''}
+    </div>
+  `
+
+  try {
+    const info = await transporter.sendMail({ from: `P21 Compass <${FROM_EMAIL}>`, to: recipients, subject, html })
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId: requestId,
+      channel: 'EMAIL',
+      eventType: 'TRANSITION_PLAN_SUBMITTED',
+      status: 'SUCCESS',
+      recipients,
+      subject,
+      providerMessageId: info.messageId || null,
+    })
+    return { success: true }
+  } catch (error) {
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId: requestId,
+      channel: 'EMAIL',
+      eventType: 'TRANSITION_PLAN_SUBMITTED',
+      status: 'FAILED',
+      recipients,
+      subject,
+      error,
+    })
+    return { success: false, message: 'Failed to notify team lead' }
+  }
+}
+
+// Notify the applicant that their team lead disapproved the transition plan.
+export async function sendTransitionPlanDisapprovedNotification(requestId: string, reason: string) {
+  const leaveRequest = await prisma.leaveRequest.findUnique({
+    where: { id: requestId },
+    include: { employee: true },
+  })
+  if (!leaveRequest) return { success: false, message: 'Leave request not found' }
+
+  const to = leaveRequest.employee.email
+  if (!to) {
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId: requestId,
+      channel: 'EMAIL',
+      eventType: 'TRANSITION_PLAN_DISAPPROVED',
+      status: 'SKIPPED',
+      recipients: [],
+      subject: null,
+      metadata: { reason: 'Employee email not found' },
+    })
+    return { success: false, message: 'Employee email not found' }
+  }
+
+  const { start, end } = leaveDateRangeLabels(leaveRequest)
+  const leavePageUrl = getLeavePageUrl()
+  const subject = `Transition plan needs changes (${start} to ${end})`
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #D97706;">Transition Plan Needs Changes</h2>
+      <p>Hi ${escapeHtml(leaveRequest.employee.name)},</p>
+      <p>Your team lead requested changes to the transition plan for your leave (${start} to ${end}).</p>
+      <div style="background:#FEF3C7;padding:14px 18px;border-radius:8px;margin:16px 0;">
+        <p style="margin:0;"><strong>Reason:</strong> ${escapeHtml(reason)}</p>
+      </div>
+      <p>Please update your transition plan and submit it again.</p>
+      ${leavePageUrl ? `<p><a href="${leavePageUrl}" style="display:inline-block;background:#4F46E5;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;">Update Transition Plan</a></p>` : ''}
+    </div>
+  `
+
+  try {
+    const info = await transporter.sendMail({ from: `P21 Compass <${FROM_EMAIL}>`, to, subject, html })
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId: requestId,
+      channel: 'EMAIL',
+      eventType: 'TRANSITION_PLAN_DISAPPROVED',
+      status: 'SUCCESS',
+      recipients: [to],
+      subject,
+      providerMessageId: info.messageId || null,
+    })
+    return { success: true }
+  } catch (error) {
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId: requestId,
+      channel: 'EMAIL',
+      eventType: 'TRANSITION_PLAN_DISAPPROVED',
+      status: 'FAILED',
+      recipients: [to],
+      subject,
+      error,
+    })
+    return { success: false, message: 'Failed to notify applicant' }
+  }
+}
+
+// Escalate a still-missing transition plan to HR at/after the deadline.
+export async function sendTransitionPlanEscalation(requestId: string) {
+  const leaveRequest = await prisma.leaveRequest.findUnique({
+    where: { id: requestId },
+    include: { employee: true },
+  })
+  if (!leaveRequest) return { success: false, message: 'Leave request not found' }
+
+  const recipients = await getHrRecipientEmails()
+  if (recipients.length === 0) {
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId: requestId,
+      channel: 'EMAIL',
+      eventType: 'TRANSITION_PLAN_ESCALATION',
+      status: 'SKIPPED',
+      recipients: [],
+      subject: null,
+      metadata: { reason: 'No HR recipients' },
+    })
+    return { success: false, message: 'No HR recipients' }
+  }
+
+  const { start, end } = leaveDateRangeLabels(leaveRequest)
+  const leavePageUrl = getLeavePageUrl()
+  const subject = `Action needed: transition plan missing for ${leaveRequest.employee.name} (${start} to ${end})`
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #DC2626;">Transition Plan Still Missing</h2>
+      <p><strong>${escapeHtml(leaveRequest.employee.name)}</strong> has not submitted a transition plan for their upcoming leave (${start} to ${end}), and the submission deadline (3 days before the leave) has passed.</p>
+      <p>Please follow up with the employee and decide whether to cancel the leave request.</p>
+      ${leavePageUrl ? `<p><a href="${leavePageUrl}" style="display:inline-block;background:#4F46E5;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;">Open Leave Management</a></p>` : ''}
+    </div>
+  `
+
+  try {
+    const info = await transporter.sendMail({ from: `P21 Compass <${FROM_EMAIL}>`, to: recipients, subject, html })
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId: requestId,
+      channel: 'EMAIL',
+      eventType: 'TRANSITION_PLAN_ESCALATION',
+      status: 'SUCCESS',
+      recipients,
+      subject,
+      providerMessageId: info.messageId || null,
+    })
+    return { success: true }
+  } catch (error) {
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId: requestId,
+      channel: 'EMAIL',
+      eventType: 'TRANSITION_PLAN_ESCALATION',
+      status: 'FAILED',
+      recipients,
+      subject,
+      error,
+    })
+    return { success: false, message: 'Failed to escalate to HR' }
+  }
+}
