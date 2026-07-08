@@ -56,7 +56,6 @@ interface AssetFormModalProps {
   submitting?: boolean
   title: string
   initial?: AssetItem | null
-  suggestedEquipmentId?: string
 }
 
 function toDateInput(value: string | null | undefined) {
@@ -77,12 +76,11 @@ export function AssetFormModal({
   submitting = false,
   title,
   initial,
-  suggestedEquipmentId,
 }: AssetFormModalProps) {
   const initialValues = useMemo<AssetFormValues>(() => {
     const specs = normalizeLaptopSpecs(initial?.specsJson)
     return {
-    equipmentId: initial?.equipmentId || suggestedEquipmentId || '',
+    equipmentId: initial?.equipmentId || '',
     assetName: initial?.assetName || '',
     category: initial?.category || '',
     brand: initial?.brand || '',
@@ -102,9 +100,11 @@ export function AssetFormModal({
     location: normalizeAssetLocation(initial?.location) || initial?.location || '',
     notes: initial?.notes || '',
     }
-  }, [initial, suggestedEquipmentId])
+  }, [initial])
 
   const [form, setForm] = useState<AssetFormValues>(initialValues)
+  // Once the user types an Equipment ID, stop auto-suggesting one on category change.
+  const [equipmentIdEdited, setEquipmentIdEdited] = useState(false)
   // Preserve a legacy free-text location (e.g. "Karachi Office") as a selectable
   // option so editing an old asset doesn't silently drop or rewrite its location.
   const legacyLocation = useMemo(() => {
@@ -125,8 +125,29 @@ export function AssetFormModal({
   useEffect(() => {
     if (isOpen) {
       setForm(initialValues)
+      setEquipmentIdEdited(false)
     }
   }, [initialValues, isOpen])
+
+  // In create mode, suggest a category-based Equipment ID (e.g. LAP-0001) once a
+  // predefined category is picked, unless the user has typed their own ID.
+  useEffect(() => {
+    if (!isOpen || initial || equipmentIdEdited || !isAssetCategory(form.category)) return
+
+    let cancelled = false
+    fetch(`/api/assets/next-equipment-id?category=${encodeURIComponent(form.category)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.equipmentId) {
+          setForm((prev) => ({ ...prev, equipmentId: data.equipmentId }))
+        }
+      })
+      .catch(() => {})
+
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, initial, form.category, equipmentIdEdited])
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -168,8 +189,11 @@ export function AssetFormModal({
             <Label className="mb-2">Equipment ID</Label>
             <Input
               value={form.equipmentId}
-              onChange={(e) => setForm((prev) => ({ ...prev, equipmentId: e.target.value }))}
-              placeholder="EQUIP-101"
+              onChange={(e) => {
+                setEquipmentIdEdited(true)
+                setForm((prev) => ({ ...prev, equipmentId: e.target.value }))
+              }}
+              placeholder="LAP-0001"
             />
           </div>
           <div>

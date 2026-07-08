@@ -12,6 +12,9 @@ import {
   isPurchaseType,
   normalizePurchaseType,
   normalizeLaptopSpecs,
+  getEquipmentIdPrefix,
+  getNextEquipmentId,
+  remapCategory,
 } from '../lib/asset-utils'
 
 test('normalizeEquipmentId trims, uppercases, and collapses spaces', () => {
@@ -84,5 +87,28 @@ test('normalizeLaptopSpecs trims and drops empty', () => {
   })
   assert.equal(normalizeLaptopSpecs({ processor: '', ram: '', storage: '' }), null)
   assert.equal(normalizeLaptopSpecs(null), null)
+})
+
+test('getEquipmentIdPrefix maps category to prefix; unknown uses default', () => {
+  assert.equal(getEquipmentIdPrefix('Laptops'), 'LAP')
+  assert.equal(getEquipmentIdPrefix('Mouse'), 'MOU')
+  assert.equal(getEquipmentIdPrefix('Nonsense'), 'ACC') // DEFAULT_ASSET_CATEGORY = Other Accessories
+})
+
+test('getNextEquipmentId numbers per category prefix with 4-digit padding', () => {
+  assert.equal(getNextEquipmentId('Laptops', []), 'LAP-0001')
+  assert.equal(getNextEquipmentId('Laptops', ['LAP-0001', 'LAP-0007', 'lap-0003']), 'LAP-0008')
+  // Non-matching prefixes are ignored.
+  assert.equal(getNextEquipmentId('Mouse', ['LAP-0009', 'MOU-0002']), 'MOU-0003')
+})
+
+test('remapCategory canonicalizes known values and keyword-maps free text', () => {
+  assert.equal(remapCategory('laptops'), 'Laptops')
+  assert.equal(remapCategory('MacBook Pro 14'), 'Laptops')
+  assert.equal(remapCategory('iPhone 15'), 'Mobile Phones')
+  assert.equal(remapCategory('27-inch Display'), 'External Monitors')
+  assert.equal(remapCategory('Logitech Mouse'), 'Mouse')
+  assert.equal(remapCategory('Random gizmo'), 'Other Accessories')
+  assert.equal(remapCategory(''), 'Other Accessories')
 })
 

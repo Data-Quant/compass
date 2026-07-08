@@ -98,8 +98,7 @@ export function normalizeLaptopSpecs(raw: unknown): LaptopSpecs | null {
 }
 
 const ASSIGNMENT_BLOCKED_STATUSES = new Set<AssetStatus>(['RETIRED', 'LOST', 'DISPOSED'])
-const EQUIPMENT_ID_PREFIX = 'EQUIP'
-const EQUIPMENT_ID_START = 101
+const EQUIPMENT_ID_PAD = 4
 
 export function normalizeEquipmentId(input: string): string {
   return input.trim().toUpperCase().replace(/\s+/g, '-')
@@ -110,18 +109,57 @@ export const isAssetLocation = isOfficeLocation
 export const normalizeAssetLocation = normalizeOfficeLocation
 export const getAssetLocationValuesForFilter = getOfficeLocationValuesForFilter
 
-export function getNextEquipmentId(existingEquipmentIds: Array<string | null | undefined>) {
-  let highest = EQUIPMENT_ID_START - 1
+/** The category-based ID prefix (e.g. Laptops → LAP); unknown → default category prefix. */
+export function getEquipmentIdPrefix(categoryValue: string | null | undefined): string {
+  const meta = getAssetCategoryMeta(categoryValue) || getAssetCategoryMeta(DEFAULT_ASSET_CATEGORY)
+  // DEFAULT_ASSET_CATEGORY is always a valid predefined category, so meta is non-null.
+  return meta!.idPrefix
+}
+
+/**
+ * Next category-based equipment ID (e.g. `LAP-0001`), one past the highest existing
+ * number for that category's prefix. `existingEquipmentIds` should already be scoped
+ * to the prefix, but any non-matching IDs are ignored defensively.
+ */
+export function getNextEquipmentId(
+  categoryValue: string | null | undefined,
+  existingEquipmentIds: Array<string | null | undefined>
+): string {
+  const prefix = getEquipmentIdPrefix(categoryValue)
+  const pattern = new RegExp(`^${prefix}-(\\d+)$`)
+  let highest = 0
 
   for (const value of existingEquipmentIds) {
-    const match = normalizeEquipmentId(value || '').match(/^EQUIP-(\d+)$/)
+    const match = normalizeEquipmentId(value || '').match(pattern)
     if (!match) continue
     const numeric = Number(match[1])
     if (Number.isFinite(numeric)) highest = Math.max(highest, numeric)
   }
 
   const next = highest + 1
-  return `${EQUIPMENT_ID_PREFIX}-${String(next).padStart(3, '0')}`
+  return `${prefix}-${String(next).padStart(EQUIPMENT_ID_PAD, '0')}`
+}
+
+// Keyword → predefined category, consulted only by the one-time ID/category migration.
+const CATEGORY_REMAP: Array<{ match: RegExp; category: string }> = [
+  { match: /laptop|macbook|notebook|thinkpad|elitebook/i, category: 'Laptops' },
+  { match: /phone|iphone|android|pixel|galaxy|mobile/i, category: 'Mobile Phones' },
+  { match: /monitor|display|screen/i, category: 'External Monitors' },
+  { match: /yubi\s*key|security key/i, category: 'YubiKeys' },
+  { match: /mouse|mice|trackpad/i, category: 'Mouse' },
+  { match: /bag|backpack|sleeve|case/i, category: 'Bag' },
+  { match: /head\s*phone|ear\s*phone|earbud|headset|airpod/i, category: 'Headphones / Earphones' },
+]
+
+/** Map a free-text/legacy category to a predefined value; unknown → Other Accessories. */
+export function remapCategory(freeText: string | null | undefined): string {
+  const meta = getAssetCategoryMeta(freeText)
+  if (meta) return meta.value
+  const value = (freeText || '').trim()
+  for (const rule of CATEGORY_REMAP) {
+    if (rule.match.test(value)) return rule.category
+  }
+  return DEFAULT_ASSET_CATEGORY
 }
 
 export function canAssignInStatus(status: AssetStatus): boolean {

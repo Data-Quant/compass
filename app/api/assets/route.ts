@@ -12,6 +12,7 @@ import {
   getNextEquipmentId,
   getAssetCategoryMeta,
   getAssetLocationValuesForFilter,
+  getEquipmentIdPrefix,
   isAssetCategory,
   isAssetLocation,
   normalizeEquipmentId,
@@ -74,12 +75,16 @@ function isEquipmentIdUniqueError(error: unknown) {
   return String(error.meta?.target || '').includes('equipmentId')
 }
 
-async function loadNextEquipmentId(client: typeof prisma | Prisma.TransactionClient = prisma) {
+async function loadNextEquipmentId(
+  category: string,
+  client: typeof prisma | Prisma.TransactionClient = prisma
+) {
+  const prefix = getEquipmentIdPrefix(category)
   const existing = await client.equipmentAsset.findMany({
-    where: { equipmentId: { startsWith: 'EQUIP-', mode: 'insensitive' } },
+    where: { equipmentId: { startsWith: `${prefix}-`, mode: 'insensitive' } },
     select: { equipmentId: true },
   })
-  return getNextEquipmentId(existing.map((asset) => asset.equipmentId))
+  return getNextEquipmentId(category, existing.map((asset) => asset.equipmentId))
 }
 
 function parseQueryInt(value: string | null, defaultValue: number, min: number, max: number) {
@@ -246,7 +251,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: dateOrderError }, { status: 400 })
     }
 
-    let equipmentId = manualEquipmentId || await loadNextEquipmentId()
+    let equipmentId = manualEquipmentId || await loadNextEquipmentId(category)
     const attempts = manualEquipmentId ? 1 : 2
 
     for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -299,7 +304,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true, item: created })
       } catch (error) {
         if (!manualEquipmentId && attempt === 0 && isEquipmentIdUniqueError(error)) {
-          equipmentId = await loadNextEquipmentId()
+          equipmentId = await loadNextEquipmentId(category)
           continue
         }
         throw error

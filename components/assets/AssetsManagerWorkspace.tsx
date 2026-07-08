@@ -70,7 +70,6 @@ export function AssetsManagerWorkspace({
   const [importing, setImporting] = useState(false)
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([])
   const [printingLabels, setPrintingLabels] = useState(false)
-  const [suggestedEquipmentId, setSuggestedEquipmentId] = useState('')
   const [locationCounts, setLocationCounts] = useState<Array<{ location: string; count: number }>>([])
 
   const debouncedQuery = useMemo(() => filters.q.trim(), [filters.q])
@@ -149,19 +148,9 @@ export function AssetsManagerWorkspace({
     }
   }
 
-  const openCreateForm = async () => {
-    setSuggestedEquipmentId('')
+  const openCreateForm = () => {
+    // The form suggests a category-based Equipment ID once a category is chosen.
     setFormOpen(true)
-    try {
-      const res = await fetch('/api/assets/next-equipment-id')
-      const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to load next equipment ID')
-      }
-      setSuggestedEquipmentId(data.equipmentId || '')
-    } catch {
-      toast.error('Could not auto-generate the next Equipment ID')
-    }
   }
 
   const applyLocationFilter = (location: string) => {
@@ -457,7 +446,6 @@ export function AssetsManagerWorkspace({
         onSubmit={createAsset}
         submitting={formSubmitting}
         title="Add Equipment Asset"
-        suggestedEquipmentId={suggestedEquipmentId}
       />
 
       <AssignAssetModal
