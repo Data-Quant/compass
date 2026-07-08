@@ -9,6 +9,7 @@ export interface AssetQrLabelItem {
   brand?: string | null
   model?: string | null
   serialNumber?: string | null
+  ownerName?: string | null
 }
 
 const DEFAULT_APP_URL = 'http://localhost:3000'
@@ -134,21 +135,24 @@ export async function createAssetLabelsPdfBuffer(
       doc.image(qrBuffer, x + 12, y + 22, { width: qrSize, height: qrSize })
 
       doc.fillColor('#111827').font('Helvetica-Bold').fontSize(12)
-      drawLabelText(doc, asset.assetName, textX, y + 20, textWidth, { height: 34 })
+      drawLabelText(doc, asset.assetName, textX, y + 16, textWidth, { height: 30 })
 
       doc.fillColor('#2563EB').font('Helvetica-Bold').fontSize(11)
-      drawLabelText(doc, asset.equipmentId, textX, y + 60, textWidth)
+      drawLabelText(doc, asset.equipmentId, textX, y + 54, textWidth)
+
+      doc.fillColor('#374151').font('Helvetica-Bold').fontSize(8)
+      drawLabelText(doc, asset.ownerName ? asset.ownerName : 'Unassigned', textX, y + 72, textWidth)
 
       doc.fillColor('#4B5563').font('Helvetica').fontSize(8.5)
-      drawLabelText(doc, meta || 'Equipment Asset', textX, y + 80, textWidth, { height: 24 })
+      drawLabelText(doc, meta || 'Equipment Asset', textX, y + 88, textWidth, { height: 22 })
 
       if (asset.serialNumber) {
-        doc.fillColor('#6B7280').fontSize(7.5)
-        drawLabelText(doc, `S/N ${asset.serialNumber}`, textX, y + 106, textWidth)
+        doc.fillColor('#6B7280').font('Helvetica').fontSize(7.5)
+        drawLabelText(doc, `S/N ${asset.serialNumber}`, textX, y + 110, textWidth)
       }
 
       doc.fillColor('#111827').font('Helvetica-Bold').fontSize(8)
-      drawLabelText(doc, 'Compass Asset', x + 12, y + 124, labelWidth - 24)
+      drawLabelText(doc, 'Compass Asset', x + 12, y + 126, labelWidth - 24)
     }
 
     if (assets.length === 0) {

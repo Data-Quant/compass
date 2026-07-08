@@ -37,6 +37,7 @@ export async function POST(request: NextRequest) {
         brand: true,
         model: true,
         serialNumber: true,
+        currentAssignee: { select: { name: true } },
       },
     })
 
@@ -44,7 +45,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'One or more selected assets were not found' }, { status: 404 })
     }
 
-    const byId = new Map(assets.map((asset) => [asset.id, asset]))
+    const byId = new Map(
+      assets.map((asset) => [asset.id, { ...asset, ownerName: asset.currentAssignee?.name ?? null }])
+    )
     const orderedAssets = requestedIds.map((id) => byId.get(id)!)
     const buffer = await createAssetLabelsPdfBuffer(orderedAssets, request.nextUrl.origin)
 

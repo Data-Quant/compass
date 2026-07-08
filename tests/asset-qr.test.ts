@@ -39,6 +39,7 @@ test('asset QR label generator returns a PDF document', async () => {
         brand: 'Apple',
         model: 'M1 Pro',
         serialNumber: '1423556346',
+        ownerName: 'Jane Doe',
       },
     ],
     'https://compass.example.com'
