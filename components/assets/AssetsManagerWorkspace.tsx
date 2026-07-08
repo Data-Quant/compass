@@ -43,7 +43,6 @@ export function AssetsManagerWorkspace({
 }: AssetsManagerWorkspaceProps) {
   const [items, setItems] = useState<AssetItem[]>([])
   const [users, setUsers] = useState<AssetAssignee[]>([])
-  const [categories, setCategories] = useState<string[]>([])
   const [filters, setFilters] = useState<AssetFiltersState>({
     q: '',
     status: '',
@@ -130,11 +129,6 @@ export function AssetsManagerWorkspace({
         pages: data.pagination?.pages || 1,
         total: data.pagination?.total || 0,
       }))
-      setCategories((prev) =>
-        Array.from(new Set([...prev, ...nextItems.map((item: AssetItem) => item.category).filter(Boolean)])).sort((a, b) =>
-          a.localeCompare(b)
-        )
-      )
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to load assets')
     } finally {
@@ -376,7 +370,7 @@ export function AssetsManagerWorkspace({
 
       <Card>
         <CardContent className="p-4 space-y-4">
-          <AssetFilters value={filters} assignees={users} categories={categories} onChange={(next) => {
+          <AssetFilters value={filters} assignees={users} onChange={(next) => {
             setFilters(next)
             setPagination((prev) => ({ ...prev, page: 1 }))
           }} />

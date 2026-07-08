@@ -4,12 +4,15 @@ import { z } from 'zod'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import {
+  ASSET_CATEGORY_VALUES,
   ASSET_LOCATIONS,
   ASSET_CONDITIONS,
   ASSET_STATUSES,
   ensureWarrantyDateOrder,
   getNextEquipmentId,
+  getAssetCategoryMeta,
   getAssetLocationValuesForFilter,
+  isAssetCategory,
   isAssetLocation,
   normalizeEquipmentId,
   normalizeAssetLocation,
@@ -208,6 +211,16 @@ export async function POST(request: NextRequest) {
     }
 
     const payload = parsed.data
+
+    if (!isAssetCategory(payload.category)) {
+      return NextResponse.json(
+        { error: `Category must be one of: ${ASSET_CATEGORY_VALUES.join(', ')}` },
+        { status: 400 }
+      )
+    }
+    // Canonicalize to the predefined value (fixes casing) for consistent storage.
+    const category = getAssetCategoryMeta(payload.category)?.value || payload.category.trim()
+
     const manualEquipmentId = payload.equipmentId ? normalizeEquipmentId(payload.equipmentId) : null
     const purchaseDate = parseNullableDate(payload.purchaseDate)
     const warrantyStartDate = parseNullableDate(payload.warrantyStartDate)
@@ -243,7 +256,7 @@ export async function POST(request: NextRequest) {
             data: {
               equipmentId,
               assetName: payload.assetName.trim(),
-              category: payload.category.trim(),
+              category,
               brand: payload.brand || null,
               model: payload.model || null,
               serialNumber: payload.serialNumber || null,

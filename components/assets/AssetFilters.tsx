@@ -9,17 +9,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ASSET_LOCATIONS, ASSET_STATUSES } from '@/lib/asset-utils'
+import { ASSET_CATEGORIES, ASSET_LOCATIONS, ASSET_STATUSES } from '@/lib/asset-utils'
 import type { AssetAssignee, AssetFiltersState } from './types'
 
 interface AssetFiltersProps {
   value: AssetFiltersState
   assignees: AssetAssignee[]
-  categories: string[]
   onChange: (next: AssetFiltersState) => void
 }
 
-export function AssetFilters({ value, assignees, categories, onChange }: AssetFiltersProps) {
+export function AssetFilters({ value, assignees, onChange }: AssetFiltersProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
       <div className="md:col-span-2 xl:col-span-2">
@@ -62,9 +61,9 @@ export function AssetFilters({ value, assignees, categories, onChange }: AssetFi
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">All categories</SelectItem>
-            {categories.map((category) => (
-              <SelectItem key={category} value={category}>
-                {category}
+            {ASSET_CATEGORIES.map((category) => (
+              <SelectItem key={category.value} value={category.value}>
+                {category.label}
               </SelectItem>
             ))}
           </SelectContent>

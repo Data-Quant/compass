@@ -4,10 +4,13 @@ import { z } from 'zod'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import {
+  ASSET_CATEGORY_VALUES,
   ASSET_CONDITIONS,
   ASSET_LOCATIONS,
   ASSET_STATUSES,
   ensureWarrantyDateOrder,
+  getAssetCategoryMeta,
+  isAssetCategory,
   normalizeAssetLocation,
   parseNullableDate,
   parseNullableNumber,
@@ -126,6 +129,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         id: true,
         status: true,
         currentAssigneeId: true,
+        category: true,
         location: true,
         purchaseDate: true,
         warrantyEndDate: true,
@@ -136,6 +140,23 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     const payload = parsed.data
+
+    // Category must be predefined when changed; keeping an asset's existing (possibly
+    // legacy) category is allowed so unrelated edits don't fail before the ID migration runs.
+    let nextCategory: string | undefined
+    if (payload.category !== undefined) {
+      const trimmed = payload.category.trim()
+      if (isAssetCategory(trimmed)) {
+        nextCategory = getAssetCategoryMeta(trimmed)?.value || trimmed
+      } else if (trimmed === existing.category) {
+        nextCategory = trimmed
+      } else {
+        return NextResponse.json(
+          { error: `Category must be one of: ${ASSET_CATEGORY_VALUES.join(', ')}` },
+          { status: 400 }
+        )
+      }
+    }
     const parsedPurchaseDate =
       payload.purchaseDate !== undefined
         ? parseNullableDate(payload.purchaseDate)
@@ -198,7 +219,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     const updateData: Prisma.EquipmentAssetUpdateInput = {}
     if (payload.assetName !== undefined) updateData.assetName = payload.assetName.trim()
-    if (payload.category !== undefined) updateData.category = payload.category.trim()
+    if (nextCategory !== undefined) updateData.category = nextCategory
     if (payload.brand !== undefined) updateData.brand = payload.brand
     if (payload.model !== undefined) updateData.model = payload.model
     if (payload.serialNumber !== undefined) updateData.serialNumber = payload.serialNumber

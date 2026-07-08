@@ -13,7 +13,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ASSET_CONDITIONS, ASSET_LOCATIONS, ASSET_STATUSES, normalizeAssetLocation } from '@/lib/asset-utils'
+import {
+  ASSET_CATEGORIES,
+  ASSET_CONDITIONS,
+  ASSET_LOCATIONS,
+  ASSET_STATUSES,
+  assetCategoryHasSpecs,
+  isAssetCategory,
+  normalizeAssetLocation,
+  normalizeLaptopSpecs,
+} from '@/lib/asset-utils'
 import type { AssetItem } from './types'
 
 interface AssetFormValues {
@@ -23,6 +32,9 @@ interface AssetFormValues {
   brand: string
   model: string
   serialNumber: string
+  processor: string
+  ram: string
+  storage: string
   purchaseCost: string
   purchaseCurrency: string
   purchaseDate: string
@@ -65,13 +77,18 @@ export function AssetFormModal({
   initial,
   suggestedEquipmentId,
 }: AssetFormModalProps) {
-  const initialValues = useMemo<AssetFormValues>(() => ({
+  const initialValues = useMemo<AssetFormValues>(() => {
+    const specs = normalizeLaptopSpecs(initial?.specsJson)
+    return {
     equipmentId: initial?.equipmentId || suggestedEquipmentId || '',
     assetName: initial?.assetName || '',
     category: initial?.category || '',
     brand: initial?.brand || '',
     model: initial?.model || '',
     serialNumber: initial?.serialNumber || '',
+    processor: specs?.processor || '',
+    ram: specs?.ram || '',
+    storage: specs?.storage || '',
     purchaseCost: initial?.purchaseCost != null ? String(initial.purchaseCost) : '',
     purchaseCurrency: initial?.purchaseCurrency || 'PKR',
     purchaseDate: toDateInput(initial?.purchaseDate),
@@ -82,7 +99,8 @@ export function AssetFormModal({
     condition: initial?.condition || 'GOOD',
     location: normalizeAssetLocation(initial?.location) || initial?.location || '',
     notes: initial?.notes || '',
-  }), [initial, suggestedEquipmentId])
+    }
+  }, [initial, suggestedEquipmentId])
 
   const [form, setForm] = useState<AssetFormValues>(initialValues)
   const locationOptions = useMemo(() => {
@@ -91,6 +109,16 @@ export function AssetFormModal({
       ? [...ASSET_LOCATIONS, current]
       : [...ASSET_LOCATIONS]
   }, [initial?.location])
+
+  // Include any legacy (non-predefined) category the asset already has, so editing
+  // an old asset does not silently drop its category.
+  const categoryOptions = useMemo(() => {
+    const current = initial?.category?.trim()
+    const base = ASSET_CATEGORIES.map((category) => category.value)
+    return current && !isAssetCategory(current) ? [...base, current] : base
+  }, [initial?.category])
+
+  const showSpecs = assetCategoryHasSpecs(form.category)
 
   useEffect(() => {
     if (isOpen) {
@@ -101,6 +129,12 @@ export function AssetFormModal({
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    // Only send laptop specs for spec-bearing categories; clear them otherwise so
+    // switching a laptop to a non-spec category drops stale hardware details.
+    const specsJson = showSpecs
+      ? normalizeLaptopSpecs({ processor: form.processor, ram: form.ram, storage: form.storage })
+      : null
+
     const payload: Record<string, unknown> = {
       equipmentId: form.equipmentId,
       assetName: form.assetName,
@@ -108,6 +142,7 @@ export function AssetFormModal({
       brand: form.brand || undefined,
       model: form.model || undefined,
       serialNumber: form.serialNumber || undefined,
+      specsJson,
       purchaseCost: form.purchaseCost || undefined,
       purchaseCurrency: form.purchaseCurrency || undefined,
       purchaseDate: form.purchaseDate || undefined,
@@ -146,14 +181,52 @@ export function AssetFormModal({
           </div>
           <div>
             <Label className="mb-2">Category</Label>
-            <Input
-              required
-              value={form.category}
-              onChange={(e) => setForm((prev) => ({ ...prev, category: e.target.value }))}
-              placeholder="Laptop"
-            />
+            <Select
+              value={form.category || undefined}
+              onValueChange={(value) => setForm((prev) => ({ ...prev, category: value }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select category" />
+              </SelectTrigger>
+              <SelectContent>
+                {categoryOptions.map((category) => (
+                  <SelectItem key={category} value={category}>
+                    {category}{isAssetCategory(category) ? '' : ' (current legacy value)'}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
+
+        {showSpecs && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <Label className="mb-2">Processor</Label>
+              <Input
+                value={form.processor}
+                onChange={(e) => setForm((prev) => ({ ...prev, processor: e.target.value }))}
+                placeholder="Apple M3 Pro / Intel i7-1360P"
+              />
+            </div>
+            <div>
+              <Label className="mb-2">RAM</Label>
+              <Input
+                value={form.ram}
+                onChange={(e) => setForm((prev) => ({ ...prev, ram: e.target.value }))}
+                placeholder="16GB"
+              />
+            </div>
+            <div>
+              <Label className="mb-2">Storage</Label>
+              <Input
+                value={form.storage}
+                onChange={(e) => setForm((prev) => ({ ...prev, storage: e.target.value }))}
+                placeholder="512GB SSD"
+              />
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <div>

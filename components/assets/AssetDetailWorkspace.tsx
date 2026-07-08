@@ -8,6 +8,7 @@ import { Download, Printer, QrCode, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import { assetCategoryHasSpecs, normalizeLaptopSpecs } from '@/lib/asset-utils'
 import { WarrantyBadge } from './WarrantyBadge'
 import { AssetFormModal } from './AssetFormModal'
 import { AssignAssetModal } from './AssignAssetModal'
@@ -38,6 +39,11 @@ export function AssetDetailWorkspace({ assetId, listHref }: AssetDetailWorkspace
   const assigneeLabel = useMemo(() => {
     if (!item?.currentAssignee) return 'Unassigned'
     return `${item.currentAssignee.name}${item.currentAssignee.department ? ` (${item.currentAssignee.department})` : ''}`
+  }, [item])
+
+  const laptopSpecs = useMemo(() => {
+    if (!item || !assetCategoryHasSpecs(item.category)) return null
+    return normalizeLaptopSpecs(item.specsJson)
   }, [item])
 
   useEffect(() => {
@@ -296,6 +302,22 @@ export function AssetDetailWorkspace({ assetId, listHref }: AssetDetailWorkspace
             <p className="text-sm mt-1">{item.location || '—'}</p>
             <p className="text-xs text-muted-foreground">{item.vendor || ''}</p>
           </div>
+          {laptopSpecs && (
+            <>
+              <div>
+                <p className="text-xs text-muted-foreground">Processor</p>
+                <p className="text-sm mt-1">{laptopSpecs.processor || '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">RAM</p>
+                <p className="text-sm mt-1">{laptopSpecs.ram || '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Storage</p>
+                <p className="text-sm mt-1">{laptopSpecs.storage || '—'}</p>
+              </div>
+            </>
+          )}
           <div className="md:col-span-4">
             <p className="text-xs text-muted-foreground">Notes</p>
             <p className="text-sm mt-1 whitespace-pre-wrap">{item.notes || '—'}</p>
