@@ -11,8 +11,9 @@ const TARGET_START = new Date('2026-07-01T00:00:00.000Z')
 
 const active: CarryForwardEmployeeStatus = { exists: true, isPayrollActive: true, exitDate: null }
 
-test('only BASIC_SALARY is a carry-forward component', () => {
+test('only salary and mobile allowance are carry-forward components', () => {
   assert.equal(CARRY_FORWARD_COMPONENT_KEYS.has('BASIC_SALARY'), true)
+  assert.equal(CARRY_FORWARD_COMPONENT_KEYS.has('MOBILE_REIMBURSEMENT'), true) // Mobile Allowance
   assert.equal(CARRY_FORWARD_COMPONENT_KEYS.has('MEDICAL_ALLOWANCE'), false)
   assert.equal(CARRY_FORWARD_COMPONENT_KEYS.has('TRAVEL_REIMBURSEMENT'), false)
   assert.equal(CARRY_FORWARD_COMPONENT_KEYS.has('BONUS'), false)
@@ -49,10 +50,11 @@ test('deleted, deactivated, or previously-offboarded employees are excluded', ()
 test('selectCarryForwardInputs keeps only salary rows for eligible employees', () => {
   const rows = [
     { componentKey: 'BASIC_SALARY', userId: 'u-active' },
-    { componentKey: 'MEDICAL_ALLOWANCE', userId: 'u-active' }, // dropped: not salary
-    { componentKey: 'TRAVEL_REIMBURSEMENT', userId: 'u-active' }, // dropped: not salary
+    { componentKey: 'MOBILE_REIMBURSEMENT', userId: 'u-active' }, // kept: mobile allowance
+    { componentKey: 'MEDICAL_ALLOWANCE', userId: 'u-active' }, // dropped: not carried
+    { componentKey: 'TRAVEL_REIMBURSEMENT', userId: 'u-active' }, // dropped: not carried
     { componentKey: 'BASIC_SALARY', userId: 'u-offboarded' }, // dropped: offboarded
-    { componentKey: 'BASIC_SALARY', userId: 'u-deleted' }, // dropped: deleted
+    { componentKey: 'MOBILE_REIMBURSEMENT', userId: 'u-deleted' }, // dropped: deleted
     { componentKey: 'BASIC_SALARY', userId: null }, // kept: unmapped
   ]
 
@@ -66,6 +68,6 @@ test('selectCarryForwardInputs keeps only salary rows for eligible employees', (
   const carried = selectCarryForwardInputs(rows, resolve, TARGET_START)
   assert.deepEqual(
     carried.map((r) => `${r.componentKey}:${r.userId}`),
-    ['BASIC_SALARY:u-active', 'BASIC_SALARY:null']
+    ['BASIC_SALARY:u-active', 'MOBILE_REIMBURSEMENT:u-active', 'BASIC_SALARY:null']
   )
 })
