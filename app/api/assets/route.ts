@@ -22,6 +22,7 @@ import {
   parseNullableDate,
   parseNullableNumber,
 } from '@/lib/asset-utils'
+import { ASSET_EVENT_TYPES, recordAssetEvent } from '@/lib/asset-events'
 import { canManageAssets } from '@/lib/permissions'
 
 const optionalTrimmedString = z.preprocess(
@@ -297,16 +298,11 @@ export async function POST(request: NextRequest) {
             },
           })
 
-          await tx.equipmentEvent.create({
-            data: {
-              assetId: asset.id,
-              actorId: user.id,
-              eventType: 'ASSET_CREATED',
-              payloadJson: {
-                equipmentId: asset.equipmentId,
-                status: asset.status,
-              } as Prisma.InputJsonValue,
-            },
+          await recordAssetEvent(tx, {
+            assetId: asset.id,
+            actorId: user.id,
+            eventType: ASSET_EVENT_TYPES.CREATED,
+            payload: { equipmentId: asset.equipmentId, status: asset.status },
           })
 
           return tx.equipmentAsset.findUnique({

@@ -8,7 +8,14 @@ import { Download, Printer, QrCode, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { assetCategoryHasSpecs, normalizeLaptopSpecs } from '@/lib/asset-utils'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { ASSET_STATUSES, assetCategoryHasSpecs, normalizeLaptopSpecs } from '@/lib/asset-utils'
 import { WarrantyBadge } from './WarrantyBadge'
 import { AssetFormModal } from './AssetFormModal'
 import { AssignAssetModal } from './AssignAssetModal'
@@ -121,6 +128,28 @@ export function AssetDetailWorkspace({ assetId, listHref }: AssetDetailWorkspace
       toast.error(error instanceof Error ? error.message : 'Failed to assign asset')
     } finally {
       setAssignSubmitting(false)
+    }
+  }
+
+  const changeStatus = async (status: string) => {
+    if (!item || status === item.status) return
+    const note = window.prompt('Note for this status change (optional):', '')
+    if (note === null) return // user cancelled
+
+    try {
+      const res = await fetch(`/api/assets/${assetId}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, note: note || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Failed to change status')
+      }
+      toast.success('Status updated')
+      loadData()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to change status')
     }
   }
 
@@ -265,6 +294,22 @@ export function AssetDetailWorkspace({ assetId, listHref }: AssetDetailWorkspace
           <div>
             <p className="text-xs text-muted-foreground">Status</p>
             <Badge className="mt-1">{item.status.replace(/_/g, ' ')}</Badge>
+            <div className="mt-2">
+              <Select value="" onValueChange={changeStatus}>
+                <SelectTrigger className="h-7 text-xs">
+                  <SelectValue placeholder="Change status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ASSET_STATUSES.filter(
+                    (status) => status !== 'ASSIGNED' && status !== item.status
+                  ).map((status) => (
+                    <SelectItem key={status} value={status}>
+                      {status.replace(/_/g, ' ')}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Condition</p>

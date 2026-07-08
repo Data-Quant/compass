@@ -2,6 +2,7 @@
 
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { formatAssetEvent } from '@/lib/asset-event-format'
 import type { AssetAssignment, AssetEvent } from './types'
 
 interface AssetHistoryTimelineProps {
@@ -69,14 +70,12 @@ export function AssetHistoryTimeline({ assignments, events }: AssetHistoryTimeli
                     <Badge variant="outline">{eventLabel(event.eventType)}</Badge>
                     <span className="text-xs text-muted-foreground">{formatDate(event.createdAt)}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-sm text-foreground">
+                    {formatAssetEvent(event.eventType, event.payloadJson)}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
                     Actor: {event.actor?.name || 'System'}
                   </p>
-                  {event.payloadJson != null ? (
-                    <pre className="mt-2 text-[11px] text-foreground bg-muted p-2 rounded overflow-x-auto">
-                      {JSON.stringify(event.payloadJson, null, 2)}
-                    </pre>
-                  ) : null}
                 </div>
               ))}
             </div>

@@ -10,9 +10,9 @@
  * per-prefix counters. EquipmentEvent/EquipmentAssignment reference the internal
  * `id`, so history is preserved — only the display equipmentId changes.
  */
-import { Prisma } from '@prisma/client'
 import { prisma } from '../../lib/db'
 import { getAssetCategoryMeta, getEquipmentIdPrefix, remapCategory } from '../../lib/asset-utils'
+import { ASSET_EVENT_TYPES, recordAssetEvent } from '../../lib/asset-events'
 
 const APPLY = process.argv.includes('--apply')
 const ID_PAD = 4
@@ -111,17 +111,15 @@ async function main() {
           where: { id: change.id },
           data: { equipmentId: change.newEquipmentId, category: change.newCategory },
         })
-        await tx.equipmentEvent.create({
-          data: {
-            assetId: change.id,
-            actorId: null,
-            eventType: 'ASSET_MIGRATED',
-            payloadJson: {
-              oldEquipmentId: change.oldEquipmentId,
-              newEquipmentId: change.newEquipmentId,
-              oldCategory: change.oldCategory,
-              newCategory: change.newCategory,
-            } as Prisma.InputJsonValue,
+        await recordAssetEvent(tx, {
+          assetId: change.id,
+          actorId: null,
+          eventType: ASSET_EVENT_TYPES.MIGRATED,
+          payload: {
+            oldEquipmentId: change.oldEquipmentId,
+            newEquipmentId: change.newEquipmentId,
+            oldCategory: change.oldCategory,
+            newCategory: change.newCategory,
           },
         })
       }

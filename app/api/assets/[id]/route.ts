@@ -17,6 +17,7 @@ import {
   parseNullableDate,
   parseNullableNumber,
 } from '@/lib/asset-utils'
+import { ASSET_EVENT_TYPES, recordAssetEvent } from '@/lib/asset-events'
 import { canManageAssets } from '@/lib/permissions'
 
 interface RouteContext {
@@ -131,6 +132,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       select: {
         id: true,
         status: true,
+        condition: true,
         currentAssigneeId: true,
         category: true,
         location: true,
@@ -258,24 +260,42 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
     if (payload.notes !== undefined) updateData.notes = payload.notes
 
+    const statusChanged = payload.status !== undefined && payload.status !== existing.status
+    const conditionChanged = payload.condition !== undefined && payload.condition !== existing.condition
+    const editedFields = Object.keys(updateData).filter((field) => field !== 'status' && field !== 'condition')
+
     const updated = await prisma.$transaction(async (tx) => {
-      const next = await tx.equipmentAsset.update({
+      await tx.equipmentAsset.update({
         where: { id },
         data: updateData,
       })
 
-      await tx.equipmentEvent.create({
-        data: {
+      // Log a plain edit for non-lifecycle fields, plus distinct status/condition
+      // events so the timeline reads as a clear lifecycle trail.
+      if (editedFields.length > 0) {
+        await recordAssetEvent(tx, {
           assetId: id,
           actorId: user.id,
-          eventType: 'ASSET_UPDATED',
-          payloadJson: {
-            fields: Object.keys(updateData),
-            statusBefore: existing.status,
-            statusAfter: next.status,
-          } as Prisma.InputJsonValue,
-        },
-      })
+          eventType: ASSET_EVENT_TYPES.UPDATED,
+          payload: { fields: editedFields },
+        })
+      }
+      if (statusChanged) {
+        await recordAssetEvent(tx, {
+          assetId: id,
+          actorId: user.id,
+          eventType: ASSET_EVENT_TYPES.STATUS_CHANGED,
+          payload: { from: existing.status, to: payload.status },
+        })
+      }
+      if (conditionChanged) {
+        await recordAssetEvent(tx, {
+          assetId: id,
+          actorId: user.id,
+          eventType: ASSET_EVENT_TYPES.CONDITION_CHANGED,
+          payload: { from: existing.condition, to: payload.condition },
+        })
+      }
 
       return tx.equipmentAsset.findUnique({
         where: { id },

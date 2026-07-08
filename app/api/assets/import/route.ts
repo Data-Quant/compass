@@ -15,6 +15,7 @@ import {
   parseNullableDate,
   parseNullableNumber,
 } from '@/lib/asset-utils'
+import { ASSET_EVENT_TYPES, recordAssetEvent } from '@/lib/asset-events'
 import { canManageAssets } from '@/lib/permissions'
 
 export const runtime = 'nodejs'
@@ -219,17 +220,11 @@ export async function POST(request: NextRequest) {
             select: { id: true, equipmentId: true },
           })
 
-          await prisma.equipmentEvent.create({
-            data: {
-              assetId: created.id,
-              actorId: user.id,
-              eventType: 'ASSET_IMPORTED_CREATED',
-              payloadJson: {
-                equipmentId: created.equipmentId,
-                rowNumber,
-                fileName: file.name,
-              } as Prisma.InputJsonValue,
-            },
+          await recordAssetEvent(prisma, {
+            assetId: created.id,
+            actorId: user.id,
+            eventType: ASSET_EVENT_TYPES.IMPORTED_CREATED,
+            payload: { equipmentId: created.equipmentId, rowNumber, fileName: file.name },
           })
 
           createdCount += 1
@@ -259,17 +254,11 @@ export async function POST(request: NextRequest) {
           },
         })
 
-        await prisma.equipmentEvent.create({
-          data: {
-            assetId: existing.id,
-            actorId: user.id,
-            eventType: 'ASSET_IMPORTED_UPDATED',
-            payloadJson: {
-              equipmentId,
-              rowNumber,
-              fileName: file.name,
-            } as Prisma.InputJsonValue,
-          },
+        await recordAssetEvent(prisma, {
+          assetId: existing.id,
+          actorId: user.id,
+          eventType: ASSET_EVENT_TYPES.IMPORTED_UPDATED,
+          payload: { equipmentId, rowNumber, fileName: file.name },
         })
 
         updatedCount += 1

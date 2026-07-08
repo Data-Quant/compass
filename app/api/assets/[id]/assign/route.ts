@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { canAssignInStatus } from '@/lib/asset-utils'
+import { ASSET_EVENT_TYPES, recordAssetEvent } from '@/lib/asset-events'
 import { canManageAssets } from '@/lib/permissions'
 
 interface RouteContext {
@@ -101,17 +101,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
         },
       })
 
-      await tx.equipmentEvent.create({
-        data: {
-          assetId,
-          actorId: user.id,
-          eventType: 'ASSET_ASSIGNED',
-          payloadJson: {
-            employeeId: employee.id,
-            employeeName: employee.name,
-            note: note || null,
-            at: now.toISOString(),
-          } as Prisma.InputJsonValue,
+      await recordAssetEvent(tx, {
+        assetId,
+        actorId: user.id,
+        eventType: ASSET_EVENT_TYPES.ASSIGNED,
+        payload: {
+          employeeId: employee.id,
+          employeeName: employee.name,
+          note: note || null,
+          at: now.toISOString(),
         },
       })
 
