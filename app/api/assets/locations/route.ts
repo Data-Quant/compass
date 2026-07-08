@@ -29,10 +29,12 @@ export async function GET() {
       if (!location) continue
       countByLocation.set(location, (countByLocation.get(location) || 0) + item._count._all)
     }
+    // Only surface cities that actually hold assets; the office list now spans
+    // many cities and rendering an empty card for each would be noise.
     const locations = ASSET_LOCATIONS.map((location) => ({
       location,
       count: countByLocation.get(location) || 0,
-    }))
+    })).filter((entry) => entry.count > 0)
 
     return NextResponse.json({ locations })
   } catch (error) {

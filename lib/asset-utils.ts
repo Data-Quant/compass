@@ -1,3 +1,12 @@
+import {
+  OFFICE_LOCATION_CITIES,
+  getOfficeLocationValuesForFilter,
+  isOfficeLocation,
+  normalizeOfficeLocation,
+} from './office-locations'
+
+export { OFFICE_LOCATIONS } from './office-locations'
+
 export const ASSET_STATUSES = [
   'IN_STOCK',
   'ASSIGNED',
@@ -9,17 +18,13 @@ export const ASSET_STATUSES = [
 
 export const ASSET_CONDITIONS = ['NEW', 'GOOD', 'FAIR', 'DAMAGED'] as const
 
-export const ASSET_LOCATIONS = [
-  'Karachi',
-  'Islamabad',
-  'Lahore',
-  'Casablanca',
-  'Dallas',
-] as const
+// Flattened office-location cities. Grouped structure + helpers live in
+// ./office-locations; retained as ASSET_LOCATIONS for backward-compatible imports.
+export const ASSET_LOCATIONS = OFFICE_LOCATION_CITIES
 
 export type AssetStatus = (typeof ASSET_STATUSES)[number]
 export type AssetCondition = (typeof ASSET_CONDITIONS)[number]
-export type AssetLocation = (typeof ASSET_LOCATIONS)[number]
+export type AssetLocation = string
 export type WarrantyState = 'NONE' | 'VALID' | 'EXPIRING' | 'EXPIRED'
 
 // ── Predefined asset categories ────────────────────────────────────────────
@@ -95,38 +100,15 @@ export function normalizeLaptopSpecs(raw: unknown): LaptopSpecs | null {
 const ASSIGNMENT_BLOCKED_STATUSES = new Set<AssetStatus>(['RETIRED', 'LOST', 'DISPOSED'])
 const EQUIPMENT_ID_PREFIX = 'EQUIP'
 const EQUIPMENT_ID_START = 101
-const LEGACY_LOCATION_ALIASES: Record<string, AssetLocation> = {
-  'karachi office': 'Karachi',
-  'islamabad office': 'Islamabad',
-  'lahore office': 'Lahore',
-  'casablanca office': 'Casablanca',
-  'dallas office': 'Dallas',
-}
 
 export function normalizeEquipmentId(input: string): string {
   return input.trim().toUpperCase().replace(/\s+/g, '-')
 }
 
-export function isAssetLocation(value: string | null | undefined): value is AssetLocation {
-  return ASSET_LOCATIONS.includes(value as AssetLocation) || Boolean(LEGACY_LOCATION_ALIASES[value?.trim().toLowerCase() || ''])
-}
-
-export function normalizeAssetLocation(input: string | null | undefined): AssetLocation | null {
-  const trimmed = input?.trim()
-  if (!trimmed) return null
-  const alias = LEGACY_LOCATION_ALIASES[trimmed.toLowerCase()]
-  if (alias) return alias
-  return ASSET_LOCATIONS.find((location) => location.toLowerCase() === trimmed.toLowerCase()) || null
-}
-
-export function getAssetLocationValuesForFilter(location: string | null | undefined) {
-  const normalized = normalizeAssetLocation(location)
-  if (!normalized) return []
-  const legacyValues = Object.entries(LEGACY_LOCATION_ALIASES)
-    .filter(([, target]) => target === normalized)
-    .map(([legacy]) => legacy.replace(/\b\w/g, (letter) => letter.toUpperCase()))
-  return [normalized, ...legacyValues]
-}
+// Location helpers moved to ./office-locations; aliased here for compatibility.
+export const isAssetLocation = isOfficeLocation
+export const normalizeAssetLocation = normalizeOfficeLocation
+export const getAssetLocationValuesForFilter = getOfficeLocationValuesForFilter
 
 export function getNextEquipmentId(existingEquipmentIds: Array<string | null | undefined>) {
   let highest = EQUIPMENT_ID_START - 1

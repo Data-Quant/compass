@@ -5,11 +5,14 @@ import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ASSET_CATEGORIES, ASSET_LOCATIONS, ASSET_STATUSES } from '@/lib/asset-utils'
+import { ASSET_CATEGORIES, ASSET_STATUSES } from '@/lib/asset-utils'
+import { OFFICE_LOCATIONS } from '@/lib/office-locations'
 import type { AssetAssignee, AssetFiltersState } from './types'
 
 interface AssetFiltersProps {
@@ -81,10 +84,15 @@ export function AssetFilters({ value, assignees, onChange }: AssetFiltersProps) 
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">All locations</SelectItem>
-            {ASSET_LOCATIONS.map((location) => (
-              <SelectItem key={location} value={location}>
-                {location}
-              </SelectItem>
+            {OFFICE_LOCATIONS.map((group) => (
+              <SelectGroup key={group.country}>
+                <SelectLabel>{group.country}</SelectLabel>
+                {group.cities.map((city) => (
+                  <SelectItem key={city} value={city}>
+                    {city}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
             ))}
           </SelectContent>
         </Select>

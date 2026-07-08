@@ -9,20 +9,22 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
 import {
   ASSET_CATEGORIES,
   ASSET_CONDITIONS,
-  ASSET_LOCATIONS,
   ASSET_STATUSES,
   assetCategoryHasSpecs,
   isAssetCategory,
   normalizeAssetLocation,
   normalizeLaptopSpecs,
 } from '@/lib/asset-utils'
+import { OFFICE_LOCATIONS, OFFICE_LOCATION_CITIES } from '@/lib/office-locations'
 import type { AssetItem } from './types'
 
 interface AssetFormValues {
@@ -65,7 +67,7 @@ function toDateInput(value: string | null | undefined) {
 }
 
 function isKnownAssetLocation(value: string) {
-  return ASSET_LOCATIONS.some((location) => location === value)
+  return OFFICE_LOCATION_CITIES.some((city) => city === value)
 }
 
 export function AssetFormModal({
@@ -103,11 +105,11 @@ export function AssetFormModal({
   }, [initial, suggestedEquipmentId])
 
   const [form, setForm] = useState<AssetFormValues>(initialValues)
-  const locationOptions = useMemo(() => {
+  // Preserve a legacy free-text location (e.g. "Karachi Office") as a selectable
+  // option so editing an old asset doesn't silently drop or rewrite its location.
+  const legacyLocation = useMemo(() => {
     const current = initial?.location?.trim()
-    return current && !isKnownAssetLocation(current)
-      ? [...ASSET_LOCATIONS, current]
-      : [...ASSET_LOCATIONS]
+    return current && !isKnownAssetLocation(current) ? current : null
   }, [initial?.location])
 
   // Include any legacy (non-predefined) category the asset already has, so editing
@@ -288,11 +290,24 @@ export function AssetFormModal({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">No location</SelectItem>
-                {locationOptions.map((location) => (
-                  <SelectItem key={location} value={location}>
-                    {location}{isKnownAssetLocation(location) ? '' : ' (current legacy value)'}
-                  </SelectItem>
+                {OFFICE_LOCATIONS.map((group) => (
+                  <SelectGroup key={group.country}>
+                    <SelectLabel>{group.country}</SelectLabel>
+                    {group.cities.map((city) => (
+                      <SelectItem key={city} value={city}>
+                        {city}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
                 ))}
+                {legacyLocation && (
+                  <SelectGroup>
+                    <SelectLabel>Other</SelectLabel>
+                    <SelectItem value={legacyLocation}>
+                      {legacyLocation} (current legacy value)
+                    </SelectItem>
+                  </SelectGroup>
+                )}
               </SelectContent>
             </Select>
           </div>
