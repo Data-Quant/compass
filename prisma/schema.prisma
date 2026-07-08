@@ -961,6 +961,7 @@ model EquipmentAsset {
   purchaseCost      Float?
   purchaseCurrency  String         @default("PKR")
   purchaseDate      DateTime?
+  purchaseType      String?        // Brand New | Refurbished | Used (validated against PURCHASE_TYPES)
   warrantyStartDate DateTime?
   warrantyEndDate   DateTime?
   vendor            String?

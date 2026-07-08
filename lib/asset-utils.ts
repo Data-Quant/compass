@@ -22,6 +22,76 @@ export type AssetCondition = (typeof ASSET_CONDITIONS)[number]
 export type AssetLocation = (typeof ASSET_LOCATIONS)[number]
 export type WarrantyState = 'NONE' | 'VALID' | 'EXPIRING' | 'EXPIRED'
 
+// ── Predefined asset categories ────────────────────────────────────────────
+// Each category carries the QR/ID prefix used by category-based asset IDs and a
+// `hasSpecs` flag marking categories that capture hardware specs (laptops).
+export interface AssetCategoryMeta {
+  value: string
+  label: string
+  idPrefix: string
+  hasSpecs: boolean
+}
+
+export const ASSET_CATEGORIES: AssetCategoryMeta[] = [
+  { value: 'Laptops', label: 'Laptops', idPrefix: 'LAP', hasSpecs: true },
+  { value: 'Mobile Phones', label: 'Mobile Phones', idPrefix: 'MOB', hasSpecs: false },
+  { value: 'External Monitors', label: 'External Monitors', idPrefix: 'MON', hasSpecs: false },
+  { value: 'YubiKeys', label: 'YubiKeys', idPrefix: 'YUB', hasSpecs: false },
+  { value: 'Mouse', label: 'Mouse', idPrefix: 'MOU', hasSpecs: false },
+  { value: 'Bag', label: 'Bag', idPrefix: 'BAG', hasSpecs: false },
+  { value: 'Headphones / Earphones', label: 'Headphones / Earphones', idPrefix: 'AUD', hasSpecs: false },
+  { value: 'Other Accessories', label: 'Other Accessories', idPrefix: 'ACC', hasSpecs: false },
+]
+
+export const ASSET_CATEGORY_VALUES: string[] = ASSET_CATEGORIES.map((category) => category.value)
+export const DEFAULT_ASSET_CATEGORY = 'Other Accessories'
+
+export function getAssetCategoryMeta(value: string | null | undefined): AssetCategoryMeta | null {
+  const trimmed = value?.trim()
+  if (!trimmed) return null
+  return ASSET_CATEGORIES.find((category) => category.value.toLowerCase() === trimmed.toLowerCase()) || null
+}
+
+export function isAssetCategory(value: string | null | undefined): boolean {
+  return getAssetCategoryMeta(value) !== null
+}
+
+export function assetCategoryHasSpecs(value: string | null | undefined): boolean {
+  return Boolean(getAssetCategoryMeta(value)?.hasSpecs)
+}
+
+// ── Purchase type ───────────────────────────────────────────────────────────
+export const PURCHASE_TYPES = ['Brand New', 'Refurbished', 'Used'] as const
+export type PurchaseType = (typeof PURCHASE_TYPES)[number]
+
+export function isPurchaseType(value: string | null | undefined): value is PurchaseType {
+  return PURCHASE_TYPES.includes((value?.trim() || '') as PurchaseType)
+}
+
+export function normalizePurchaseType(value: string | null | undefined): PurchaseType | null {
+  const trimmed = value?.trim()
+  if (!trimmed) return null
+  return PURCHASE_TYPES.find((type) => type.toLowerCase() === trimmed.toLowerCase()) || null
+}
+
+// ── Laptop hardware specs (stored in EquipmentAsset.specsJson) ───────────────
+export interface LaptopSpecs {
+  processor: string
+  ram: string
+  storage: string
+}
+
+/** Coerce arbitrary specsJson into a LaptopSpecs, or null when empty/invalid. */
+export function normalizeLaptopSpecs(raw: unknown): LaptopSpecs | null {
+  if (!raw || typeof raw !== 'object') return null
+  const record = raw as Record<string, unknown>
+  const processor = String(record.processor ?? '').trim()
+  const ram = String(record.ram ?? '').trim()
+  const storage = String(record.storage ?? '').trim()
+  if (!processor && !ram && !storage) return null
+  return { processor, ram, storage }
+}
+
 const ASSIGNMENT_BLOCKED_STATUSES = new Set<AssetStatus>(['RETIRED', 'LOST', 'DISPOSED'])
 const EQUIPMENT_ID_PREFIX = 'EQUIP'
 const EQUIPMENT_ID_START = 101
