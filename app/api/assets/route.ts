@@ -8,6 +8,7 @@ import {
   ASSET_LOCATIONS,
   ASSET_CONDITIONS,
   ASSET_STATUSES,
+  PURCHASE_TYPES,
   ensureWarrantyDateOrder,
   getNextEquipmentId,
   getAssetCategoryMeta,
@@ -17,6 +18,7 @@ import {
   isAssetLocation,
   normalizeEquipmentId,
   normalizeAssetLocation,
+  normalizePurchaseType,
   parseNullableDate,
   parseNullableNumber,
 } from '@/lib/asset-utils'
@@ -52,6 +54,7 @@ const createAssetSchema = z.object({
   specsJson: z.unknown().optional(),
   purchaseCost: z.union([z.number(), z.string(), z.null()]).optional(),
   purchaseCurrency: optionalTrimmedString,
+  purchaseType: optionalTrimmedString,
   purchaseDate: z.union([z.string(), z.null()]).optional(),
   warrantyStartDate: z.union([z.string(), z.null()]).optional(),
   warrantyEndDate: z.union([z.string(), z.null()]).optional(),
@@ -107,6 +110,8 @@ export async function GET(request: NextRequest) {
     const category = (searchParams.get('category') || '').trim()
     const assigneeId = (searchParams.get('assigneeId') || '').trim()
     const location = (searchParams.get('location') || '').trim()
+    const purchaseTypeFilter = (searchParams.get('purchaseType') || '').trim()
+    const normalizedPurchaseType = normalizePurchaseType(purchaseTypeFilter)
     const warranty = (searchParams.get('warranty') || 'all').trim().toLowerCase()
     const page = parseQueryInt(searchParams.get('page'), 1, 1, 100000)
     const limit = parseQueryInt(searchParams.get('limit'), 20, 1, 100)
@@ -119,6 +124,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid location filter' }, { status: 400 })
     }
 
+    if (purchaseTypeFilter && !normalizedPurchaseType) {
+      return NextResponse.json({ error: 'Invalid purchase type filter' }, { status: 400 })
+    }
+
     if (!['all', 'expiring', 'expired'].includes(warranty)) {
       return NextResponse.json({ error: 'Invalid warranty filter' }, { status: 400 })
     }
@@ -128,6 +137,7 @@ export async function GET(request: NextRequest) {
     if (category) where.category = { equals: category, mode: 'insensitive' }
     if (assigneeId) where.currentAssigneeId = assigneeId
     if (location) where.location = { in: getAssetLocationValuesForFilter(location) }
+    if (normalizedPurchaseType) where.purchaseType = normalizedPurchaseType
 
     if (warranty === 'expiring') {
       const today = new Date()
@@ -232,6 +242,7 @@ export async function POST(request: NextRequest) {
     const warrantyEndDate = parseNullableDate(payload.warrantyEndDate)
     const purchaseCost = parseNullableNumber(payload.purchaseCost)
     const location = normalizeAssetLocation(payload.location)
+    const purchaseType = normalizePurchaseType(payload.purchaseType)
 
     if (payload.purchaseCost !== undefined && purchaseCost === null) {
       return NextResponse.json({ error: 'Invalid purchaseCost value' }, { status: 400 })
@@ -239,6 +250,12 @@ export async function POST(request: NextRequest) {
     if (payload.location && !location) {
       return NextResponse.json(
         { error: `Location must be one of: ${ASSET_LOCATIONS.join(', ')}` },
+        { status: 400 }
+      )
+    }
+    if (payload.purchaseType && !purchaseType) {
+      return NextResponse.json(
+        { error: `Purchase type must be one of: ${PURCHASE_TYPES.join(', ')}` },
         { status: 400 }
       )
     }
@@ -268,6 +285,7 @@ export async function POST(request: NextRequest) {
               specsJson: payload.specsJson === undefined ? Prisma.JsonNull : (payload.specsJson as Prisma.InputJsonValue),
               purchaseCost,
               purchaseCurrency: payload.purchaseCurrency || 'PKR',
+              purchaseType,
               purchaseDate,
               warrantyStartDate,
               warrantyEndDate,

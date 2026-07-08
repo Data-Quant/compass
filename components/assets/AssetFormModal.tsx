@@ -19,6 +19,7 @@ import {
   ASSET_CATEGORIES,
   ASSET_CONDITIONS,
   ASSET_STATUSES,
+  PURCHASE_TYPES,
   assetCategoryHasSpecs,
   isAssetCategory,
   normalizeAssetLocation,
@@ -39,6 +40,7 @@ interface AssetFormValues {
   storage: string
   purchaseCost: string
   purchaseCurrency: string
+  purchaseType: string
   purchaseDate: string
   warrantyStartDate: string
   warrantyEndDate: string
@@ -91,6 +93,7 @@ export function AssetFormModal({
     storage: specs?.storage || '',
     purchaseCost: initial?.purchaseCost != null ? String(initial.purchaseCost) : '',
     purchaseCurrency: initial?.purchaseCurrency || 'PKR',
+    purchaseType: initial?.purchaseType || '',
     purchaseDate: toDateInput(initial?.purchaseDate),
     warrantyStartDate: toDateInput(initial?.warrantyStartDate),
     warrantyEndDate: toDateInput(initial?.warrantyEndDate),
@@ -168,6 +171,7 @@ export function AssetFormModal({
       specsJson,
       purchaseCost: form.purchaseCost || undefined,
       purchaseCurrency: form.purchaseCurrency || undefined,
+      purchaseType: form.purchaseType || null,
       purchaseDate: form.purchaseDate || undefined,
       warrantyStartDate: form.warrantyStartDate || undefined,
       warrantyEndDate: form.warrantyEndDate || undefined,
@@ -276,7 +280,7 @@ export function AssetFormModal({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
           <div>
             <Label className="mb-2">Purchase Cost</Label>
             <Input
@@ -294,6 +298,27 @@ export function AssetFormModal({
               onChange={(e) => setForm((prev) => ({ ...prev, purchaseCurrency: e.target.value.toUpperCase() }))}
               placeholder="PKR"
             />
+          </div>
+          <div>
+            <Label className="mb-2">Purchase Type</Label>
+            <Select
+              value={form.purchaseType || '__none__'}
+              onValueChange={(value) =>
+                setForm((prev) => ({ ...prev, purchaseType: value === '__none__' ? '' : value }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">Not specified</SelectItem>
+                {PURCHASE_TYPES.map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {type}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <Label className="mb-2">Purchase Date</Label>

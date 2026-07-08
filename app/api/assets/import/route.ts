@@ -7,9 +7,11 @@ import {
   ASSET_LOCATIONS,
   ASSET_CONDITIONS,
   ASSET_STATUSES,
+  PURCHASE_TYPES,
   ensureWarrantyDateOrder,
   normalizeEquipmentId,
   normalizeAssetLocation,
+  normalizePurchaseType,
   parseNullableDate,
   parseNullableNumber,
 } from '@/lib/asset-utils'
@@ -29,6 +31,7 @@ const headerAliases: Record<string, string[]> = {
   specsJson: ['specsjson', 'specs_json', 'specs'],
   purchaseCost: ['purchasecost', 'purchase_cost', 'cost', 'price'],
   purchaseCurrency: ['purchasecurrency', 'purchase_currency', 'currency'],
+  purchaseType: ['purchasetype', 'purchase_type', 'buytype', 'condition_new'],
   purchaseDate: ['purchasedate', 'purchase_date'],
   warrantyStartDate: ['warrantystartdate', 'warranty_start_date'],
   warrantyEndDate: ['warrantyenddate', 'warranty_end_date', 'warrantyexpiry', 'warranty_expiry'],
@@ -114,6 +117,8 @@ export async function POST(request: NextRequest) {
       const specsRaw = pickField(row, 'specsJson')
       const purchaseCostRaw = pickField(row, 'purchaseCost')
       const purchaseCurrency = pickField(row, 'purchaseCurrency') || 'PKR'
+      const purchaseTypeRaw = pickField(row, 'purchaseType')
+      const purchaseType = normalizePurchaseType(purchaseTypeRaw)
       const purchaseDateRaw = pickField(row, 'purchaseDate')
       const warrantyStartRaw = pickField(row, 'warrantyStartDate')
       const warrantyEndRaw = pickField(row, 'warrantyEndDate')
@@ -161,6 +166,13 @@ export async function POST(request: NextRequest) {
         rowErrors.push({ row: rowNumber, message: `Invalid condition "${conditionRaw}"` })
         continue
       }
+      if (purchaseTypeRaw && !purchaseType) {
+        rowErrors.push({
+          row: rowNumber,
+          message: `Invalid purchase type "${purchaseTypeRaw}". Use one of: ${PURCHASE_TYPES.join(', ')}`,
+        })
+        continue
+      }
       const dateOrderError = ensureWarrantyDateOrder(purchaseDate, warrantyEndDate)
       if (dateOrderError) {
         rowErrors.push({ row: rowNumber, message: dateOrderError })
@@ -194,6 +206,7 @@ export async function POST(request: NextRequest) {
               specsJson,
               purchaseCost,
               purchaseCurrency,
+              purchaseType,
               purchaseDate,
               warrantyStartDate,
               warrantyEndDate,
@@ -234,6 +247,7 @@ export async function POST(request: NextRequest) {
             specsJson,
             purchaseCost,
             purchaseCurrency,
+            purchaseType,
             purchaseDate,
             warrantyStartDate,
             warrantyEndDate,

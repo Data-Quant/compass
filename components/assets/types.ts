@@ -19,6 +19,7 @@ export interface AssetItem {
   specsJson: unknown | null
   purchaseCost: number | null
   purchaseCurrency: string
+  purchaseType: string | null
   purchaseDate: string | null
   warrantyStartDate: string | null
   warrantyEndDate: string | null
@@ -63,6 +64,7 @@ export interface AssetFiltersState {
   status: string
   category: string
   location: string
+  purchaseType: string
   assigneeId: string
   warranty: 'all' | 'expiring' | 'expired'
 }

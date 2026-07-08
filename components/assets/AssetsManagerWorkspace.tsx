@@ -48,6 +48,7 @@ export function AssetsManagerWorkspace({
     status: '',
     category: '',
     location: '',
+    purchaseType: '',
     assigneeId: '',
     warranty: 'all',
   })
@@ -82,7 +83,7 @@ export function AssetsManagerWorkspace({
   useEffect(() => {
     loadAssets()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.status, filters.category, filters.location, filters.assigneeId, filters.warranty, pagination.page, pagination.limit, debouncedQuery])
+  }, [filters.status, filters.category, filters.location, filters.purchaseType, filters.assigneeId, filters.warranty, pagination.page, pagination.limit, debouncedQuery])
 
   const loadUsers = async () => {
     try {
@@ -109,6 +110,7 @@ export function AssetsManagerWorkspace({
       if (filters.status) params.set('status', filters.status)
       if (filters.category) params.set('category', filters.category)
       if (filters.location) params.set('location', filters.location)
+      if (filters.purchaseType) params.set('purchaseType', filters.purchaseType)
       if (filters.assigneeId) params.set('assigneeId', filters.assigneeId)
       params.set('warranty', filters.warranty)
       params.set('page', String(pagination.page))

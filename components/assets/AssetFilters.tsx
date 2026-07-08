@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ASSET_CATEGORIES, ASSET_STATUSES } from '@/lib/asset-utils'
+import { ASSET_CATEGORIES, ASSET_STATUSES, PURCHASE_TYPES } from '@/lib/asset-utils'
 import { OFFICE_LOCATIONS } from '@/lib/office-locations'
 import type { AssetAssignee, AssetFiltersState } from './types'
 
@@ -23,7 +23,7 @@ interface AssetFiltersProps {
 
 export function AssetFilters({ value, assignees, onChange }: AssetFiltersProps) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-3">
       <div className="md:col-span-2 xl:col-span-2">
         <Label className="mb-2">Search</Label>
         <Input
@@ -93,6 +93,28 @@ export function AssetFilters({ value, assignees, onChange }: AssetFiltersProps) 
                   </SelectItem>
                 ))}
               </SelectGroup>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div>
+        <Label className="mb-2">Purchase Type</Label>
+        <Select
+          value={value.purchaseType || 'ALL'}
+          onValueChange={(purchaseType) =>
+            onChange({ ...value, purchaseType: purchaseType === 'ALL' ? '' : purchaseType })
+          }
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="All types" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">All types</SelectItem>
+            {PURCHASE_TYPES.map((type) => (
+              <SelectItem key={type} value={type}>
+                {type}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>

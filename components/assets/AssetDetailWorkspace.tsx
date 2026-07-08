@@ -302,6 +302,10 @@ export function AssetDetailWorkspace({ assetId, listHref }: AssetDetailWorkspace
             <p className="text-sm mt-1">{item.location || '—'}</p>
             <p className="text-xs text-muted-foreground">{item.vendor || ''}</p>
           </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Purchase Type</p>
+            <p className="text-sm mt-1">{item.purchaseType || '—'}</p>
+          </div>
           {laptopSpecs && (
             <>
               <div>

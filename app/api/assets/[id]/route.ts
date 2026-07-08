@@ -8,10 +8,12 @@ import {
   ASSET_CONDITIONS,
   ASSET_LOCATIONS,
   ASSET_STATUSES,
+  PURCHASE_TYPES,
   ensureWarrantyDateOrder,
   getAssetCategoryMeta,
   isAssetCategory,
   normalizeAssetLocation,
+  normalizePurchaseType,
   parseNullableDate,
   parseNullableNumber,
 } from '@/lib/asset-utils'
@@ -42,6 +44,7 @@ const updateAssetSchema = z
     specsJson: z.unknown().optional(),
     purchaseCost: z.union([z.number(), z.string(), z.null()]).optional(),
     purchaseCurrency: optionalUpdateString,
+    purchaseType: optionalUpdateString,
     purchaseDate: z.union([z.string(), z.null()]).optional(),
     warrantyStartDate: z.union([z.string(), z.null()]).optional(),
     warrantyEndDate: z.union([z.string(), z.null()]).optional(),
@@ -157,6 +160,23 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         )
       }
     }
+
+    // Purchase type: undefined = unchanged, null = cleared, string = validated.
+    let nextPurchaseType: string | null | undefined
+    if (payload.purchaseType !== undefined) {
+      if (payload.purchaseType === null) {
+        nextPurchaseType = null
+      } else {
+        const normalized = normalizePurchaseType(payload.purchaseType)
+        if (!normalized) {
+          return NextResponse.json(
+            { error: `Purchase type must be one of: ${PURCHASE_TYPES.join(', ')}` },
+            { status: 400 }
+          )
+        }
+        nextPurchaseType = normalized
+      }
+    }
     const parsedPurchaseDate =
       payload.purchaseDate !== undefined
         ? parseNullableDate(payload.purchaseDate)
@@ -226,6 +246,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (payload.specsJson !== undefined) updateData.specsJson = payload.specsJson as Prisma.InputJsonValue
     if (payload.purchaseCost !== undefined) updateData.purchaseCost = parsedPurchaseCost
     if (payload.purchaseCurrency !== undefined) updateData.purchaseCurrency = payload.purchaseCurrency || 'PKR'
+    if (nextPurchaseType !== undefined) updateData.purchaseType = nextPurchaseType
     if (payload.purchaseDate !== undefined) updateData.purchaseDate = parsedPurchaseDate
     if (payload.warrantyStartDate !== undefined) updateData.warrantyStartDate = parsedWarrantyStartDate || null
     if (payload.warrantyEndDate !== undefined) updateData.warrantyEndDate = parsedWarrantyEndDate
