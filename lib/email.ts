@@ -2,7 +2,7 @@ import nodemailer from 'nodemailer'
 import { prisma } from '@/lib/db'
 import { formatReportAsHTML, generateDetailedReport } from './reports'
 import { escapeHtml } from '@/lib/sanitize'
-import { calculateLeaveDuration } from '@/lib/leave-utils'
+import { calculateLeaveDuration, getExpectedReturnDate } from '@/lib/leave-utils'
 import { safeRecordLeaveAuditEvent } from '@/lib/leave-audit'
 import { calculateWfhDays } from '@/lib/wfh-utils'
 import { normalizeCoverPersonIds } from '@/lib/leave-cover'
@@ -355,8 +355,8 @@ export async function sendLeaveRequestNotification(requestId: string) {
   const employee = leaveRequest.employee
   const startDateValue = new Date(leaveRequest.startDate)
   const endDateValue = new Date(leaveRequest.endDate)
-  const returnDateValue = new Date(endDateValue)
-  returnDateValue.setDate(returnDateValue.getDate() + 1)
+  // Expected return is the next business day after the last day off (skips weekends).
+  const returnDateValue = getExpectedReturnDate(endDateValue)
 
   const startDate = startDateValue.toLocaleDateString()
   const endDate = endDateValue.toLocaleDateString()
@@ -691,8 +691,8 @@ export async function sendLeaveApprovalNotification(
   const employeeEmail = employee.email as string // Already validated above
   const startDateValue = new Date(leaveRequest.startDate)
   const endDateValue = new Date(leaveRequest.endDate)
-  const returnDateValue = new Date(endDateValue)
-  returnDateValue.setDate(returnDateValue.getDate() + 1)
+  // Expected return is the next business day after the last day off (skips weekends).
+  const returnDateValue = getExpectedReturnDate(endDateValue)
 
   const startDate = startDateValue.toLocaleDateString()
   const endDate = endDateValue.toLocaleDateString()

@@ -3,11 +3,15 @@ import assert from 'node:assert/strict'
 import {
   calculateLeaveDays,
   calculateLeaveDuration,
+  getExpectedReturnDate,
+  getNextBusinessDay,
   hasLeaveEnded,
   isValidLeaveDateRange,
   leaveHasStarted,
   leaveRequiresLeadApproval,
 } from '../lib/leave-utils'
+
+const ymd = (date: Date) => date.toISOString().slice(0, 10)
 
 test('leaveHasStarted is true on/after the start date, false before', () => {
   const now = new Date('2026-06-22T12:00:00.000Z')
@@ -76,6 +80,26 @@ test('leaveRequiresLeadApproval still requires leads for casual half-day leaves 
 test('leaveRequiresLeadApproval still requires leads for full-day leaves with an upstream lead', () => {
   assert.equal(leaveRequiresLeadApproval('ANNUAL', false, 1), true)
   assert.equal(leaveRequiresLeadApproval('ANNUAL', false, 0), false)
+})
+
+test('getExpectedReturnDate rolls a Friday end date to the following Monday', () => {
+  assert.equal(ymd(getExpectedReturnDate(new Date('2026-02-06T00:00:00.000Z'))), '2026-02-09') // Fri -> Mon
+})
+
+test('getExpectedReturnDate returns the next weekday for a midweek end date', () => {
+  assert.equal(ymd(getExpectedReturnDate(new Date('2026-02-05T00:00:00.000Z'))), '2026-02-06') // Thu -> Fri
+  assert.equal(ymd(getExpectedReturnDate(new Date('2026-02-10T00:00:00.000Z'))), '2026-02-11') // Tue -> Wed
+})
+
+test('getNextBusinessDay skips weekends when the end date itself is a weekend', () => {
+  assert.equal(ymd(getNextBusinessDay(new Date('2026-02-07T00:00:00.000Z'))), '2026-02-09') // Sat -> Mon
+  assert.equal(ymd(getNextBusinessDay(new Date('2026-02-08T00:00:00.000Z'))), '2026-02-09') // Sun -> Mon
+})
+
+test('getNextBusinessDay does not mutate its input', () => {
+  const input = new Date('2026-02-06T00:00:00.000Z')
+  getNextBusinessDay(input)
+  assert.equal(input.toISOString(), '2026-02-06T00:00:00.000Z')
 })
 
 test('hasLeaveEnded compares end date by calendar day', () => {

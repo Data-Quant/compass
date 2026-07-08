@@ -46,7 +46,7 @@ import {
   validateTransitionTasks,
   type TransitionTask,
 } from '@/lib/leave-transition-plan'
-import { calculateLeaveDuration } from '@/lib/leave-utils'
+import { calculateLeaveDuration, getNextBusinessDay } from '@/lib/leave-utils'
 import { detectBrowserLeaveTimeZone } from '@/lib/leave-timezone'
 import { isThreeEDepartment } from '@/lib/company-branding'
 import { calculateWfhDays, hasWfhEnded } from '@/lib/wfh-utils'
@@ -518,11 +518,13 @@ export default function LeavePage() {
     if (isHalfDay) {
       return formatApiDate(startDate)
     }
-    const parsed = parseInputDateAsLocal(toDateKey(endDate))
-    if (!parsed) return ''
-    const value = new Date(parsed)
-    value.setDate(value.getDate() + 1)
-    return value.toLocaleDateString()
+    const key = toDateKey(endDate)
+    if (!key) return ''
+    const [year, month, day] = key.split('-').map(Number)
+    // Expected return is the next business day after the last day off (skips weekends).
+    const returnDate = getNextBusinessDay(new Date(Date.UTC(year, month - 1, day)))
+    const returnKey = `${returnDate.getUTCFullYear()}-${String(returnDate.getUTCMonth() + 1).padStart(2, '0')}-${String(returnDate.getUTCDate()).padStart(2, '0')}`
+    return formatApiDate(returnKey)
   }
 
   const openDayEventsModal = (date: Date, events: CalendarEvent[]) => {

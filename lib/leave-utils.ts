@@ -7,6 +7,21 @@ export function isWeekendDate(date: Date) {
   return day === 0 || day === 6
 }
 
+// Next business day strictly after `date`, skipping Saturdays and Sundays (UTC).
+export function getNextBusinessDay(date: Date): Date {
+  const next = toUtcDateOnly(date)
+  do {
+    next.setUTCDate(next.getUTCDate() + 1)
+  } while (isWeekendDate(next))
+  return next
+}
+
+// Expected return date after a leave ends: the next business day after the last
+// day off, so a leave ending on a Friday returns on the following Monday.
+export function getExpectedReturnDate(endDate: Date): Date {
+  return getNextBusinessDay(endDate)
+}
+
 export function calculateLeaveDays(startDate: Date, endDate: Date): number {
   if (!isValidLeaveDateRange(startDate, endDate)) {
     return 0
