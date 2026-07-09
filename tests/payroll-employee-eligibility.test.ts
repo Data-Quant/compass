@@ -1,6 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { isEligiblePayrollEmployee, toPayrollEmployeeListItem } from '../lib/payroll/employee-eligibility'
+import {
+  isEligiblePayrollEmployee,
+  isOffboardedPayrollEmployee,
+  isStructurallyPayrollEligible,
+  toPayrollEmployeeListItem,
+} from '../lib/payroll/employee-eligibility'
 
 test('payroll eligibility excludes 3E and Noble employees', () => {
   assert.equal(isEligiblePayrollEmployee({ name: 'Ali', department: '3E', position: 'Analyst' }), false)
@@ -57,6 +62,61 @@ test('payroll eligibility excludes inactive payroll profiles', () => {
     }),
     false
   )
+})
+
+test('offboarded cohort = structurally eligible AND deactivated', () => {
+  const offboarded = {
+    name: 'Departed Analyst',
+    department: 'Product',
+    position: 'Associate',
+    payrollProfile: { isPayrollActive: false },
+  }
+  // Excluded from active, included in offboarded.
+  assert.equal(isEligiblePayrollEmployee(offboarded), false)
+  assert.equal(isOffboardedPayrollEmployee(offboarded), true)
+
+  // Active employees are never in the offboarded cohort.
+  const active = {
+    name: 'Working Analyst',
+    department: 'Product',
+    position: 'Associate',
+    payrollProfile: { isPayrollActive: true },
+  }
+  assert.equal(isOffboardedPayrollEmployee(active), false)
+
+  // Missing flag defaults to active, not offboarded.
+  const noFlag = { name: 'No Flag', department: 'Product', position: 'Associate' }
+  assert.equal(isEligiblePayrollEmployee(noFlag), true)
+  assert.equal(isOffboardedPayrollEmployee(noFlag), false)
+})
+
+test('structural carve-outs (3E, Noble, Partner) are excluded from BOTH cohorts even when deactivated', () => {
+  const cases = [
+    { name: 'Ex Partner', department: 'Executive', position: 'Partner', payrollProfile: { isPayrollActive: false } },
+    { name: 'Ex 3E', department: '3E', position: 'Analyst', payrollProfile: { isPayrollActive: false } },
+    {
+      name: 'Ex Noble',
+      department: 'Technology',
+      position: 'Analyst',
+      payrollProfile: { isPayrollActive: false, department: { name: 'Noble' } },
+    },
+  ]
+  for (const c of cases) {
+    assert.equal(isStructurallyPayrollEligible(c), false, `${c.name} should not be structurally eligible`)
+    assert.equal(isEligiblePayrollEmployee(c), false, `${c.name} should not be active`)
+    assert.equal(isOffboardedPayrollEmployee(c), false, `${c.name} should not be offboarded`)
+  }
+})
+
+test('the two cohorts are mutually exclusive', () => {
+  const users = [
+    { name: 'A', department: 'Product', position: 'Associate', payrollProfile: { isPayrollActive: true } },
+    { name: 'B', department: 'Product', position: 'Associate', payrollProfile: { isPayrollActive: false } },
+    { name: 'C', department: 'Executive', position: 'Partner', payrollProfile: { isPayrollActive: true } },
+  ]
+  for (const u of users) {
+    assert.equal(isEligiblePayrollEmployee(u) && isOffboardedPayrollEmployee(u), false, `${u.name} in both cohorts`)
+  }
 })
 
 test('payroll employee list item strips sensitive payroll profile fields', () => {

@@ -1104,8 +1104,16 @@ export default function UsersPage() {
       >
         {userToPermanentDelete && (
           <div className="space-y-4">
-            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-400">
-              This will permanently delete <strong>{userToPermanentDelete.name}</strong> and all their data. This action cannot be undone.
+            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-400 space-y-2">
+              <p>
+                This permanently deletes <strong>{userToPermanentDelete.name}</strong> and <strong>destroys their payroll master record</strong>: bank details, CNIC, designation, joining/exit dates, and salary-revision history.
+              </p>
+              <p>
+                Past payroll figures and payslips will survive <strong>only under their name</strong>, with the employee link broken. This action is <strong>irreversible</strong>.
+              </p>
+              <p className="text-amber-500">
+                To offboard someone, use <strong>Deactivate</strong> instead — it keeps all payroll history, removes them from active payroll, and can be reversed.
+              </p>
             </div>
             <div>
               <Label htmlFor="confirm-name" className="mb-1">Type the user&apos;s full name to confirm</Label>

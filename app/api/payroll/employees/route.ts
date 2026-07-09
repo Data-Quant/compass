@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { canManagePayroll } from '@/lib/permissions'
-import { isEligiblePayrollEmployee, toPayrollEmployeeListItem } from '@/lib/payroll/employee-eligibility'
+import {
+  isEligiblePayrollEmployee,
+  isOffboardedPayrollEmployee,
+  toPayrollEmployeeListItem,
+} from '@/lib/payroll/employee-eligibility'
 import { decryptSensitivePayrollProfileFields } from '@/lib/payroll/sensitive-fields'
 
 export async function GET(request: NextRequest) {
@@ -19,8 +23,12 @@ export async function GET(request: NextRequest) {
     // for HR screens. includeOperational returns only logistical fields (distance,
     // transport, dates) safe to surface to O&A.
     const includePayrollDetails = param('includePayrollDetails')
-    const includeOperational = param('includeOperational')
+    // status selects which cohort to return. Offboarded employees are surfaced so
+    // their historical payroll stays reviewable; exit dates are operational fields.
+    const status = request.nextUrl.searchParams.get('status') === 'offboarded' ? 'offboarded' : 'active'
+    const includeOperational = param('includeOperational') || status === 'offboarded'
     const wantOperational = includePayrollDetails || includeOperational
+    const cohortFilter = status === 'offboarded' ? isOffboardedPayrollEmployee : isEligiblePayrollEmployee
 
     const users = await prisma.user.findMany({
       orderBy: { name: 'asc' },
@@ -73,7 +81,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       employees: users
-        .filter(isEligiblePayrollEmployee)
+        .filter(cohortFilter)
         .map((entry) =>
           toPayrollEmployeeListItem(
             {

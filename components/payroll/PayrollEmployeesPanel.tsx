@@ -9,7 +9,8 @@ import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/ui/modal'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Search, Pencil, AlertCircle } from 'lucide-react'
+import { Search, Pencil, AlertCircle, History } from 'lucide-react'
+import { EmployeePayrollHistoryModal } from '@/components/payroll/EmployeePayrollHistoryModal'
 
 interface EmployeeRow {
   id: string
@@ -21,8 +22,11 @@ interface EmployeeRow {
     employmentType: { name: string } | null
     distanceKm?: number | null
     transportMode?: string | null
+    exitDate?: string | null
   } | null
 }
+
+type EmployeeStatus = 'active' | 'offboarded'
 
 interface NamedOption {
   id: string
@@ -64,12 +68,22 @@ function toDateInput(value: string | null): string {
   return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10)
 }
 
+function formatDate(value: string | null | undefined): string {
+  if (!value) return '—'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime())
+    ? '—'
+    : date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
 export function PayrollEmployeesPanel() {
   const [employees, setEmployees] = useState<EmployeeRow[]>([])
   const [departments, setDepartments] = useState<NamedOption[]>([])
   const [employmentTypes, setEmploymentTypes] = useState<NamedOption[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [status, setStatus] = useState<EmployeeStatus>('active')
+  const [historyEmployee, setHistoryEmployee] = useState<{ id: string; name: string } | null>(null)
 
   const [editing, setEditing] = useState<EmployeeRow | null>(null)
   const [form, setForm] = useState<ProfileForm>(EMPTY_FORM)
@@ -78,12 +92,14 @@ export function PayrollEmployeesPanel() {
 
   useEffect(() => {
     loadAll()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status])
 
   const loadAll = async () => {
+    setLoading(true)
     try {
       const [empRes, deptRes, typeRes] = await Promise.all([
-        fetch('/api/payroll/employees?includeOperational=true'),
+        fetch(`/api/payroll/employees?includeOperational=true&status=${status}`),
         fetch('/api/payroll/departments'),
         fetch('/api/payroll/employment-types'),
       ])
@@ -106,6 +122,8 @@ export function PayrollEmployeesPanel() {
       `${e.name} ${e.role} ${e.payrollProfile?.department?.name || ''}`.toLowerCase().includes(q)
     )
   }, [employees, search])
+
+  const colCount = status === 'active' ? 5 : 4
 
   const openEditor = async (employee: EmployeeRow) => {
     setEditing(employee)
@@ -174,17 +192,37 @@ export function PayrollEmployeesPanel() {
           <div>
             <h3 className="text-lg font-semibold font-display">Employee Payroll Profiles</h3>
             <p className="text-sm text-muted-foreground">
-              Edit operational payroll details. Salary, bank, and CNIC details remain with HR.
+              {status === 'active'
+                ? 'Edit operational payroll details. Salary, bank, and CNIC details remain with HR.'
+                : 'Employees removed from active payroll. Their historical payroll data stays available for review.'}
             </p>
           </div>
-          <div className="relative w-full sm:w-64">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search employees..."
-              className="pl-8"
-            />
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="inline-flex rounded-lg border border-border p-0.5">
+              {(['active', 'offboarded'] as EmployeeStatus[]).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setStatus(value)}
+                  className={`px-3 py-1.5 text-sm rounded-md transition-colors capitalize ${
+                    status === value
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search employees..."
+                className="pl-8"
+              />
+            </div>
           </div>
         </div>
 
@@ -194,22 +232,32 @@ export function PayrollEmployeesPanel() {
               <TableRow>
                 <TableHead className="min-w-[200px]">Employee</TableHead>
                 <TableHead>Department</TableHead>
-                <TableHead className="text-right">Distance</TableHead>
-                <TableHead>Transport</TableHead>
-                <TableHead className="w-20 text-right">Edit</TableHead>
+                {status === 'active' ? (
+                  <>
+                    <TableHead className="text-right">Distance</TableHead>
+                    <TableHead>Transport</TableHead>
+                  </>
+                ) : (
+                  <TableHead>Exit date</TableHead>
+                )}
+                <TableHead className="w-28 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={colCount} className="text-center text-muted-foreground py-8">
                     Loading employees...
                   </TableCell>
                 </TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                    {employees.length ? 'No employees match that search' : 'No employees found'}
+                  <TableCell colSpan={colCount} className="text-center text-muted-foreground py-8">
+                    {employees.length
+                      ? 'No employees match that search'
+                      : status === 'offboarded'
+                        ? 'No offboarded employees'
+                        : 'No employees found'}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -222,27 +270,46 @@ export function PayrollEmployeesPanel() {
                     <TableCell className="text-sm text-muted-foreground">
                       {e.payrollProfile?.department?.name || '—'}
                     </TableCell>
-                    <TableCell className="text-right text-sm">
-                      {e.payrollProfile?.distanceKm != null ? `${e.payrollProfile.distanceKm} km` : '—'}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {e.payrollProfile?.transportMode ? (
-                        TRANSPORT_LABEL[e.payrollProfile.transportMode] || e.payrollProfile.transportMode
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-amber-600">
-                          <AlertCircle className="w-3.5 h-3.5" /> Not set
-                        </span>
-                      )}
-                    </TableCell>
+                    {status === 'active' ? (
+                      <>
+                        <TableCell className="text-right text-sm">
+                          {e.payrollProfile?.distanceKm != null ? `${e.payrollProfile.distanceKm} km` : '—'}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {e.payrollProfile?.transportMode ? (
+                            TRANSPORT_LABEL[e.payrollProfile.transportMode] || e.payrollProfile.transportMode
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-amber-600">
+                              <AlertCircle className="w-3.5 h-3.5" /> Not set
+                            </span>
+                          )}
+                        </TableCell>
+                      </>
+                    ) : (
+                      <TableCell className="text-sm text-muted-foreground">
+                        {formatDate(e.payrollProfile?.exitDate)}
+                      </TableCell>
+                    )}
                     <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEditor(e)}
-                        className={travelIncomplete(e) ? 'text-amber-600' : ''}
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setHistoryEmployee({ id: e.id, name: e.name })}
+                          title="Payroll history"
+                        >
+                          <History className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEditor(e)}
+                          className={status === 'active' && travelIncomplete(e) ? 'text-amber-600' : ''}
+                          title="Edit profile"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -252,7 +319,10 @@ export function PayrollEmployeesPanel() {
         </div>
         {!loading && employees.length > 0 && (
           <p className="mt-2 text-xs text-muted-foreground">
-            Showing {filtered.length} of {employees.length} employees. Highlighted rows are missing a transport mode or distance needed for travel allowance.
+            Showing {filtered.length} of {employees.length} {status === 'offboarded' ? 'offboarded ' : ''}employees.
+            {status === 'active'
+              ? ' Highlighted rows are missing a transport mode or distance needed for travel allowance.'
+              : ''}
           </p>
         )}
       </CardContent>
@@ -373,6 +443,14 @@ export function PayrollEmployeesPanel() {
           </div>
         )}
       </Modal>
+
+      <EmployeePayrollHistoryModal
+        employee={historyEmployee}
+        open={historyEmployee !== null}
+        onOpenChange={(open) => {
+          if (!open) setHistoryEmployee(null)
+        }}
+      />
     </Card>
   )
 }

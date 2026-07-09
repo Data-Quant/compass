@@ -81,8 +81,11 @@ function isPartnerTitle(position: string | null | undefined) {
   return /\bpartner\b/.test(normalized)
 }
 
-export function isEligiblePayrollEmployee(user: PayrollEligibilityUser) {
-  if (user.payrollProfile?.isPayrollActive === false) return false
+// Structural eligibility: is this person a payroll employee at all, independent
+// of whether they are currently active? Excludes the 3E department, "noble"
+// records, and partner titles — the fixed carve-outs that never belong in
+// payroll regardless of active/offboarded status.
+export function isStructurallyPayrollEligible(user: PayrollEligibilityUser) {
   if (isThreeEDepartment(user.department)) return false
 
   const payrollDepartment = user.payrollProfile?.department?.name
@@ -95,4 +98,18 @@ export function isEligiblePayrollEmployee(user: PayrollEligibilityUser) {
   }
 
   return !isPartnerTitle(user.position) && !isPartnerTitle(designation)
+}
+
+// Active payroll employees: structurally eligible AND not deactivated.
+export function isEligiblePayrollEmployee(user: PayrollEligibilityUser) {
+  if (user.payrollProfile?.isPayrollActive === false) return false
+  return isStructurallyPayrollEligible(user)
+}
+
+// Offboarded payroll employees: structurally eligible but deactivated
+// (isPayrollActive === false). Used to keep departed staff visible for
+// historical payroll review without letting them back into active payroll runs.
+export function isOffboardedPayrollEmployee(user: PayrollEligibilityUser) {
+  if (user.payrollProfile?.isPayrollActive !== false) return false
+  return isStructurallyPayrollEligible(user)
 }
