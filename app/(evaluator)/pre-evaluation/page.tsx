@@ -49,6 +49,10 @@ interface PrepResponse {
       periodName: string
       submittedAt: string
     } | null
+    questionsCarriedFrom: {
+      periodId: string
+      periodName: string
+    } | null
     period: {
       id: string
       name: string
@@ -212,7 +216,12 @@ export default function PreEvaluationPage() {
               <p className="text-sm text-muted-foreground">
                 Submit exactly {prep.requiredQuestionCount} extra KPI questions that you will answer about your direct reports. These are added on top of the default Direct Reports question bank for your direct-report evaluations. They do not change the questions your team answers about you. If you do not submit them, runtime uses only the default Direct Reports bank.
               </p>
-              {prep.questionPrefillFrom && !prep.questionsSubmittedAt && (
+              {prep.questionsCarriedFrom && !prep.questionsSubmittedAt && (
+                <p className="mt-2 text-sm text-emerald-300">
+                  These questions were carried forward from {prep.questionsCarriedFrom.periodName} and are already in use for this quarter. Edit them if you&apos;d like, or leave them as-is.
+                </p>
+              )}
+              {prep.questionPrefillFrom && !prep.questionsCarriedFrom && !prep.questionsSubmittedAt && (
                 <p className="mt-2 text-sm text-sky-300">
                   We prefilled these from your last submitted set in {prep.questionPrefillFrom.periodName} so you can reuse or edit them before submitting this quarter.
                 </p>
@@ -314,7 +323,7 @@ export default function PreEvaluationPage() {
         </CardContent>
       </Card>
 
-      {prep.status === 'COMPLETED' && (
+      {prep.status === 'COMPLETED' && prep.questionsSubmittedAt && (
         <Card className="border-emerald-500/30 bg-emerald-500/5">
           <CardContent className="p-5 flex items-center justify-between gap-4">
             <div>

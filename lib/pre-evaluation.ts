@@ -30,6 +30,7 @@ type PrepWithPeriod = Pick<
   PreEvaluationLeadPrep,
   | 'status'
   | 'questionsSubmittedAt'
+  | 'questionsCarriedForwardAt'
   | 'evaluateesSubmittedAt'
   | 'completedAt'
   | 'overdueAt'
@@ -117,16 +118,18 @@ export function derivePreEvaluationStatus(
 ): 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'OVERDUE' | 'OVERRIDDEN' {
   const today = startOfDay()
   const reviewStart = startOfDay(prep.period.reviewStartDate)
-  const isComplete = Boolean(prep.questionsSubmittedAt)
-  const hasPartialSubmission = Boolean(prep.questionsSubmittedAt)
+  // Questions are "handled" for the period when the lead submitted them OR they were
+  // carried forward from a previous period (effective by default, no action needed).
+  const questionsHandled =
+    Boolean(prep.questionsSubmittedAt) || Boolean(prep.questionsCarriedForwardAt)
 
-  if (isComplete || prep.completedAt) {
+  if (questionsHandled || prep.completedAt) {
     return 'COMPLETED'
   }
   if (reviewStart <= today) {
     return prep.overriddenAt ? 'OVERRIDDEN' : 'OVERDUE'
   }
-  return hasPartialSubmission ? 'IN_PROGRESS' : 'PENDING'
+  return 'PENDING'
 }
 
 export function isPrepEditable(reviewStartDate: Date) {
@@ -163,6 +166,31 @@ export function deriveLeadRelationships(
 
 export function hasSubmittedLeadQuestionSet(source: PrepQuestionSource) {
   return Boolean(source.questionsSubmittedAt) && source.questions.length > 0
+}
+
+// A lead's questions count in the actual evaluations when they exist and were
+// either explicitly submitted by the lead OR carried forward from a prior period.
+export function hasEffectiveLeadQuestionSet(source: {
+  questionsSubmittedAt: Date | null
+  questionsCarriedForwardAt: Date | null
+  questions: Array<unknown>
+}) {
+  return (
+    (Boolean(source.questionsSubmittedAt) || Boolean(source.questionsCarriedForwardAt)) &&
+    source.questions.length > 0
+  )
+}
+
+// A prep can receive carried-forward questions only when it is untouched: no
+// questions yet, not submitted, and not already carried.
+export function isPrepEligibleForCarryForward(prep: {
+  questionsSubmittedAt: Date | null
+  questionsCarriedForwardAt: Date | null
+  questions: Array<unknown>
+}) {
+  return (
+    !prep.questionsSubmittedAt && !prep.questionsCarriedForwardAt && prep.questions.length === 0
+  )
 }
 
 export function getDefaultQuestionBankRelationshipType(
@@ -309,6 +337,7 @@ export async function syncPrepStatus(db: DbClient, prepId: string) {
       id: true,
       status: true,
       questionsSubmittedAt: true,
+      questionsCarriedForwardAt: true,
       evaluateesSubmittedAt: true,
       completedAt: true,
       overdueAt: true,
@@ -324,7 +353,9 @@ export async function syncPrepStatus(db: DbClient, prepId: string) {
   if (!prep) return null
 
   const nextStatus = derivePreEvaluationStatus(prep)
-  const nextCompletedAt = prep.questionsSubmittedAt ? prep.completedAt || new Date() : null
+  const questionsHandled =
+    Boolean(prep.questionsSubmittedAt) || Boolean(prep.questionsCarriedForwardAt)
+  const nextCompletedAt = questionsHandled ? prep.completedAt || new Date() : null
   const nextOverdueAt =
     nextStatus === 'OVERDUE' || nextStatus === 'OVERRIDDEN'
       ? prep.overdueAt || new Date()
@@ -398,6 +429,89 @@ export async function ensurePreEvaluationPrep(
   return prep
 }
 
+// Copy each untouched lead prep's most recent prior submitted questions into the
+// given period, stamping questionsCarriedForwardAt so they are effective in the
+// evaluations by default while remaining editable until review start. Only fills
+// preps that have no questions, are not submitted, and were not already carried, so
+// it is idempotent and never overwrites a lead's own choices.
+export async function carryForwardLeadQuestions(db: typeof prisma, periodId: string) {
+  const preps = await db.preEvaluationLeadPrep.findMany({
+    where: { periodId },
+    select: {
+      id: true,
+      leadId: true,
+      questionsSubmittedAt: true,
+      questionsCarriedForwardAt: true,
+      questions: { select: { id: true } },
+    },
+  })
+
+  const summary = { carried: 0, skippedNoSource: 0, skippedAlreadyTouched: 0 }
+
+  for (const prep of preps) {
+    if (!isPrepEligibleForCarryForward(prep)) {
+      summary.skippedAlreadyTouched += 1
+      continue
+    }
+
+    // The lead's most recent prior SUBMITTED question set from any earlier period.
+    const source = await db.preEvaluationLeadPrep.findFirst({
+      where: {
+        leadId: prep.leadId,
+        periodId: { not: periodId },
+        questionsSubmittedAt: { not: null },
+        questions: { some: {} },
+      },
+      select: {
+        periodId: true,
+        questions: {
+          orderBy: { orderIndex: 'asc' },
+          select: {
+            orderIndex: true,
+            questionText: true,
+            rating1Description: true,
+            rating2Description: true,
+            rating3Description: true,
+            rating4Description: true,
+          },
+        },
+      },
+      orderBy: [{ questionsSubmittedAt: 'desc' }, { updatedAt: 'desc' }],
+    })
+
+    if (!source || source.questions.length === 0) {
+      summary.skippedNoSource += 1
+      continue
+    }
+
+    // Both writes together so a prep never ends up with questions but no carry stamp
+    // (or vice versa), which would leave it neither effective nor eligible to retry.
+    await db.$transaction([
+      db.preEvaluationLeadQuestion.createMany({
+        data: source.questions.map((question) => ({
+          prepId: prep.id,
+          orderIndex: question.orderIndex,
+          questionText: question.questionText,
+          rating1Description: question.rating1Description,
+          rating2Description: question.rating2Description,
+          rating3Description: question.rating3Description,
+          rating4Description: question.rating4Description,
+        })),
+      }),
+      db.preEvaluationLeadPrep.update({
+        where: { id: prep.id },
+        data: {
+          questionsCarriedForwardAt: new Date(),
+          questionsCarriedFromPeriodId: source.periodId,
+        },
+      }),
+    ])
+    summary.carried += 1
+  }
+
+  return summary
+}
+
 export async function triggerPreEvaluationForPeriod(
   periodId: string,
   source: 'AUTO' | 'MANUAL',
@@ -462,6 +576,11 @@ export async function triggerPreEvaluationForPeriod(
     }
   })
 
+  // Carry each untouched lead's prior questions into this period so they are
+  // effective by default. Runs after the trigger transaction commits so a slow
+  // carry can never roll back prep creation; it is idempotent on re-run.
+  const carrySummary = await carryForwardLeadQuestions(prisma, periodId)
+
   const preps = prepIds.length
     ? await prisma.preEvaluationLeadPrep.findMany({
         where: { id: { in: prepIds } },
@@ -491,6 +610,7 @@ export async function triggerPreEvaluationForPeriod(
     leadCount: leadIds.length,
     createdCount,
     prepCount: preps.length,
+    carriedCount: carrySummary.carried,
     preps,
   }
 }
@@ -642,10 +762,24 @@ export async function getCurrentLeadPrep(userId: string) {
     previousSubmission: previousSubmittedPrep,
   })
 
+  // For carried-forward preps (persisted questions, not yet lead-submitted), resolve
+  // the source period name so the page can show a "carried from {period}" banner.
+  const carriedFromPeriod =
+    prep.questionsCarriedForwardAt && prep.questionsCarriedFromPeriodId
+      ? await prisma.evaluationPeriod.findUnique({
+          where: { id: prep.questionsCarriedFromPeriodId },
+          select: { id: true, name: true },
+        })
+      : null
+
   return {
     ...prep,
     questions: resolvedQuestions.questions,
     questionPrefillFrom: resolvedQuestions.questionPrefillFrom,
+    questionsCarriedFrom:
+      prep.questionsCarriedForwardAt && carriedFromPeriod
+        ? { periodId: carriedFromPeriod.id, periodName: carriedFromPeriod.name }
+        : null,
     status: effectiveStatus,
     editable: isPrepEditable(prep.period.reviewStartDate),
     candidateUsers: users,
@@ -681,7 +815,7 @@ async function getLeadQuestionSetForTeamLead(periodId: string, leadId: string) {
     },
   })
 
-  if (!prep || !hasSubmittedLeadQuestionSet(prep)) {
+  if (!prep || !hasEffectiveLeadQuestionSet(prep)) {
     return null
   }
 
@@ -997,6 +1131,8 @@ export async function getPreEvaluationReminderCandidates(dayOffset: 7 | 1) {
     where: {
       completedAt: null,
       questionsSubmittedAt: null,
+      // Carried-forward preps already have effective questions — don't nag the lead.
+      questionsCarriedForwardAt: null,
       period: {
         reviewStartDate: {
           gte: targetDate,

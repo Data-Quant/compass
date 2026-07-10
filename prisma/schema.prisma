@@ -630,6 +630,8 @@ model PreEvaluationLeadPrep {
   leadId                 String
   status                 PreEvaluationLeadStatus  @default(PENDING)
   questionsSubmittedAt   DateTime?
+  questionsCarriedForwardAt DateTime?
+  questionsCarriedFromPeriodId String?
   evaluateesSubmittedAt  DateTime?
   completedAt            DateTime?
   overdueAt              DateTime?

@@ -8,10 +8,97 @@ import {
   getDefaultQuestionBankRelationshipType,
   getLeadAuthoredQuestionBankRelationshipType,
   getRuntimeLeadQuestionCount,
+  hasEffectiveLeadQuestionSet,
   hasSubmittedLeadQuestionSet,
+  isPrepEligibleForCarryForward,
   resolvePrepQuestionPrefill,
   validatePreEvaluationSelections,
 } from '../lib/pre-evaluation'
+
+const CARRIED_AT = new Date('2026-07-01T00:00:00.000Z')
+const SUBMITTED_AT = new Date('2026-07-02T00:00:00.000Z')
+const oneQuestion = [{ id: 'q1' }]
+
+test('hasEffectiveLeadQuestionSet counts submitted OR carried question sets', () => {
+  // Lead explicitly submitted.
+  assert.equal(
+    hasEffectiveLeadQuestionSet({ questionsSubmittedAt: SUBMITTED_AT, questionsCarriedForwardAt: null, questions: oneQuestion }),
+    true,
+  )
+  // Carried forward from a prior period (effective by default).
+  assert.equal(
+    hasEffectiveLeadQuestionSet({ questionsSubmittedAt: null, questionsCarriedForwardAt: CARRIED_AT, questions: oneQuestion }),
+    true,
+  )
+  // Neither: not effective.
+  assert.equal(
+    hasEffectiveLeadQuestionSet({ questionsSubmittedAt: null, questionsCarriedForwardAt: null, questions: oneQuestion }),
+    false,
+  )
+  // A flag with no questions is not effective.
+  assert.equal(
+    hasEffectiveLeadQuestionSet({ questionsSubmittedAt: SUBMITTED_AT, questionsCarriedForwardAt: null, questions: [] }),
+    false,
+  )
+  assert.equal(
+    hasEffectiveLeadQuestionSet({ questionsSubmittedAt: null, questionsCarriedForwardAt: CARRIED_AT, questions: [] }),
+    false,
+  )
+})
+
+test('isPrepEligibleForCarryForward is true only for untouched preps', () => {
+  // Untouched: no questions, not submitted, not carried.
+  assert.equal(
+    isPrepEligibleForCarryForward({ questionsSubmittedAt: null, questionsCarriedForwardAt: null, questions: [] }),
+    true,
+  )
+  // Already has questions.
+  assert.equal(
+    isPrepEligibleForCarryForward({ questionsSubmittedAt: null, questionsCarriedForwardAt: null, questions: oneQuestion }),
+    false,
+  )
+  // Lead already submitted.
+  assert.equal(
+    isPrepEligibleForCarryForward({ questionsSubmittedAt: SUBMITTED_AT, questionsCarriedForwardAt: null, questions: [] }),
+    false,
+  )
+  // Already carried.
+  assert.equal(
+    isPrepEligibleForCarryForward({ questionsSubmittedAt: null, questionsCarriedForwardAt: CARRIED_AT, questions: [] }),
+    false,
+  )
+})
+
+test('derivePreEvaluationStatus treats carried-forward questions as completed', () => {
+  const base = {
+    status: 'PENDING' as const,
+    questionsSubmittedAt: null,
+    evaluateesSubmittedAt: null,
+    completedAt: null,
+    overdueAt: null,
+    overriddenAt: null,
+    period: { reviewStartDate: new Date('2999-01-01T00:00:00.000Z') },
+  }
+  // Carried (not submitted) with a future review start still counts as done.
+  assert.equal(
+    derivePreEvaluationStatus({ ...base, questionsCarriedForwardAt: CARRIED_AT }),
+    'COMPLETED',
+  )
+  // Untouched with a future review start is pending.
+  assert.equal(
+    derivePreEvaluationStatus({ ...base, questionsCarriedForwardAt: null }),
+    'PENDING',
+  )
+  // Untouched past the review start is overdue.
+  assert.equal(
+    derivePreEvaluationStatus({
+      ...base,
+      questionsCarriedForwardAt: null,
+      period: { reviewStartDate: new Date('2000-01-01T00:00:00.000Z') },
+    }),
+    'OVERDUE',
+  )
+})
 
 test('deriveLeadRelationships builds direct report ownership from TEAM_LEAD rows only', () => {
   const derived = deriveLeadRelationships([
@@ -265,6 +352,7 @@ test('derivePreEvaluationStatus completes once lead questions are submitted', ()
   const status = derivePreEvaluationStatus({
     status: 'PENDING',
     questionsSubmittedAt: new Date('2026-04-01T00:00:00.000Z'),
+    questionsCarriedForwardAt: null,
     evaluateesSubmittedAt: null,
     completedAt: null,
     overdueAt: null,
