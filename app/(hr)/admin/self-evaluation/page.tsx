@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SELF_EVALUATION_QUESTION_TYPES, type SelfEvaluationQuestionType } from '@/lib/self-evaluation'
+import { SelfEvaluationProgressPanel } from '@/components/self-evaluation/SelfEvaluationProgressPanel'
 import { ArrowDown, ArrowUp, Edit2, Eye, EyeOff, Plus, Send, Trash2 } from 'lucide-react'
 
 interface Question {
@@ -280,6 +281,7 @@ export default function AdminSelfEvaluationPage() {
         <TabsList>
           <TabsTrigger value="questions">Questions</TabsTrigger>
           <TabsTrigger value="send">Send to employees</TabsTrigger>
+          <TabsTrigger value="progress">Progress</TabsTrigger>
         </TabsList>
 
         {/* Questions tab */}
@@ -419,6 +421,11 @@ export default function AdminSelfEvaluationPage() {
               </CardContent>
             </Card>
           )}
+        </TabsContent>
+
+        {/* Progress tab */}
+        <TabsContent value="progress" className="space-y-4">
+          <SelfEvaluationProgressPanel periods={periods} />
         </TabsContent>
       </Tabs>
 
