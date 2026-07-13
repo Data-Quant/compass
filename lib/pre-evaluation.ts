@@ -164,6 +164,54 @@ export function deriveLeadRelationships(
   }
 }
 
+/**
+ * Job titles that qualify a person as a team lead for pre-evaluation. Lead
+ * status is gated by title, not by whether someone happened to have a report
+ * in a quarter's TEAM_LEAD mappings. Matched case-insensitively and trimmed,
+ * mirroring SELF_EVAL_EXCLUDED_POSITIONS in lib/self-evaluation.ts.
+ */
+export const PRE_EVALUATION_LEAD_TITLES: readonly string[] = [
+  'Partner',
+  'Junior Partner',
+  'Principal and Junior Partner',
+  'Principal',
+  'Managing Partner',
+  'Lead',
+  'AM Team Lead',
+  'Manager',
+  'Team Manager',
+  'Program Delivery Manager',
+]
+
+const PRE_EVALUATION_LEAD_TITLE_SET = new Set(
+  PRE_EVALUATION_LEAD_TITLES.map((title) => title.toLowerCase()),
+)
+
+/** Whether a person's position qualifies them as a pre-evaluation team lead. */
+export function isLeadTitle(position: string | null): boolean {
+  if (!position) {
+    return false
+  }
+  return PRE_EVALUATION_LEAD_TITLE_SET.has(position.trim().toLowerCase())
+}
+
+/**
+ * Narrow mapping-derived lead relationships to only those leads whose title
+ * qualifies. Returns a new object; inputs are not mutated. Reports for kept
+ * leads are preserved as-is (copied), and no lead ids are invented.
+ */
+export function filterLeadsByTitle(
+  relationships: { leadIds: string[]; directReportsByLead: Record<string, string[]> },
+  positionById: Record<string, string | null>,
+): { leadIds: string[]; directReportsByLead: Record<string, string[]> } {
+  const leadIds = relationships.leadIds.filter((id) => isLeadTitle(positionById[id] ?? null))
+  const directReportsByLead: Record<string, string[]> = {}
+  for (const id of leadIds) {
+    directReportsByLead[id] = [...(relationships.directReportsByLead[id] ?? [])]
+  }
+  return { leadIds, directReportsByLead }
+}
+
 export function hasSubmittedLeadQuestionSet(source: PrepQuestionSource) {
   return Boolean(source.questionsSubmittedAt) && source.questions.length > 0
 }
@@ -383,7 +431,23 @@ export async function getLeadIdsForPreEvaluation(db: DbClient, periodId: string)
     },
   })
 
-  return deriveLeadRelationships(mappings)
+  const relationships = deriveLeadRelationships(mappings)
+  if (relationships.leadIds.length === 0) {
+    return relationships
+  }
+
+  // Gate qualification by job title: mappings supply the reports, but only
+  // people whose position is a recognized lead title actually get a prep.
+  const users = await db.user.findMany({
+    where: { id: { in: relationships.leadIds } },
+    select: { id: true, position: true },
+  })
+  const positionById: Record<string, string | null> = {}
+  for (const user of users) {
+    positionById[user.id] = user.position
+  }
+
+  return filterLeadsByTitle(relationships, positionById)
 }
 
 export async function ensurePreEvaluationPrep(

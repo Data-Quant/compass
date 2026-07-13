@@ -4,6 +4,9 @@ import {
   buildRuntimeEvaluationQuestionSet,
   PRE_EVALUATION_QUESTION_COUNT,
   deriveLeadRelationships,
+  filterLeadsByTitle,
+  isLeadTitle,
+  PRE_EVALUATION_LEAD_TITLES,
   derivePreEvaluationStatus,
   getDefaultQuestionBankRelationshipType,
   getLeadAuthoredQuestionBankRelationshipType,
@@ -408,4 +411,61 @@ test('validatePreEvaluationSelections rejects change requests outside self or di
   )
 
   assert.equal(error, 'Evaluator change requests are only allowed for you or your direct reports')
+})
+
+test('isLeadTitle recognizes curated lead titles case-insensitively', () => {
+  for (const title of PRE_EVALUATION_LEAD_TITLES) {
+    assert.equal(isLeadTitle(title), true, `${title} should qualify`)
+  }
+  // Case- and whitespace-tolerant.
+  assert.equal(isLeadTitle('  program delivery MANAGER '), true)
+  assert.equal(isLeadTitle('team manager'), true)
+  assert.equal(isLeadTitle('AM Team Lead'), true)
+  // Non-lead / ambiguous titles do not qualify.
+  assert.equal(isLeadTitle('Associate'), false)
+  assert.equal(isLeadTitle('Senior Associate'), false)
+  assert.equal(isLeadTitle('Senior Associate 2-Controller'), false)
+  assert.equal(isLeadTitle('Customer Success Manager'), false)
+  assert.equal(isLeadTitle('Account Manager'), false)
+  assert.equal(isLeadTitle(null), false)
+  assert.equal(isLeadTitle(''), false)
+})
+
+test('filterLeadsByTitle keeps only titled leads and preserves their reports', () => {
+  const relationships = {
+    leadIds: ['lead-titled', 'lead-accidental'],
+    directReportsByLead: {
+      'lead-titled': ['report-a', 'report-b'],
+      'lead-accidental': ['report-c'],
+    },
+  }
+  const positionById = {
+    'lead-titled': 'Manager',
+    'lead-accidental': 'Associate',
+  }
+  const filtered = filterLeadsByTitle(relationships, positionById)
+  assert.deepEqual(filtered.leadIds, ['lead-titled'])
+  assert.deepEqual(filtered.directReportsByLead, { 'lead-titled': ['report-a', 'report-b'] })
+  // Immutability: original object is untouched.
+  assert.deepEqual(relationships.leadIds, ['lead-titled', 'lead-accidental'])
+  assert.deepEqual(relationships.directReportsByLead['lead-accidental'], ['report-c'])
+})
+
+test('filterLeadsByTitle treats a missing position as non-lead', () => {
+  const filtered = filterLeadsByTitle(
+    { leadIds: ['x'], directReportsByLead: { x: ['r'] } },
+    {},
+  )
+  assert.deepEqual(filtered.leadIds, [])
+  assert.deepEqual(filtered.directReportsByLead, {})
+})
+
+test('deriveLeadRelationships + filterLeadsByTitle drops accidental mapping leads', () => {
+  const derived = deriveLeadRelationships([
+    { evaluatorId: 'boss', evaluateeId: 'r1', relationshipType: 'TEAM_LEAD' },
+    { evaluatorId: 'ic', evaluateeId: 'r2', relationshipType: 'TEAM_LEAD' },
+  ])
+  const filtered = filterLeadsByTitle(derived, { boss: 'Partner', ic: 'Associate' })
+  assert.deepEqual(filtered.leadIds, ['boss'])
+  assert.deepEqual(filtered.directReportsByLead, { boss: ['r1'] })
 })
