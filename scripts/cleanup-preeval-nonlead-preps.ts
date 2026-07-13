@@ -1,16 +1,17 @@
 /**
  * Remove pre-evaluation preps for people who no longer qualify as team leads
- * under the title-gated rule (their position is not in the allow-list), but
- * ONLY when the prep is empty — no questions, not submitted, not carried. So it
- * can never delete lead-authored data. Dry-run by default; pass --apply to
- * write. Evaluatee selections cascade-delete with the prep.
+ * for a period — i.e. they are not in getLeadIdsForPreEvaluation, meaning they
+ * either lack a recognized lead title OR no longer lead anyone via TEAM_LEAD
+ * mappings — but ONLY when the prep is empty (no questions, not submitted, not
+ * carried), so it can never delete lead-authored data. Dry-run by default;
+ * pass --apply to write. Evaluatee selections cascade-delete with the prep.
  *
  * Usage:
  *   npx tsx scripts/cleanup-preeval-nonlead-preps.ts "Q2 2026"
  *   npx tsx scripts/cleanup-preeval-nonlead-preps.ts "Q2 2026" --apply
  */
 import { prisma } from '../lib/db'
-import { isLeadTitle, isPrepEligibleForCarryForward } from '../lib/pre-evaluation'
+import { getLeadIdsForPreEvaluation, isPrepEligibleForCarryForward } from '../lib/pre-evaluation'
 
 async function main() {
   const apply = process.argv.includes('--apply')
@@ -25,10 +26,15 @@ async function main() {
   console.log(`Period: ${period.name}`)
   console.log(`Mode: ${apply ? 'APPLY (writing)' : 'DRY-RUN (no writes)'}\n`)
 
+  // Authoritative current lead set: recognized title AND leads someone (mappings).
+  const { leadIds } = await getLeadIdsForPreEvaluation(prisma, period.id)
+  const qualified = new Set(leadIds)
+
   const preps = await prisma.preEvaluationLeadPrep.findMany({
     where: { periodId: period.id },
     select: {
       id: true,
+      leadId: true,
       questionsSubmittedAt: true,
       questionsCarriedForwardAt: true,
       lead: { select: { name: true, position: true } },
@@ -39,18 +45,18 @@ async function main() {
   })
 
   const targetIds: string[] = []
-  let keptLeads = 0
+  let keptQualified = 0
   let keptNonEmpty = 0
 
   for (const prep of preps) {
-    if (isLeadTitle(prep.lead.position)) {
-      keptLeads++
+    if (qualified.has(prep.leadId)) {
+      keptQualified++
       continue
     }
     if (!isPrepEligibleForCarryForward(prep)) {
       keptNonEmpty++
       console.log(
-        `  KEEP (non-lead but non-empty — manual review): ${prep.lead.name} (${prep.lead.position}) ` +
+        `  KEEP (unqualified but non-empty — manual review): ${prep.lead.name} (${prep.lead.position}) ` +
           `questions=${prep.questions.length} submitted=${prep.questionsSubmittedAt ? 'YES' : 'no'} ` +
           `carried=${prep.questionsCarriedForwardAt ? 'YES' : 'no'}`,
       )
@@ -61,7 +67,7 @@ async function main() {
   }
 
   console.log(
-    `\nPreps: ${preps.length}  toDelete: ${targetIds.length}  keptLeads: ${keptLeads}  keptNonEmpty: ${keptNonEmpty}`,
+    `\nPreps: ${preps.length}  toDelete: ${targetIds.length}  keptQualified: ${keptQualified}  keptNonEmpty: ${keptNonEmpty}`,
   )
 
   if (apply && targetIds.length > 0) {
