@@ -13,7 +13,7 @@ export const OFFICE_LOCATIONS: OfficeLocationGroup[] = [
   { country: 'Pakistan', cities: ['Karachi', 'Islamabad', 'Lahore', 'Hyderabad', 'Larkana'] },
   { country: 'Morocco', cities: ['Casablanca', 'Fnideq', 'Kenitra', 'Meknes'] },
   { country: 'United States', cities: ['Dallas'] },
-  { country: 'Colombia', cities: ['Pereira'] },
+  { country: 'Colombia', cities: ['Pereira', 'Bogota'] },
   { country: 'Indonesia', cities: ['Jakarta'] },
 ]
 
@@ -26,6 +26,7 @@ const LEGACY_LOCATION_ALIASES: Record<string, string> = {
   'lahore office': 'Lahore',
   'casablanca office': 'Casablanca',
   'dallas office': 'Dallas',
+  'hyderabad/karachi': 'Karachi',
 }
 
 export function isOfficeLocation(value: string | null | undefined): boolean {
