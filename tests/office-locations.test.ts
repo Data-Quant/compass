@@ -36,7 +36,7 @@ test('isOfficeLocation accepts canonical cities and legacy aliases', () => {
 })
 
 test('getOfficeLocationValuesForFilter includes canonical city plus legacy variants', () => {
-  assert.deepEqual(getOfficeLocationValuesForFilter('Karachi'), ['Karachi', 'Karachi Office'])
+  assert.deepEqual(getOfficeLocationValuesForFilter('Karachi'), ['Karachi', 'Karachi Office', 'Hyderabad/Karachi'])
   assert.deepEqual(getOfficeLocationValuesForFilter('Jakarta'), ['Jakarta'])
   assert.deepEqual(getOfficeLocationValuesForFilter('Nowhere'), [])
 })
