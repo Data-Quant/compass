@@ -20,15 +20,28 @@ const FOUR_RATING_QUOTA_EXEMPT_NAMES = new Set<string>([
   HAMIZ_EVALUATOR.trim().toLowerCase(),
 ])
 
+/**
+ * Junior Partners and Partners are exempt from the 10% four-rating cap — by
+ * role they give top ratings across the firm. Any partner-level title qualifies
+ * (Partner, Junior Partner, Principal and Junior Partner, Managing Partner); a
+ * bare "Principal" does not.
+ */
+export function isExemptFromFourRatingCapByTitle(position: string | null): boolean {
+  if (!position) return false
+  return position.trim().toLowerCase().includes('partner')
+}
+
 async function isFourRatingQuotaExemptEvaluator(
   evaluatorId: string,
   db: DbClient
 ): Promise<boolean> {
   const user = await db.user.findUnique({
     where: { id: evaluatorId },
-    select: { name: true },
+    select: { name: true, position: true },
   })
-  if (!user?.name) return false
+  if (!user) return false
+  if (isExemptFromFourRatingCapByTitle(user.position)) return true
+  if (!user.name) return false
   return FOUR_RATING_QUOTA_EXEMPT_NAMES.has(user.name.trim().toLowerCase())
 }
 

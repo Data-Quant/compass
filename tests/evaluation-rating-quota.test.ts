@@ -6,6 +6,7 @@ import {
   countFourRatingsForResponses,
   getFourRatingQuotaScopeType,
   getMaxAllowedFourRatings,
+  isExemptFromFourRatingCapByTitle,
   shouldCountAssignmentTowardsFourRatingQuota,
   validateFourRatingQuota,
 } from '../lib/evaluation-rating-quota'
@@ -109,6 +110,22 @@ test('validateFourRatingQuota flags submissions that exceed the allowed 4-rating
       wouldExceed: true,
     }
   )
+})
+
+test('isExemptFromFourRatingCapByTitle exempts any partner-level title', () => {
+  // Junior Partners and Partners (any "Partner" title) are exempt.
+  assert.equal(isExemptFromFourRatingCapByTitle('Partner'), true)
+  assert.equal(isExemptFromFourRatingCapByTitle('Junior Partner'), true)
+  assert.equal(isExemptFromFourRatingCapByTitle('Principal and Junior Partner'), true)
+  assert.equal(isExemptFromFourRatingCapByTitle('Managing Partner'), true)
+  // Case- and whitespace-tolerant.
+  assert.equal(isExemptFromFourRatingCapByTitle('  junior PARTNER '), true)
+  // Non-partner titles are NOT exempt.
+  assert.equal(isExemptFromFourRatingCapByTitle('Principal'), false)
+  assert.equal(isExemptFromFourRatingCapByTitle('Associate'), false)
+  assert.equal(isExemptFromFourRatingCapByTitle('Manager'), false)
+  assert.equal(isExemptFromFourRatingCapByTitle(null), false)
+  assert.equal(isExemptFromFourRatingCapByTitle(''), false)
 })
 
 test('buildEvaluationResponseKey scopes a question key to the evaluatee and source', () => {
