@@ -1,87 +1,88 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { motion } from 'framer-motion'
+import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from 'recharts'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { Card, CardContent } from '@/components/ui/card'
-import { Users, CheckCircle, FileText, TrendingUp, Trophy, AlertCircle } from 'lucide-react'
-
-const COLORS = [
-  'hsl(var(--primary))',
-  'hsl(var(--secondary))',
-  'hsl(var(--accent))',
-  'hsl(38 92% 50%)',
-  'hsl(142 71% 45%)',
-  'hsl(217 91% 60%)',
-]
-
-interface Analytics {
-  period: { id: string; name: string; startDate: string; endDate: string }
-  summary: {
-    totalTeamMembers?: number
-    totalEmployees: number
-    employeesWithEvaluations: number
-    employeesComplete?: number
-    totalEvaluations: number
-    totalReports: number
-    avgOverallScore: number
-    completionRate: number
-  }
-  departmentData: Array<{ name: string; employees: number; completed: number; completionRate: number; avgScore: number }>
-  scoreDistribution: Array<{ range: string; count: number }>
-  relationshipData: Array<{ type: string; count: number }>
-  topPerformers: Array<{ name: string; department: string | null; score: number }>
-  bottomPerformers: Array<{ name: string; department: string | null; score: number }>
-}
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { AlertCircle } from 'lucide-react'
+import { OverviewTab } from '@/components/analytics/OverviewTab'
+import type { Analytics, InsightsPayload } from '@/components/analytics/types'
 
 export default function AnalyticsPage() {
   const [analytics, setAnalytics] = useState<Analytics | null>(null)
+  const [insights, setInsights] = useState<InsightsPayload | null>(null)
+  const [periodId, setPeriodId] = useState<string>('active')
   const [loading, setLoading] = useState(true)
+  const [namesById, setNamesById] = useState<Record<string, string>>({})
 
-  useEffect(() => {
-    loadAnalytics()
-  }, [])
-
-  const loadAnalytics = async () => {
+  const loadData = useCallback(async (selectedPeriodId: string) => {
+    setLoading(true)
     try {
-      const res = await fetch('/api/admin/analytics')
-      const data = await res.json()
-      if (data.error) {
-        toast.error(data.error)
+      const query = selectedPeriodId === 'active' ? '' : `?periodId=${selectedPeriodId}`
+      const [analyticsRes, insightsRes] = await Promise.all([
+        fetch(`/api/admin/analytics${query}`),
+        fetch(`/api/admin/analytics/insights${query}`),
+      ])
+      const [analyticsData, insightsData] = await Promise.all([
+        analyticsRes.json(),
+        insightsRes.json(),
+      ])
+
+      if (analyticsData.error) {
+        toast.error(analyticsData.error)
       } else {
-        setAnalytics(data)
+        setAnalytics(analyticsData)
+      }
+
+      if (insightsData.error) {
+        toast.error(insightsData.error)
+      } else {
+        setInsights(insightsData)
       }
     } catch (error) {
       toast.error('Failed to load analytics')
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  const relationshipLabels: Record<string, string> = {
-    C_LEVEL: 'C-Level',
-    TEAM_LEAD: 'Team Lead',
-    DIRECT_REPORT: 'Direct Report',
-    PEER: 'Peer',
-    CROSS_DEPARTMENT: 'Cross-Department',
-    HR: 'HR',
-    DEPT: 'Department',
-    SELF: 'Self',
-  }
+  useEffect(() => {
+    loadData(periodId)
+  }, [loadData, periodId])
+
+  useEffect(() => {
+    let cancelled = false
+    // GET /api/users responds with { users: [{ id, name, department, position }] }.
+    fetch('/api/users')
+      .then((res) => res.json())
+      .then((data: { users?: Array<{ id?: string; name?: string }> }) => {
+        if (cancelled || !Array.isArray(data.users)) return
+        const entries: Record<string, string> = {}
+        for (const entry of data.users) {
+          if (entry.id && entry.name) entries[entry.id] = entry.name
+        }
+        setNamesById(entries)
+      })
+      .catch(() => {
+        // Names are cosmetic; the views fall back to the id.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const resolveName = useCallback(
+    (employeeId: string) => namesById[employeeId] || employeeId,
+    [namesById]
+  )
 
   if (loading) {
     return (
@@ -104,160 +105,59 @@ export default function AnalyticsPage() {
     )
   }
 
-  const statCards = [
-    { label: 'Team Members', value: analytics.summary.totalTeamMembers ?? analytics.summary.totalEmployees, icon: Users, color: 'text-primary' },
-    {
-      label: 'Complete',
-      value: `${analytics.summary.employeesComplete ?? analytics.summary.employeesWithEvaluations}/${analytics.summary.totalTeamMembers ?? analytics.summary.totalEmployees}`,
-      icon: CheckCircle,
-      color: 'text-emerald-600 dark:text-emerald-400',
-    },
-    { label: 'Avg Completion', value: `${analytics.summary.completionRate.toFixed(1)}%`, icon: FileText, color: 'text-purple-600 dark:text-purple-400' },
-    { label: 'Avg Score', value: `${analytics.summary.avgOverallScore.toFixed(1)}%`, icon: TrendingUp, color: 'text-amber-600 dark:text-amber-400' },
-  ]
-
   return (
     <div className="p-6 sm:p-8 max-w-7xl mx-auto">
-        <div className="mb-8">
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
           <h1 className="text-2xl font-bold text-foreground font-display">Analytics Dashboard</h1>
           <p className="text-muted-foreground mt-1">
-            {analytics.period.name} • {new Date(analytics.period.startDate).toLocaleDateString()} - {new Date(analytics.period.endDate).toLocaleDateString()}
+            {analytics.period.name} • {new Date(analytics.period.startDate).toLocaleDateString()} -{' '}
+            {new Date(analytics.period.endDate).toLocaleDateString()}
           </p>
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          {statCards.map((stat, index) => (
-            <motion.div
-              key={stat.label}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.05 * index }}
-            >
-              <Card>
-                <CardContent className="p-5">
-                  <stat.icon className={`w-6 h-6 ${stat.color} mb-2`} />
-                  <div className="text-3xl font-bold text-foreground">{stat.value}</div>
-                  <div className="text-sm text-muted-foreground">{stat.label}</div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
-        </div>
+        {insights && insights.periods.length > 0 && (
+          <Select value={periodId} onValueChange={setPeriodId}>
+            <SelectTrigger className="w-full sm:w-[220px]">
+              <SelectValue placeholder="Select period" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">Active period</SelectItem>
+              {insights.periods.map((period) => (
+                <SelectItem key={period.id} value={period.id}>
+                  {period.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
 
-        {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-            <Card>
-              <CardContent className="p-6">
-                <h3 className="text-lg font-semibold text-foreground mb-4">Department Performance</h3>
-                {analytics.departmentData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={analytics.departmentData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                      <XAxis dataKey="name" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                      <YAxis tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                      <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--foreground))' }} />
-                      <Legend />
-                      <Bar dataKey="avgScore" name="Avg Score (%)" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="completionRate" name="Completion (%)" fill="hsl(142 71% 45%)" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-[300px] flex items-center justify-center text-muted-foreground">No department data</div>
-                )}
-              </CardContent>
-            </Card>
-          </motion.div>
+      <Tabs defaultValue="overview">
+        <TabsList className="mb-6">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="trends">Trends</TabsTrigger>
+          <TabsTrigger value="talent">Talent Grid</TabsTrigger>
+          <TabsTrigger value="blindspots">Blind Spots</TabsTrigger>
+          <TabsTrigger value="calibration">Calibration</TabsTrigger>
+        </TabsList>
 
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-            <Card>
-              <CardContent className="p-6">
-                <h3 className="text-lg font-semibold text-foreground mb-4">Score Distribution</h3>
-                {analytics.scoreDistribution.some(d => d.count > 0) ? (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={analytics.scoreDistribution}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                      <XAxis dataKey="range" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                      <YAxis tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                      <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--foreground))' }} />
-                      <Bar dataKey="count" name="Employees" fill="hsl(var(--secondary))" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-[300px] flex items-center justify-center text-muted-foreground">No score data</div>
-                )}
-              </CardContent>
-            </Card>
-          </motion.div>
-        </div>
-
-        {/* Performers */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <Trophy className="w-5 h-5 text-amber-500" />
-                  <h3 className="text-lg font-semibold text-foreground">Top Performers</h3>
-                </div>
-                {analytics.topPerformers.length > 0 ? (
-                  <div className="space-y-3">
-                    {analytics.topPerformers.map((p, i) => (
-                      <div key={i} className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium ${i === 0 ? 'bg-amber-500' : i === 1 ? 'bg-gray-400' : i === 2 ? 'bg-amber-700' : 'bg-primary'}`}>
-                            {i + 1}
-                          </div>
-                          <div>
-                            <div className="font-medium text-foreground">{p.name}</div>
-                            <div className="text-xs text-muted-foreground">{p.department || 'No department'}</div>
-                          </div>
-                        </div>
-                        <div className="text-emerald-600 dark:text-emerald-400 font-semibold">{p.score.toFixed(1)}%</div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center text-muted-foreground py-8">No data available</div>
-                )}
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <AlertCircle className="w-5 h-5 text-red-500" />
-                  <h3 className="text-lg font-semibold text-foreground">Needs Improvement</h3>
-                </div>
-                {analytics.bottomPerformers.length > 0 ? (
-                  <div className="space-y-3">
-                    {analytics.bottomPerformers.map((p, i) => (
-                      <div key={i} className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-600 dark:text-red-400 text-sm font-medium">
-                            {i + 1}
-                          </div>
-                          <div>
-                            <div className="font-medium text-foreground">{p.name}</div>
-                            <div className="text-xs text-muted-foreground">{p.department || 'No department'}</div>
-                          </div>
-                        </div>
-                        <div className="text-red-600 dark:text-red-400 font-semibold">{p.score.toFixed(1)}%</div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center text-muted-foreground py-8">No data available</div>
-                )}
-              </CardContent>
-            </Card>
-          </motion.div>
-        </div>
-
+        <TabsContent value="overview">
+          <OverviewTab analytics={analytics} />
+        </TabsContent>
+        <TabsContent value="trends">
+          <div className="text-muted-foreground">Trends view arrives in the next task.</div>
+        </TabsContent>
+        <TabsContent value="talent">
+          <div className="text-muted-foreground">Talent Grid arrives in a later task.</div>
+        </TabsContent>
+        <TabsContent value="blindspots">
+          <div className="text-muted-foreground">Blind Spots arrives in a later task.</div>
+        </TabsContent>
+        <TabsContent value="calibration">
+          <div className="text-muted-foreground">Calibration arrives in a later task.</div>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
-
