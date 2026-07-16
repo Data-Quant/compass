@@ -13,6 +13,15 @@ export type SafeUser = {
   role: 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA' | 'EXECUTION'
   onboardingCompleted: boolean
   benefitCategoryId: string | null
+  teamTag:
+    | 'PAKISTAN'
+    | 'MOROCCO'
+    | 'COLOMBIA'
+    | 'INDONESIA'
+    | 'NOBLE'
+    | 'THREE_E_PAKISTAN'
+    | 'THREE_E_MOROCCO'
+    | null
   createdAt: Date
   updatedAt: Date
   chartX: number | null
@@ -50,6 +59,7 @@ export async function getSession(): Promise<SafeUser | null> {
       role: true,
       onboardingCompleted: true,
       benefitCategoryId: true,
+      teamTag: true,
       createdAt: true,
       updatedAt: true,
       chartX: true,
