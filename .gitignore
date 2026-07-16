@@ -52,3 +52,6 @@ dev.db-journal
 # local data-import artifacts (contain employee PII — never commit to the public repo)
 *_Compass_Import.xlsx
 /scripts/import-compass-assets.ts
+
+# Superpowers brainstorming visual companion
+.superpowers/
