@@ -15,6 +15,7 @@ import {
 import { AlertCircle } from 'lucide-react'
 import { OverviewTab } from '@/components/analytics/OverviewTab'
 import { TrendsTab } from '@/components/analytics/TrendsTab'
+import { CalibrationTab } from '@/components/analytics/CalibrationTab'
 import type { Analytics, InsightsPayload } from '@/components/analytics/types'
 
 export default function AnalyticsPage() {
@@ -160,7 +161,11 @@ export default function AnalyticsPage() {
           <div className="text-muted-foreground">Blind Spots arrives in a later task.</div>
         </TabsContent>
         <TabsContent value="calibration">
-          <div className="text-muted-foreground">Calibration arrives in a later task.</div>
+          {insights ? (
+            <CalibrationTab calibration={insights.calibration} resolveName={resolveName} />
+          ) : (
+            <div className="text-muted-foreground">No insight data available.</div>
+          )}
         </TabsContent>
       </Tabs>
     </div>
