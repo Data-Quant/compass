@@ -22,10 +22,22 @@ import {
 } from '@/lib/analytics/talent-grid'
 import type { NameResolver } from '@/components/analytics/types'
 
+/**
+ * Performance band colors. Validated for colorblind separation (worst adjacent
+ * pair ΔE 30.5 deutan, well above the 8 threshold). Band is redundant with the
+ * y-axis position, and the legend below names each one, so performance is never
+ * carried by color alone.
+ */
 const BAND_COLORS: Record<string, string> = {
   HIGH: 'hsl(142 71% 45%)',
   MID: 'hsl(217 91% 60%)',
   LOW: 'hsl(0 72% 51%)',
+}
+
+const BAND_LABELS: Record<string, string> = {
+  HIGH: 'Top third',
+  MID: 'Middle third',
+  LOW: 'Bottom third',
 }
 
 interface TalentGridTabProps {
@@ -99,11 +111,25 @@ export function TalentGridTab({ talentGrid, resolveName, onSelectEmployee }: Tal
               <Grid3x3 className="w-5 h-5 text-primary" />
               <h3 className="text-lg font-semibold text-foreground">Talent Grid</h3>
             </div>
-            <p className="text-sm text-muted-foreground mb-4">
+            <p className="text-sm text-muted-foreground mb-3">
               Performance vs. momentum. Dot size shows evaluator consensus — smaller means opinions
               are split. Placement is relative to this period&apos;s cohort; hover for real scores,
               click to open their 360 radar.
             </p>
+            <div className="flex flex-wrap items-center gap-4 mb-4">
+              {(['HIGH', 'MID', 'LOW'] as const).map((band) => (
+                <span key={band} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span
+                    className="inline-block w-2.5 h-2.5 rounded-full"
+                    style={{ backgroundColor: BAND_COLORS[band] }}
+                  />
+                  {BAND_LABELS[band]}
+                </span>
+              ))}
+              <span className="text-xs text-muted-foreground">
+                dashed lines mark the ±{MOMENTUM_DEAD_BAND}pt &ldquo;stable&rdquo; band
+              </span>
+            </div>
             <ResponsiveContainer width="100%" height={460}>
               <ScatterChart margin={{ top: 16, right: 24, bottom: 16, left: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />

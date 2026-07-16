@@ -3,7 +3,6 @@
 import { motion } from 'framer-motion'
 import {
   CartesianGrid,
-  Legend,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -13,17 +12,16 @@ import {
 } from 'recharts'
 import { Card, CardContent } from '@/components/ui/card'
 import { ArrowDownRight, ArrowUpRight, Sparkles } from 'lucide-react'
-import type { Mover, TrendsResult } from '@/lib/analytics/trends'
+import type { DepartmentTrend, Mover, TrendsResult } from '@/lib/analytics/trends'
 import type { NameResolver } from '@/components/analytics/types'
 
-const DEPARTMENT_COLORS = [
-  'hsl(var(--primary))',
-  'hsl(142 71% 45%)',
-  'hsl(217 91% 60%)',
-  'hsl(38 92% 50%)',
-  'hsl(280 65% 60%)',
-  'hsl(0 72% 51%)',
-]
+const AXIS_TICK = { fill: 'hsl(var(--muted-foreground))', fontSize: 12 }
+const TOOLTIP_STYLE = {
+  backgroundColor: 'hsl(var(--card))',
+  border: '1px solid hsl(var(--border))',
+  borderRadius: '8px',
+  color: 'hsl(var(--foreground))',
+}
 
 interface TrendsTabProps {
   trends: TrendsResult
@@ -81,6 +79,67 @@ function MoverList({ title, movers, resolveName, tone }: MoverListProps) {
   )
 }
 
+/**
+ * One department's trajectory as a small multiple.
+ *
+ * Departments are faceted rather than overlaid: there are far more of them than a
+ * categorical palette can hold, and overlaying them would mean cycling hues —
+ * two departments sharing a color. Faceting keeps identity in the title and lets
+ * every facet reuse the same single hue.
+ */
+function DepartmentFacet({ series, index }: { series: DepartmentTrend; index: number }) {
+  const latest = series.points[series.points.length - 1]
+  const first = series.points[0]
+  const delta = latest && first ? latest.avgScore - first.avgScore : 0
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.03 * index }}
+    >
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-baseline justify-between gap-2 mb-2">
+            <span className="text-sm font-medium text-foreground truncate" title={series.department}>
+              {series.department}
+            </span>
+            <span className="text-sm font-semibold text-foreground shrink-0">
+              {latest ? `${latest.avgScore.toFixed(0)}%` : '—'}
+            </span>
+          </div>
+          <ResponsiveContainer width="100%" height={72}>
+            <LineChart data={series.points} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
+              <YAxis domain={[0, 100]} hide />
+              <XAxis dataKey="periodName" hide />
+              <Tooltip
+                contentStyle={TOOLTIP_STYLE}
+                formatter={(value) => [
+                  typeof value === 'number' ? `${value.toFixed(1)}%` : '—',
+                  series.department,
+                ]}
+              />
+              <Line
+                type="monotone"
+                dataKey="avgScore"
+                stroke="hsl(var(--primary))"
+                strokeWidth={2}
+                dot={{ r: 2 }}
+                animationDuration={700}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+          <div className="text-xs text-muted-foreground mt-1">
+            {series.points.length < 2
+              ? 'one period only'
+              : `${delta >= 0 ? '+' : ''}${delta.toFixed(1)} pts since ${first?.periodName}`}
+          </div>
+        </CardContent>
+      </Card>
+    </motion.div>
+  )
+}
+
 export function TrendsTab({ trends, resolveName }: TrendsTabProps) {
   if (trends.insufficientData) {
     return (
@@ -96,62 +155,44 @@ export function TrendsTab({ trends, resolveName }: TrendsTabProps) {
     )
   }
 
-  // Recharts needs one row per period with a key per department.
-  const chartData = trends.orgSeries.map((point) => {
-    const row: Record<string, string | number> = {
-      periodName: point.periodName,
-      Organization: Number(point.avgScore.toFixed(2)),
-    }
-    for (const series of trends.departmentSeries) {
-      const match = series.points.find((entry) => entry.periodId === point.periodId)
-      if (match) {
-        row[series.department] = Number(match.avgScore.toFixed(2))
-      }
-    }
-    return row
-  })
+  const orgData = trends.orgSeries.map((point) => ({
+    periodName: point.periodName,
+    avgScore: Number(point.avgScore.toFixed(2)),
+    employeeCount: point.employeeCount,
+  }))
 
   return (
     <div className="space-y-6">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
         <Card>
           <CardContent className="p-6">
-            <h3 className="text-lg font-semibold text-foreground mb-4">Score Trajectory</h3>
-            <ResponsiveContainer width="100%" height={360}>
-              <LineChart data={chartData}>
+            <h3 className="text-lg font-semibold text-foreground">Organization Trajectory</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Average overall score across everyone evaluated in each period.
+            </p>
+            <ResponsiveContainer width="100%" height={320}>
+              <LineChart data={orgData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="periodName" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                <YAxis domain={[0, 100]} tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                <XAxis dataKey="periodName" tick={AXIS_TICK} />
+                <YAxis domain={[0, 100]} unit="%" tick={AXIS_TICK} />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'hsl(var(--card))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px',
-                    color: 'hsl(var(--foreground))',
-                  }}
+                  contentStyle={TOOLTIP_STYLE}
+                  formatter={(value, _name, entry) => [
+                    typeof value === 'number'
+                      ? `${value.toFixed(1)}% (${entry?.payload?.employeeCount ?? 0} people)`
+                      : '—',
+                    'Organization',
+                  ]}
                 />
-                <Legend />
                 <Line
                   type="monotone"
-                  dataKey="Organization"
-                  stroke="hsl(var(--foreground))"
+                  dataKey="avgScore"
+                  name="Organization"
+                  stroke="hsl(var(--primary))"
                   strokeWidth={3}
                   dot={{ r: 4 }}
                   animationDuration={900}
                 />
-                {trends.departmentSeries.map((series, index) => (
-                  <Line
-                    key={series.department}
-                    type="monotone"
-                    dataKey={series.department}
-                    stroke={DEPARTMENT_COLORS[index % DEPARTMENT_COLORS.length]}
-                    strokeWidth={2}
-                    strokeOpacity={0.8}
-                    dot={{ r: 3 }}
-                    animationDuration={900}
-                    animationBegin={120 * (index + 1)}
-                  />
-                ))}
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
@@ -172,6 +213,23 @@ export function TrendsTab({ trends, resolveName }: TrendsTabProps) {
           tone="negative"
         />
       </div>
+
+      {trends.departmentSeries.length > 0 && (
+        <div>
+          <h3 className="text-lg font-semibold text-foreground mb-1">
+            By Department ({trends.departmentSeries.length})
+          </h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            Each department on its own axis, 0–100%. Shown side by side rather than overlaid — there
+            are more departments than a palette can distinguish.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {trends.departmentSeries.map((series, index) => (
+              <DepartmentFacet key={series.department} series={series} index={index} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {trends.newJoiners.length > 0 && (
         <Card>
