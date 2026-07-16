@@ -29,7 +29,7 @@ Two facts make a richer build possible now:
 
 - Any new access tier. Analytics stays **admin/leadership-only, org-wide**. No per-lead scoped views, no employee-facing analytics.
 - Precomputed / materialized analytics snapshots. At current data volume (~1k evaluations per period) on-the-fly computation is fast enough; snapshots would add migration and staleness complexity for no benefit.
-- Changes to how scores are calculated, how weights are assigned, or how the four-rating cap behaves. This work **reads** existing semantics; it does not alter them.
+- Changes to how scores are calculated, how weights are assigned, or how the four-rating cap behaves. This work **reads** existing semantics; it does not alter them. **`lib/scoring.ts`, `lib/reports.ts`, and `lib/evaluation-rating-quota.ts` are not modified** — see §5.1.
 - NLP / AI theme extraction from free-text feedback.
 - A "potential" signal. We have none, so the talent grid uses **momentum** as its second axis and says so plainly.
 
@@ -47,11 +47,13 @@ Two facts make a richer build possible now:
 
 **One shared computation, four views.** Every view derives from a single primitive: the **period score matrix**.
 
-### 5.1 Shared normalization helper
+### 5.1 Normalization helper
 
-`lib/scoring.ts` currently computes per-employee scores with many queries per person. The core math (per-question average → per-lens normalized 0–4 → weighted overall) is extracted into a small **pure helper** consumed by *both* `scoring.ts` and the new matrix.
+`lib/scoring.ts` computes per-employee scores with many queries per person. Analytics needs the same math in batched form, so a small **pure helper** (`lib/evaluation-normalization.ts`) mirrors it: per-question average → per-lens normalized 0–4 → weighted overall.
 
-This is the one targeted refactor in scope. Rationale: it makes analytics structurally incapable of disagreeing with individual reports. A guard test asserts the extracted helper reproduces existing `scoring.ts` semantics exactly.
+**`lib/scoring.ts` is not modified.** An earlier draft of this design refactored it to consume the helper, for single-source-of-truth. That was rejected. Analytics is an additive, read-only dashboard — nothing about shipping it requires changing the scorer — and `lib/scoring.ts`, which drives real compensation and promotion decisions, has **no test coverage** (`tests/scoring-logic.test.ts` covers `lib/config.ts` and `types/index.ts` only; it never calls `calculateWeightedScore`). Refactoring untested, business-critical code to tidy a dashboard is the wrong risk trade.
+
+The cost is two implementations of the same math, which could drift. That is mitigated **empirically rather than structurally**: a verification script runs the matrix and `calculateWeightedScore` against real data for every reportable employee and asserts the overall scores are identical (§10). The failure mode that actually matters — the dashboard disagreeing with someone's report — is exactly what the script detects. Re-run it if `scoring.ts` ever changes.
 
 ### 5.2 `lib/analytics/period-score-matrix.ts`
 
@@ -183,11 +185,13 @@ Unit tests via `node:test`, matching the existing `tests/` setup (no live-DB tes
 - **talent-grid** — tertile bucketing including boundary values, momentum dead-band edges (exactly ±3.0), consensus math, `null` consensus with <2 lenses, new joiners.
 - **blind-spots** — self-gap math with weighted others, spread math, the "too few lenses" and "no self score" paths.
 - **calibration** — leniency deviation, the `MIN_RATINGS_FOR_CALIBRATION` threshold, distribution counts, exempt-evaluator handling.
-- **shared normalization helper** — guard test asserting it reproduces `scoring.ts` semantics, so the refactor cannot silently shift anyone's score.
+- **normalization helper** — per-question averaging across evaluators, null-rating and TEXT-question exclusion, lead-authored questions, empty input.
+
+**Equivalence verification (not a unit test).** `scripts/verify-analytics-scores.ts` computes every reportable employee's overall score via both `computePeriodScoreMatrix` and the live `calculateWeightedScore` and asserts a zero difference. This is the real guarantee that the dashboard agrees with individual reports. It is read-only, lives outside the test suite (it needs a database), stays untracked, and prints only opaque cuid employee ids — never names.
 
 ## 11. Risks and constraints
 
-- **Refactor risk.** Extracting the normalization helper touches live scoring. Mitigated by the guard test; no behavior change intended.
+- **Duplicated math / drift.** The normalization helper mirrors logic that also lives inline in `lib/scoring.ts`. If someone edits `scoring.ts` later, analytics could silently diverge from reports. Mitigated by the equivalence script (§10), which should be re-run after any scoring change. Accepted deliberately in exchange for touching no live scoring code.
 - **Thin trend data.** Two periods means one delta. Views degrade gracefully and enrich automatically as periods land.
 - **Relative tertiles.** Cohort-relative placement always fills the grid, which can imply spread where little exists. Mitigated by always showing absolute scores on hover.
 - **Bundle size.** Three.js is lazy-loaded and isolated to one tab.

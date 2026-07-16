@@ -4,7 +4,7 @@
 
 **Goal:** Expand the admin analytics tab with multi-period talent analytics — trends, a 3D Talent Cube, 360 blind spots, and evaluator calibration — built on historical evaluation scores.
 
-**Architecture:** One shared, batched "period score matrix" (every reportable employee's per-lens and overall scores for a period) feeds four pure, independently-testable view modules. The matrix is built on a normalization helper extracted from `lib/scoring.ts`, so analytics is structurally incapable of disagreeing with individual reports. A single admin-gated endpoint returns one combined payload; the client fetches once and switches tabs with no refetch.
+**Architecture:** One shared, batched "period score matrix" (every reportable employee's per-lens and overall scores for a period) feeds four pure, independently-testable view modules. The matrix uses its own pure normalization helper that mirrors `lib/scoring.ts` — **the live scorer is never modified** — and a verification script proves the two produce identical scores against real data. A single admin-gated endpoint returns one combined payload; the client fetches once and switches tabs with no refetch.
 
 **Tech Stack:** Next.js 15 (App Router) · React 18 · TypeScript 5.7 · Prisma 5 / PostgreSQL (Neon) · recharts 3.7 · framer-motion 12 · `@react-three/fiber` + `@react-three/drei` (new, lazy-loaded) · tests via `node:test` + `tsx`
 
@@ -17,7 +17,7 @@ Every task's requirements implicitly include this section.
 - **NEVER run `npm run build`.** The build script is `prisma migrate deploy && next build`, and the local `.env` `DATABASE_URL` points at the **shared production Neon database**. Running it mutates prod. Typecheck with `npx tsc --noEmit`. If a real build is needed, use `npx next build` (skips `migrate deploy`).
 - **NEVER run `prisma migrate deploy`, `prisma migrate dev`, or `prisma db push`.** No schema changes are in scope for this plan.
 - **The GitHub repo is PUBLIC.** No employee names, real scores, emails, or other PII may appear in code, tests, fixtures, comments, or commit messages. All test fixtures use synthetic identifiers (`emp-1`, `dept-a`, `evaluator-1`).
-- **Do not change scoring, weighting, or four-rating-cap behavior.** This work *reads* existing semantics. Task 1 is a pure refactor with a guard test proving no behavior change.
+- **Do not modify `lib/scoring.ts`, `lib/reports.ts`, or `lib/evaluation-rating-quota.ts`.** These drive real compensation and promotion decisions and have no test coverage (`tests/scoring-logic.test.ts` covers `lib/config.ts` and `types/index.ts` only — it never calls `calculateWeightedScore`). Analytics is additive and read-only; it never needs to change them. The matrix mirrors the math in its own helper and Task 2 proves equivalence against real data.
 - **Analytics stays admin-only.** Every new route gates on `getSession()` + `isAdminRole(user.role)`, returning `401` otherwise. No per-lead scoping, no employee-facing views.
 - **No new 2D charting dependency.** `recharts@^3.7.0` and `framer-motion@^12.29.2` are already installed and cover every 2D need.
 - **Code style:** explicit types on all exported functions; `interface` for object shapes; no `any` (use `unknown` + narrowing); immutable updates (spread, no mutation of inputs); no `console.log` (use `console.error` for server-side failures, matching the existing analytics route).
@@ -30,7 +30,7 @@ Every task's requirements implicitly include this section.
 ## File Structure
 
 **Create:**
-- `lib/evaluation-normalization.ts` — pure per-lens normalization + overall-score math. Single source of truth shared by `scoring.ts` and the matrix.
+- `lib/evaluation-normalization.ts` — pure per-lens normalization + overall-score math for analytics. Mirrors `lib/scoring.ts`; equivalence proven by the Task 2 verification script.
 - `lib/analytics/period-score-matrix.ts` — pure matrix builder + batched IO shell.
 - `lib/analytics/trends.ts` — org/department series, movers, new joiners.
 - `lib/analytics/talent-grid.ts` — tertile/momentum banding, consensus, 9-cell labels.
@@ -41,21 +41,19 @@ Every task's requirements implicitly include this section.
 - `tests/evaluation-normalization.test.ts` · `tests/analytics-period-score-matrix.test.ts` · `tests/analytics-trends.test.ts` · `tests/analytics-talent-grid.test.ts` · `tests/analytics-blind-spots.test.ts` · `tests/analytics-calibration.test.ts`
 
 **Modify:**
-- `lib/scoring.ts:264-335` — consume the extracted normalization helper.
 - `app/(hr)/admin/analytics/page.tsx` — becomes a thin shell (period selector + tabs + fetching).
 
-**Unchanged:** `app/api/admin/analytics/route.ts` continues to feed the Overview tab.
+**Unchanged:** `app/api/admin/analytics/route.ts` continues to feed the Overview tab. `lib/scoring.ts`, `lib/reports.ts`, and `lib/evaluation-rating-quota.ts` are not touched by any task.
 
 ---
 
-### Task 1: Shared normalization helper
+### Task 1: Normalization helper
 
-Extract the per-lens scoring math from `lib/scoring.ts` into a pure, shared helper. This is a **pure refactor** — the guard test proves `scoring.ts` behavior is unchanged.
+A pure helper for analytics that mirrors the per-lens scoring math in `lib/scoring.ts`. **`lib/scoring.ts` is not modified** — see Global Constraints. Task 2 proves the two agree against real data.
 
 **Files:**
 - Create: `lib/evaluation-normalization.ts`
 - Create: `tests/evaluation-normalization.test.ts`
-- Modify: `lib/scoring.ts:264-335`
 
 **Interfaces:**
 - Consumes: `getEvaluationQuestionMeta` from `@/lib/pre-evaluation` — returns `{ sourceType, key, questionText, maxRating, questionType } | null`.
@@ -215,8 +213,13 @@ export interface LensNormalization {
  * Each question is first averaged across the evaluators who answered it, so a
  * lens with many evaluators is not weighted more heavily than a lens with one.
  * The per-question averages are then summed and divided by the summed max
- * ratings. This is the single source of truth for lens scoring — `lib/scoring.ts`
- * and the analytics period score matrix both call it.
+ * ratings.
+ *
+ * This mirrors the inline math in `lib/scoring.ts`, which is deliberately left
+ * untouched (it drives real reports and has no test coverage). The two are held
+ * together empirically by `scripts/verify-analytics-scores.ts`, which asserts
+ * both produce identical overall scores against real data. Re-run it if
+ * `lib/scoring.ts` ever changes.
  */
 export function normalizeLensEvaluations(
   evaluations: readonly NormalizableEvaluation[]
@@ -279,59 +282,12 @@ export function computeOverallScorePercent(
 Run: `node --import tsx --test tests/evaluation-normalization.test.ts`
 Expected: PASS — 5 tests
 
-- [ ] **Step 5: Refactor `lib/scoring.ts` to consume the helper**
+- [ ] **Step 5: Confirm `lib/scoring.ts` is untouched**
 
-In `lib/scoring.ts`, add to the imports at the top:
+Run: `git status --short lib/scoring.ts`
+Expected: **no output** — the live scorer must not appear as modified.
 
-```typescript
-import {
-  computeOverallScorePercent,
-  normalizeLensEvaluations,
-} from '@/lib/evaluation-normalization'
-```
-
-Replace the body of the `for (const [relationshipType, typeEvaluations] of evaluationsByType.entries())` loop (currently lines ~264-335) with:
-
-```typescript
-  for (const [relationshipType, typeEvaluations] of evaluationsByType.entries()) {
-    // Skip SELF evaluations in weighted calculation
-    if (relationshipType === 'SELF') {
-      continue
-    }
-
-    const lensEvaluations = filterPooledRelationshipEvaluations(
-      relationshipType,
-      typeEvaluations
-    )
-    const weight = dynamicWeights[relationshipType] ?? 0
-    const normalization = normalizeLensEvaluations(lensEvaluations)
-
-    breakdown.push({
-      relationshipType,
-      weight,
-      rawScore: normalization.rawScore,
-      maxScore: normalization.maxScore,
-      normalizedScore: normalization.normalizedScore,
-      weightedContribution: normalization.normalizedScore * weight,
-      evaluatorCount: normalization.evaluatorCount,
-    })
-  }
-```
-
-Then replace the overall-score computation immediately below it:
-
-```typescript
-  const overallScore = computeOverallScorePercent(breakdown)
-```
-
-Delete the now-unused `totalWeightedContribution` reduction. Note the `SELF` guard moves **above** the normalization work (it previously ran after grouping); this is behavior-preserving because the old code `continue`d before pushing to `breakdown`.
-
-- [ ] **Step 6: Run the scoring guard tests**
-
-Run: `node --import tsx --test tests/scoring-logic.test.ts`
-Expected: PASS — no regressions. This is the guard proving the refactor did not shift any score.
-
-- [ ] **Step 7: Run the full suite and typecheck**
+- [ ] **Step 6: Run the full suite and typecheck**
 
 Run: `npm test`
 Expected: PASS — all tests, including the pre-existing suite.
@@ -339,15 +295,15 @@ Expected: PASS — all tests, including the pre-existing suite.
 Run: `npx tsc --noEmit`
 Expected: no errors.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add lib/evaluation-normalization.ts tests/evaluation-normalization.test.ts lib/scoring.ts
-git commit -m "refactor: extract shared evaluation normalization helper
+git add lib/evaluation-normalization.ts tests/evaluation-normalization.test.ts
+git commit -m "feat: add pure evaluation normalization helper for analytics
 
-Single source of truth for per-lens 0-4 normalization and weighted
-overall score, consumed by lib/scoring.ts and (next) the analytics
-period score matrix. No behavior change - guarded by scoring-logic tests."
+Per-lens 0-4 normalization and weighted overall score, mirroring
+lib/scoring.ts without modifying it. Equivalence is proven against real
+data by the verification script in the next task."
 ```
 
 ---
@@ -736,14 +692,105 @@ Expected: PASS — 4 tests
 Run: `npx tsc --noEmit`
 Expected: no errors.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Write the equivalence verification script**
+
+This is the real guarantee that the dashboard agrees with individual reports. It is **read-only**, needs a database (so it cannot live in the test suite), and is **not committed** — it prints opaque cuid employee ids only, never names.
+
+Create `scripts/verify-analytics-scores.ts`:
+
+```typescript
+/**
+ * Verifies the analytics period score matrix produces the same overall score as
+ * the live scorer (lib/scoring.ts) for every reportable employee, in every
+ * period. This is what holds the two implementations of the normalization math
+ * together — lib/scoring.ts is deliberately never modified.
+ *
+ * READ-ONLY. Re-run this after any change to lib/scoring.ts.
+ * Run: npx tsx scripts/verify-analytics-scores.ts
+ */
+import { prisma } from '../lib/db'
+import { computePeriodScoreMatrix } from '../lib/analytics/period-score-matrix'
+import { calculateWeightedScore } from '../lib/scoring'
+
+/** Both paths do the same float math, so any real difference is far above this. */
+const TOLERANCE = 1e-9
+
+async function main() {
+  const periods = await prisma.evaluationPeriod.findMany({ orderBy: { startDate: 'asc' } })
+  let checked = 0
+  let skipped = 0
+  let mismatches = 0
+
+  for (const period of periods) {
+    const matrix = await computePeriodScoreMatrix(period.id)
+    if (!matrix || matrix.scores.length === 0) {
+      console.log(`${period.name}: no scores, skipping`)
+      continue
+    }
+
+    for (const entry of matrix.scores) {
+      let expected: number
+      try {
+        expected = (await calculateWeightedScore(entry.employeeId, period.id)).overallScore
+      } catch (error) {
+        skipped++
+        console.log(`${period.name} ${entry.employeeId}: scorer threw, skipping (${(error as Error).message})`)
+        continue
+      }
+
+      checked++
+      const diff = Math.abs(entry.overallScore - expected)
+      if (diff > TOLERANCE) {
+        mismatches++
+        console.error(
+          `MISMATCH ${period.name} ${entry.employeeId}: matrix=${entry.overallScore.toFixed(6)} scorer=${expected.toFixed(6)} diff=${diff.toFixed(6)}`
+        )
+      }
+    }
+    console.log(`${period.name}: compared ${matrix.scores.length} employees`)
+  }
+
+  console.log(`\nChecked ${checked} employee-period scores (${skipped} skipped).`)
+  console.log(
+    mismatches === 0
+      ? 'PASS: the matrix matches the live scorer exactly.'
+      : `FAIL: ${mismatches} mismatches.`
+  )
+  await prisma.$disconnect()
+  process.exit(mismatches === 0 ? 0 : 1)
+}
+
+main().catch(async (error) => {
+  console.error(error)
+  await prisma.$disconnect()
+  process.exit(1)
+})
+```
+
+- [ ] **Step 7: Run the verification and require a zero diff**
+
+Run: `npx tsx scripts/verify-analytics-scores.ts`
+
+Expected: `PASS: the matrix matches the live scorer exactly.` and exit code 0.
+
+This compares roughly 90 employees per period against the live scorer, so it takes a few minutes. **If any mismatch appears, STOP** — the matrix's pooling, weighting, or normalization diverges from the scorer, and every downstream view would inherit the error. Fix the matrix (never `lib/scoring.ts`) and re-run until the diff is zero.
+
+- [ ] **Step 8: Confirm the live scorer is still untouched**
+
+Run: `git status --short lib/scoring.ts lib/reports.ts lib/evaluation-rating-quota.ts`
+Expected: **no output**.
+
+- [ ] **Step 9: Commit**
+
+The verification script stays untracked — it is a local, DB-dependent tool, matching the existing `scripts/verify-*.ts` pattern in this repo.
 
 ```bash
 git add lib/analytics/period-score-matrix.ts tests/analytics-period-score-matrix.test.ts
 git commit -m "feat: add batched analytics period score matrix
 
-Pure builder (unit tested) plus a bulk-loading IO shell that mirrors
-lib/scoring.ts semantics without a per-employee query fan-out."
+Pure builder (unit tested) plus a bulk-loading IO shell mirroring
+lib/scoring.ts semantics without a per-employee query fan-out. Verified
+against the live scorer on real data with a zero-diff equivalence run."
 ```
 
 ---
@@ -4142,5 +4189,6 @@ After Task 14, confirm the whole feature:
 - [ ] Three.js loads only after opening the Talent Grid tab (DevTools → Network on a fresh reload).
 - [ ] With `prefers-reduced-motion: reduce`, the Talent Grid defaults to 2D.
 - [ ] Signing in as a non-admin and hitting `/api/admin/analytics/insights` returns `401`.
-- [ ] Individual reports are unchanged: open a report generated before Task 1 and confirm the overall score matches.
+- [ ] `npx tsx scripts/verify-analytics-scores.ts` still passes with a zero diff.
+- [ ] `git diff main --stat -- lib/scoring.ts lib/reports.ts lib/evaluation-rating-quota.ts` is empty — no live scoring code was touched.
 - [ ] `git log --oneline` shows one commit per task.
