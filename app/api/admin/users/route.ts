@@ -11,6 +11,16 @@ import {
 import { isPlutusEmail } from '@/lib/onboarding'
 
 const VALID_USER_ROLES = ['EMPLOYEE', 'HR', 'SECURITY', 'OA', 'EXECUTION'] as const
+const VALID_TEAM_TAGS = [
+  'PAKISTAN',
+  'MOROCCO',
+  'COLOMBIA',
+  'INDONESIA',
+  'NOBLE',
+  'THREE_E_PAKISTAN',
+  'THREE_E_MOROCCO',
+] as const
+
 const SAFE_USER_RESPONSE_SELECT = {
   id: true,
   name: true,
@@ -21,6 +31,7 @@ const SAFE_USER_RESPONSE_SELECT = {
   role: true,
   onboardingCompleted: true,
   benefitCategoryId: true,
+  teamTag: true,
   createdAt: true,
   updatedAt: true,
 } as const
@@ -162,6 +173,7 @@ export async function GET(_request: NextRequest) {
         role: true,
         onboardingCompleted: true,
         benefitCategoryId: true,
+        teamTag: true,
         createdAt: true,
         benefitCategory: {
           select: {
@@ -274,6 +286,7 @@ export async function POST(request: NextRequest) {
       isNewHire,
       newHireId,
       benefitCategoryId,
+      teamTag,
       payrollProfile,
     } = (await request.json()) as {
       name?: string
@@ -286,6 +299,7 @@ export async function POST(request: NextRequest) {
       isNewHire?: boolean
       newHireId?: string | null
       benefitCategoryId?: string | null
+      teamTag?: string | null
       payrollProfile?: PayrollProfilePayload
     }
 
@@ -352,6 +366,11 @@ export async function POST(request: NextRequest) {
       passwordHash = await bcrypt.hash(password, 10)
     }
 
+    const normalizedTeamTag = normalizeOptionalString(teamTag)
+    if (normalizedTeamTag && !VALID_TEAM_TAGS.includes(normalizedTeamTag as (typeof VALID_TEAM_TAGS)[number])) {
+      return NextResponse.json({ error: 'Invalid team tag' }, { status: 400 })
+    }
+
     const newUser = await prisma.$transaction(async (tx) => {
       const createdUser = await tx.user.create({
         data: {
@@ -363,6 +382,7 @@ export async function POST(request: NextRequest) {
           role: normalizedRole as (typeof VALID_USER_ROLES)[number],
           passwordHash,
           benefitCategoryId: normalizedBenefitCategoryId || null,
+          teamTag: (normalizedTeamTag as (typeof VALID_TEAM_TAGS)[number]) || null,
           onboardingCompleted: shouldCreateAsNewHire ? false : true,
         },
         select: SAFE_USER_RESPONSE_SELECT,
@@ -435,6 +455,7 @@ export async function PUT(request: NextRequest) {
       position,
       role,
       benefitCategoryId,
+      teamTag,
       payrollProfile,
     } = (await request.json()) as {
       id?: string
@@ -445,11 +466,17 @@ export async function PUT(request: NextRequest) {
       position?: string | null
       role?: string
       benefitCategoryId?: string | null
+      teamTag?: string | null
       payrollProfile?: PayrollProfilePayload
     }
 
     if (!id || !name) {
       return NextResponse.json({ error: 'ID and name are required' }, { status: 400 })
+    }
+
+    const normalizedTeamTag = normalizeOptionalString(teamTag)
+    if (normalizedTeamTag && !VALID_TEAM_TAGS.includes(normalizedTeamTag as (typeof VALID_TEAM_TAGS)[number])) {
+      return NextResponse.json({ error: 'Invalid team tag' }, { status: 400 })
     }
 
     const normalizedRole = typeof role === 'string' ? role.toUpperCase() : 'EMPLOYEE'
@@ -479,6 +506,10 @@ export async function PUT(request: NextRequest) {
         position: position || null,
         role: normalizedRole as (typeof VALID_USER_ROLES)[number],
         ...(benefitCategoryId !== undefined ? { benefitCategoryId: normalizedBenefitCategoryId } : {}),
+        // Omitting teamTag leaves it untouched; sending null clears it.
+        ...(teamTag !== undefined
+          ? { teamTag: (normalizedTeamTag as (typeof VALID_TEAM_TAGS)[number]) ?? null }
+          : {}),
       },
       select: SAFE_USER_RESPONSE_SELECT,
     })

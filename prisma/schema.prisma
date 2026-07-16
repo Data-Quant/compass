@@ -18,6 +18,27 @@ enum UserRole {
   EXECUTION
 }
 
+/// Person-level team. Exactly one per user; drives Handbook visibility.
+/// "Everyone" and "Plutus21 Internal Team" are derived groups, never stored.
+enum TeamTag {
+  PAKISTAN
+  MOROCCO
+  COLOMBIA
+  INDONESIA
+  NOBLE
+  THREE_E_PAKISTAN
+  THREE_E_MOROCCO
+}
+
+enum HandbookCategory {
+  START_HERE
+  THE_COMPANY
+  POLICIES
+  BENEFITS_AND_REWARDS
+  PERFORMANCE
+  HOW_TO
+}
+
 enum SubscriptionStatus {
   ACTIVE
   CANCELED
@@ -272,6 +293,7 @@ model User {
   role         UserRole @default(EMPLOYEE)
   onboardingCompleted Boolean @default(true)
   benefitCategoryId String?
+  teamTag           TeamTag?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   
@@ -1884,4 +1906,54 @@ model TaskLabelAssignment {
   @@unique([taskId, labelId])
   @@index([taskId])
   @@index([labelId])
+}
+
+// ─── Company Handbook ────────────────────────────────────────────────────────
+// A page is the concept (Leave Policy); a variant is the content addressed to a
+// set of teams. The source document holds four distinct Leave Policies and five
+// Core Hours Policies -- same title, different teams, different terms -- so a
+// page cannot be a single row carrying a list of tags.
+
+model HandbookPage {
+  id                  String            @id @default(cuid())
+  slug                String            @unique
+  title               String
+  icon                String
+  category            HandbookCategory
+  orderIndex          Int               @default(0)
+  linkHref            String?
+  linkLabel           String?
+  isPublished         Boolean           @default(false)
+  /// Teams for which having no variant is a reviewed, deliberate decision.
+  intentionalGapTeams TeamTag[]
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  variants            HandbookVariant[]
+
+  @@index([category, orderIndex])
+}
+
+model HandbookVariant {
+  id           String             @id @default(cuid())
+  pageId       String
+  bodyMarkdown String             @db.Text
+  orderIndex   Int                @default(0)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  page         HandbookPage       @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  audiences    HandbookAudience[]
+
+  @@index([pageId])
+}
+
+model HandbookAudience {
+  variantId String
+  team      TeamTag
+
+  variant   HandbookVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@id([variantId, team])
+  @@index([team])
 }

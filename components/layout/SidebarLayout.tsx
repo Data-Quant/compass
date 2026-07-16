@@ -19,6 +19,7 @@ interface LayoutUser {
   role: string
   onboardingCompleted: boolean
   benefitCategoryId?: string | null
+  teamTag?: string | null
   email?: string | null
   discordId?: string | null
   department?: string
