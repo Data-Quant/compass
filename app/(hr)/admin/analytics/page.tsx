@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/select'
 import { AlertCircle } from 'lucide-react'
 import { OverviewTab } from '@/components/analytics/OverviewTab'
+import { TrendsTab } from '@/components/analytics/TrendsTab'
 import type { Analytics, InsightsPayload } from '@/components/analytics/types'
 
 export default function AnalyticsPage() {
@@ -146,7 +147,11 @@ export default function AnalyticsPage() {
           <OverviewTab analytics={analytics} />
         </TabsContent>
         <TabsContent value="trends">
-          <div className="text-muted-foreground">Trends view arrives in the next task.</div>
+          {insights ? (
+            <TrendsTab trends={insights.trends} resolveName={resolveName} />
+          ) : (
+            <div className="text-muted-foreground">No insight data available.</div>
+          )}
         </TabsContent>
         <TabsContent value="talent">
           <div className="text-muted-foreground">Talent Grid arrives in a later task.</div>
