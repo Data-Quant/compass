@@ -16,6 +16,7 @@ import { AlertCircle } from 'lucide-react'
 import { OverviewTab } from '@/components/analytics/OverviewTab'
 import { TrendsTab } from '@/components/analytics/TrendsTab'
 import { CalibrationTab } from '@/components/analytics/CalibrationTab'
+import { BlindSpotsTab } from '@/components/analytics/BlindSpotsTab'
 import type { Analytics, InsightsPayload } from '@/components/analytics/types'
 
 export default function AnalyticsPage() {
@@ -24,6 +25,14 @@ export default function AnalyticsPage() {
   const [periodId, setPeriodId] = useState<string>('active')
   const [loading, setLoading] = useState(true)
   const [namesById, setNamesById] = useState<Record<string, string>>({})
+  const [tab, setTab] = useState('overview')
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null)
+
+  // Selecting a person anywhere opens their 360 radar in Blind Spots.
+  const handleSelectEmployee = useCallback((employeeId: string) => {
+    setSelectedEmployeeId(employeeId)
+    setTab('blindspots')
+  }, [])
 
   const loadData = useCallback(async (selectedPeriodId: string) => {
     setLoading(true)
@@ -135,7 +144,7 @@ export default function AnalyticsPage() {
         )}
       </div>
 
-      <Tabs defaultValue="overview">
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="mb-6">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="trends">Trends</TabsTrigger>
@@ -158,7 +167,16 @@ export default function AnalyticsPage() {
           <div className="text-muted-foreground">Talent Grid arrives in a later task.</div>
         </TabsContent>
         <TabsContent value="blindspots">
-          <div className="text-muted-foreground">Blind Spots arrives in a later task.</div>
+          {insights ? (
+            <BlindSpotsTab
+              blindSpots={insights.blindSpots}
+              resolveName={resolveName}
+              selectedEmployeeId={selectedEmployeeId}
+              onSelectEmployee={handleSelectEmployee}
+            />
+          ) : (
+            <div className="text-muted-foreground">No insight data available.</div>
+          )}
         </TabsContent>
         <TabsContent value="calibration">
           {insights ? (
