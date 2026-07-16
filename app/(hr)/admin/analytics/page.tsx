@@ -17,6 +17,7 @@ import { OverviewTab } from '@/components/analytics/OverviewTab'
 import { TrendsTab } from '@/components/analytics/TrendsTab'
 import { CalibrationTab } from '@/components/analytics/CalibrationTab'
 import { BlindSpotsTab } from '@/components/analytics/BlindSpotsTab'
+import { TalentGridTab } from '@/components/analytics/TalentGridTab'
 import type { Analytics, InsightsPayload } from '@/components/analytics/types'
 
 export default function AnalyticsPage() {
@@ -164,7 +165,15 @@ export default function AnalyticsPage() {
           )}
         </TabsContent>
         <TabsContent value="talent">
-          <div className="text-muted-foreground">Talent Grid arrives in a later task.</div>
+          {insights ? (
+            <TalentGridTab
+              talentGrid={insights.talentGrid}
+              resolveName={resolveName}
+              onSelectEmployee={handleSelectEmployee}
+            />
+          ) : (
+            <div className="text-muted-foreground">No insight data available.</div>
+          )}
         </TabsContent>
         <TabsContent value="blindspots">
           {insights ? (
