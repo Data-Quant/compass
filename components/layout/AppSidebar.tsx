@@ -35,6 +35,7 @@ import {
   PackageSearch,
   Building2,
   UserCheck,
+  BookOpen,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -69,6 +70,7 @@ export const EMPLOYEE_SIDEBAR: SidebarConfig = {
     { label: 'Projects', href: '/projects', icon: FolderKanban },
     { label: 'Device Support', href: '/device-support', icon: Monitor },
     { label: 'Office', href: '/office', icon: Building2 },
+    { label: 'Handbook', href: '/handbook', icon: BookOpen },
     { label: 'Profile', href: '/profile', icon: User },
   ],
   groups: [],
