@@ -1,5 +1,7 @@
 'use client'
 
+import { useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { motion } from 'framer-motion'
 import {
   CartesianGrid,
@@ -14,7 +16,40 @@ import {
   ZAxis,
 } from 'recharts'
 import { Card, CardContent } from '@/components/ui/card'
-import { Grid3x3 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Box, Grid2x2, Grid3x3 } from 'lucide-react'
+
+// Lazy-loaded so three.js never lands in the initial page bundle.
+const TalentCube = dynamic(() => import('@/components/analytics/TalentCube'), {
+  ssr: false,
+  loading: () => (
+    <div className="h-[520px] flex items-center justify-center text-muted-foreground">
+      Loading 3D view…
+    </div>
+  ),
+})
+
+/** WebGL is required for the cube; fall back to the 2D grid when unavailable. */
+function useWebGLSupport(): boolean | null {
+  const [supported, setSupported] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    try {
+      const canvas = document.createElement('canvas')
+      const context = canvas.getContext('webgl2') || canvas.getContext('webgl')
+      setSupported(Boolean(context))
+    } catch {
+      setSupported(false)
+    }
+  }, [])
+
+  return supported
+}
+
+function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined') return false
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
 import {
   MOMENTUM_DEAD_BAND,
   type TalentGridEntry,
@@ -82,6 +117,16 @@ function TalentTooltip({
 }
 
 export function TalentGridTab({ talentGrid, resolveName, onSelectEmployee }: TalentGridTabProps) {
+  const webglSupported = useWebGLSupport()
+  const [view, setView] = useState<'3d' | '2d'>('2d')
+
+  useEffect(() => {
+    // Default to the cube only where it will look and perform well.
+    if (webglSupported && !prefersReducedMotion()) {
+      setView('3d')
+    }
+  }, [webglSupported])
+
   const plotted: PlottedEntry[] = talentGrid.entries.map((entry) => ({
     ...entry,
     name: resolveName(entry.employeeId),
@@ -107,14 +152,36 @@ export function TalentGridTab({ talentGrid, resolveName, onSelectEmployee }: Tal
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
         <Card>
           <CardContent className="p-6">
-            <div className="flex items-center gap-2 mb-1">
-              <Grid3x3 className="w-5 h-5 text-primary" />
-              <h3 className="text-lg font-semibold text-foreground">Talent Grid</h3>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <div className="flex items-center gap-2">
+                <Grid3x3 className="w-5 h-5 text-primary" />
+                <h3 className="text-lg font-semibold text-foreground">Talent Grid</h3>
+              </div>
+              {webglSupported && (
+                <div className="flex gap-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={view === '3d' ? 'default' : 'outline'}
+                    onClick={() => setView('3d')}
+                  >
+                    <Box className="w-4 h-4 mr-1" /> 3D
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={view === '2d' ? 'default' : 'outline'}
+                    onClick={() => setView('2d')}
+                  >
+                    <Grid2x2 className="w-4 h-4 mr-1" /> 2D
+                  </Button>
+                </div>
+              )}
             </div>
             <p className="text-sm text-muted-foreground mb-3">
-              Performance vs. momentum. Dot size shows evaluator consensus — smaller means opinions
-              are split. Placement is relative to this period&apos;s cohort; hover for real scores,
-              click to open their 360 radar.
+              {view === '3d'
+                ? 'Performance vs. momentum vs. consensus. Depth is how tightly evaluators agree — a high performer everyone agrees on is a different call from one whose reviews are split. Drag to orbit, hover for real scores, click to open their 360 radar.'
+                : "Performance vs. momentum. Dot size shows evaluator consensus — smaller means opinions are split. Placement is relative to this period's cohort; hover for real scores, click to open their 360 radar."}
             </p>
             <div className="flex flex-wrap items-center gap-4 mb-4">
               {(['HIGH', 'MID', 'LOW'] as const).map((band) => (
@@ -130,6 +197,13 @@ export function TalentGridTab({ talentGrid, resolveName, onSelectEmployee }: Tal
                 dashed lines mark the ±{MOMENTUM_DEAD_BAND}pt &ldquo;stable&rdquo; band
               </span>
             </div>
+            {view === '3d' && webglSupported ? (
+              <TalentCube
+                entries={talentGrid.entries}
+                resolveName={resolveName}
+                onSelect={onSelectEmployee}
+              />
+            ) : (
             <ResponsiveContainer width="100%" height={460}>
               <ScatterChart margin={{ top: 16, right: 24, bottom: 16, left: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -176,6 +250,7 @@ export function TalentGridTab({ talentGrid, resolveName, onSelectEmployee }: Tal
                 </Scatter>
               </ScatterChart>
             </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
       </motion.div>
