@@ -32,6 +32,26 @@ import { Users, Plus, Search, Upload, Edit2, Trash2, UserCheck, Shield, Key, Eye
 
 const MotionTableRow = motion(TableRow)
 
+type TeamTagValue =
+  | 'PAKISTAN'
+  | 'MOROCCO'
+  | 'COLOMBIA'
+  | 'INDONESIA'
+  | 'NOBLE'
+  | 'THREE_E_PAKISTAN'
+  | 'THREE_E_MOROCCO'
+
+/** Drives which Handbook content a person sees. Exactly one per user. */
+const TEAM_TAG_OPTIONS: { value: TeamTagValue; label: string }[] = [
+  { value: 'PAKISTAN', label: 'Pakistan Team' },
+  { value: 'MOROCCO', label: 'Morocco Team' },
+  { value: 'COLOMBIA', label: 'Colombia Team' },
+  { value: 'INDONESIA', label: 'Indonesia Team' },
+  { value: 'NOBLE', label: 'Noble Team' },
+  { value: 'THREE_E_PAKISTAN', label: '3E Pakistan Team' },
+  { value: 'THREE_E_MOROCCO', label: '3E Morocco Team' },
+]
+
 interface User {
   id: string
   name: string
@@ -42,6 +62,7 @@ interface User {
   role: 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA' | 'EXECUTION'
   onboardingCompleted: boolean
   benefitCategoryId: string | null
+  teamTag: TeamTagValue | null
   benefitCategory?: {
     id: string
     name: string
@@ -154,6 +175,7 @@ export default function UsersPage() {
     position: '',
     role: 'EMPLOYEE',
     benefitCategoryId: '',
+    teamTag: '',
     isNewHire: false,
     newHireId: '',
   })
@@ -226,6 +248,7 @@ export default function UsersPage() {
         position: user.position || '',
         role: user.role,
         benefitCategoryId: user.benefitCategoryId || '',
+        teamTag: user.teamTag || '',
         isNewHire: false,
         newHireId: user.newHireRecord?.id || '',
       })
@@ -255,6 +278,7 @@ export default function UsersPage() {
         position: '',
         role: 'EMPLOYEE',
         benefitCategoryId: '',
+        teamTag: '',
         isNewHire: false,
         newHireId: '',
       })
@@ -377,6 +401,7 @@ export default function UsersPage() {
             position: formData.position,
             role: formData.role,
             benefitCategoryId: formData.benefitCategoryId || null,
+            teamTag: formData.teamTag || null,
             payrollProfile,
           }
         : {
@@ -387,6 +412,7 @@ export default function UsersPage() {
             position: formData.position,
             role: formData.role,
             benefitCategoryId: formData.benefitCategoryId || null,
+            teamTag: formData.teamTag || null,
             isNewHire: formData.isNewHire,
             newHireId: formData.isNewHire ? formData.newHireId || null : null,
             payrollProfile,
@@ -775,6 +801,29 @@ export default function UsersPage() {
                 <SelectItem value="EXECUTION">Execution</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div>
+            <Label className="mb-1">Team</Label>
+            <Select
+              value={formData.teamTag || '__none__'}
+              onValueChange={(v) => setFormData({ ...formData, teamTag: v === '__none__' ? '' : v })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select team" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">Not set</SelectItem>
+                {TEAM_TAG_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Controls which Handbook content this person sees.
+            </p>
           </div>
 
           <div>
