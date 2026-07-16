@@ -1,10 +1,11 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { getPageBySlug } from '@/lib/handbook/queries'
 import { toDetailResponse } from '@/lib/handbook/audience'
+import { resolvePreviewTeam } from '@/lib/handbook/preview'
 
 export async function GET(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
@@ -19,7 +20,8 @@ export async function GET(
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
-    const detail = toDetailResponse(page, user.teamTag)
+    const tag = resolvePreviewTeam(request.nextUrl.searchParams.get('previewTeam'), user)
+    const detail = toDetailResponse(page, tag)
     if (!detail) {
       // The page exists but nothing addresses this user's team, or it is
       // unpublished. A 404 is correct -- rendering an empty page would imply

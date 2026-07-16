@@ -1,8 +1,8 @@
 'use client'
 
-import { use, useEffect, useState } from 'react'
+import { Suspense, use, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { ArrowLeft, FileQuestion } from 'lucide-react'
 import * as Icons from 'lucide-react'
@@ -22,21 +22,24 @@ type Detail = {
   bodyMarkdown: string
 }
 
-export default function HandbookDetailPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>
-}) {
+function HandbookDetailInner({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const previewTeam = searchParams.get('previewTeam')
   const [detail, setDetail] = useState<Detail | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [loading, setLoading] = useState(true)
 
+  const backHref = previewTeam
+    ? `/handbook?previewTeam=${encodeURIComponent(previewTeam)}`
+    : '/handbook'
+
   useEffect(() => {
     let cancelled = false
+    const qs = previewTeam ? `?previewTeam=${encodeURIComponent(previewTeam)}` : ''
 
-    fetch(`/api/handbook/${slug}`)
+    fetch(`/api/handbook/${slug}${qs}`)
       .then(async (r) => {
         if (!r.ok) {
           if (!cancelled) setNotFound(true)
@@ -57,7 +60,7 @@ export default function HandbookDetailPage({
     return () => {
       cancelled = true
     }
-  }, [slug])
+  }, [slug, previewTeam])
 
   if (loading) return <LoadingScreen />
 
@@ -69,10 +72,7 @@ export default function HandbookDetailPage({
           title="Not available for your team"
           description="This section either doesn't exist or isn't part of your team's handbook."
           action={
-            <Link
-              href="/handbook"
-              className="text-sm text-primary underline underline-offset-2"
-            >
+            <Link href={backHref} className="text-sm text-primary underline underline-offset-2">
               Back to the Handbook
             </Link>
           }
@@ -92,7 +92,7 @@ export default function HandbookDetailPage({
         className="mb-8"
       >
         <Link
-          href="/handbook"
+          href={backHref}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -124,5 +124,14 @@ export default function HandbookDetailPage({
         </Card>
       </motion.div>
     </div>
+  )
+}
+
+// useSearchParams requires a Suspense boundary in the App Router.
+export default function HandbookDetailPage({ params }: { params: Promise<{ slug: string }> }) {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <HandbookDetailInner params={params} />
+    </Suspense>
   )
 }
