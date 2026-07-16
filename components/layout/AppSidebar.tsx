@@ -136,6 +136,7 @@ export const ADMIN_SIDEBAR: SidebarConfig = {
         { label: 'Payroll', href: '/admin/payroll', icon: Wallet },
         { label: 'Subscription Management', href: '/admin/subscriptions', icon: Wallet },
         { label: 'Office', href: '/office', icon: Building2 },
+        { label: 'Handbook', href: '/admin/handbook', icon: BookOpen },
       ],
     },
     {
