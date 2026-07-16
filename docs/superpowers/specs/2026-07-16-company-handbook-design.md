@@ -1,7 +1,7 @@
 # Company Handbook — Notion → Compass Migration (Design)
 
 **Date:** 2026-07-16
-**Status:** Design approved, pending spec review
+**Status:** Approved — implementation plan to follow
 **Source:** `Company Dashboard Migration_ Notion to Compass.docx` (untracked, stays untracked)
 
 ---
@@ -69,9 +69,12 @@ They exist only as one-click expansions in the editor, which write the underlyin
 
 ### 3.3 Coverage — reviewed and confirmed
 
-Every gap below was reviewed and ruled on during design (2026-07-16). These are the **approved
-baseline audiences**, not open questions. Pages visible per team: Pakistan 21, Morocco 20,
-Colombia 20, Indonesia 17, Noble 17, 3E Pakistan 13, 3E Morocco 13.
+Every gap below was reviewed and ruled on during design (2026-07-16).
+
+**Seeded audiences reproduce the source document's tags exactly. There are no deviations.** Where
+the source is silent, the Handbook is silent — we transcribe policy, we do not author it. Pages
+visible per team: Pakistan 21, Morocco 20, Colombia 20, Indonesia 15, Noble 15, 3E Pakistan 13,
+3E Morocco 13.
 
 | Page | Teams covered | Status |
 |---|---|---|
@@ -80,20 +83,20 @@ Colombia 20, Indonesia 17, Noble 17, 3E Pakistan 13, 3E Morocco 13.
 | Maternity Leave | Pakistan, Morocco, Colombia | ✅ Intentional — confirmed, gap stands |
 | Principles of Conduct | Pakistan, Morocco, Colombia, Indonesia | ✅ Intentional — confirmed, gap stands |
 | Team Reviews · Performance Evaluation · Discord Guide | Plutus21 Internal | ✅ Intentional |
-| Benefits | Pakistan, Morocco, Colombia, Noble | ✅ Intentional for 3E ×2 · ⚠ **Indonesia genuinely pending** (§9.1, §13.1) |
-| Company Equipment | **All seven** | 🔧 **Widened** from source — see below |
-| SOP: Faulty Equipment | **All seven** | 🔧 **Widened** from source — see below |
+| Benefits | Pakistan, Morocco, Colombia, Noble | ✅ Intentional for 3E ×2 · ⚠ Indonesia pending HR (§9.1) |
+| Company Equipment | Pakistan, Morocco, Colombia, 3E Pakistan, 3E Morocco | ⚠ Indonesia + Noble — unresolved, see below |
+| SOP: Faulty Equipment | Pakistan, Morocco, Colombia, 3E Pakistan, 3E Morocco | ⚠ Indonesia + Noble — unresolved, see below |
 
-**Approved deviation from the source.** The document tags Company Equipment Policy and the
-Faulty-Equipment SOP for every team *except* Indonesia and Noble — yet both teams' own benefits
-sections state they are issued a company laptop and phone. Equipment issued with no policy
-governing its care, return or replacement is a contradiction in the source, not a deliberate
-exclusion. Both audiences are therefore seeded to all seven teams. This is the only place the
-seeded audiences knowingly differ from the document's tags; it is recorded here so the difference
-is traceable rather than looking like a seeding bug.
+**The equipment contradiction — surfaced, not silently resolved.** The source tags Company
+Equipment Policy and the Faulty-Equipment SOP for every team *except* Indonesia and Noble, yet
+both teams' own benefits sections state they are issued a company laptop and phone. That is a
+contradiction in the source.
 
-The confirmed-intentional gaps are seeded as-is. The coverage grid (§6.1) marks them as reviewed
-so they read as decisions rather than outstanding work.
+We are not resolving it by inference. Widening the audience ourselves would mean asserting to two
+teams that a policy governs them when no one has said so — authoring policy under the guise of
+migrating it. The seed follows the source; the four resulting gaps are left **⚠ unreviewed** so
+the coverage grid puts the contradiction in front of HR, who can widen the audience in two clicks
+if that is the intent. Deciding this is HR's job, not the migration's (C5).
 
 ---
 
@@ -191,10 +194,9 @@ No inference is performed (§6.3), so on the day this ships **every user has `te
 Under strict matching they would match nothing and see an empty Handbook.
 
 Rule: **an untagged user sees pages having a single variant addressed to all seven teams** — the
-genuinely universal content. Eleven pages qualify: Welcome, Vision & Values, Our Offices, Our
-Businesses, Zero Tolerance, Social Media, Inventions & Confidentiality, Termination, Approved
-Vendors, and — following the §3.3 widening — Company Equipment and SOP: Faulty Equipment. Plus a
-banner: *"Your team hasn't been set yet — some sections are hidden. Contact HR."*
+genuinely universal content. Nine pages qualify: Welcome, Vision & Values, Our Offices, Our
+Businesses, Zero Tolerance, Social Media, Inventions & Confidentiality, Termination, and Approved
+Vendors. Plus a banner: *"Your team hasn't been set yet — some sections are hidden. Contact HR."*
 
 Note the rule is deliberately *one variant covering seven teams*, not *seven teams covered across
 variants*. Leave Policy and Core Hours Policy each reach all seven teams collectively, but only by
@@ -229,10 +231,20 @@ forever, and real omissions would hide in the noise.
 | – Intentional | Team is in `intentionalGapTeams` — reviewed, deliberate | Reopen the decision |
 | ⚠ Unreviewed | No variant, no decision | Create a variant, or mark the gap intentional |
 
-Seeded state has **exactly one ⚠ cell — Benefits × Indonesia** — which is precisely the one real
-outstanding item (§13.1). Every other gap is either covered or recorded as intentional per §13.
-That is the design working: the grid opens showing one thing that needs doing, not eight things
-that don't.
+Seeded state has **exactly five ⚠ cells**, and each is a genuine open question rather than noise:
+
+| Cell | Why it flags |
+|---|---|
+| Benefits × Indonesia | Source has no Indonesia benefits section (§9.1) |
+| Company Equipment × Indonesia | The equipment contradiction (§3.3) |
+| Company Equipment × Noble | ″ |
+| SOP: Faulty Equipment × Indonesia | ″ |
+| SOP: Faulty Equipment × Noble | ″ |
+
+The grid is 21 × 7 = 147 cells: **117 covered, 25 intentional gaps, 5 unreviewed.** Every
+intentional gap renders as a quiet `–`. So the grid opens showing five things that need a
+decision rather than thirty that mostly don't — which is the whole point of separating a decision
+from an omission.
 
 ### 6.2 User (`/handbook`)
 
@@ -439,14 +451,21 @@ auditable and nobody re-opens a settled question.
 |---|---|
 | Maternity Leave for Indonesia / Noble / 3E ×2? | **No.** Gap is correct; audience stays Pakistan, Morocco, Colombia. |
 | Principles of Conduct for Noble / 3E ×2? | **No.** Gap is correct; audience stays Pakistan, Morocco, Colombia, Indonesia. |
-| Company Equipment + Faulty-Equipment SOP for Indonesia / Noble? | **Yes — widen both to all seven.** Both teams receive company equipment per their benefits sections. Deviates from the source's tags by design (§3.3). |
+| Company Equipment + Faulty-Equipment SOP for Indonesia / Noble? | **Follow the source — do not widen.** Reversed from an earlier call to extend them. The contradiction is real but resolving it is HR's decision, not the migration's; the gaps flag on the grid (§3.3). |
 | Indonesia benefits? | **Leave empty.** The source has none; HR fills in-app. |
 | IC (contractor) benefits? | **Leave empty.** The source never separates Employee from IC; HR fills in-app. |
 
+**The governing principle, applied consistently:** this migration transcribes the source. Where the
+source is silent, the Handbook is silent and the grid asks HR. Nothing is authored, widened or
+inferred on our side — the same reasoning that rejected tag inference (§6.3), empty IC benefit
+categories (§9.1) and guessing for untagged users (§5.1). One rule, five applications.
+
 ### 13.1 Remaining HR follow-ups
 
-Neither blocks implementation. Both are content-entry tasks in the existing benefits admin UI,
-surfaced by the coverage grid.
+None blocks implementation. All are resolved in-app — the first two in the existing benefits admin
+UI, the third on the coverage grid.
 
 1. Enter the Indonesia benefits package, if one exists.
 2. Enter the IC (contractor) benefits for each region.
+3. Decide whether Company Equipment Policy and the Faulty-Equipment SOP should cover Indonesia and
+   Noble, given both teams are issued company equipment (§3.3).
