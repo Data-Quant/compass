@@ -10,6 +10,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { VariantEditor, type EditableVariant } from '@/components/handbook/VariantEditor'
 import { ALL_TEAMS, TEAM_LABELS } from '@/lib/handbook/teams'
@@ -25,6 +32,8 @@ type AdminPage = {
   linkHref: string | null
   linkLabel: string | null
   isPublished: boolean
+  description: string | null
+  layout: 'POLICY' | 'LETTER' | null
   intentionalGapTeams: string[]
   variants: EditableVariant[]
 }
@@ -189,6 +198,43 @@ export default function AdminHandbookPageEditor({ params }: { params: Promise<{ 
                 }
               />
             </div>
+          </div>
+
+          <div>
+            <Label htmlFor="description" className="mb-1">
+              Description
+            </Label>
+            <Input
+              id="description"
+              defaultValue={page.description || ''}
+              placeholder="One line — shown under the title and searched over"
+              onBlur={(e) =>
+                e.target.value !== (page.description || '') &&
+                savePage({ description: e.target.value || null })
+              }
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Employees see this under the page title, and search matches against it. On a letter it
+              also appears as the label above the body.
+            </p>
+          </div>
+
+          <div>
+            <Label htmlFor="layout" className="mb-1">
+              Layout
+            </Label>
+            <Select
+              value={page.layout ?? 'POLICY'}
+              onValueChange={(v) => savePage({ layout: v as 'POLICY' | 'LETTER' })}
+            >
+              <SelectTrigger id="layout">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="POLICY">Policy — the calm default</SelectItem>
+                <SelectItem value="LETTER">Letter — serif, for correspondence</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex items-center justify-between rounded-lg border border-border p-3">
