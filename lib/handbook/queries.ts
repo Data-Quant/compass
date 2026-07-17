@@ -23,6 +23,8 @@ type PageRow = {
   linkHref: string | null
   linkLabel: string | null
   isPublished: boolean
+  description: string | null
+  layout: PageInput['layout']
   variants: Array<{
     id: string
     bodyMarkdown: string
@@ -42,6 +44,8 @@ function toPageInput(p: PageRow): PageInput {
     linkHref: p.linkHref,
     linkLabel: p.linkLabel,
     isPublished: p.isPublished,
+    description: p.description,
+    layout: p.layout,
     variants: p.variants.map((v) => ({
       id: v.id,
       bodyMarkdown: v.bodyMarkdown,

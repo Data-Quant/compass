@@ -1,22 +1,31 @@
 'use client'
 
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { AlertCircle, BookOpen } from 'lucide-react'
-import { BackgroundBeams } from '@/components/aceternity/background-beams'
-import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { EmptyState } from '@/components/composed/EmptyState'
 import { HandbookTile } from '@/components/handbook/HandbookTile'
+import { HandbookHero } from '@/components/handbook/HandbookHero'
+import { HandbookRow } from '@/components/handbook/HandbookRow'
+import { HandbookHubSkeleton } from '@/components/handbook/HandbookSkeletons'
 import { useLayoutUser } from '@/components/layout/SidebarLayout'
 import { ALL_TEAMS, TEAM_LABELS } from '@/lib/handbook/teams'
+import { filterPages } from '@/lib/handbook/search'
+import type { HubPage } from '@/lib/handbook/audience'
 import { isAdminRole } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
 
 const stagger = {
   container: { hidden: {}, visible: { transition: { staggerChildren: 0.06 } } },
   item: { hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0 } },
+}
+
+// Rows stagger faster than cards -- a long list must not crawl.
+const rowStagger = {
+  container: { hidden: {}, visible: { transition: { staggerChildren: 0.04 } } },
+  item: { hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0 } },
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -37,16 +46,6 @@ const CATEGORY_ORDER = [
   'HOW_TO',
 ]
 
-type HubPage = {
-  slug: string
-  title: string
-  icon: string
-  category: string
-  orderIndex: number
-  linkHref: string | null
-  linkLabel: string | null
-}
-
 function HandbookHubInner() {
   const user = useLayoutUser()
   const searchParams = useSearchParams()
@@ -54,6 +53,7 @@ function HandbookHubInner() {
   const [pages, setPages] = useState<HubPage[]>([])
   const [untagged, setUntagged] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [query, setQuery] = useState('')
 
   useEffect(() => {
     const qs = previewTeam ? `?previewTeam=${encodeURIComponent(previewTeam)}` : ''
@@ -67,7 +67,9 @@ function HandbookHubInner() {
       .finally(() => setLoading(false))
   }, [previewTeam])
 
-  if (loading) return <LoadingScreen />
+  const visible = useMemo(() => filterPages(pages, query), [pages, query])
+
+  if (loading) return <HandbookHubSkeleton />
 
   // The server decides what the preview shows; this label only reflects it.
   const previewLabel =
@@ -76,6 +78,10 @@ function HandbookHubInner() {
       : null
   const teamLabel =
     previewLabel ?? (user?.teamTag ? TEAM_LABELS[user.teamTag as keyof typeof TEAM_LABELS] : null)
+  const firstName = user?.name?.split(' ')[0] ?? null
+
+  const featured = visible.filter((p) => p.category === 'START_HERE')
+  const rest = CATEGORY_ORDER.filter((c) => c !== 'START_HERE')
 
   return (
     <div className="p-6 sm:p-8 max-w-7xl mx-auto">
@@ -120,27 +126,13 @@ function HandbookHubInner() {
           ))}
         </div>
       )}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-card border border-border bg-card p-8 mb-8"
-      >
-        <BackgroundBeams className="opacity-40 dark:opacity-20" />
-        <div className="relative">
-          {teamLabel && (
-            <div className="inline-flex items-center gap-1.5 border border-border rounded-badge px-2.5 py-1 mb-3">
-              <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-              <span className="text-xs font-medium text-muted-foreground">{teamLabel}</span>
-            </div>
-          )}
-          <h1 className="text-2xl sm:text-3xl font-display font-light tracking-tight text-foreground">
-            The <span className="gradient-text">Handbook</span>
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Policies, benefits, and how we work together.
-          </p>
-        </div>
-      </motion.div>
+
+      <HandbookHero
+        firstName={firstName}
+        teamLabel={teamLabel}
+        query={query}
+        onQueryChange={setQuery}
+      />
 
       {untagged && (
         <motion.div
@@ -151,9 +143,7 @@ function HandbookHubInner() {
         >
           <AlertCircle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
           <div>
-            <p className="text-sm font-medium text-foreground">
-              Your team hasn&apos;t been set yet
-            </p>
+            <p className="text-sm font-medium text-foreground">Your team hasn&apos;t been set yet</p>
             <p className="text-sm text-muted-foreground">
               Some sections are hidden until it is. Contact HR to get set up.
             </p>
@@ -161,40 +151,76 @@ function HandbookHubInner() {
         </motion.div>
       )}
 
-      {pages.length === 0 ? (
+      {visible.length === 0 ? (
         <EmptyState
           icon={<BookOpen className="h-10 w-10" />}
-          title="Nothing here yet"
-          description="No handbook content has been published for your team."
+          title={query ? 'Nothing matches that' : 'Nothing here yet'}
+          description={
+            query
+              ? 'Try a different word, or clear the search to see everything.'
+              : 'No handbook content has been published for your team.'
+          }
         />
       ) : (
-        CATEGORY_ORDER.filter((c) => pages.some((p) => p.category === c)).map((category) => (
-          <div key={category} className="mb-10">
-            <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-4">
-              {CATEGORY_LABELS[category]}
-            </p>
-            <motion.div
-              variants={stagger.container}
-              initial="hidden"
-              animate="visible"
-              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
-            >
-              {pages
-                .filter((p) => p.category === category)
-                .map((p) => (
+        <>
+          {featured.length > 0 && (
+            <div className="mb-10">
+              <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-4">
+                {CATEGORY_LABELS.START_HERE}
+              </p>
+              <motion.div
+                variants={stagger.container}
+                initial="hidden"
+                animate="visible"
+                className="grid grid-cols-1 sm:grid-cols-2 gap-4"
+              >
+                {featured.map((p) => (
                   <motion.div key={p.slug} variants={stagger.item}>
                     <HandbookTile
                       slug={p.slug}
                       title={p.title}
                       icon={p.icon}
                       linkLabel={p.linkLabel}
+                      description={p.description}
                       previewTeam={previewTeam}
+                      beam={p.slug === featured[0].slug}
                     />
                   </motion.div>
                 ))}
-            </motion.div>
-          </div>
-        ))
+              </motion.div>
+            </div>
+          )}
+
+          {rest
+            .filter((c) => visible.some((p) => p.category === c))
+            .map((category) => (
+              <div key={category} className="mb-10">
+                <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-4">
+                  {CATEGORY_LABELS[category]}
+                </p>
+                <motion.div
+                  variants={rowStagger.container}
+                  initial="hidden"
+                  animate="visible"
+                  className="rounded-card border border-border divide-y divide-border overflow-hidden"
+                >
+                  {visible
+                    .filter((p) => p.category === category)
+                    .map((p) => (
+                      <motion.div key={p.slug} variants={rowStagger.item}>
+                        <HandbookRow
+                          slug={p.slug}
+                          title={p.title}
+                          icon={p.icon}
+                          description={p.description}
+                          previewTeam={previewTeam}
+                        />
+                      </motion.div>
+                    ))}
+                </motion.div>
+              </div>
+            ))}
+        </>
       )}
     </div>
   )
@@ -203,7 +229,7 @@ function HandbookHubInner() {
 // useSearchParams requires a Suspense boundary in the App Router.
 export default function HandbookHubPage() {
   return (
-    <Suspense fallback={<LoadingScreen />}>
+    <Suspense fallback={<HandbookHubSkeleton />}>
       <HandbookHubInner />
     </Suspense>
   )

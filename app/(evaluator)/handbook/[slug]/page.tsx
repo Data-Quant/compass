@@ -7,10 +7,10 @@ import { motion } from 'framer-motion'
 import { ArrowLeft, FileQuestion } from 'lucide-react'
 import * as Icons from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
-import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { EmptyState } from '@/components/composed/EmptyState'
 import { ShimmerButton } from '@/components/magicui/shimmer-button'
 import { HandbookMarkdown } from '@/components/handbook/HandbookMarkdown'
+import { HandbookDetailSkeleton } from '@/components/handbook/HandbookSkeletons'
 
 type Detail = {
   slug: string
@@ -19,6 +19,8 @@ type Detail = {
   category: string
   linkHref: string | null
   linkLabel: string | null
+  description: string | null
+  layout: 'POLICY' | 'LETTER' | null
   bodyMarkdown: string
 }
 
@@ -62,7 +64,7 @@ function HandbookDetailInner({ params }: { params: Promise<{ slug: string }> }) 
     }
   }, [slug, previewTeam])
 
-  if (loading) return <LoadingScreen />
+  if (loading) return <HandbookDetailSkeleton />
 
   if (notFound || !detail) {
     return (
@@ -83,6 +85,7 @@ function HandbookDetailInner({ params }: { params: Promise<{ slug: string }> }) 
 
   const Icon =
     (Icons as unknown as Record<string, Icons.LucideIcon>)[detail.icon] ?? Icons.FileText
+  const isLetter = detail.layout === 'LETTER'
 
   return (
     <div className="p-6 sm:p-8 max-w-4xl mx-auto">
@@ -111,7 +114,19 @@ function HandbookDetailInner({ params }: { params: Promise<{ slug: string }> }) 
       >
         <Card>
           <CardContent className="p-6 sm:p-8">
-            <HandbookMarkdown source={detail.bodyMarkdown} />
+            {isLetter && detail.description && (
+              <>
+                <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                  {detail.description}
+                </p>
+                <div className="h-px w-full max-w-xs bg-gradient-to-r from-primary/60 to-transparent my-4" />
+              </>
+            )}
+
+            <HandbookMarkdown
+              source={detail.bodyMarkdown}
+              variant={isLetter ? 'letter' : 'policy'}
+            />
 
             {detail.linkHref && detail.linkLabel && (
               <div className="mt-8 pt-6 border-t border-border">
@@ -130,7 +145,7 @@ function HandbookDetailInner({ params }: { params: Promise<{ slug: string }> }) 
 // useSearchParams requires a Suspense boundary in the App Router.
 export default function HandbookDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   return (
-    <Suspense fallback={<LoadingScreen />}>
+    <Suspense fallback={<HandbookDetailSkeleton />}>
       <HandbookDetailInner params={params} />
     </Suspense>
   )

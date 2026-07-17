@@ -16,6 +16,8 @@ const base = {
   linkHref: null,
   linkLabel: null,
   isPublished: true,
+  description: null,
+  layout: null,
 }
 
 // Universal page: one variant, all seven teams.

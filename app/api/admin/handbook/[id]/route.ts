@@ -4,6 +4,8 @@ import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { ALL_TEAMS } from '@/lib/handbook/teams'
 
+const VALID_LAYOUTS = ['POLICY', 'LETTER'] as const
+
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -24,6 +26,8 @@ export async function PUT(
       linkLabel,
       isPublished,
       intentionalGapTeams,
+      description,
+      layout,
     } = (await request.json()) as {
       title?: string
       icon?: string
@@ -33,6 +37,8 @@ export async function PUT(
       linkLabel?: string | null
       isPublished?: boolean
       intentionalGapTeams?: string[]
+      description?: string | null
+      layout?: string | null
     }
 
     if (intentionalGapTeams) {
@@ -47,6 +53,10 @@ export async function PUT(
       }
     }
 
+    if (layout && !VALID_LAYOUTS.includes(layout as (typeof VALID_LAYOUTS)[number])) {
+      return NextResponse.json({ error: 'Invalid layout' }, { status: 400 })
+    }
+
     const page = await prisma.handbookPage.update({
       where: { id },
       data: {
@@ -59,6 +69,10 @@ export async function PUT(
         ...(isPublished !== undefined ? { isPublished } : {}),
         ...(intentionalGapTeams !== undefined
           ? { intentionalGapTeams: intentionalGapTeams as never }
+          : {}),
+        ...(description !== undefined ? { description: description || null } : {}),
+        ...(layout !== undefined
+          ? { layout: (layout as (typeof VALID_LAYOUTS)[number]) || null }
           : {}),
       },
     })
