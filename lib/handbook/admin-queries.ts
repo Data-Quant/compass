@@ -29,6 +29,8 @@ export async function getAllPagesForAdmin(): Promise<AdminPageInput[]> {
     linkHref: p.linkHref,
     linkLabel: p.linkLabel,
     isPublished: p.isPublished,
+    description: p.description,
+    layout: p.layout,
     intentionalGapTeams: p.intentionalGapTeams,
     variants: p.variants.map((v) => ({
       id: v.id,

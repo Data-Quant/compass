@@ -1,4 +1,4 @@
-import type { HandbookCategory, TeamTag } from '@prisma/client'
+import type { HandbookCategory, HandbookLayout, TeamTag } from '@prisma/client'
 import { ALL_TEAMS } from './teams'
 
 export type VariantInput = {
@@ -18,6 +18,8 @@ export type PageInput = {
   linkHref: string | null
   linkLabel: string | null
   isPublished: boolean
+  description: string | null
+  layout: HandbookLayout | null
   variants: VariantInput[]
 }
 
@@ -30,6 +32,8 @@ export type HubPage = {
   orderIndex: number
   linkHref: string | null
   linkLabel: string | null
+  /** Shown under the title and searched over. Never a body -- the hub stays bodyless. */
+  description: string | null
 }
 
 export type HubResponse = { pages: HubPage[]; untagged: boolean }
@@ -41,6 +45,8 @@ export type DetailResponse = {
   category: HandbookCategory
   linkHref: string | null
   linkLabel: string | null
+  description: string | null
+  layout: HandbookLayout | null
   bodyMarkdown: string
 }
 
@@ -72,6 +78,7 @@ export function toHubResponse(pages: PageInput[], tag: TeamTag | null): HubRespo
         orderIndex: p.orderIndex,
         linkHref: p.linkHref,
         linkLabel: p.linkLabel,
+        description: p.description,
       })
     )
 
@@ -91,6 +98,8 @@ export function toDetailResponse(page: PageInput, tag: TeamTag | null): DetailRe
     category: page.category,
     linkHref: page.linkHref,
     linkLabel: page.linkLabel,
+    description: page.description,
+    layout: page.layout,
     bodyMarkdown: variant.bodyMarkdown,
   }
 }

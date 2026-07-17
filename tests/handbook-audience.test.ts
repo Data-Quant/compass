@@ -23,6 +23,8 @@ const welcome: PageInput = {
   linkHref: null,
   linkLabel: null,
   isPublished: true,
+  description: null,
+  layout: null,
   variants: [
     { id: 'v1', bodyMarkdown: 'UNIVERSAL_BODY', orderIndex: 0, audiences: [...ALL_TEAMS] },
   ],
@@ -38,6 +40,8 @@ const leave: PageInput = {
   linkHref: '/leave',
   linkLabel: 'Apply for leave',
   isPublished: true,
+  description: null,
+  layout: null,
   variants: [
     {
       id: 'v2',

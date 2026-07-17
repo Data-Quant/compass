@@ -39,6 +39,13 @@ enum HandbookCategory {
   HOW_TO
 }
 
+/// How a page's body is presented. POLICY is the calm default; LETTER is the
+/// correspondence treatment (serif, generous measure, sign-off under a rule).
+enum HandbookLayout {
+  POLICY
+  LETTER
+}
+
 enum SubscriptionStatus {
   ACTIVE
   CANCELED
@@ -1924,6 +1931,11 @@ model HandbookPage {
   linkHref            String?
   linkLabel           String?
   isPublished         Boolean           @default(false)
+  /// One line, shown under the title on the hub and searched over. Page-level,
+  /// not variant-level: Leave Policy has four variants but one purpose.
+  description         String?
+  /// null and POLICY both render the policy treatment. Only LETTER differs.
+  layout              HandbookLayout?
   /// Teams for which having no variant is a reviewed, deliberate decision.
   intentionalGapTeams TeamTag[]
   createdAt           DateTime          @default(now())
