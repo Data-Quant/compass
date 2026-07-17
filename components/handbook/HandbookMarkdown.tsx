@@ -51,9 +51,28 @@ const schema = {
   },
 }
 
-export function HandbookMarkdown({ source }: { source: string }) {
+export function HandbookMarkdown({
+  source,
+  variant = 'policy',
+}: {
+  source: string
+  variant?: 'policy' | 'letter'
+}) {
+  // Body copy was text-sm text-muted-foreground -- the app's fine-print token.
+  // Long-form policy read in muted grey at 14px is poor ergonomics on any page.
+  // foreground/90 rather than flat foreground: full contrast is right for
+  // headings but slightly heavy for multi-paragraph body copy.
   return (
-    <div className="text-sm leading-relaxed text-muted-foreground space-y-4">
+    <div
+      className={
+        variant === 'letter'
+          ? // The ! on my-10 is load-bearing: space-y-5 sets margin-top via a
+            // higher-specificity selector, so without it the sign-off rule gets
+            // the same 20px gap as any paragraph and separates nothing.
+            'font-display text-[19px] leading-[1.7] text-foreground/90 max-w-[600px] space-y-5 [&_hr]:!my-10 [&_hr]:border-border/60'
+          : 'text-base leading-relaxed text-foreground/90 max-w-[68ch] space-y-4'
+      }
+    >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[[rehypeSanitize, schema]]}
