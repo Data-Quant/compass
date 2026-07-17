@@ -70,6 +70,7 @@ const config: Config = {
         'accordion-up': 'accordion-up 0.2s ease-out',
         'shimmer': 'shimmer 2s linear infinite',
         'border-beam': 'border-beam calc(var(--duration)*1s) infinite linear',
+        'border-beam-once': 'border-beam calc(var(--duration)*1s) linear 1 forwards',
         'number-tick': 'numberTick 0.5s ease-out',
         'spotlight': 'spotlight 2s ease 0.75s 1 forwards',
       },
