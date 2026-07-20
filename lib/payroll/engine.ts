@@ -35,6 +35,50 @@ const KNOWN_EARNING_KEYS = new Set([
 
 const KNOWN_DEDUCTION_KEYS = new Set(['INCOME_TAX', 'ADJUSTMENT', 'LOAN_REPAYMENT', 'PAID'])
 
+/** Provenance tag for a PAID input the engine filled in itself (see resolvePaidForBalance). */
+export const AUTO_PAID_NET = 'AUTO_PAID_NET'
+
+export type ExistingPaidInput = {
+  amount: number
+  isOverride: boolean
+  generatedBy: string | null
+}
+
+/**
+ * The PAID amount used for the rolling balance, and whether we auto-filled it.
+ *
+ * PAID is the amount actually disbursed (the workbook's "Final Payments"),
+ * reconciled against net salary. When it is absent — the common case once
+ * payroll is run inside the portal rather than imported — default it to net so
+ * the rolling balance (previousBalance + net - paid) reflects a fully-paid
+ * month instead of compounding every period.
+ *
+ * A PAID that was imported or entered by hand is authoritative and is never
+ * overwritten; only our own prior auto-fill is recomputed, which keeps recalc
+ * idempotent when net changes between runs.
+ */
+export function resolvePaidForBalance(
+  netSalary: number,
+  existingPaid: ExistingPaidInput | undefined
+): { paid: number; autoFilled: boolean } {
+  const isRealPaid =
+    existingPaid !== undefined &&
+    (existingPaid.isOverride || existingPaid.generatedBy !== AUTO_PAID_NET)
+  if (isRealPaid) {
+    return { paid: existingPaid.amount, autoFilled: false }
+  }
+  return { paid: netSalary, autoFilled: true }
+}
+
+/** Safely read a `generatedBy` string from a PayrollInputValue.provenanceJson blob. */
+function readGeneratedBy(provenance: unknown): string | null {
+  if (provenance && typeof provenance === 'object' && !Array.isArray(provenance)) {
+    const value = (provenance as Record<string, unknown>).generatedBy
+    return typeof value === 'string' ? value : null
+  }
+  return null
+}
+
 export interface SalaryHeadLite {
   type: string
   isTaxable: boolean
@@ -447,7 +491,30 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
     const totalDeductions =
       incomeTax + getNumber(bucket, 'ADJUSTMENT') + getNumber(bucket, 'LOAN_REPAYMENT') + additionalDeductions
     const netSalary = totalEarnings - totalDeductions
-    const paid = getNumber(bucket, 'PAID')
+
+    // PAID feeds the rolling balance but is not itself a payroll deduction.
+    // When it is absent (payroll run in-portal, no "Final Payments" import) it
+    // defaults to net so the balance reflects a fully-paid month instead of
+    // compounding. Imported and manual PAID values are authoritative and kept.
+    const paidRow = rows.find((r) => r.componentKey === 'PAID')
+    const existingPaid: ExistingPaidInput | undefined = paidRow
+      ? {
+          amount: paidRow.amount,
+          isOverride: paidRow.isOverride,
+          generatedBy: readGeneratedBy(paidRow.provenanceJson),
+        }
+      : undefined
+    const { paid, autoFilled } = resolvePaidForBalance(netSalary, existingPaid)
+    if (autoFilled) {
+      autoInputUpserts.push({
+        periodId,
+        payrollName,
+        userId,
+        componentKey: 'PAID',
+        amount: paid,
+        generatedBy: AUTO_PAID_NET,
+      })
+    }
     const previousBalance = previousBalanceMap.get(payrollName) || 0
     const balance = previousBalance + netSalary - paid
 
@@ -477,6 +544,7 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
             FIX_IDS.GROSS_MEDICAL_ALIGNMENT,
             FIX_IDS.TAX_SLAB_REF_BOUNDS,
             FIX_IDS.PAID_BALANCE_ROLLING,
+            FIX_IDS.PAID_DEFAULTS_NET,
           ],
         } as Prisma.InputJsonValue,
       })
