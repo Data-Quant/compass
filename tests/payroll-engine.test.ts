@@ -5,6 +5,8 @@ import {
   computeEarningsBreakdown,
   computeTravelPayable,
   resolveValidUserId,
+  resolvePaidForBalance,
+  AUTO_PAID_NET,
   type SalaryHeadLite,
 } from '../lib/payroll/engine'
 
@@ -95,4 +97,49 @@ test('resolveValidUserId keeps existing users and nulls dangling/empty ones', ()
   assert.equal(resolveValidUserId('deleted-user', valid), null)
   assert.equal(resolveValidUserId(null, valid), null)
   assert.equal(resolveValidUserId(undefined, valid), null)
+})
+
+// ─── resolvePaidForBalance ──────────────────────────────────────────────────
+// PAID is the amount actually disbursed, feeding the rolling balance
+// (balance = previousBalance + net - paid). When PAID is absent it must default
+// to net so the balance reflects a fully-paid month instead of compounding.
+
+test('resolvePaidForBalance auto-fills PAID to net when none was recorded', () => {
+  const { paid, autoFilled } = resolvePaidForBalance(50_000, undefined)
+  assert.equal(paid, 50_000)
+  assert.equal(autoFilled, true)
+})
+
+test('resolvePaidForBalance auto-filled PAID makes the balance settle to previousBalance', () => {
+  const net = 50_000
+  const { paid } = resolvePaidForBalance(net, undefined)
+  const previousBalance = 0
+  assert.equal(previousBalance + net - paid, 0) // no compounding
+})
+
+test('resolvePaidForBalance recomputes its own prior auto-fill (idempotent recalc)', () => {
+  // A stale auto-fill from a previous run must be recomputed to the current net,
+  // not treated as authoritative — otherwise a later net change would drift.
+  const existing = { amount: 48_000, isOverride: false, generatedBy: AUTO_PAID_NET }
+  const { paid, autoFilled } = resolvePaidForBalance(50_000, existing)
+  assert.equal(paid, 50_000)
+  assert.equal(autoFilled, true)
+})
+
+test('resolvePaidForBalance respects an imported PAID and never overwrites it', () => {
+  // Jan/Feb "Final Payments" were imported with no generatedBy tag. Real data.
+  const imported = { amount: 47_500, isOverride: false, generatedBy: null }
+  const { paid, autoFilled } = resolvePaidForBalance(50_000, imported)
+  assert.equal(paid, 47_500)
+  assert.equal(autoFilled, false)
+})
+
+test('resolvePaidForBalance respects a manual override PAID', () => {
+  // A genuine partial payment entered in the grid drives real arrears tracking.
+  const override = { amount: 30_000, isOverride: true, generatedBy: null }
+  const { paid, autoFilled } = resolvePaidForBalance(50_000, override)
+  assert.equal(paid, 30_000)
+  assert.equal(autoFilled, false)
+  // The rolling balance then carries the unpaid remainder.
+  assert.equal(0 + 50_000 - override.amount, 20_000)
 })
