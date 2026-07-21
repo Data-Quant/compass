@@ -70,8 +70,8 @@ const STEPS = [
   { label: 'Calculate', description: 'Run calculation and compare' },
   { label: 'Reconciliation', description: 'Review mismatches' },
   { label: 'Approve', description: 'Sign off on the pay run' },
-  { label: 'Send', description: 'Dispatch receipts via HelloSign' },
   { label: 'Payments', description: 'Record what was actually paid' },
+  { label: 'Send', description: 'Dispatch receipts once payments are finalized' },
 ] as const
 
 function num(v: unknown) {
@@ -179,17 +179,12 @@ export function PayrollRunWizard({
     if (step === 3 && period.status === 'DRAFT') {
       toast.warning('Run calculation before approving')
     }
-    if (step === 4 && period.status !== 'APPROVED' && period.status !== 'SENDING' && period.status !== 'SENT') {
-      toast.warning('Approve the period before sending receipts')
+    const approvedOrLater = ['APPROVED', 'SENDING', 'SENT', 'PARTIAL'].includes(period.status)
+    if (step === 4 && !approvedOrLater) {
+      toast.warning('Approve the period before recording payments')
     }
-    if (
-      step === 5 &&
-      period.status !== 'SENT' &&
-      period.status !== 'SENDING' &&
-      period.status !== 'PARTIAL' &&
-      period.status !== 'LOCKED'
-    ) {
-      toast.warning('Send the payroll before recording payments')
+    if (step === 5 && !approvedOrLater) {
+      toast.warning('Approve the period before sending receipts')
     }
     setCurrentStep(step)
   }, [period?.status])
@@ -646,8 +641,8 @@ export function PayrollRunWizard({
             </div>
           )}
 
-          {/* Step 4: Send */}
-          {currentStep === 4 && (
+          {/* Step 5: Send */}
+          {currentStep === 5 && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-lg font-semibold font-display">Send Receipts</h2>
@@ -655,6 +650,39 @@ export function PayrollRunWizard({
                   Generate PDF receipts and send via HelloSign for e-signature.
                 </p>
               </div>
+
+              {(() => {
+                const paidByName = new Map<string, number>()
+                for (const p of period.payments || []) {
+                  paidByName.set(p.payrollName, (paidByName.get(p.payrollName) || 0) + p.paidAmount)
+                }
+                const receipts = period.receipts || []
+                const held = receipts.filter(
+                  (r: any) =>
+                    (r.status === 'READY' || r.status === 'FAILED') &&
+                    (paidByName.get(r.payrollName) || 0) <= 0
+                ).length
+                const willSend = receipts.filter(
+                  (r: any) =>
+                    (r.status === 'READY' || r.status === 'FAILED') &&
+                    (paidByName.get(r.payrollName) || 0) > 0
+                ).length
+                return (
+                  <div className="rounded-lg border border-border bg-muted/40 px-4 py-2 text-sm">
+                    <span className="font-medium text-foreground">{willSend}</span>{' '}
+                    <span className="text-muted-foreground">will be sent</span>
+                    {held > 0 && (
+                      <>
+                        {' · '}
+                        <span className="font-medium text-amber-600 dark:text-amber-400">
+                          {held}
+                        </span>{' '}
+                        <span className="text-muted-foreground">held (0 paid — no receipt)</span>
+                      </>
+                    )}
+                  </div>
+                )
+              })()}
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <Card className="lg:col-span-1">
@@ -742,8 +770,8 @@ export function PayrollRunWizard({
             </div>
           )}
 
-          {/* Step 5: Payments */}
-          {currentStep === 5 && (
+          {/* Step 4: Payments */}
+          {currentStep === 4 && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-lg font-semibold font-display">Payments</h2>
@@ -754,7 +782,7 @@ export function PayrollRunWizard({
               </div>
               <PayrollPaymentsGrid
                 periodId={periodId}
-                editable={['SENDING', 'SENT', 'PARTIAL', 'LOCKED'].includes(period.status)}
+                editable={['APPROVED', 'SENDING', 'SENT', 'PARTIAL'].includes(period.status)}
                 onSaved={onReload}
               />
             </div>
