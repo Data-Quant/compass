@@ -1289,6 +1289,7 @@ model PayrollPeriod {
   approvalEvents PayrollApprovalEvent[]
   attendanceEntries PayrollAttendanceEntry[]
   inputAuditEvents PayrollInputAuditEvent[]
+  payments      PayrollPayment[]
 
   @@index([status])
   @@index([periodStart, periodEnd])
@@ -1441,6 +1442,25 @@ model PayrollReceipt {
   @@index([periodId])
   @@index([userId])
   @@index([status])
+}
+
+/// One recorded paid amount per (period, employee, earning category). Drives the
+/// rolling balance in the Payments step (after Send). Replaces the retired
+/// single PAID input + Auto-Paid default.
+model PayrollPayment {
+  id           String        @id @default(cuid())
+  periodId     String
+  payrollName  String
+  userId       String?
+  componentKey String
+  paidAmount   Float         @default(0)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  period       PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  @@unique([periodId, payrollName, componentKey])
+  @@index([periodId])
 }
 
 model PayrollDocuSignEnvelope {
