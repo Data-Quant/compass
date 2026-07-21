@@ -115,7 +115,6 @@ const DEDUCTION_COLUMNS: Array<{ key: SortKey; label: string; componentKey?: str
   { key: 'adjustment', label: 'Adjustment', componentKey: 'ADJUSTMENT', editable: true },
   { key: 'loanRepayment', label: 'Loan Repayment', componentKey: 'LOAN_REPAYMENT', editable: true },
   { key: 'additionalDeductions', label: 'Other Deductions', editable: false },
-  { key: 'paid', label: 'Paid (Recon)', componentKey: 'PAID', editable: true },
 ]
 
 /* ------------------------------------------------------------------ */

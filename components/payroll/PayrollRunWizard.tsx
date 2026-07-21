@@ -11,6 +11,7 @@ import { Separator } from '@/components/ui/separator'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { PayrollStatusBadge } from '@/components/payroll/PayrollStatusBadge'
 import { PayrollEmployeeGrid } from '@/components/payroll/PayrollEmployeeGrid'
+import { PayrollPaymentsGrid } from '@/components/payroll/PayrollPaymentsGrid'
 import { PayrollEmployeeDetail } from '@/components/payroll/PayrollEmployeeDetail'
 import {
   Calculator,
@@ -31,7 +32,7 @@ import {
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
-type WizardStep = 0 | 1 | 2 | 3 | 4
+type WizardStep = 0 | 1 | 2 | 3 | 4 | 5
 type PendingAction = 'recalculate' | 'approve' | 'unapprove' | 'send' | 'sync' | 'none'
 
 interface PreviousData {
@@ -70,6 +71,7 @@ const STEPS = [
   { label: 'Reconciliation', description: 'Review mismatches' },
   { label: 'Approve', description: 'Sign off on the pay run' },
   { label: 'Send', description: 'Dispatch receipts via HelloSign' },
+  { label: 'Payments', description: 'Record what was actually paid' },
 ] as const
 
 function num(v: unknown) {
@@ -179,6 +181,15 @@ export function PayrollRunWizard({
     }
     if (step === 4 && period.status !== 'APPROVED' && period.status !== 'SENDING' && period.status !== 'SENT') {
       toast.warning('Approve the period before sending receipts')
+    }
+    if (
+      step === 5 &&
+      period.status !== 'SENT' &&
+      period.status !== 'SENDING' &&
+      period.status !== 'PARTIAL' &&
+      period.status !== 'LOCKED'
+    ) {
+      toast.warning('Send the payroll before recording payments')
     }
     setCurrentStep(step)
   }, [period?.status])
@@ -730,6 +741,24 @@ export function PayrollRunWizard({
               </div>
             </div>
           )}
+
+          {/* Step 5: Payments */}
+          {currentStep === 5 && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-lg font-semibold font-display">Payments</h2>
+                <p className="text-sm text-muted-foreground">
+                  Record what was actually paid, per category. Each cell defaults to the computed
+                  amount — adjust anything not yet disbursed. Unpaid amounts carry as balance.
+                </p>
+              </div>
+              <PayrollPaymentsGrid
+                periodId={periodId}
+                editable={['SENDING', 'SENT', 'PARTIAL', 'LOCKED'].includes(period.status)}
+                onSaved={onReload}
+              />
+            </div>
+          )}
         </motion.div>
 
         {/* Navigation footer */}
@@ -749,7 +778,7 @@ export function PayrollRunWizard({
                 Back
               </Button>
             )}
-            {currentStep < 4 && (
+            {currentStep < 5 && (
               <Button onClick={() => setCurrentStep((s) => (s + 1) as WizardStep)}>
                 {currentStep === 0 ? 'Preview Payroll' : 'Next'}
                 <ChevronRight className="w-4 h-4" />
