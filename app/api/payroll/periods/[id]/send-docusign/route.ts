@@ -6,6 +6,7 @@ import { canManagePayroll } from '@/lib/permissions'
 import { getHelloSignRuntimeConfig } from '@/lib/payroll/config'
 import { sendHelloSignRequest } from '@/lib/hellosign'
 import { generateReceiptPdf, type ReceiptData } from '@/lib/payroll/receipt-pdf'
+import { isSendableReceipt } from '@/lib/payroll/payments'
 
 export const runtime = 'nodejs'
 
@@ -97,6 +98,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
             },
           },
         },
+        payments: { select: { payrollName: true, paidAmount: true } },
       },
     })
 
@@ -104,9 +106,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Payroll period not found' }, { status: 404 })
     }
 
-    if (period.status !== 'APPROVED') {
+    // Send runs from APPROVED (first send) and re-runs from SENT/PARTIAL to
+    // dispatch held-then-paid receipts. SENDING is transient and excluded so a
+    // re-run cannot collide with a send already in flight.
+    if (!['APPROVED', 'SENT', 'PARTIAL'].includes(period.status)) {
       return NextResponse.json(
-        { error: `Sending receipts is only allowed from APPROVED status. Current status: ${period.status}` },
+        { error: `Sending is only allowed from an approved or sent period. Current status: ${period.status}` },
         { status: 400 }
       )
     }
@@ -132,9 +137,27 @@ export async function POST(request: NextRequest, context: RouteContext) {
       receipts = receipts.filter((receipt) => receipt.status === 'READY' || receipt.status === 'FAILED')
     }
 
+    // Skip employees held at 0 paid -- they get no receipt until paid. Applies
+    // to every trigger (default, resend, targeted) so a held salary is never
+    // dispatched by any path.
+    const paidByName = new Map<string, number>()
+    for (const p of period.payments) {
+      paidByName.set(p.payrollName, (paidByName.get(p.payrollName) ?? 0) + p.paidAmount)
+    }
+    const eligibleByStatus = receipts.length
+    receipts = receipts.filter((receipt) =>
+      isSendableReceipt(receipt.status, paidByName.get(receipt.payrollName) ?? 0)
+    )
+    const heldSkipped = eligibleByStatus - receipts.length
+
     if (receipts.length === 0) {
       return NextResponse.json(
-        { error: 'No receipts are eligible for sending for the requested criteria.' },
+        {
+          error:
+            heldSkipped > 0
+              ? 'No paid employees to send. Record payments first, or every remaining employee is held at 0.'
+              : 'No receipts are eligible for sending for the requested criteria.',
+        },
         { status: 400 }
       )
     }
