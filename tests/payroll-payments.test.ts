@@ -4,6 +4,7 @@ import {
   computeCarriedBalance,
   computePaidTotal,
   paymentStatus,
+  isSendableReceipt,
   PAYABLE_EARNING_KEYS,
   type PaymentCategory,
 } from '../lib/payroll/payments'
@@ -55,4 +56,29 @@ test('PAYABLE_EARNING_KEYS holds the earning categories and no deductions', () =
   assert.ok(PAYABLE_EARNING_KEYS.includes('TRAVEL_REIMBURSEMENT'))
   assert.ok(!PAYABLE_EARNING_KEYS.includes('INCOME_TAX'))
   assert.ok(!PAYABLE_EARNING_KEYS.includes('PAID'))
+})
+
+// ─── isSendableReceipt ──────────────────────────────────────────────────────
+// A receipt is dispatched only if not already sent AND the employee was paid
+// something. Held (0-paid) salaries get no receipt until paid.
+
+test('isSendableReceipt: a READY receipt with paid > 0 is sendable', () => {
+  assert.equal(isSendableReceipt('READY', 55_000), true)
+})
+
+test('isSendableReceipt: a READY receipt with 0 paid (held) is not sendable', () => {
+  assert.equal(isSendableReceipt('READY', 0), false)
+})
+
+test('isSendableReceipt: an already-sent receipt is not re-sent even if paid', () => {
+  assert.equal(isSendableReceipt('SENT', 55_000), false)
+})
+
+test('isSendableReceipt: a FAILED receipt with paid > 0 is sendable (retry)', () => {
+  assert.equal(isSendableReceipt('FAILED', 55_000), true)
+})
+
+test('isSendableReceipt: negative or NaN paid is not sendable', () => {
+  assert.equal(isSendableReceipt('READY', -1), false)
+  assert.equal(isSendableReceipt('READY', Number.NaN), false)
 })

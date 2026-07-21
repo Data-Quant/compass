@@ -41,3 +41,14 @@ export function paymentStatus(categories: PaymentCategory[]): PaymentStatus {
   if (totalPaid >= totalComputed) return 'PAID'
   return 'PARTIAL'
 }
+
+/**
+ * Whether a receipt should be dispatched at Send. Only receipts that are not
+ * already sent (READY or FAILED) go out, and only for an employee who has been
+ * paid something this period -- a held (0-paid) salary gets no receipt until it
+ * is paid, at which point a re-run of Send picks it up.
+ */
+export function isSendableReceipt(receiptStatus: string, paidTotal: number): boolean {
+  const notYetSent = receiptStatus === 'READY' || receiptStatus === 'FAILED'
+  return notYetSent && Number.isFinite(paidTotal) && paidTotal > 0
+}
