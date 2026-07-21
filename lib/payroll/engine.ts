@@ -1,8 +1,9 @@
 import { prisma } from '@/lib/db'
 import { estimateIncomeTaxFromSlabs, FIX_IDS, FORMULA_VERSION } from '@/lib/payroll/formula-registry'
-import { PayrollReconciliationMismatch, reconcileNetVsPaid } from '@/lib/payroll/reconciliation'
+import { PayrollReconciliationMismatch } from '@/lib/payroll/reconciliation'
 import { toPeriodKey, normalizePayrollName } from '@/lib/payroll/normalizers'
 import { calculateAnnualProgressiveTax, calculatePresentDays, calculateWorkingDays, resolveTravelTier } from '@/lib/payroll/settings'
+import { PAYABLE_EARNING_KEYS, computeCarriedBalance, type PaymentCategory } from '@/lib/payroll/payments'
 import type { Prisma } from '@prisma/client'
 
 export type InputBucket = Record<string, number>
@@ -33,51 +34,9 @@ const KNOWN_EARNING_KEYS = new Set([
   'ADVANCE_LOAN',
 ])
 
+// PAID stays in the deduction-key set so any lingering historical PAID input is
+// never summed as a deduction. The engine no longer writes it (Auto-Paid removed).
 const KNOWN_DEDUCTION_KEYS = new Set(['INCOME_TAX', 'ADJUSTMENT', 'LOAN_REPAYMENT', 'PAID'])
-
-/** Provenance tag for a PAID input the engine filled in itself (see resolvePaidForBalance). */
-export const AUTO_PAID_NET = 'AUTO_PAID_NET'
-
-export type ExistingPaidInput = {
-  amount: number
-  isOverride: boolean
-  generatedBy: string | null
-}
-
-/**
- * The PAID amount used for the rolling balance, and whether we auto-filled it.
- *
- * PAID is the amount actually disbursed (the workbook's "Final Payments"),
- * reconciled against net salary. When it is absent — the common case once
- * payroll is run inside the portal rather than imported — default it to net so
- * the rolling balance (previousBalance + net - paid) reflects a fully-paid
- * month instead of compounding every period.
- *
- * A PAID that was imported or entered by hand is authoritative and is never
- * overwritten; only our own prior auto-fill is recomputed, which keeps recalc
- * idempotent when net changes between runs.
- */
-export function resolvePaidForBalance(
-  netSalary: number,
-  existingPaid: ExistingPaidInput | undefined
-): { paid: number; autoFilled: boolean } {
-  const isRealPaid =
-    existingPaid !== undefined &&
-    (existingPaid.isOverride || existingPaid.generatedBy !== AUTO_PAID_NET)
-  if (isRealPaid) {
-    return { paid: existingPaid.amount, autoFilled: false }
-  }
-  return { paid: netSalary, autoFilled: true }
-}
-
-/** Safely read a `generatedBy` string from a PayrollInputValue.provenanceJson blob. */
-function readGeneratedBy(provenance: unknown): string | null {
-  if (provenance && typeof provenance === 'object' && !Array.isArray(provenance)) {
-    const value = (provenance as Record<string, unknown>).generatedBy
-    return typeof value === 'string' ? value : null
-  }
-  return null
-}
 
 export interface SalaryHeadLite {
   type: string
@@ -177,7 +136,7 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
   }
 
   const periodKey = toPeriodKey(period.periodStart)
-  const [inputs, activeFinancialYear, salaryHeads, holidays, travelTiers] = await Promise.all([
+  const [inputs, activeFinancialYear, salaryHeads, holidays, travelTiers, payments] = await Promise.all([
     prisma.payrollInputValue.findMany({
       where: { periodId },
       orderBy: [{ payrollName: 'asc' }, { componentKey: 'asc' }],
@@ -219,6 +178,10 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
       },
       orderBy: [{ transportMode: 'asc' }, { minKm: 'asc' }],
     }),
+    prisma.payrollPayment.findMany({
+      where: { periodId },
+      select: { payrollName: true, componentKey: true, paidAmount: true },
+    }),
   ])
 
   const previousPeriod = await prisma.payrollPeriod.findFirst({
@@ -235,6 +198,14 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
     : []
 
   const previousBalanceMap = new Map(previousBalances.map((b) => [b.payrollName, b.amount]))
+
+  // Paid amounts recorded in the Payments step, per employee per category.
+  const paidByPayroll = new Map<string, Map<string, number>>()
+  for (const p of payments) {
+    const inner = paidByPayroll.get(p.payrollName) ?? new Map<string, number>()
+    inner.set(p.componentKey, p.paidAmount)
+    paidByPayroll.set(p.payrollName, inner)
+  }
 
   const rowsByPayroll = new Map<string, typeof inputs>()
   for (const row of inputs) {
@@ -492,31 +463,25 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
       incomeTax + getNumber(bucket, 'ADJUSTMENT') + getNumber(bucket, 'LOAN_REPAYMENT') + additionalDeductions
     const netSalary = totalEarnings - totalDeductions
 
-    // PAID feeds the rolling balance but is not itself a payroll deduction.
-    // When it is absent (payroll run in-portal, no "Final Payments" import) it
-    // defaults to net so the balance reflects a fully-paid month instead of
-    // compounding. Imported and manual PAID values are authoritative and kept.
-    const paidRow = rows.find((r) => r.componentKey === 'PAID')
-    const existingPaid: ExistingPaidInput | undefined = paidRow
-      ? {
-          amount: paidRow.amount,
-          isOverride: paidRow.isOverride,
-          generatedBy: readGeneratedBy(paidRow.provenanceJson),
-        }
-      : undefined
-    const { paid, autoFilled } = resolvePaidForBalance(netSalary, existingPaid)
-    if (autoFilled) {
-      autoInputUpserts.push({
-        periodId,
-        payrollName,
-        userId,
-        componentKey: 'PAID',
-        amount: paid,
-        generatedBy: AUTO_PAID_NET,
-      })
-    }
+    // The rolling balance is driven by recorded payments (the Payments step),
+    // not an assumption. When payments exist for this employee, the balance
+    // carries the unpaid earnings; otherwise the full net is still owed.
     const previousBalance = previousBalanceMap.get(payrollName) || 0
-    const balance = previousBalance + netSalary - paid
+    const recordedPaid = paidByPayroll.get(payrollName)
+    let paid: number
+    let balance: number
+    if (recordedPaid) {
+      const categories: PaymentCategory[] = PAYABLE_EARNING_KEYS.map((key) => ({
+        computed: getNumber(bucket, key),
+        paid: recordedPaid.get(key) ?? 0,
+      }))
+      balance = computeCarriedBalance(previousBalance, categories)
+      // Net-equivalent disbursed, kept on the receipt for the pay stub.
+      paid = netSalary - (balance - previousBalance)
+    } else {
+      paid = 0
+      balance = previousBalance + netSalary
+    }
 
     const metrics: Record<string, number> = {
       TOTAL_TAXABLE_SALARY: totalTaxableSalary,
@@ -544,14 +509,10 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
             FIX_IDS.GROSS_MEDICAL_ALIGNMENT,
             FIX_IDS.TAX_SLAB_REF_BOUNDS,
             FIX_IDS.PAID_BALANCE_ROLLING,
-            FIX_IDS.PAID_DEFAULTS_NET,
           ],
         } as Prisma.InputJsonValue,
       })
     }
-
-    const mismatch = reconcileNetVsPaid(payrollName, periodKey, netSalary, paid, tolerance)
-    if (mismatch) mismatches.push(mismatch)
 
     receiptUpserts.push({
       periodId,
