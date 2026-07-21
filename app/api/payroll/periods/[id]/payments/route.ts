@@ -5,7 +5,9 @@ import { canManagePayroll } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import { getPaymentGrid, savePaymentMarks } from '@/lib/payroll/payment-queries'
 
-const SENT_STATUSES = new Set(['SENDING', 'SENT', 'PARTIAL', 'LOCKED'])
+// Payments are finalized after Approve and before/after Send, but not once the
+// period is locked.
+const EDITABLE_STATUSES = new Set(['APPROVED', 'SENDING', 'SENT', 'PARTIAL'])
 
 const bodySchema = z.object({
   marks: z.array(
@@ -53,10 +55,10 @@ export async function PUT(
     if (!period) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
-    // Payments are recorded only after the run has been sent.
-    if (!SENT_STATUSES.has(period.status)) {
+    // Payments are recorded once the run is approved, through send.
+    if (!EDITABLE_STATUSES.has(period.status)) {
       return NextResponse.json(
-        { error: 'Send the payroll before recording payments' },
+        { error: 'Approve the payroll before recording payments' },
         { status: 400 }
       )
     }
