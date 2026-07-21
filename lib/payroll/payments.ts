@@ -36,6 +36,7 @@ export function computePaidTotal(categories: PaymentCategory[]): number {
 export function paymentStatus(categories: PaymentCategory[]): PaymentStatus {
   const totalComputed = categories.reduce((s, c) => s + c.computed, 0)
   const totalPaid = categories.reduce((s, c) => s + c.paid, 0)
+  if (totalComputed <= 0) return 'PAID' // nothing owed is settled, not pending
   if (totalPaid <= 0) return 'PENDING'
   if (totalPaid >= totalComputed) return 'PAID'
   return 'PARTIAL'

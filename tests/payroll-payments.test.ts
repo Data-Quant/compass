@@ -44,6 +44,12 @@ test('paymentStatus: PARTIAL when some but not all is paid', () => {
   assert.equal(paymentStatus([cat(50_000, 50_000), cat(5_000, 0)]), 'PARTIAL')
 })
 
+test('paymentStatus: PAID when nothing is owed (zero computed earnings)', () => {
+  // A zero-earnings row owes nothing, so it is settled, not pending.
+  assert.equal(paymentStatus([cat(0, 0), cat(0, 0)]), 'PAID')
+  assert.equal(paymentStatus([]), 'PAID')
+})
+
 test('PAYABLE_EARNING_KEYS holds the earning categories and no deductions', () => {
   assert.ok(PAYABLE_EARNING_KEYS.includes('BASIC_SALARY'))
   assert.ok(PAYABLE_EARNING_KEYS.includes('TRAVEL_REIMBURSEMENT'))
