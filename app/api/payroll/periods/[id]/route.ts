@@ -41,6 +41,7 @@ export async function GET(_request: Request, context: RouteContext) {
           orderBy: { createdAt: 'desc' },
           take: 5,
         },
+        payments: { orderBy: [{ payrollName: 'asc' }, { componentKey: 'asc' }] },
       },
     })
 
