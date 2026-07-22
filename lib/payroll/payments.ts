@@ -52,3 +52,19 @@ export function isSendableReceipt(receiptStatus: string, paidTotal: number): boo
   const notYetSent = receiptStatus === 'READY' || receiptStatus === 'FAILED'
   return notYetSent && Number.isFinite(paidTotal) && paidTotal > 0
 }
+
+/**
+ * Name-only search over the Payments grid rows already loaded in the client.
+ *
+ * Generic over anything carrying a payrollName so this module stays pure -- it
+ * must not import the Prisma-backed row type. Filtering is display-only: the
+ * grid still saves every row, not just the visible ones.
+ */
+export function filterPaymentRows<T extends { payrollName: string }>(
+  rows: T[],
+  query: string
+): T[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return rows
+  return rows.filter((r) => r.payrollName.toLowerCase().includes(q))
+}
