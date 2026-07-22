@@ -22,11 +22,38 @@ export const PAYABLE_EARNING_KEYS = [
 export type PaymentCategory = { computed: number; paid: number }
 export type PaymentStatus = 'PAID' | 'PARTIAL' | 'PENDING'
 
+/**
+ * The fraction of the computed earning line items actually paid.
+ *
+ * Everything withheld -- income tax and the medical tax exemption -- scales by
+ * this ratio, so holding an employee's categories at 0 zeroes their deductions
+ * too, and paying in full withholds in full.
+ */
+export function computePaidRatio(categories: PaymentCategory[]): number {
+  const totalComputed = categories.reduce((s, c) => s + c.computed, 0)
+  if (totalComputed <= 0) return 0
+  return categories.reduce((s, c) => s + c.paid, 0) / totalComputed
+}
+
+/**
+ * The amount actually disbursed, in net (take-home) terms.
+ *
+ * The earning columns sum to more than net: the medical allowance is carved out
+ * of basic and offset by a tax exemption, and income tax is withheld. Paying
+ * every line item in full therefore disburses exactly the payslip's Net Salary,
+ * not the column total.
+ */
+export function computeNetPaid(categories: PaymentCategory[], netSalary: number): number {
+  return computePaidRatio(categories) * netSalary
+}
+
+/** What is still owed, in net terms: previous balance plus this period's unpaid net. */
 export function computeCarriedBalance(
   previousBalance: number,
-  categories: PaymentCategory[]
+  netSalary: number,
+  netPaid: number
 ): number {
-  return categories.reduce((sum, c) => sum + (c.computed - c.paid), previousBalance)
+  return previousBalance + netSalary - netPaid
 }
 
 export function computePaidTotal(categories: PaymentCategory[]): number {

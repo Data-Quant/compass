@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import {
   computeCarriedBalance,
   computePaidTotal,
+  computePaidRatio,
+  computeNetPaid,
   paymentStatus,
   isSendableReceipt,
   filterPaymentRows,
@@ -13,21 +15,49 @@ import {
 // Amounts are invented. Real salary figures never enter this repo -- it is public.
 const cat = (computed: number, paid: number): PaymentCategory => ({ computed, paid })
 
-test('all categories paid in full carries only the previous balance', () => {
-  const cats = [cat(50_000, 50_000), cat(5_000, 5_000)]
-  assert.equal(computeCarriedBalance(0, cats), 0)
-  assert.equal(computeCarriedBalance(3_000, cats), 3_000)
+// The payslip shape: earning line items sum to more than net, because the
+// medical carve-out is offset by a tax exemption and tax is withheld.
+// categories 297,000 -> net 246,610 (exemption 27,000 + deductions 23,390).
+const slipCategories = [cat(270_000, 270_000), cat(27_000, 27_000)]
+const SLIP_NET = 246_610
+
+test('computePaidRatio: fully paid is 1, nothing paid is 0, half is 0.5', () => {
+  assert.equal(computePaidRatio(slipCategories), 1)
+  assert.equal(computePaidRatio([cat(270_000, 0), cat(27_000, 0)]), 0)
+  assert.equal(computePaidRatio([cat(270_000, 135_000), cat(27_000, 13_500)]), 0.5)
 })
 
-test('a held-back category carries as balance on top of previous', () => {
-  const cats = [cat(50_000, 50_000), cat(5_000, 0)] // travel not paid
-  assert.equal(computeCarriedBalance(0, cats), 5_000)
-  assert.equal(computeCarriedBalance(2_000, cats), 7_000)
+test('computePaidRatio: nothing owed is 0, never a divide-by-zero', () => {
+  assert.equal(computePaidRatio([cat(0, 0)]), 0)
+  assert.equal(computePaidRatio([]), 0)
 })
 
-test('nothing paid carries the full computed earnings', () => {
-  const cats = [cat(50_000, 0), cat(5_000, 0)]
-  assert.equal(computeCarriedBalance(0, cats), 55_000)
+test('computeNetPaid: paying every line item in full disburses exactly net salary', () => {
+  // The whole point: the grid must agree with the payslip's Net Salary.
+  assert.equal(computeNetPaid(slipCategories, SLIP_NET), SLIP_NET)
+})
+
+test('computeNetPaid: holding a salary disburses nothing', () => {
+  assert.equal(computeNetPaid([cat(270_000, 0), cat(27_000, 0)], SLIP_NET), 0)
+})
+
+test('computeNetPaid: a half payment disburses half the net', () => {
+  assert.equal(computeNetPaid([cat(270_000, 135_000), cat(27_000, 13_500)], SLIP_NET), SLIP_NET / 2)
+})
+
+test('computeCarriedBalance: fully paid carries only the previous balance', () => {
+  assert.equal(computeCarriedBalance(0, SLIP_NET, SLIP_NET), 0)
+  assert.equal(computeCarriedBalance(3_000, SLIP_NET, SLIP_NET), 3_000)
+})
+
+test('computeCarriedBalance: a held salary carries the NET owed, not the gross', () => {
+  // 246,610 owed -- not the 297,000 the earning columns add up to.
+  assert.equal(computeCarriedBalance(0, SLIP_NET, 0), SLIP_NET)
+  assert.equal(computeCarriedBalance(2_000, SLIP_NET, 0), 2_000 + SLIP_NET)
+})
+
+test('computeCarriedBalance: a half payment carries half the net', () => {
+  assert.equal(computeCarriedBalance(0, SLIP_NET, SLIP_NET / 2), SLIP_NET / 2)
 })
 
 test('computePaidTotal sums the paid amounts', () => {

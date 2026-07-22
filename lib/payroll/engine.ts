@@ -3,7 +3,12 @@ import { estimateIncomeTaxFromSlabs, FIX_IDS, FORMULA_VERSION } from '@/lib/payr
 import { PayrollReconciliationMismatch } from '@/lib/payroll/reconciliation'
 import { toPeriodKey, normalizePayrollName } from '@/lib/payroll/normalizers'
 import { calculateAnnualProgressiveTax, calculatePresentDays, calculateWorkingDays, resolveTravelTier } from '@/lib/payroll/settings'
-import { PAYABLE_EARNING_KEYS, computeCarriedBalance, type PaymentCategory } from '@/lib/payroll/payments'
+import {
+  PAYABLE_EARNING_KEYS,
+  computeCarriedBalance,
+  computeNetPaid,
+  type PaymentCategory,
+} from '@/lib/payroll/payments'
 import type { Prisma } from '@prisma/client'
 
 export type InputBucket = Record<string, number>
@@ -471,13 +476,14 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
     let paid: number
     let balance: number
     if (recordedPaid) {
+      // Paid and balance are in net (take-home) terms: withholding scales with
+      // how much of the earning line items was actually disbursed.
       const categories: PaymentCategory[] = PAYABLE_EARNING_KEYS.map((key) => ({
         computed: getNumber(bucket, key),
         paid: recordedPaid.get(key) ?? 0,
       }))
-      balance = computeCarriedBalance(previousBalance, categories)
-      // Net-equivalent disbursed, kept on the receipt for the pay stub.
-      paid = netSalary - (balance - previousBalance)
+      paid = computeNetPaid(categories, netSalary)
+      balance = computeCarriedBalance(previousBalance, netSalary, paid)
     } else {
       paid = 0
       balance = previousBalance + netSalary
