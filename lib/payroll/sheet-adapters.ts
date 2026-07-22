@@ -50,8 +50,6 @@ export const SHEET_TO_COMPONENT_KEY: Partial<Record<string, PayrollComponentKey>
   Bonus: 'BONUS',
   Bonuses: 'BONUS',
   Travel: 'TRAVEL_REIMBURSEMENT',
-  'Utility Bills': 'UTILITY_REIMBURSEMENT',
-  Meals: 'MEALS_REIMBURSEMENT',
   Mobile: 'MOBILE_REIMBURSEMENT',
   Loan: 'ADVANCE_LOAN',
   'Loan Deduct': 'LOAN_REPAYMENT',

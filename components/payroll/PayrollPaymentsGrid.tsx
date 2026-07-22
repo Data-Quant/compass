@@ -15,11 +15,7 @@ import { filterPaymentRows } from '@/lib/payroll/payments'
  * categories still count toward Paid and are still saved at their existing
  * values, so no amount is lost -- it simply is not shown or separately editable.
  */
-const HIDDEN_CATEGORY_KEYS = new Set([
-  'UTILITY_REIMBURSEMENT',
-  'MEALS_REIMBURSEMENT',
-  'EXPENSE_REIMBURSEMENT',
-])
+const HIDDEN_CATEGORY_KEYS = new Set(['EXPENSE_REIMBURSEMENT'])
 
 const CATEGORY_LABELS: Record<string, string> = {
   BASIC_SALARY: 'Basic',
@@ -27,8 +23,6 @@ const CATEGORY_LABELS: Record<string, string> = {
   BONUS: 'Bonus',
   TRAVEL_REIMBURSEMENT: 'Travel',
   MOBILE_REIMBURSEMENT: 'Mobile',
-  UTILITY_REIMBURSEMENT: 'Utility',
-  MEALS_REIMBURSEMENT: 'Meals',
   EXPENSE_REIMBURSEMENT: 'Reimb.',
   ADVANCE_LOAN: 'Advance',
 }

@@ -50,8 +50,6 @@ function receiptJsonToData(
       bonus: num(earnings.bonus),
       medicalAllowance: num(earnings.medicalAllowance),
       travelReimbursement: num(earnings.travelReimbursement),
-      utilityReimbursement: num(earnings.utilityReimbursement),
-      mealsReimbursement: num(earnings.mealsReimbursement),
       mobileReimbursement: num(earnings.mobileReimbursement),
       expenseReimbursement: num(earnings.expenseReimbursement),
       advanceLoan: num(earnings.advanceLoan),

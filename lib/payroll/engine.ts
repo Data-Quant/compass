@@ -32,8 +32,6 @@ const KNOWN_EARNING_KEYS = new Set([
   'BONUS',
   'MEDICAL_ALLOWANCE',
   'TRAVEL_REIMBURSEMENT',
-  'UTILITY_REIMBURSEMENT',
-  'MEALS_REIMBURSEMENT',
   'MOBILE_REIMBURSEMENT',
   'EXPENSE_REIMBURSEMENT',
   'ADVANCE_LOAN',
@@ -457,8 +455,6 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
       bonus +
       medicalAllowance +
       travelReimbursement +
-      getNumber(bucket, 'UTILITY_REIMBURSEMENT') +
-      getNumber(bucket, 'MEALS_REIMBURSEMENT') +
       getNumber(bucket, 'MOBILE_REIMBURSEMENT') +
       getNumber(bucket, 'EXPENSE_REIMBURSEMENT') +
       getNumber(bucket, 'ADVANCE_LOAN') +
@@ -533,8 +529,6 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
           bonus,
           medicalAllowance,
           travelReimbursement,
-          utilityReimbursement: getNumber(bucket, 'UTILITY_REIMBURSEMENT'),
-          mealsReimbursement: getNumber(bucket, 'MEALS_REIMBURSEMENT'),
           mobileReimbursement: getNumber(bucket, 'MOBILE_REIMBURSEMENT'),
           expenseReimbursement: getNumber(bucket, 'EXPENSE_REIMBURSEMENT'),
           advanceLoan: getNumber(bucket, 'ADVANCE_LOAN'),

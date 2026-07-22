@@ -58,8 +58,6 @@ export interface GridRow {
   medicalAllowance: number
   bonus: number
   travelReimbursement: number
-  utilityReimbursement: number
-  mealsReimbursement: number
   mobileReimbursement: number
   expenseReimbursement: number
   advanceLoan: number
@@ -85,8 +83,7 @@ type SortKey = keyof GridRow
 
 const REIMB_KEYS = new Set([
   'MEDICAL_ALLOWANCE', 'MEDICAL_TAX_EXEMPTION',
-  'TRAVEL_REIMBURSEMENT', 'UTILITY_REIMBURSEMENT',
-  'MEALS_REIMBURSEMENT', 'MOBILE_REIMBURSEMENT',
+  'TRAVEL_REIMBURSEMENT', 'MOBILE_REIMBURSEMENT',
   'EXPENSE_REIMBURSEMENT',
 ])
 
@@ -148,8 +145,7 @@ function buildGridRows(
         userId: undefined,
         role: undefined,
         basicSalary: 0, medicalAllowance: 0, bonus: 0,
-        travelReimbursement: 0, utilityReimbursement: 0,
-        mealsReimbursement: 0, mobileReimbursement: 0,
+        travelReimbursement: 0, mobileReimbursement: 0,
         expenseReimbursement: 0, advanceLoan: 0,
         incomeTax: 0, adjustment: 0, loanRepayment: 0, additionalDeductions: 0,
         paid: 0, grossPay: 0, totalReimbursements: 0,
@@ -176,8 +172,6 @@ function buildGridRows(
       case 'MEDICAL_ALLOWANCE': row.medicalAllowance += amount; break
       case 'BONUS': row.bonus += amount; break
       case 'TRAVEL_REIMBURSEMENT': row.travelReimbursement += amount; break
-      case 'UTILITY_REIMBURSEMENT': row.utilityReimbursement += amount; break
-      case 'MEALS_REIMBURSEMENT': row.mealsReimbursement += amount; break
       case 'MOBILE_REIMBURSEMENT': row.mobileReimbursement += amount; break
       case 'EXPENSE_REIMBURSEMENT': row.expenseReimbursement += amount; break
       case 'ADVANCE_LOAN': row.advanceLoan += amount; break
@@ -209,8 +203,8 @@ function buildGridRows(
     }
 
     row.totalReimbursements =
-      row.medicalAllowance + row.travelReimbursement + row.utilityReimbursement +
-      row.mealsReimbursement + row.mobileReimbursement + row.expenseReimbursement
+      row.medicalAllowance + row.travelReimbursement +
+      row.mobileReimbursement + row.expenseReimbursement
     if (!row.totalDeductions) {
       row.totalDeductions = row.incomeTax + row.adjustment + row.loanRepayment + row.additionalDeductions
     }
@@ -513,8 +507,6 @@ export function PayrollEmployeeGrid({
     medicalAllowance: 'MEDICAL_ALLOWANCE',
     bonus: 'BONUS',
     travelReimbursement: 'TRAVEL_REIMBURSEMENT',
-    utilityReimbursement: 'UTILITY_REIMBURSEMENT',
-    mealsReimbursement: 'MEALS_REIMBURSEMENT',
     mobileReimbursement: 'MOBILE_REIMBURSEMENT',
     expenseReimbursement: 'EXPENSE_REIMBURSEMENT',
     advanceLoan: 'ADVANCE_LOAN',
