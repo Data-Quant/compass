@@ -17,8 +17,6 @@ async function main() {
     BONUS: 'bonus',
     TRAVEL_REIMBURSEMENT: 'travelReimbursement',
     MOBILE_REIMBURSEMENT: 'mobileReimbursement',
-    UTILITY_REIMBURSEMENT: 'utilityReimbursement',
-    MEALS_REIMBURSEMENT: 'mealsReimbursement',
     EXPENSE_REIMBURSEMENT: 'expenseReimbursement',
     ADVANCE_LOAN: 'advanceLoan',
   }

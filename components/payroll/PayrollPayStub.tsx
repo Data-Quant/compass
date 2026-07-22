@@ -11,8 +11,6 @@ interface ReceiptJson {
     bonus?: number
     medicalAllowance?: number
     travelReimbursement?: number
-    utilityReimbursement?: number
-    mealsReimbursement?: number
     mobileReimbursement?: number
     expenseReimbursement?: number
     advanceLoan?: number

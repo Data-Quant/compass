@@ -11,8 +11,6 @@ export const PAYROLL_COMPONENT_LABELS: Record<PayrollComponentKey, string> = {
   BONUS: 'Bonus',
   MEDICAL_ALLOWANCE: 'Medical Allowance',
   TRAVEL_REIMBURSEMENT: 'Travel Reimbursement',
-  UTILITY_REIMBURSEMENT: 'Utility Reimbursement',
-  MEALS_REIMBURSEMENT: 'Meals Reimbursement',
   MOBILE_REIMBURSEMENT: 'Mobile Allowance',
   EXPENSE_REIMBURSEMENT: 'Reimbursements (Personal/Office)',
   ADVANCE_LOAN: 'Advance Salary (Loan)',
