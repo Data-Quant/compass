@@ -10,6 +10,17 @@ import { Loader2, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { filterPaymentRows } from '@/lib/payroll/payments'
 
+/**
+ * Categories hidden from the grid to keep it narrow. Display-only: hidden
+ * categories still count toward Paid and are still saved at their existing
+ * values, so no amount is lost -- it simply is not shown or separately editable.
+ */
+const HIDDEN_CATEGORY_KEYS = new Set([
+  'UTILITY_REIMBURSEMENT',
+  'MEALS_REIMBURSEMENT',
+  'EXPENSE_REIMBURSEMENT',
+])
+
 const CATEGORY_LABELS: Record<string, string> = {
   BASIC_SALARY: 'Basic',
   MEDICAL_ALLOWANCE: 'Medical',
@@ -72,7 +83,10 @@ export function PayrollPaymentsGrid({
       .finally(() => setLoading(false))
   }, [periodId])
 
-  const keys = rows[0]?.categories.map((c) => c.componentKey) ?? []
+  // Display-only. Saving and the Paid/Balance maths still walk every category.
+  const keys = (rows[0]?.categories.map((c) => c.componentKey) ?? []).filter(
+    (k) => !HIDDEN_CATEGORY_KEYS.has(k)
+  )
 
   const paidFor = (row: Row, key: string) => {
     const k = `${row.payrollName}|${key}`
@@ -86,11 +100,9 @@ export function PayrollPaymentsGrid({
   // earning line items actually paid, so Paid lands on the payslip's Net Salary
   // when nothing is held back, and on 0 when a salary is held.
   const derived = useMemo(() => {
-    const out: Record<
-      string,
-      { exemption: number; deductions: number; netPaid: number; balance: number }
-    > = {}
+    const out: Record<string, { netPaid: number; balance: number }> = {}
     for (const row of rows) {
+      // Every category counts, including the ones hidden from the table.
       let totalComputed = 0
       let totalPaid = 0
       for (const c of row.categories) {
@@ -101,8 +113,6 @@ export function PayrollPaymentsGrid({
       const ratio = totalComputed > 0 ? totalPaid / totalComputed : 0
       const netPaid = ratio * row.netSalary
       out[row.payrollName] = {
-        exemption: row.medicalTaxExemption * ratio,
-        deductions: row.totalDeductions * ratio,
         netPaid,
         balance: row.previousBalance + row.netSalary - netPaid,
       }
@@ -178,8 +188,6 @@ export function PayrollPaymentsGrid({
                   {CATEGORY_LABELS[k] ?? k}
                 </TableHead>
               ))}
-              <TableHead className="text-right whitespace-nowrap">Tax Exemption</TableHead>
-              <TableHead className="text-right whitespace-nowrap">Deductions</TableHead>
               <TableHead className="text-right">Paid</TableHead>
               <TableHead className="text-right">Balance</TableHead>
               <TableHead>Status</TableHead>
@@ -188,7 +196,7 @@ export function PayrollPaymentsGrid({
           <TableBody>
             {visibleRows.length === 0 && query.trim() !== '' && (
               <TableRow>
-                <TableCell colSpan={keys.length + 6} className="text-center text-sm text-muted-foreground py-8">
+                <TableCell colSpan={keys.length + 4} className="text-center text-sm text-muted-foreground py-8">
                   No employee matches “{query.trim()}”.
                 </TableCell>
               </TableRow>
@@ -202,23 +210,19 @@ export function PayrollPaymentsGrid({
                   <TableCell className="font-medium text-sm sticky left-0 bg-background">
                     {row.payrollName}
                   </TableCell>
-                  {row.categories.map((c) => (
-                    <TableCell key={c.componentKey} className="text-right p-1">
-                      <Input
-                        type="number"
-                        value={paidFor(row, c.componentKey)}
-                        disabled={!editable}
-                        onChange={(e) => setCell(row.payrollName, c.componentKey, e.target.value)}
-                        className="h-8 w-24 text-right tabular-nums ml-auto"
-                      />
-                    </TableCell>
-                  ))}
-                  <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
-                    {money(d.exemption)}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
-                    {money(-d.deductions)}
-                  </TableCell>
+                  {row.categories
+                    .filter((c) => !HIDDEN_CATEGORY_KEYS.has(c.componentKey))
+                    .map((c) => (
+                      <TableCell key={c.componentKey} className="text-right p-1">
+                        <Input
+                          type="number"
+                          value={paidFor(row, c.componentKey)}
+                          disabled={!editable}
+                          onChange={(e) => setCell(row.payrollName, c.componentKey, e.target.value)}
+                          className="h-8 w-24 text-right tabular-nums ml-auto"
+                        />
+                      </TableCell>
+                    ))}
                   <TableCell className="text-right tabular-nums text-sm">
                     {money(d.netPaid)}
                   </TableCell>
