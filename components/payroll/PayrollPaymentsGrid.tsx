@@ -6,8 +6,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { filterPaymentRows } from '@/lib/payroll/payments'
 
 const CATEGORY_LABELS: Record<string, string> = {
   BASIC_SALARY: 'Basic',
@@ -55,6 +56,11 @@ export function PayrollPaymentsGrid({
   const [saving, setSaving] = useState(false)
   // paid overrides keyed by `${payrollName}|${componentKey}`
   const [edits, setEdits] = useState<Record<string, number>>({})
+  const [query, setQuery] = useState('')
+
+  // Display-only filter. Saving still walks every row, so edits on rows hidden
+  // by the search are preserved and submitted.
+  const visibleRows = useMemo(() => filterPaymentRows(rows, query), [rows, query])
 
   useEffect(() => {
     fetch(`/api/payroll/periods/${periodId}/payments`)
@@ -136,6 +142,17 @@ export function PayrollPaymentsGrid({
 
   return (
     <div className="space-y-4">
+      <div className="relative max-w-xs">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search employee…"
+          aria-label="Search employees"
+          className="h-9 pl-9"
+        />
+      </div>
+
       <div className="overflow-x-auto rounded-card border border-border">
         <Table>
           <TableHeader>
@@ -152,7 +169,14 @@ export function PayrollPaymentsGrid({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((row) => {
+            {visibleRows.length === 0 && query.trim() !== '' && (
+              <TableRow>
+                <TableCell colSpan={keys.length + 4} className="text-center text-sm text-muted-foreground py-8">
+                  No employee matches “{query.trim()}”.
+                </TableCell>
+              </TableRow>
+            )}
+            {visibleRows.map((row) => {
               const d = derived[row.payrollName]
               const status: Row['status'] =
                 d.balance <= 0 ? 'PAID' : d.paidTotal <= 0 ? 'PENDING' : 'PARTIAL'

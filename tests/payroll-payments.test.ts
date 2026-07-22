@@ -5,6 +5,7 @@ import {
   computePaidTotal,
   paymentStatus,
   isSendableReceipt,
+  filterPaymentRows,
   PAYABLE_EARNING_KEYS,
   type PaymentCategory,
 } from '../lib/payroll/payments'
@@ -81,4 +82,50 @@ test('isSendableReceipt: a FAILED receipt with paid > 0 is sendable (retry)', ()
 test('isSendableReceipt: negative or NaN paid is not sendable', () => {
   assert.equal(isSendableReceipt('READY', -1), false)
   assert.equal(isSendableReceipt('READY', Number.NaN), false)
+})
+
+// ─── filterPaymentRows ──────────────────────────────────────────────────────
+// Name-only search over the rows already loaded in the Payments grid.
+
+const nameRows = [
+  { payrollName: 'Alpha Example' },
+  { payrollName: 'beta sample' },
+  { payrollName: 'Gamma Alpha' },
+]
+
+test('filterPaymentRows: an empty or blank query returns every row', () => {
+  assert.equal(filterPaymentRows(nameRows, '').length, 3)
+  assert.equal(filterPaymentRows(nameRows, '   ').length, 3)
+})
+
+test('filterPaymentRows: matches on name, case-insensitively', () => {
+  assert.deepEqual(
+    filterPaymentRows(nameRows, 'BETA').map((r) => r.payrollName),
+    ['beta sample']
+  )
+})
+
+test('filterPaymentRows: matches a partial name anywhere in the string', () => {
+  assert.deepEqual(
+    filterPaymentRows(nameRows, 'alpha').map((r) => r.payrollName),
+    ['Alpha Example', 'Gamma Alpha']
+  )
+})
+
+test('filterPaymentRows: surrounding whitespace is ignored', () => {
+  assert.deepEqual(
+    filterPaymentRows(nameRows, '  gamma  ').map((r) => r.payrollName),
+    ['Gamma Alpha']
+  )
+})
+
+test('filterPaymentRows: no match returns empty, never everything', () => {
+  assert.deepEqual(filterPaymentRows(nameRows, 'zzzz'), [])
+})
+
+test('filterPaymentRows: preserves input order and does not mutate', () => {
+  const before = nameRows.map((r) => r.payrollName)
+  const out = filterPaymentRows(nameRows, 'a')
+  assert.deepEqual(out.map((r) => r.payrollName), ['Alpha Example', 'beta sample', 'Gamma Alpha'])
+  assert.deepEqual(nameRows.map((r) => r.payrollName), before)
 })
