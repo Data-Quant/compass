@@ -29,6 +29,8 @@ type Row = {
   netSalary: number
   previousBalance: number
   categories: Category[]
+  medicalTaxExemption: number
+  totalDeductions: number
   paidTotal: number
   balance: number
   status: 'PAID' | 'PARTIAL' | 'PENDING'
@@ -79,18 +81,31 @@ export function PayrollPaymentsGrid({
   }
 
   // Live-derived paid/balance so HR sees the effect as they type.
+  // Live-derived so HR sees the effect as they type. Everything withheld — the
+  // medical tax exemption and the deductions — scales with the fraction of the
+  // earning line items actually paid, so Paid lands on the payslip's Net Salary
+  // when nothing is held back, and on 0 when a salary is held.
   const derived = useMemo(() => {
-    const out: Record<string, { paidTotal: number; balance: number }> = {}
+    const out: Record<
+      string,
+      { exemption: number; deductions: number; netPaid: number; balance: number }
+    > = {}
     for (const row of rows) {
-      let paidTotal = 0
-      let unpaid = 0
+      let totalComputed = 0
+      let totalPaid = 0
       for (const c of row.categories) {
         const k = `${row.payrollName}|${c.componentKey}`
-        const p = k in edits ? edits[k] : c.paid
-        paidTotal += p
-        unpaid += c.computed - p
+        totalComputed += c.computed
+        totalPaid += k in edits ? edits[k] : c.paid
       }
-      out[row.payrollName] = { paidTotal, balance: row.previousBalance + unpaid }
+      const ratio = totalComputed > 0 ? totalPaid / totalComputed : 0
+      const netPaid = ratio * row.netSalary
+      out[row.payrollName] = {
+        exemption: row.medicalTaxExemption * ratio,
+        deductions: row.totalDeductions * ratio,
+        netPaid,
+        balance: row.previousBalance + row.netSalary - netPaid,
+      }
     }
     return out
   }, [rows, edits])
@@ -163,6 +178,8 @@ export function PayrollPaymentsGrid({
                   {CATEGORY_LABELS[k] ?? k}
                 </TableHead>
               ))}
+              <TableHead className="text-right whitespace-nowrap">Tax Exemption</TableHead>
+              <TableHead className="text-right whitespace-nowrap">Deductions</TableHead>
               <TableHead className="text-right">Paid</TableHead>
               <TableHead className="text-right">Balance</TableHead>
               <TableHead>Status</TableHead>
@@ -171,7 +188,7 @@ export function PayrollPaymentsGrid({
           <TableBody>
             {visibleRows.length === 0 && query.trim() !== '' && (
               <TableRow>
-                <TableCell colSpan={keys.length + 4} className="text-center text-sm text-muted-foreground py-8">
+                <TableCell colSpan={keys.length + 6} className="text-center text-sm text-muted-foreground py-8">
                   No employee matches “{query.trim()}”.
                 </TableCell>
               </TableRow>
@@ -179,7 +196,7 @@ export function PayrollPaymentsGrid({
             {visibleRows.map((row) => {
               const d = derived[row.payrollName]
               const status: Row['status'] =
-                d.balance <= 0 ? 'PAID' : d.paidTotal <= 0 ? 'PENDING' : 'PARTIAL'
+                d.balance <= 0 ? 'PAID' : d.netPaid <= 0 ? 'PENDING' : 'PARTIAL'
               return (
                 <TableRow key={row.payrollName}>
                   <TableCell className="font-medium text-sm sticky left-0 bg-background">
@@ -196,8 +213,14 @@ export function PayrollPaymentsGrid({
                       />
                     </TableCell>
                   ))}
+                  <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
+                    {money(d.exemption)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
+                    {money(-d.deductions)}
+                  </TableCell>
                   <TableCell className="text-right tabular-nums text-sm">
-                    {money(d.paidTotal)}
+                    {money(d.netPaid)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-sm font-semibold">
                     {money(d.balance)}

@@ -2,7 +2,7 @@ import { prisma } from '@/lib/db'
 import {
   PAYABLE_EARNING_KEYS,
   computeCarriedBalance,
-  computePaidTotal,
+  computeNetPaid,
   paymentStatus,
   type PaymentStatus,
 } from '@/lib/payroll/payments'
@@ -13,6 +13,11 @@ export type PaymentGridRow = {
   netSalary: number
   previousBalance: number
   categories: { componentKey: string; computed: number; paid: number }[]
+  /** Full medical tax exemption (negative). The client scales it by the live paid ratio. */
+  medicalTaxExemption: number
+  /** Full income tax and other deductions. The client scales it by the live paid ratio. */
+  totalDeductions: number
+  /** Net amount disbursed -- equals the payslip's Net Salary when fully paid. */
   paidTotal: number
   balance: number
   status: PaymentStatus
@@ -89,10 +94,15 @@ export async function getPaymentGrid(periodId: string): Promise<PaymentGridRow[]
   return receipts.map((r) => {
     const json = (r.receiptJson ?? {}) as {
       earnings?: Record<string, number>
+      deductions?: { totalDeductions?: number }
       net?: { netSalary?: number }
     }
     const earnings = json.earnings ?? {}
     const netSalary = json.net?.netSalary ?? 0
+    // Both are withheld rather than disbursed, and both scale with how much of
+    // the earning line items was actually paid.
+    const medicalTaxExemption = Number(earnings.medicalTaxExemption ?? 0)
+    const totalDeductions = Number(json.deductions?.totalDeductions ?? 0)
     const previousBalance = prevBalances.get(r.payrollName) ?? 0
     const recorded = paidByPayroll.get(r.payrollName)
     // Default each cell to the computed amount when nothing is recorded yet.
@@ -101,14 +111,17 @@ export async function getPaymentGrid(periodId: string): Promise<PaymentGridRow[]
       const paid = hasRecords.has(r.payrollName) ? recorded?.get(key) ?? 0 : computed
       return { componentKey: key, computed, paid }
     })
+    const netPaid = computeNetPaid(categories, netSalary)
     return {
       payrollName: r.payrollName,
       userId: r.userId,
       netSalary,
       previousBalance,
       categories,
-      paidTotal: computePaidTotal(categories),
-      balance: computeCarriedBalance(previousBalance, categories),
+      medicalTaxExemption,
+      totalDeductions,
+      paidTotal: netPaid,
+      balance: computeCarriedBalance(previousBalance, netSalary, netPaid),
       status: paymentStatus(categories),
     }
   })
@@ -153,13 +166,15 @@ export async function savePaymentMarks(periodId: string, marks: PaymentMark[]): 
           })
         }
 
-        // Targeted balance update — no engine recalc.
+        // Targeted balance update — no engine recalc. Balance is in net terms:
+        // withholding scales with how much of the earnings was actually paid.
         const categories = PAYABLE_EARNING_KEYS.map((key) => ({
           computed: row.categories.find((c) => c.componentKey === key)?.computed ?? 0,
           paid: Number(mark.amounts[key] ?? 0),
         }))
         const previousBalance = prevBalances.get(mark.payrollName) ?? 0
-        const balance = computeCarriedBalance(previousBalance, categories)
+        const netPaid = computeNetPaid(categories, row.netSalary)
+        const balance = computeCarriedBalance(previousBalance, row.netSalary, netPaid)
 
         await tx.payrollComputedValue.updateMany({
           where: { periodId, payrollName: mark.payrollName, metricKey: 'BALANCE' },
@@ -173,7 +188,7 @@ export async function savePaymentMarks(periodId: string, marks: PaymentMark[]): 
         if (receipt) {
           const json = (receipt.receiptJson ?? {}) as Record<string, unknown>
           const net = (json.net ?? {}) as Record<string, unknown>
-          json.net = { ...net, previousBalance, balance }
+          json.net = { ...net, paid: netPaid, previousBalance, balance }
           await tx.payrollReceipt.update({
             where: { periodId_payrollName: { periodId, payrollName: mark.payrollName } },
             data: { receiptJson: json as never },
