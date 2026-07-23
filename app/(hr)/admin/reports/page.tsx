@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { RELATIONSHIP_TYPE_LABELS, RelationshipType } from '@/types'
@@ -22,7 +22,11 @@ import { Search, FileText, Download, Eye, FileSpreadsheet } from 'lucide-react'
 
 function ReportsPageContent() {
   const searchParams = useSearchParams()
-  const periodId = searchParams.get('periodId') || 'active'
+  const router = useRouter()
+  const pathname = usePathname()
+  // Seeded from the URL so a chosen period survives a refresh and stays shareable.
+  const [periodId, setPeriodId] = useState<string>(searchParams.get('periodId') || 'active')
+  const [periods, setPeriods] = useState<Array<{ id: string; name: string; isActive: boolean }>>([])
   const [reports, setReports] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState<any>(null)
@@ -33,6 +37,29 @@ function ReportsPageContent() {
   useEffect(() => {
     loadReports()
   }, [periodId])
+
+  // Past periods are already served by the reports APIs; this just lets the
+  // admin pick one instead of hand-editing the URL.
+  useEffect(() => {
+    fetch('/api/admin/periods')
+      .then((r) => r.json())
+      .then((d) => {
+        const list = d.periods || []
+        setPeriods(list)
+        // Resolve the "active" placeholder to a real id so the dropdown shows it.
+        setPeriodId((current) => {
+          if (current !== 'active') return current
+          return list.find((p: { isActive: boolean }) => p.isActive)?.id ?? current
+        })
+      })
+      .catch(() => toast.error('Failed to load evaluation periods'))
+  }, [])
+
+  const handlePeriodChange = (nextId: string) => {
+    setPeriodId(nextId)
+    setLoading(true)
+    router.replace(`${pathname}?periodId=${nextId}`, { scroll: false })
+  }
 
   const loadReports = async () => {
     try {
@@ -145,6 +172,19 @@ function ReportsPageContent() {
           <Card>
             <CardContent className="p-4">
               <div className="flex flex-wrap gap-4 items-center">
+                <Select value={periodId} onValueChange={handlePeriodChange}>
+                  <SelectTrigger className="w-[220px]">
+                    <SelectValue placeholder="Select a period" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {periods.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                        {p.isActive ? ' (active)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <div className="relative flex-1 min-w-[200px]">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
