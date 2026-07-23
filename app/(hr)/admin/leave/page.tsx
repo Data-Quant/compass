@@ -112,6 +112,12 @@ interface TeamUser {
   department?: string | null
 }
 
+interface ThreeELeadAssignment {
+  id: string
+  employee: { id: string; name: string | null; department: string | null }
+  lead: { id: string; name: string | null; department: string | null }
+}
+
 const LEAVE_TYPE_CONFIG = {
   CASUAL: { icon: Sun, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-500/10', label: 'Casual' },
   SICK: { icon: Thermometer, color: 'text-red-500', bg: 'bg-red-50 dark:bg-red-500/10', label: 'Sick' },
@@ -217,6 +223,12 @@ export default function HRLeavePage() {
   const [creatingWfh, setCreatingWfh] = useState(false)
   const [removingWfhId, setRemovingWfhId] = useState<string | null>(null)
   const [sendingReminders, setSendingReminders] = useState(false)
+  const [isThreeELeadsModalOpen, setIsThreeELeadsModalOpen] = useState(false)
+  const [threeELeads, setThreeELeads] = useState<ThreeELeadAssignment[]>([])
+  const [loadingThreeELeads, setLoadingThreeELeads] = useState(false)
+  const [savingThreeELead, setSavingThreeELead] = useState(false)
+  const [removingThreeELeadId, setRemovingThreeELeadId] = useState<string | null>(null)
+  const [threeELeadForm, setThreeELeadForm] = useState({ employeeId: '', leadId: '' })
   const [isBalanceModalOpen, setIsBalanceModalOpen] = useState(false)
   const [balanceEmployeeId, setBalanceEmployeeId] = useState('')
   const [balanceYear, setBalanceYear] = useState(new Date().getFullYear())
@@ -692,6 +704,75 @@ export default function HRLeavePage() {
     return calculateLeaveDuration(startDate, endDate, isHalfDay)
   }
 
+  const loadThreeELeads = async () => {
+    setLoadingThreeELeads(true)
+    try {
+      const res = await fetch('/api/admin/leave-approvers')
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Failed to load 3E team leads')
+      }
+      setThreeELeads(data.assignments || [])
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to load 3E team leads')
+    } finally {
+      setLoadingThreeELeads(false)
+    }
+  }
+
+  const openThreeELeadsModal = () => {
+    setThreeELeadForm({ employeeId: '', leadId: '' })
+    setIsThreeELeadsModalOpen(true)
+    loadThreeELeads()
+  }
+
+  const handleAssignThreeELead = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!threeELeadForm.employeeId || !threeELeadForm.leadId) {
+      toast.error('Select both a 3E team member and their team lead')
+      return
+    }
+
+    setSavingThreeELead(true)
+    try {
+      const res = await fetch('/api/admin/leave-approvers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(threeELeadForm),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Failed to assign team lead')
+      }
+
+      toast.success('Team lead assigned')
+      setThreeELeadForm({ employeeId: '', leadId: '' })
+      await loadThreeELeads()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to assign team lead')
+    } finally {
+      setSavingThreeELead(false)
+    }
+  }
+
+  const handleRemoveThreeELead = async (id: string) => {
+    setRemovingThreeELeadId(id)
+    try {
+      const res = await fetch(`/api/admin/leave-approvers?id=${id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Failed to remove team lead')
+      }
+
+      toast.success('Team lead removed')
+      await loadThreeELeads()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to remove team lead')
+    } finally {
+      setRemovingThreeELeadId(null)
+    }
+  }
+
   const openBalanceModal = (employeeId = balanceEmployeeId, year = balanceYear) => {
     setBalanceEmployeeId(employeeId)
     setBalanceYear(year)
@@ -740,6 +821,10 @@ export default function HRLeavePage() {
             >
               <Eye className="w-4 h-4" />
               Manage Leave Balance
+            </Button>
+            <Button variant="outline" onClick={openThreeELeadsModal}>
+              <User className="w-4 h-4" />
+              3E Team Leads
             </Button>
             <Button
               variant="outline"
@@ -1218,6 +1303,118 @@ export default function HRLeavePage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={isThreeELeadsModalOpen}
+        onClose={() => setIsThreeELeadsModalOpen(false)}
+        title="3E Team Leads"
+        size="lg"
+      >
+        <div className="space-y-5">
+          <p className="text-sm text-muted-foreground">
+            Assign a team lead to each 3E team member so their leave requests go to that lead
+            for approval. Without a lead, a 3E member&apos;s leave is approved by HR only. These
+            assignments are used for leave routing only &mdash; they do not add anyone to
+            evaluations or the org chart.
+          </p>
+
+          <form onSubmit={handleAssignThreeELead} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label className="mb-2">3E Team Member</Label>
+                <Select
+                  value={threeELeadForm.employeeId || '__none__'}
+                  onValueChange={(v) =>
+                    setThreeELeadForm((prev) => ({ ...prev, employeeId: v === '__none__' ? '' : v }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select 3E team member..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Select 3E team member...</SelectItem>
+                    {threeEUsers.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label className="mb-2">Team Lead</Label>
+                <Select
+                  value={threeELeadForm.leadId || '__none__'}
+                  onValueChange={(v) =>
+                    setThreeELeadForm((prev) => ({ ...prev, leadId: v === '__none__' ? '' : v }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select team lead..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Select team lead...</SelectItem>
+                    {users
+                      .filter((u) => u.id !== threeELeadForm.employeeId)
+                      .map((u) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.name}
+                          {u.department ? ` (${u.department})` : ''}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <Button type="submit" disabled={savingThreeELead}>
+                <Plus className="w-4 h-4" />
+                {savingThreeELead ? 'Assigning...' : 'Assign Team Lead'}
+              </Button>
+            </div>
+          </form>
+
+          <div className="border-t border-border pt-4">
+            {loadingThreeELeads ? (
+              <LoadingScreen message="Loading team leads..." variant="section" />
+            ) : threeELeads.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">
+                No 3E team leads assigned yet.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {threeELeads.map((assignment) => (
+                  <div
+                    key={assignment.id}
+                    className="flex items-center justify-between gap-4 rounded-lg border border-border p-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {assignment.employee.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        Approved by {assignment.lead.name}
+                        {assignment.lead.department ? ` (${assignment.lead.department})` : ''}
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleRemoveThreeELead(assignment.id)}
+                      disabled={removingThreeELeadId === assignment.id}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      {removingThreeELeadId === assignment.id ? 'Removing...' : 'Remove'}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </Modal>
 
       <Modal
