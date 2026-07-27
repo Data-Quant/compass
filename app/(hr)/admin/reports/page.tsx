@@ -6,6 +6,8 @@ import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { RELATIONSHIP_TYPE_LABELS, RelationshipType } from '@/types'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
+import { StarRating } from '@/components/composed/StarRating'
+import { scoreToStars } from '@/lib/stars'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -261,11 +263,16 @@ function ReportsPageContent() {
                     </div>
                   </div>
 
-                  <div className="flex justify-between text-sm mb-4">
+                  {/* Stars mirror what the employee sees on their own report; the
+                      percentage stays because this page ranks and sorts by it. */}
+                  <div className="flex justify-between items-center text-sm mb-4">
                     <span className="text-muted-foreground">Score</span>
-                    <span className={`font-semibold ${getScoreColor(report.overallScore)}`}>
-                      {report.overallScore?.toFixed(1) || '0.0'}%
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <StarRating stars={scoreToStars(report.overallScore || 0)} />
+                      <span className={`font-semibold ${getScoreColor(report.overallScore)}`}>
+                        {report.overallScore?.toFixed(1) || '0.0'}%
+                      </span>
+                    </div>
                   </div>
 
                   {report.breakdown && report.breakdown.length > 0 && (
