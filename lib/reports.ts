@@ -8,6 +8,7 @@ import {
   toCategorySetKey,
 } from '@/types'
 import { escapeHtml } from '@/lib/sanitize'
+import { scoreToStars, ratingBandFor, renderStars, starAriaLabel, STAR_COUNT } from '@/lib/stars'
 import { calculateRedistributedWeights } from '@/lib/config'
 import {
   getEvaluationQuestionMeta,
@@ -358,8 +359,24 @@ export function formatReportAsHTML(
   }
 
   const periodRange = `${formatDate(period.startDate)} - ${formatDate(period.endDate)}`
-  const overallScorePercent = detailedReport.overallScore.toFixed(2)
-  const aggregateScore = detailedReport.overallScore / 25 // Convert percentage to 0-4 scale
+  // The 0-4 value is the score the engine actually computes; the stored percentage
+  // is derived from it. lib/stars.ts owns that conversion so the headline stars and
+  // the aggregate row below can never drift apart.
+  const aggregateScore = scoreToStars(detailedReport.overallScore)
+  const ratingBand = ratingBandFor(aggregateScore)
+
+  // A zero aggregate means nothing has been rated yet, so show no stars at all
+  // rather than an empty row that reads as a bad review.
+  const hasScore = detailedReport.detailedSections.length > 0 && aggregateScore > 0
+  const scoreHeroHtml = hasScore
+    ? `
+      <div class="score-hero">
+        <div class="score-stars" role="img" aria-label="${starAriaLabel(aggregateScore)}">${renderStars(aggregateScore, { idPrefix: 'overall' })}</div>
+        <div class="score-value">${aggregateScore.toFixed(2)} <span class="score-outof">out of ${STAR_COUNT}</span></div>
+        ${ratingBand ? `<div class="score-band">${escapeHtml(ratingBand.label)}</div>` : ''}
+      </div>
+    `
+    : ''
 
   // Group detailed sections by relationship type
   const sectionsByType = new Map<RelationshipType, DetailedEvaluationSection[]>()
@@ -467,9 +484,46 @@ export function formatReportAsHTML(
           table { 
             page-break-inside: avoid; 
           }
-          h2 { 
-            page-break-after: avoid; 
+          h2 {
+            page-break-after: avoid;
           }
+          .score-hero {
+            page-break-inside: avoid;
+          }
+        }
+        .score-hero {
+          text-align: center;
+          margin: 28px 0;
+          padding: 24px 20px;
+          border: 1px solid #e2e5e9;
+          border-radius: 8px;
+          background-color: #fcfcfd;
+          /* Without this the gold fill is dropped when the browser prints to PDF. */
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        .score-stars {
+          line-height: 0;
+        }
+        .score-stars .star {
+          margin: 0 3px;
+          vertical-align: middle;
+        }
+        .score-value {
+          margin-top: 12px;
+          font-size: 1.7em;
+          font-weight: bold;
+          color: #2c3e50;
+        }
+        .score-outof {
+          font-size: 0.55em;
+          font-weight: normal;
+          color: #7b8794;
+        }
+        .score-band {
+          margin-top: 4px;
+          font-size: 1.05em;
+          color: #34495e;
         }
       </style>
     </head>
@@ -490,7 +544,7 @@ export function formatReportAsHTML(
           ` : ''}
         </table>
       </div>
-
+      ${scoreHeroHtml}
       <p style="font-size: 0.9em; color: #666; margin: 20px 0;">
         <em>Please note that the scores from the team represent the average of all the scores received, rather than individual assessments from each evaluator.</em>
       </p>
@@ -613,15 +667,14 @@ export function formatReportAsHTML(
     }
   }
 
+  // The percentage row is deliberately gone from the employee-facing report: a 75%
+  // reads like a failing grade for what the scale itself calls "Exceeds
+  // Expectations". Percentages remain in the admin reports list, the verification
+  // CSV, the HR spreadsheet and analytics, where they drive sorting and ranking.
   html += `<tr class="total-row">`
-  html += `<td><strong>Aggregate (Out of 4)</strong></td>`
+  html += `<td><strong>Aggregate (Out of ${STAR_COUNT})</strong></td>`
   html += `<td><strong>100%</strong></td>`
   html += `<td><strong>${aggregateScore.toFixed(2)}</strong></td>`
-  html += `</tr>`
-  html += `<tr class="total-row">`
-  html += `<td><strong>Percentage</strong></td>`
-  html += `<td></td>`
-  html += `<td><strong>${overallScorePercent}%</strong></td>`
   html += `</tr>`
   html += `</tbody></table>`
   html += `</div>`
