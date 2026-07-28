@@ -6,6 +6,8 @@ import { computePeriodScoreMatrix } from '@/lib/analytics/period-score-matrix'
 import { computeTalentGrid } from '@/lib/analytics/talent-grid'
 import { computeBlindSpots } from '@/lib/analytics/blind-spots'
 import { deriveOutlook, type CompPoint } from '@/lib/analytics/employee-360'
+import { computeCalibration } from '@/lib/analytics/calibration'
+import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import type { RelationshipType } from '@/types'
 
 /**
@@ -119,6 +121,134 @@ export async function GET(request: NextRequest) {
       })
       .filter((point): point is CompPoint => point !== null)
 
+    /* ---- Who rated them, and how that rater rates generally ----
+     * A 2.4 from someone who runs 0.5 below everyone else is a different fact
+     * from a 2.4 from a generous rater. Without the rater's own calibration
+     * beside the score, a low mark cannot be told apart from a harsh marker. */
+    const periodId = periods[0]?.id ?? null
+    let evaluators: Array<{
+      id: string
+      name: string
+      relationshipType: string
+      meanGiven: number
+      raterDeviation: number | null
+      raterIsProvisional: boolean
+    }> = []
+
+    if (periodId) {
+      const [allRatings, assignments] = await Promise.all([
+        prisma.evaluation.findMany({
+          where: { periodId, submittedAt: { not: null }, ratingValue: { not: null } },
+          select: { evaluatorId: true, evaluateeId: true, ratingValue: true },
+        }),
+        getResolvedEvaluationAssignments(periodId),
+      ])
+
+      const lensByPair = new Map(
+        assignments.map((a) => [`${a.evaluatorId}:${a.evaluateeId}`, a.relationshipType as string])
+      )
+
+      const calibration = computeCalibration({
+        ratings: allRatings.map((row) => ({
+          evaluatorId: row.evaluatorId,
+          ratingValue: row.ratingValue as number,
+          relationshipType: lensByPair.get(`${row.evaluatorId}:${row.evaluateeId}`),
+        })),
+        capUsage: [],
+        exemptEvaluatorIds: new Set(),
+      })
+      const calByEvaluator = new Map(calibration.allEvaluators.map((e) => [e.evaluatorId, e]))
+
+      const mine = allRatings.filter((row) => row.evaluateeId === employeeId)
+      const grouped = new Map<string, number[]>()
+      for (const row of mine) {
+        grouped.set(row.evaluatorId, [...(grouped.get(row.evaluatorId) ?? []), row.ratingValue as number])
+      }
+
+      const raterNames = await prisma.user.findMany({
+        where: { id: { in: [...grouped.keys()] } },
+        select: { id: true, name: true },
+      })
+      const nameById = new Map(raterNames.map((u) => [u.id, u.name]))
+
+      evaluators = [...grouped.entries()]
+        .map(([evaluatorId, values]) => {
+          const cal = calByEvaluator.get(evaluatorId)
+          return {
+            id: evaluatorId,
+            name: nameById.get(evaluatorId) ?? 'Unknown',
+            relationshipType: lensByPair.get(`${evaluatorId}:${employeeId}`) ?? 'UNKNOWN',
+            meanGiven: values.reduce((sum, v) => sum + v, 0) / values.length,
+            raterDeviation: cal?.deviation ?? null,
+            raterIsProvisional: cal?.isProvisional ?? true,
+          }
+        })
+        .sort((a, b) => a.meanGiven - b.meanGiven)
+    }
+
+    /* ---- Network: reporting line and the people they share clients with ---- */
+    const [leadRows, reportRows] = await Promise.all([
+      prisma.evaluatorMapping.findMany({
+        where: { evaluateeId: employeeId, relationshipType: 'TEAM_LEAD' },
+        select: { evaluator: { select: { id: true, name: true, position: true } } },
+      }),
+      prisma.evaluatorMapping.findMany({
+        where: { evaluatorId: employeeId, relationshipType: 'TEAM_LEAD' },
+        select: { evaluatee: { select: { id: true, name: true, position: true } } },
+      }),
+    ])
+
+    const clientIds = clientAssignments.map((a) => a.clientId)
+    const colleagueRows = clientIds.length
+      ? await prisma.clientAssignment.findMany({
+          where: { clientId: { in: clientIds }, userId: { not: employeeId } },
+          include: { user: { select: { id: true, name: true } }, client: { select: { name: true } } },
+        })
+      : []
+
+    const colleagueMap = new Map<string, { id: string; name: string; clients: string[] }>()
+    for (const row of colleagueRows) {
+      const existing = colleagueMap.get(row.user.id)
+      if (existing) existing.clients.push(row.client.name)
+      else colleagueMap.set(row.user.id, { id: row.user.id, name: row.user.name, clients: [row.client.name] })
+    }
+
+    /* ---- Standing relative to the company and to their own department ---- */
+    const scored = current?.scores.filter((s) => s.overallScore > 0) ?? []
+    const rankAmong = (pool: typeof scored) => {
+      if (!currentScore || pool.length < 2) return null
+      const below = pool.filter((s) => s.overallScore < currentScore.overallScore).length
+      return Math.round((below / (pool.length - 1)) * 100)
+    }
+
+    const standing = {
+      companyPercentile: rankAmong(scored),
+      departmentPercentile: rankAmong(
+        scored.filter((s) => (s.department ?? null) === (employee.department ?? null))
+      ),
+      companySize: scored.length,
+    }
+
+    /* ---- Workload and time away ---- */
+    const yearStart = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1))
+    const [openTasks, doneTasks, leaveRequests, assetCount] = await Promise.all([
+      prisma.task.count({ where: { assigneeId: employeeId, status: { not: 'DONE' } } }),
+      prisma.task.count({ where: { assigneeId: employeeId, status: 'DONE' } }),
+      prisma.leaveRequest.findMany({
+        where: { employeeId, status: 'APPROVED', startDate: { gte: yearStart } },
+        select: { startDate: true, endDate: true, leaveType: true, isHalfDay: true },
+      }),
+      prisma.equipmentAssignment.count({ where: { employeeId, unassignedAt: null } }),
+    ])
+
+    const leaveDays = leaveRequests.reduce((sum, request) => {
+      const days =
+        Math.round(
+          (new Date(request.endDate).getTime() - new Date(request.startDate).getTime()) / 86400000
+        ) + 1
+      return sum + (request.isHalfDay ? 0.5 : Math.max(days, 1))
+    }, 0)
+
     const outlook = deriveOutlook({
       cellLabel: gridEntry?.cellLabel ?? null,
       momentumDelta: gridEntry?.momentumDelta ?? null,
@@ -142,6 +272,20 @@ export async function GET(request: NextRequest) {
       clients,
       comp,
       outlook,
+      evaluators,
+      network: {
+        leads: leadRows.map((row) => row.evaluator),
+        reports: reportRows.map((row) => row.evaluatee),
+        colleagues: [...colleagueMap.values()].sort((a, b) => b.clients.length - a.clients.length),
+      },
+      standing,
+      activity: {
+        openTasks,
+        doneTasks,
+        leaveDays,
+        leaveRequests: leaveRequests.length,
+        assets: assetCount,
+      },
     })
   } catch (error) {
     console.error('Failed to build employee 360:', error)

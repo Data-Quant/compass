@@ -21,6 +21,7 @@ import {
   Users,
   Network,
   Handshake,
+  Radio,
   CalendarDays,
   HelpCircle,
   Link2,
@@ -159,6 +160,7 @@ export const ADMIN_SIDEBAR: SidebarConfig = {
       defaultOpen: false,
       items: [
         { label: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
+        { label: 'Employee 360', href: '/admin/employee-360', icon: Radio },
       ],
     },
   ],
