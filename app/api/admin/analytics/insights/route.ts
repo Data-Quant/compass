@@ -178,9 +178,19 @@ export async function GET(request: NextRequest) {
           submittedAt: { not: null },
           ratingValue: { not: null },
         },
-        select: { evaluatorId: true, ratingValue: true },
+        // evaluateeId resolves each rating to the lens it was given through, which
+        // is the baseline calibration is measured against.
+        select: { evaluatorId: true, evaluateeId: true, ratingValue: true },
       }),
     ])
+
+    // Relationship lives on the assignment, not the evaluation row.
+    const lensByPair = new Map(
+      (await getResolvedEvaluationAssignments(currentPeriod.id)).map((assignment) => [
+        `${assignment.evaluatorId}:${assignment.evaluateeId}`,
+        assignment.relationshipType as string,
+      ])
+    )
 
     return NextResponse.json({
       currentPeriod: { id: currentPeriod.id, name: currentPeriod.name },
@@ -199,6 +209,7 @@ export async function GET(request: NextRequest) {
         ratings: ratingRows.map((row) => ({
           evaluatorId: row.evaluatorId,
           ratingValue: row.ratingValue as number,
+          relationshipType: lensByPair.get(`${row.evaluatorId}:${row.evaluateeId}`),
         })),
         capUsage,
         exemptEvaluatorIds,

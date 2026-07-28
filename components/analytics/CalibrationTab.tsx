@@ -6,8 +6,26 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Scale, Search, ShieldCheck } from 'lucide-react'
-import type { CalibrationResult, EvaluatorCalibration } from '@/lib/analytics/calibration'
+import {
+  MIN_RATINGS_FOR_CALIBRATION,
+  UNKNOWN_LENS,
+  type CalibrationResult,
+  type EvaluatorCalibration,
+} from '@/lib/analytics/calibration'
 import type { NameResolver } from '@/components/analytics/types'
+
+const ALL_LENSES = '__all__'
+
+/** Short labels; the full RELATIONSHIP_TYPE_LABELS are too long for filter chips. */
+const LENS_LABELS: Record<string, string> = {
+  TEAM_LEAD: 'Lead',
+  PEER: 'Peer',
+  DIRECT_REPORT: 'Reporting Member',
+  HR: 'HR',
+  DEPT: 'Department',
+  C_LEVEL: 'C-Level',
+  CROSS_DEPARTMENT: 'Cross-Dept',
+}
 
 interface CalibrationTabProps {
   calibration: CalibrationResult
@@ -25,23 +43,54 @@ interface CalibrationTabProps {
 function EvaluatorSpectrum({
   evaluators,
   resolveName,
-  orgMeanRating,
+  lensMeans,
 }: {
   evaluators: EvaluatorCalibration[]
   resolveName: NameResolver
-  orgMeanRating: number
+  lensMeans: CalibrationResult['lensMeans']
 }) {
   const [query, setQuery] = useState('')
+  const [lens, setLens] = useState<string>(ALL_LENSES)
+
+  const selectableLenses = lensMeans.filter((entry) => entry.relationshipType !== UNKNOWN_LENS)
+  const selectedLensMean = selectableLenses.find((entry) => entry.relationshipType === lens)
+
+  // Picking a lens re-ranks on that lens alone, which separates "rates everyone
+  // low" from "rates low only as a peer".
+  const rows =
+    lens === ALL_LENSES
+      ? evaluators.map((evaluator) => ({
+          evaluator,
+          deviation: evaluator.deviation,
+          ratingCount: evaluator.ratingCount,
+          meanRating: evaluator.meanRating,
+          isProvisional: evaluator.isProvisional,
+        }))
+      : evaluators
+          .map((evaluator) => {
+            const entry = evaluator.perLens.find((item) => item.relationshipType === lens)
+            return entry
+              ? {
+                  evaluator,
+                  deviation: entry.deviation,
+                  ratingCount: entry.ratingCount,
+                  meanRating: entry.meanRating,
+                  isProvisional: entry.isProvisional,
+                }
+              : null
+          })
+          .filter((row): row is NonNullable<typeof row> => row !== null)
+          .sort((a, b) => b.deviation - a.deviation)
 
   const filtered = query.trim()
-    ? evaluators.filter((evaluator) =>
-        resolveName(evaluator.evaluatorId).toLowerCase().includes(query.trim().toLowerCase())
+    ? rows.filter((row) =>
+        resolveName(row.evaluator.evaluatorId).toLowerCase().includes(query.trim().toLowerCase())
       )
-    : evaluators
+    : rows
 
   // Bars are scaled to the widest deviation present, so the spread fills the
   // available width whether the range is 0.2 or 1.5.
-  const maxAbs = evaluators.reduce((max, e) => Math.max(max, Math.abs(e.deviation)), 0) || 1
+  const maxAbs = rows.reduce((max, row) => Math.max(max, Math.abs(row.deviation)), 0) || 1
 
   return (
     <Card>
@@ -49,17 +98,58 @@ function EvaluatorSpectrum({
         <div className="flex items-baseline justify-between gap-2">
           <h3 className="text-lg font-semibold text-foreground">All Evaluators</h3>
           <span className="text-xs text-muted-foreground shrink-0">
-            {filtered.length === evaluators.length
-              ? `${evaluators.length} evaluators`
-              : `${filtered.length} of ${evaluators.length}`}
+            {filtered.length === rows.length
+              ? `${rows.length} evaluators`
+              : `${filtered.length} of ${rows.length}`}
           </span>
         </div>
         <p className="text-sm text-muted-foreground mb-3">
-          Lenient to severe, against the org mean of {orgMeanRating.toFixed(2)}. Amber rates above
-          it, blue below.
+          {lens === ALL_LENSES ? (
+            <>
+              Lenient to severe. Each rating is measured against the mean for the lens it was
+              given through, so this reflects how someone rates rather than which lenses they
+              sit in. Amber rates above the norm, blue below.
+            </>
+          ) : (
+            <>
+              How each evaluator rates <strong>as a {LENS_LABELS[lens] ?? lens}</strong>, against
+              that lens&apos;s mean of {selectedLensMean?.meanRating.toFixed(2) ?? '—'}. Only
+              anyone who rated in this lens appears; those under{' '}
+              {MIN_RATINGS_FOR_CALIBRATION} ratings are marked as thin.
+            </>
+          )}
         </p>
 
-        {evaluators.length > 8 && (
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => setLens(ALL_LENSES)}
+            className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
+              lens === ALL_LENSES
+                ? 'border-indigo-600 bg-indigo-600 text-white'
+                : 'border-border bg-background text-foreground hover:bg-muted'
+            }`}
+          >
+            All lenses
+          </button>
+          {selectableLenses.map((entry) => (
+            <button
+              key={entry.relationshipType}
+              type="button"
+              onClick={() => setLens(entry.relationshipType)}
+              className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
+                lens === entry.relationshipType
+                  ? 'border-indigo-600 bg-indigo-600 text-white'
+                  : 'border-border bg-background text-foreground hover:bg-muted'
+              }`}
+            >
+              As {LENS_LABELS[entry.relationshipType] ?? entry.relationshipType}
+              <span className="ml-1 opacity-60">{entry.meanRating.toFixed(2)}</span>
+            </button>
+          ))}
+        </div>
+
+        {rows.length > 8 && (
           <div className="relative mb-3">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
@@ -74,9 +164,10 @@ function EvaluatorSpectrum({
 
         {filtered.length > 0 ? (
           <div className="space-y-1.5 max-h-[520px] overflow-y-auto pr-1">
-            {filtered.map((evaluator, index) => {
-              const lenient = evaluator.deviation >= 0
-              const width = (Math.abs(evaluator.deviation) / maxAbs) * 50
+            {filtered.map((row, index) => {
+              const evaluator = row.evaluator
+              const lenient = row.deviation >= 0
+              const width = (Math.abs(row.deviation) / maxAbs) * 50
 
               return (
                 <motion.div
@@ -96,7 +187,16 @@ function EvaluatorSpectrum({
                       )}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {evaluator.ratingCount} ratings • mean {evaluator.meanRating.toFixed(2)}
+                      {row.ratingCount} rating{row.ratingCount === 1 ? '' : 's'} • mean{' '}
+                      {row.meanRating.toFixed(2)}
+                      {row.isProvisional && (
+                        <span
+                          className="ml-2 rounded-full bg-background px-2 py-0.5"
+                          title={`Fewer than ${MIN_RATINGS_FOR_CALIBRATION} ratings, so this figure moves a lot on a single answer`}
+                        >
+                          thin
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -105,8 +205,8 @@ function EvaluatorSpectrum({
                     <div className="absolute inset-y-0 left-1/2 w-px bg-border" />
                     <div
                       className={`absolute top-1/2 h-2.5 -translate-y-1/2 rounded-sm ${
-                        lenient ? 'bg-amber-500/70' : 'bg-blue-500/70'
-                      }`}
+                        lenient ? 'bg-amber-500' : 'bg-blue-500'
+                      } ${row.isProvisional ? 'opacity-30' : 'opacity-70'}`}
                       style={
                         lenient
                           ? { left: '50%', width: `${width}%` }
@@ -122,8 +222,8 @@ function EvaluatorSpectrum({
                         : 'text-blue-600 dark:text-blue-400'
                     }`}
                   >
-                    {evaluator.deviation > 0 ? '+' : ''}
-                    {evaluator.deviation.toFixed(2)}
+                    {row.deviation > 0 ? '+' : ''}
+                    {row.deviation.toFixed(2)}
                   </div>
                 </motion.div>
               )
@@ -219,7 +319,7 @@ export function CalibrationTab({ calibration, resolveName }: CalibrationTabProps
       <EvaluatorSpectrum
         evaluators={calibration.allEvaluators}
         resolveName={resolveName}
-        orgMeanRating={calibration.orgMeanRating}
+        lensMeans={calibration.lensMeans}
       />
     </div>
   )

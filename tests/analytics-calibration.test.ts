@@ -24,17 +24,21 @@ test('computeCalibration ranks evaluators by deviation from the org mean', () =>
   assert.equal(result.mostSevere[0].deviation, -1.5)
 })
 
-test('computeCalibration ignores evaluators below the minimum rating count', () => {
+test('a thin rating count is flagged, not hidden', () => {
+  // Someone who rated once still rated someone. Dropping them made their number
+  // impossible to find from the evaluatee's side, so they are shown and marked.
   const result = computeCalibration({
     ratings: [...ratings('busy', [3, 3, 3, 3, 3]), ...ratings('sparse', [4])],
     capUsage: [],
     exemptEvaluatorIds: new Set(),
   })
 
-  const ranked = [...result.mostLenient, ...result.mostSevere].map((entry) => entry.evaluatorId)
+  const ids = result.allEvaluators.map((entry) => entry.evaluatorId)
+  assert.ok(ids.includes('sparse'), 'a single-rating evaluator should still appear')
+  assert.ok(ids.includes('busy'))
 
-  assert.equal(ranked.includes('sparse'), false)
-  assert.equal(ranked.includes('busy'), true)
+  assert.equal(result.allEvaluators.find((e) => e.evaluatorId === 'sparse')!.isProvisional, true)
+  assert.equal(result.allEvaluators.find((e) => e.evaluatorId === 'busy')!.isProvisional, false)
   assert.equal(MIN_RATINGS_FOR_CALIBRATION, 5)
 })
 
@@ -131,4 +135,106 @@ test('allEvaluators is empty when there is nothing to calibrate', () => {
 
   assert.equal(result.insufficientData, true)
   assert.deepEqual(result.allEvaluators, [])
+})
+
+function lensRatings(
+  evaluatorId: string,
+  relationshipType: string,
+  values: number[]
+): CalibrationRating[] {
+  return values.map((ratingValue) => ({ evaluatorId, ratingValue, relationshipType }))
+}
+
+test('deviation is measured within lens, not against one global mean', () => {
+  // HR ratings sit far above team-lead ratings company-wide. Against a single
+  // global mean the HR evaluator would look lenient and the lead strict purely
+  // from which lens they occupy, even though each rates exactly at their own norm.
+  const result = computeCalibration({
+    ratings: [
+      ...lensRatings('hr-a', 'HR', [4, 4, 4, 4, 4]),
+      ...lensRatings('hr-b', 'HR', [4, 4, 4, 4, 4]),
+      ...lensRatings('lead-a', 'TEAM_LEAD', [2, 2, 2, 2, 2]),
+      ...lensRatings('lead-b', 'TEAM_LEAD', [2, 2, 2, 2, 2]),
+    ],
+    capUsage: [],
+    exemptEvaluatorIds: new Set(),
+  })
+
+  // Global mean is 3, so a naive calculation would give +1 and -1.
+  assert.equal(result.orgMeanRating, 3)
+  for (const evaluator of result.allEvaluators) {
+    assert.equal(evaluator.deviation, 0, `${evaluator.evaluatorId} should sit at its lens norm`)
+  }
+})
+
+test('an evaluator strict in one lens and lenient in another is separated', () => {
+  const result = computeCalibration({
+    ratings: [
+      // The subject: harsh as a peer, generous as a lead.
+      ...lensRatings('split', 'PEER', [1, 1, 1, 1, 1]),
+      ...lensRatings('split', 'TEAM_LEAD', [4, 4, 4, 4, 4]),
+      // Context so each lens has a norm above/below them.
+      ...lensRatings('peer-norm', 'PEER', [3, 3, 3, 3, 3]),
+      ...lensRatings('lead-norm', 'TEAM_LEAD', [2, 2, 2, 2, 2]),
+    ],
+    capUsage: [],
+    exemptEvaluatorIds: new Set(),
+  })
+
+  const split = result.allEvaluators.find((e) => e.evaluatorId === 'split')!
+  const asPeer = split.perLens.find((entry) => entry.relationshipType === 'PEER')!
+  const asLead = split.perLens.find((entry) => entry.relationshipType === 'TEAM_LEAD')!
+
+  assert.ok(asPeer.deviation < 0, 'should read as severe when rating peers')
+  assert.ok(asLead.deviation > 0, 'should read as lenient when rating reports')
+})
+
+test('a lens with few ratings is scored but flagged', () => {
+  const result = computeCalibration({
+    ratings: [
+      ...lensRatings('sparse', 'PEER', [3, 3, 3, 3, 3]),
+      // Two ratings is too few to characterise a lens.
+      ...lensRatings('sparse', 'HR', [4, 4]),
+      ...lensRatings('other', 'PEER', [2, 2, 2, 2, 2]),
+    ],
+    capUsage: [],
+    exemptEvaluatorIds: new Set(),
+  })
+
+  const sparse = result.allEvaluators.find((e) => e.evaluatorId === 'sparse')!
+  assert.equal(sparse.perLens.length, 2, 'both lenses appear')
+
+  const hr = sparse.perLens.find((entry) => entry.relationshipType === 'HR')!
+  const peer = sparse.perLens.find((entry) => entry.relationshipType === 'PEER')!
+  assert.equal(hr.isProvisional, true, 'two ratings is thin')
+  assert.equal(peer.isProvisional, false)
+})
+
+test('lens means are reported so each baseline is visible', () => {
+  const result = computeCalibration({
+    ratings: [
+      ...lensRatings('a', 'HR', [4, 4, 4, 4, 4]),
+      ...lensRatings('b', 'TEAM_LEAD', [2, 2, 2, 2, 2]),
+    ],
+    capUsage: [],
+    exemptEvaluatorIds: new Set(),
+  })
+
+  const hr = result.lensMeans.find((entry) => entry.relationshipType === 'HR')!
+  const lead = result.lensMeans.find((entry) => entry.relationshipType === 'TEAM_LEAD')!
+  assert.equal(hr.meanRating, 4)
+  assert.equal(lead.meanRating, 2)
+})
+
+test('ratings without a lens still work and share one baseline', () => {
+  // Older callers pass no relationshipType; those ratings compare only to each
+  // other rather than being silently dropped.
+  const result = computeCalibration({
+    ratings: [...ratings('lenient', [4, 4, 4, 4, 4]), ...ratings('severe', [1, 1, 1, 1, 1])],
+    capUsage: [],
+    exemptEvaluatorIds: new Set(),
+  })
+
+  assert.equal(result.allEvaluators.find((e) => e.evaluatorId === 'lenient')!.deviation, 1.5)
+  assert.equal(result.allEvaluators.find((e) => e.evaluatorId === 'severe')!.deviation, -1.5)
 })
