@@ -110,7 +110,6 @@ export const ADMIN_SIDEBAR: SidebarConfig = {
       items: [
         { label: 'Users', href: '/admin/users', icon: Users },
         { label: 'Org Chart', href: '/admin/org-chart', icon: Network },
-        { label: 'Clients', href: '/admin/clients', icon: Handshake },
       ],
     },
     {
@@ -132,6 +131,7 @@ export const ADMIN_SIDEBAR: SidebarConfig = {
       label: 'Operations',
       defaultOpen: false,
       items: [
+        { label: 'Clients', href: '/admin/clients', icon: Handshake },
         { label: 'Leave', href: '/admin/leave', icon: Calendar },
         { label: 'Device Tickets', href: '/admin/device-tickets', icon: Monitor },
         { label: 'Assets', href: '/admin/assets', icon: PackageSearch },
