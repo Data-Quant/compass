@@ -132,10 +132,17 @@ export function SidebarLayout({
       ? onboardingSidebarConfig
       : sidebarConfig
 
+  // The admin console has its own Clients page and must not get the employee
+  // link: its only top-level item is the dashboard, so an injected entry landed
+  // above it and sent HR to the employee view.
+  const isAdminConsole =
+    baseSidebarConfig.items.some((item) => item.href.startsWith('/admin')) ||
+    baseSidebarConfig.groups.some((group) => group.items.some((item) => item.href.startsWith('/admin')))
+
   // Slotted next to Projects, the other client-facing work item. Left out during
   // onboarding, where the sidebar is deliberately stripped back.
   const effectiveSidebarConfig =
-    hasClientele && baseSidebarConfig !== onboardingSidebarConfig
+    hasClientele && !isAdminConsole && baseSidebarConfig !== onboardingSidebarConfig
       ? {
           ...baseSidebarConfig,
           items: baseSidebarConfig.items.some((item) => item.href === '/clientele')
@@ -144,7 +151,10 @@ export function SidebarLayout({
                 const items = [...baseSidebarConfig.items]
                 const anchor = items.findIndex((item) => item.href === '/projects')
                 const entry = { label: 'Clientele', href: '/clientele', icon: Handshake }
-                items.splice(anchor >= 0 ? anchor + 1 : items.length - 1, 0, entry)
+                // Append when there is no Projects item rather than guessing an
+                // index, which previously put it above the dashboard.
+                if (anchor >= 0) items.splice(anchor + 1, 0, entry)
+                else items.push(entry)
                 return items
               })(),
         }
