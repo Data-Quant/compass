@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { ALL_TEAMS, TEAM_LABELS } from '@/lib/handbook/teams'
+import type { TeamTag } from '@prisma/client'
 
 interface Props {
   canEdit: boolean
@@ -68,7 +70,16 @@ interface PublicHoliday {
   id: string
   holidayDate: string
   name: string
+  teamTags: TeamTag[]
 }
+
+// Country groupings, so a national holiday can be applied to both entities in that
+// country in one click rather than remembering which tags pair up.
+const TEAM_PRESETS: Array<{ label: string; teams: TeamTag[] }> = [
+  { label: 'All Pakistan', teams: ['PAKISTAN', 'THREE_E_PAKISTAN'] },
+  { label: 'All Morocco', teams: ['MOROCCO', 'THREE_E_MOROCCO'] },
+  { label: 'Everyone', teams: [...ALL_TEAMS] },
+]
 
 export function PayrollSettingsPanel({ canEdit }: Props) {
   const [loading, setLoading] = useState(true)
@@ -87,10 +98,17 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
     type: 'EARNING',
     isTaxable: false,
   })
-  const [holidayForm, setHolidayForm] = useState({
+  const [holidayForm, setHolidayForm] = useState<{
+    holidayDate: string
+    name: string
+    teamTags: TeamTag[]
+  }>({
     holidayDate: '',
     name: '',
+    teamTags: [],
   })
+  const [editingHolidayId, setEditingHolidayId] = useState<string | null>(null)
+  const [editingTeamTags, setEditingTeamTags] = useState<TeamTag[]>([])
 
   const [travelForm, setTravelForm] = useState({
     transportMode: 'BIKE',
@@ -324,8 +342,15 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
     }
   }
 
+  const toggleTeam = (teams: TeamTag[], team: TeamTag): TeamTag[] =>
+    teams.includes(team) ? teams.filter((t) => t !== team) : [...teams, team]
+
   const submitHoliday = async (e: FormEvent) => {
     e.preventDefault()
+    if (holidayForm.teamTags.length === 0) {
+      toast.error('Select at least one team for this holiday')
+      return
+    }
     try {
       const res = await fetch('/api/payroll/public-holidays', {
         method: 'POST',
@@ -335,10 +360,31 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to create public holiday')
       toast.success('Public holiday added')
-      setHolidayForm({ holidayDate: '', name: '' })
+      setHolidayForm({ holidayDate: '', name: '', teamTags: [] })
       loadData()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to create public holiday')
+    }
+  }
+
+  const saveHolidayTeams = async (id: string) => {
+    if (editingTeamTags.length === 0) {
+      toast.error('Select at least one team for this holiday')
+      return
+    }
+    try {
+      const res = await fetch('/api/payroll/public-holidays', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, teamTags: editingTeamTags }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to update holiday')
+      toast.success('Teams updated')
+      setEditingHolidayId(null)
+      loadData()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update holiday')
     }
   }
 
@@ -535,15 +581,60 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
           </div>
           <div className="space-y-2">
             {publicHolidays.map((holiday) => (
-              <div key={holiday.id} className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2">
-                <div>
-                  <p className="text-sm font-medium">{holiday.name}</p>
-                  <p className="text-xs text-muted-foreground">{new Date(holiday.holidayDate).toLocaleDateString()}</p>
+              <div key={holiday.id} className="rounded-md bg-muted/40 px-3 py-2 space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">{holiday.name}</p>
+                    <p className="text-xs text-muted-foreground">{new Date(holiday.holidayDate).toLocaleDateString()}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {holiday.teamTags?.length
+                        ? holiday.teamTags.map((t) => TEAM_LABELS[t]).join(', ')
+                        : 'All teams (untagged)'}
+                    </p>
+                  </div>
+                  {canEdit && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setEditingHolidayId(editingHolidayId === holiday.id ? null : holiday.id)
+                          setEditingTeamTags(holiday.teamTags || [])
+                        }}
+                      >
+                        {editingHolidayId === holiday.id ? 'Cancel' : 'Edit Teams'}
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => deleteHoliday(holiday.id)}>
+                        Remove
+                      </Button>
+                    </div>
+                  )}
                 </div>
-                {canEdit && (
-                  <Button variant="ghost" size="sm" onClick={() => deleteHoliday(holiday.id)}>
-                    Remove
-                  </Button>
+
+                {canEdit && editingHolidayId === holiday.id && (
+                  <div className="border-t border-border pt-2 space-y-2">
+                    <div className="flex flex-wrap gap-1.5">
+                      {ALL_TEAMS.map((team) => (
+                        <button
+                          key={team}
+                          type="button"
+                          onClick={() => setEditingTeamTags((prev) => toggleTeam(prev, team))}
+                          className={`px-2 py-1 text-xs rounded-md border transition-colors ${
+                            editingTeamTags.includes(team)
+                              ? 'bg-indigo-600 text-white border-indigo-600'
+                              : 'bg-background text-foreground border-border hover:bg-muted'
+                          }`}
+                        >
+                          {TEAM_LABELS[team]}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex justify-end">
+                      <Button size="sm" onClick={() => saveHolidayTeams(holiday.id)}>
+                        Save Teams
+                      </Button>
+                    </div>
+                  </div>
                 )}
               </div>
             ))}
@@ -558,6 +649,45 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
               <div className="space-y-1.5 col-span-2">
                 <Label>Name</Label>
                 <Input value={holidayForm.name} onChange={(e) => setHolidayForm({ ...holidayForm, name: e.target.value })} placeholder="e.g. Eid Holiday" required />
+              </div>
+              <div className="col-span-3 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label>Applies To</Label>
+                  <div className="flex gap-1">
+                    {TEAM_PRESETS.map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => setHolidayForm((prev) => ({ ...prev, teamTags: preset.teams }))}
+                        className="px-2 py-0.5 text-xs rounded border border-border text-muted-foreground hover:bg-muted"
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {ALL_TEAMS.map((team) => (
+                    <button
+                      key={team}
+                      type="button"
+                      onClick={() =>
+                        setHolidayForm((prev) => ({ ...prev, teamTags: toggleTeam(prev.teamTags, team) }))
+                      }
+                      className={`px-2 py-1 text-xs rounded-md border transition-colors ${
+                        holidayForm.teamTags.includes(team)
+                          ? 'bg-indigo-600 text-white border-indigo-600'
+                          : 'bg-background text-foreground border-border hover:bg-muted'
+                      }`}
+                    >
+                      {TEAM_LABELS[team]}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Only these teams see the holiday and receive reminders, and only their
+                  working days are reduced for travel allowance.
+                </p>
               </div>
               <div className="col-span-3 flex justify-end">
                 <Button type="submit">Add Holiday</Button>
