@@ -91,6 +91,8 @@ async function buildAssignmentDetail(params: {
 
       return {
         key: `${question.sourceType}:${question.id}`,
+        // The row id, so HR can correct this specific answer.
+        evaluationId: evaluation?.id ?? null,
         questionText: question.questionText,
         questionType: question.questionType,
         questionSource: question.sourceType,
@@ -113,6 +115,7 @@ async function buildAssignmentDetail(params: {
 
       return {
         key: meta.key,
+        evaluationId: evaluation.id,
         questionText: meta.questionText,
         questionType: meta.questionType,
         questionSource: meta.sourceType,
