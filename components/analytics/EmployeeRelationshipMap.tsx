@@ -139,12 +139,12 @@ interface GraphEntity {
   primaryLayer: EmployeeRelationshipLayer
 }
 
-const GRAPHITE = '#080D16'
-const BONE = '#EEE8D8'
-const MUTED = '#98A3B3'
-const AMBER = '#E7B75A'
-const CYAN = '#68C7D4'
-const CORAL = '#EF7C68'
+const SURFACE = 'hsl(var(--card))'
+const FOREGROUND = 'hsl(var(--foreground))'
+const MUTED = 'hsl(var(--muted-foreground))'
+const AMBER = 'var(--e360-data-amber)'
+const CYAN = 'var(--e360-data-cyan)'
+const CORAL = 'var(--e360-data-coral)'
 
 const LAYERS: EmployeeRelationshipLayer[] = [
   'leads',
@@ -161,11 +161,16 @@ const LAYER_META: Record<
   leads: { label: 'Leads', singular: 'Team lead', color: AMBER, centreAngle: -126 },
   evaluators: { label: 'Evaluators', singular: 'Evaluator', color: CORAL, centreAngle: -54 },
   clients: { label: 'Clients', singular: 'Client', color: CYAN, centreAngle: 18 },
-  reports: { label: 'Reports', singular: 'Direct report', color: BONE, centreAngle: 90 },
+  reports: {
+    label: 'Reports',
+    singular: 'Direct report',
+    color: FOREGROUND,
+    centreAngle: 90,
+  },
   colleagues: {
     label: 'Shared-client colleagues',
     singular: 'Shared-client colleague',
-    color: '#A7B4C5',
+    color: MUTED,
     centreAngle: 162,
   },
 }
@@ -622,9 +627,9 @@ function StructuredRelationshipList({
     return (
       <div className="flex min-h-[22rem] items-center justify-center p-8 text-center">
         <div>
-          <Network className="mx-auto h-8 w-8 text-slate-500" aria-hidden />
-          <p className="mt-3 text-sm font-medium text-[#EEE8D8]">No relationships in view</p>
-          <p className="mt-1 text-xs text-[#98A3B3]">Turn on a populated layer above.</p>
+          <Network className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden />
+          <p className="mt-3 text-sm font-medium text-foreground">No relationships in view</p>
+          <p className="mt-1 text-xs text-muted-foreground">Turn on a populated layer above.</p>
         </div>
       </div>
     )
@@ -642,7 +647,7 @@ function StructuredRelationshipList({
         return (
           <section
             key={layer}
-            className="rounded-xl border border-[#243246] bg-[#0A111C]/90 p-3"
+            className="rounded-xl border border-border bg-card/90 p-3"
             aria-labelledby={`${headingIdPrefix}-${layer}`}
           >
             <div className="mb-2 flex items-center justify-between gap-3">
@@ -654,16 +659,18 @@ function StructuredRelationshipList({
                 {layerIcon(layer)}
                 {meta.label}
               </h4>
-              <span className="font-mono text-[10px] text-[#98A3B3]">{items.length}</span>
+              <span className="font-mono text-[10px] text-muted-foreground">
+                {items.length}
+              </span>
             </div>
             <ul className="space-y-1.5">
               {items.map((record, index) => {
                 const content = (
                   <>
-                    <span className="block truncate text-xs font-medium text-[#EEE8D8]">
+                    <span className="block truncate text-xs font-medium text-foreground">
                       {record.entity.name}
                     </span>
-                    <span className="mt-0.5 block truncate text-[10px] text-[#98A3B3]">
+                    <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
                       {record.listDetail ?? record.edgeLabel}
                     </span>
                   </>
@@ -679,7 +686,7 @@ function StructuredRelationshipList({
                         type="button"
                         className={cn(
                           styles.listButton,
-                          'block border border-transparent bg-white/[0.025] px-2.5 py-2 hover:border-[#68C7D4]/30 hover:bg-[#68C7D4]/[0.07]'
+                          'block border border-transparent bg-muted/30 px-2.5 py-2 transition-colors hover:border-primary/30 hover:bg-muted/70'
                         )}
                         onClick={() => onPivotEmployee(record.entity.id as string)}
                         aria-label={`Open Employee 360 dossier for ${record.entity.name}`}
@@ -687,7 +694,7 @@ function StructuredRelationshipList({
                         {content}
                       </button>
                     ) : (
-                      <div className="rounded-[0.65rem] bg-white/[0.025] px-2.5 py-2">
+                      <div className="rounded-[0.65rem] bg-muted/30 px-2.5 py-2">
                         {content}
                       </div>
                     )}
@@ -854,11 +861,11 @@ export function EmployeeRelationshipMap({
             strokeOpacity: 0.62,
           },
           labelStyle: {
-            fill: BONE,
+            fill: FOREGROUND,
             fontSize: 10,
           },
           labelBgStyle: {
-            fill: GRAPHITE,
+            fill: SURFACE,
             fillOpacity: 0.92,
           },
           labelBgPadding: [5, 3],
@@ -905,32 +912,32 @@ export function EmployeeRelationshipMap({
       className={cn(styles.shell, className)}
       aria-label={ariaLabel ?? `Relationship network for ${employeeName}`}
     >
-      <div className="relative z-[2] border-b border-[#243246] bg-[#080D16]/75 px-3 py-3 backdrop-blur-sm sm:px-4">
+      <div className="relative z-[2] border-b border-border bg-card/80 px-3 py-3 backdrop-blur-sm sm:px-4">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <Network className="h-4 w-4 shrink-0" style={{ color: subjectAccent }} aria-hidden />
-              <h3 className="truncate text-sm font-semibold text-[#EEE8D8]">
+              <h3 className="truncate text-sm font-semibold text-foreground">
                 Relationship map
               </h3>
               <span
                 className="rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em]"
                 style={{
-                  borderColor: `${subjectAccent}55`,
-                  backgroundColor: `${subjectAccent}12`,
+                  borderColor: `color-mix(in srgb, ${subjectAccent} 34%, transparent)`,
+                  backgroundColor: `color-mix(in srgb, ${subjectAccent} 8%, transparent)`,
                   color: subjectAccent,
                 }}
               >
                 {tone}
               </span>
             </div>
-            <p className="mt-1 text-[11px] text-[#98A3B3]">
+            <p className="mt-1 text-[11px] text-muted-foreground">
               Verified Compass relationships. Select a person to pivot their dossier.
             </p>
           </div>
 
           <div
-            className="inline-flex w-fit rounded-lg border border-[#243246] bg-[#080D16] p-0.5"
+            className="inline-flex w-fit rounded-lg border border-border bg-background p-0.5"
             aria-label="Relationship visualization mode"
           >
             <button
@@ -938,10 +945,10 @@ export function EmployeeRelationshipMap({
               onClick={() => setViewMode('map')}
               aria-pressed={viewMode === 'map'}
               className={cn(
-                'inline-flex min-h-8 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[#68C7D4]',
+                'inline-flex min-h-8 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
                 viewMode === 'map'
-                  ? 'bg-[#1A2938] text-[#EEE8D8]'
-                  : 'text-[#98A3B3] hover:text-[#EEE8D8]'
+                  ? 'bg-muted text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
               )}
             >
               <GitFork className="h-3.5 w-3.5" aria-hidden />
@@ -952,10 +959,10 @@ export function EmployeeRelationshipMap({
               onClick={() => setViewMode('list')}
               aria-pressed={viewMode === 'list'}
               className={cn(
-                'inline-flex min-h-8 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[#68C7D4]',
+                'inline-flex min-h-8 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
                 viewMode === 'list'
-                  ? 'bg-[#1A2938] text-[#EEE8D8]'
-                  : 'text-[#98A3B3] hover:text-[#EEE8D8]'
+                  ? 'bg-muted text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
               )}
             >
               <ListTree className="h-3.5 w-3.5" aria-hidden />
@@ -978,13 +985,13 @@ export function EmployeeRelationshipMap({
                 aria-pressed={active}
                 aria-label={`${active ? 'Hide' : 'Show'} ${meta.label}, ${count} relationship${count === 1 ? '' : 's'}`}
                 className={cn(
-                  'inline-flex min-h-8 items-center gap-1.5 rounded-md border px-2.5 font-mono text-[10px] uppercase tracking-[0.08em] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[#68C7D4] disabled:cursor-not-allowed disabled:opacity-35',
-                  active ? 'bg-white/[0.055]' : 'border-[#243246] bg-transparent text-[#7D899A]'
+                  'inline-flex min-h-8 items-center gap-1.5 rounded-md border px-2.5 font-mono text-[10px] uppercase tracking-[0.08em] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-35',
+                  active ? 'bg-muted/50' : 'border-border bg-transparent text-muted-foreground'
                 )}
                 style={
                   active
                     ? {
-                        borderColor: `${meta.color}55`,
+                        borderColor: `color-mix(in srgb, ${meta.color} 34%, transparent)`,
                         color: meta.color,
                       }
                     : undefined
@@ -992,7 +999,7 @@ export function EmployeeRelationshipMap({
               >
                 {layerIcon(layer)}
                 {meta.label}
-                <span className="text-[#98A3B3]">{count}</span>
+                <span className="text-muted-foreground">{count}</span>
               </button>
             )
           })}
@@ -1009,13 +1016,13 @@ export function EmployeeRelationshipMap({
           {graphEntities.length === 0 ? (
             <div className="flex h-full items-center justify-center p-8 text-center">
               <div>
-                <Network className="mx-auto h-9 w-9 text-slate-600" aria-hidden />
-                <p className="mt-3 text-sm font-medium text-[#EEE8D8]">
+                <Network className="mx-auto h-9 w-9 text-muted-foreground" aria-hidden />
+                <p className="mt-3 text-sm font-medium text-foreground">
                   {populatedLayerCount === 0
                     ? 'No verified relationships available'
                     : 'No relationship layers selected'}
                 </p>
-                <p className="mt-1 text-xs text-[#98A3B3]">
+                <p className="mt-1 text-xs text-muted-foreground">
                   {populatedLayerCount === 0
                     ? 'This is missing evidence, not a zero relationship count.'
                     : 'Turn on a layer above to rebuild the map.'}
@@ -1042,7 +1049,7 @@ export function EmployeeRelationshipMap({
               minZoom={0.25}
               maxZoom={1.4}
             >
-              <Background color="#25364A" gap={24} size={1} />
+              <Background color="hsl(var(--border))" gap={24} size={1} />
               <Controls
                 showInteractive={false}
                 position="bottom-right"
@@ -1053,13 +1060,19 @@ export function EmployeeRelationshipMap({
 
           {hiddenGraphNodes > 0 && (
             <div
-              className="pointer-events-none absolute bottom-3 left-3 z-10 max-w-[18rem] rounded-lg border border-[#EF7C68]/30 bg-[#080D16]/95 px-3 py-2 shadow-xl"
+              className="pointer-events-none absolute bottom-3 left-3 z-10 max-w-[18rem] rounded-lg border bg-card/95 px-3 py-2 shadow-xl"
+              style={{
+                borderColor: `color-mix(in srgb, ${CORAL} 30%, transparent)`,
+              }}
               role="status"
             >
-              <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-[#EF7C68]">
+              <p
+                className="font-mono text-[10px] uppercase tracking-[0.1em]"
+                style={{ color: CORAL }}
+              >
                 Dense network · {hiddenGraphNodes} graph node{hiddenGraphNodes === 1 ? '' : 's'} omitted
               </p>
-              <p className="mt-0.5 text-[10px] leading-4 text-[#98A3B3]">
+              <p className="mt-0.5 text-[10px] leading-4 text-muted-foreground">
                 Narrow the layers or use Structured view for the complete relationship list.
               </p>
             </div>
@@ -1074,7 +1087,7 @@ export function EmployeeRelationshipMap({
         />
       )}
 
-      <div className="relative z-[2] flex flex-wrap items-center justify-between gap-2 border-t border-[#243246] bg-[#080D16]/75 px-3 py-2 font-mono text-[9px] uppercase tracking-[0.09em] text-[#98A3B3] sm:px-4">
+      <div className="relative z-[2] flex flex-wrap items-center justify-between gap-2 border-t border-border bg-card/80 px-3 py-2 font-mono text-[9px] uppercase tracking-[0.09em] text-muted-foreground sm:px-4">
         <span>
           {allGraphEntities.length} connected object{allGraphEntities.length === 1 ? '' : 's'} ·{' '}
           {activeRecords.length} active link{activeRecords.length === 1 ? '' : 's'}

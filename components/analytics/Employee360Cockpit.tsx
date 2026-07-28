@@ -306,7 +306,7 @@ function StructuredEvidenceValue({
 }) {
   if (value.type === 'TEXT') {
     return (
-      <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-[#A5AEBC]">
+      <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
         {value.value || 'No written response.'}
       </p>
     )
@@ -318,15 +318,15 @@ function StructuredEvidenceValue({
         {value.value.map((entry, index) => (
           <li
             key={`${entry}-${index}`}
-            className="flex gap-2 text-xs leading-relaxed text-[#A5AEBC]"
+            className="flex gap-2 text-xs leading-relaxed text-muted-foreground"
           >
-            <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-[#79B8D8]" />
+            <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent" />
             <span>{entry}</span>
           </li>
         ))}
       </ul>
     ) : (
-      <p className="mt-2 text-xs text-[#718096]">No list items were submitted.</p>
+      <p className="mt-2 text-xs text-muted-foreground">No list items were submitted.</p>
     )
   }
 
@@ -335,18 +335,18 @@ function StructuredEvidenceValue({
       {value.value.map((goal, index) => (
         <div
           key={`${goal.goal}-${index}`}
-          className="rounded-md border border-[#8197B2]/15 bg-[#09111B] p-3"
+          className="rounded-md border border-border bg-card p-3"
         >
           <div className="flex flex-wrap items-start justify-between gap-2">
-            <p className="text-xs font-medium leading-relaxed text-[#D9D7CF]">
+            <p className="text-xs font-medium leading-relaxed text-card-foreground">
               {goal.goal}
             </p>
-            <span className="rounded-full border border-[#79B8D8]/25 bg-[#79B8D8]/10 px-2 py-0.5 text-[8px] font-semibold uppercase tracking-[0.1em] text-[#79B8D8]">
+            <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[8px] font-semibold uppercase tracking-[0.1em] text-accent">
               {goal.status.replaceAll('_', ' ')}
             </span>
           </div>
           {goal.comments && (
-            <p className="mt-2 whitespace-pre-wrap text-[11px] leading-relaxed text-[#8D99AA]">
+            <p className="mt-2 whitespace-pre-wrap text-[11px] leading-relaxed text-muted-foreground">
               {goal.comments}
             </p>
           )}
@@ -354,7 +354,7 @@ function StructuredEvidenceValue({
       ))}
     </div>
   ) : (
-    <p className="mt-2 text-xs text-[#718096]">No goals were submitted.</p>
+    <p className="mt-2 text-xs text-muted-foreground">No goals were submitted.</p>
   )
 }
 
@@ -369,14 +369,14 @@ function ErrorState({
 }) {
   return (
     <div className="flex min-h-[480px] items-center justify-center p-6">
-      <div className="max-w-md rounded-xl border border-[#E57B69]/25 bg-[#E57B69]/5 p-6 text-center">
-        <BadgeInfo className="mx-auto h-7 w-7 text-[#E57B69]" />
-        <h2 className="mt-3 text-lg font-semibold text-[#ECE8DC]">{title}</h2>
-        <p className="mt-2 text-sm leading-relaxed text-[#8D99AA]">{detail}</p>
+      <div className="max-w-md rounded-xl border border-destructive/30 bg-destructive/10 p-6 text-center">
+        <BadgeInfo className="mx-auto h-7 w-7 text-red-600 dark:text-red-400" />
+        <h2 className="mt-3 text-lg font-semibold text-foreground">{title}</h2>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{detail}</p>
         <Button
           type="button"
           variant="outline"
-          className="mt-5 border-[#E57B69]/30 bg-transparent text-[#ECE8DC] hover:bg-[#E57B69]/10 hover:text-[#ECE8DC]"
+          className="mt-5 border-destructive/30 bg-transparent text-foreground hover:bg-destructive/10 hover:text-foreground"
           onClick={onRetry}
         >
           <RefreshCw className="h-4 w-4" />
@@ -419,19 +419,19 @@ function EvidenceDrawer({
       <SheetContent
         side={isDesktop ? 'right' : 'bottom'}
         className={cn(
-          'border-[#8197B2]/25 bg-[#090F18] p-0 text-[#ECE8DC]',
+          'border-border bg-card p-0 text-foreground',
           isDesktop ? 'w-full sm:max-w-xl' : 'h-[86vh] w-full'
         )}
       >
-        <SheetHeader className="border-b border-[#8197B2]/20 px-5 py-5 pr-14 text-left">
-          <div className="flex items-center gap-2 text-[9px] font-semibold uppercase tracking-[0.18em] text-[#E6BC58]">
+        <SheetHeader className="border-b border-border px-5 py-5 pr-14 text-left">
+          <div className="flex items-center gap-2 text-[9px] font-semibold uppercase tracking-[0.18em] text-primary">
             <Database className="h-3.5 w-3.5" />
             Evidence layer
           </div>
-          <SheetTitle className="text-xl text-[#ECE8DC]">
+          <SheetTitle className="text-xl text-foreground">
             {inspection?.title ?? 'Source evidence'}
           </SheetTitle>
-          <SheetDescription className="text-xs leading-relaxed text-[#8D99AA]">
+          <SheetDescription className="text-xs leading-relaxed text-muted-foreground">
             Read-only source records and methodology. No signal on this surface changes an
             employee record.
           </SheetDescription>
@@ -439,15 +439,15 @@ function EvidenceDrawer({
 
         <div className={cn('h-full overflow-y-auto px-5 pb-28 pt-5', styles.rail)}>
           {!inspection || !dossier ? (
-            <p className="text-sm text-[#8D99AA]">Choose a signal to inspect its evidence.</p>
+            <p className="text-sm text-muted-foreground">Choose a signal to inspect its evidence.</p>
           ) : remote ? (
             <>
-              <div className="mb-5 flex items-center justify-between gap-4 rounded-lg border border-[#8197B2]/20 bg-[#0E1724] p-3">
+              <div className="mb-5 flex items-center justify-between gap-4 rounded-lg border border-border bg-surface p-3">
                 <div>
-                  <p className="text-[9px] uppercase tracking-[0.15em] text-[#718096]">
+                  <p className="text-[9px] uppercase tracking-[0.15em] text-muted-foreground">
                     Attribution
                   </p>
-                  <p className="mt-1 text-xs text-[#B5BDCA]">
+                  <p className="mt-1 text-xs text-muted-foreground">
                     Relationship lens is shown first. Evaluator identity is available to HR on
                     explicit reveal.
                   </p>
@@ -458,10 +458,10 @@ function EvidenceDrawer({
                     onClick={() => onRevealEvaluator(!revealEvaluator)}
                     aria-pressed={revealEvaluator}
                     className={cn(
-                      'shrink-0 rounded-md border px-2.5 py-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E6BC58]',
+                      'shrink-0 rounded-md border px-2.5 py-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                       revealEvaluator
-                        ? 'border-[#E6BC58]/35 bg-[#E6BC58]/10 text-[#E6BC58]'
-                        : 'border-[#8197B2]/25 text-[#8D99AA] hover:text-[#ECE8DC]'
+                        ? 'border-primary/40 bg-primary/10 text-primary'
+                        : 'border-border text-muted-foreground hover:text-foreground'
                     )}
                   >
                     {revealEvaluator ? 'Names shown' : 'Reveal names'}
@@ -476,18 +476,18 @@ function EvidenceDrawer({
                   ))}
                 </div>
               ) : error ? (
-                <div className="rounded-lg border border-[#E57B69]/25 bg-[#E57B69]/5 p-4">
-                  <p className="text-sm text-[#E7A094]">{error}</p>
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4">
+                  <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
                   <button
                     type="button"
                     onClick={onRetry}
-                    className="mt-3 inline-flex items-center gap-1.5 text-xs text-[#ECE8DC] underline underline-offset-4"
+                    className="mt-3 inline-flex items-center gap-1.5 text-xs text-foreground underline underline-offset-4"
                   >
                     <RefreshCw className="h-3 w-3" /> Retry evidence
                   </button>
                 </div>
               ) : !evidence?.items.length ? (
-                <div className="rounded-lg border border-dashed border-[#8197B2]/20 p-8 text-center text-sm text-[#8D99AA]">
+                <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
                   No submitted narrative or rating evidence is available for this period.
                 </div>
               ) : (
@@ -495,34 +495,34 @@ function EvidenceDrawer({
                   {evidence.items.map((item) => (
                     <article
                       key={item.id}
-                      className="rounded-lg border border-[#8197B2]/20 bg-[#0E1724] p-4"
+                      className="rounded-lg border border-border bg-surface p-4"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span
                           className={cn(
                             'rounded-full border px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em]',
                             item.lens === 'SELF'
-                              ? 'border-[#79B8D8]/30 bg-[#79B8D8]/10 text-[#79B8D8]'
-                              : 'border-[#E6BC58]/30 bg-[#E6BC58]/10 text-[#E6BC58]'
+                              ? 'border-accent/30 bg-accent/10 text-accent'
+                              : 'border-primary/30 bg-primary/10 text-primary'
                           )}
                         >
                           {LENS_LABELS[item.lens] ?? item.lens}
                         </span>
-                        <span className="font-mono text-xs text-[#ECE8DC]">
+                        <span className="font-mono text-xs text-foreground">
                           {item.rating === null ? 'Narrative' : `${item.rating.toFixed(1)} / 4`}
                         </span>
                       </div>
-                      <h3 className="mt-3 text-xs font-semibold leading-relaxed text-[#D9D7CF]">
+                      <h3 className="mt-3 text-xs font-semibold leading-relaxed text-card-foreground">
                         {item.question}
                       </h3>
                       {item.structuredResponse ? (
                         <StructuredEvidenceValue value={item.structuredResponse} />
                       ) : (
-                        <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-[#A5AEBC]">
+                        <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
                           {item.response || 'No written response.'}
                         </p>
                       )}
-                      <div className="mt-4 border-t border-[#8197B2]/15 pt-3 text-[9px] uppercase tracking-[0.12em] text-[#66758A]">
+                      <div className="mt-4 border-t border-border pt-3 text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
                         {item.evaluator.isRevealed && item.evaluator.name
                           ? item.evaluator.name
                           : item.lens === 'SELF'
@@ -557,12 +557,12 @@ function EvidenceFact({
   detail?: string
 }) {
   return (
-    <div className="rounded-lg border border-[#8197B2]/20 bg-[#0E1724] p-4">
-      <p className="text-[9px] font-semibold uppercase tracking-[0.15em] text-[#718096]">
+    <div className="rounded-lg border border-border bg-surface p-4">
+      <p className="text-[9px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
         {label}
       </p>
-      <p className="mt-2 font-mono text-lg text-[#ECE8DC]">{value}</p>
-      {detail && <p className="mt-1 text-xs leading-relaxed text-[#8D99AA]">{detail}</p>}
+      <p className="mt-2 font-mono text-lg text-foreground">{value}</p>
+      {detail && <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{detail}</p>}
     </div>
   )
 }
@@ -577,7 +577,7 @@ function LocalEvidence({
   if (inspection.domain === 'CLIENTS') {
     return (
       <div className="space-y-3">
-        <div className="rounded-lg border border-[#E6BC58]/25 bg-[#E6BC58]/5 p-4 text-xs leading-relaxed text-[#C8B77E]">
+        <div className="rounded-lg border border-primary/30 bg-primary/10 p-4 text-xs leading-relaxed text-muted-foreground">
           Compass stores current client roster responsibility, not revenue, satisfaction, renewal,
           or delivery outcomes. These records describe verified coverage and connectivity—not
           business impact.
@@ -585,25 +585,25 @@ function LocalEvidence({
         {dossier.clientFootprint.assignments.map((assignment) => (
           <div
             key={assignment.clientId}
-            className="rounded-lg border border-[#8197B2]/20 bg-[#0E1724] p-4"
+            className="rounded-lg border border-border bg-surface p-4"
           >
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-[#ECE8DC]">{assignment.clientName}</h3>
-              <span className="rounded-full border border-[#79B8D8]/25 bg-[#79B8D8]/10 px-2 py-1 text-[9px] uppercase tracking-[0.12em] text-[#79B8D8]">
+              <h3 className="text-sm font-semibold text-foreground">{assignment.clientName}</h3>
+              <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-1 text-[9px] uppercase tracking-[0.12em] text-accent">
                 {assignment.role}
               </span>
             </div>
-            <p className="mt-2 text-xs text-[#8D99AA]">
+            <p className="mt-2 text-xs text-muted-foreground">
               Recorded since {formatDate(assignment.assignedAt)} · {assignment.tenureDays} days ·{' '}
               {assignment.teamSize ?? 'unknown'} roster size
             </p>
-            <p className="mt-3 text-[9px] uppercase tracking-[0.12em] text-[#66758A]">
+            <p className="mt-3 text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
               Source · active client assignment
             </p>
           </div>
         ))}
         {!dossier.clientFootprint.assignments.length && (
-          <p className="rounded-lg border border-dashed border-[#8197B2]/20 p-8 text-center text-sm text-[#8D99AA]">
+          <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
             No active client roster assignments.
           </p>
         )}
@@ -614,7 +614,7 @@ function LocalEvidence({
   if (inspection.domain === 'COMPENSATION') {
     return (
       <div className="space-y-3">
-        <div className="rounded-lg border border-[#8197B2]/20 bg-[#0E1724] p-4 text-xs leading-relaxed text-[#8D99AA]">
+        <div className="rounded-lg border border-border bg-surface p-4 text-xs leading-relaxed text-muted-foreground">
           Basic salary is observed from finalized payroll evidence. Unchanged months are collapsed
           into change events. This view makes no market, equity, or performance-causality claim.
         </div>
@@ -634,12 +634,12 @@ function LocalEvidence({
         {dossier.compensation.changeEvents.map((event) => (
           <div
             key={`${event.currency}-${event.effectiveFrom}`}
-            className="rounded-lg border border-[#8197B2]/20 bg-[#0E1724] p-4"
+            className="rounded-lg border border-border bg-surface p-4"
           >
             <div className="flex items-center justify-between gap-4">
               <div>
-                <p className="text-xs text-[#B5BDCA]">{formatDate(event.effectiveFrom)}</p>
-                <p className="mt-1 font-mono text-sm text-[#ECE8DC]">
+                <p className="text-xs text-muted-foreground">{formatDate(event.effectiveFrom)}</p>
+                <p className="mt-1 font-mono text-sm text-foreground">
                   {formatMoney(event.previousAmount, event.currency)} →{' '}
                   {formatMoney(event.amount, event.currency)}
                 </p>
@@ -647,7 +647,7 @@ function LocalEvidence({
               <span
                 className={cn(
                   'font-mono text-xs',
-                  event.delta >= 0 ? 'text-[#5DC1A7]' : 'text-[#E57B69]'
+                  event.delta >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
                 )}
               >
                 {event.percentChange === null
@@ -655,7 +655,7 @@ function LocalEvidence({
                   : formatSigned(event.percentChange, '%')}
               </span>
             </div>
-            <p className="mt-3 text-[9px] uppercase tracking-[0.12em] text-[#66758A]">
+            <p className="mt-3 text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
               Source · finalized payroll · {event.periodName ?? 'period unavailable'}
             </p>
           </div>
@@ -668,7 +668,7 @@ function LocalEvidence({
     const operationsAvailable = dossier.availability.operations !== 'NO_DATA'
     return (
       <div className="space-y-3">
-        <div className="rounded-lg border border-[#E6BC58]/25 bg-[#E6BC58]/5 p-4 text-xs leading-relaxed text-[#C8B77E]">
+        <div className="rounded-lg border border-primary/30 bg-primary/10 p-4 text-xs leading-relaxed text-muted-foreground">
           Work and leave records are capacity context only. They never contribute to performance,
           readiness, or commitment scoring.
         </div>
@@ -694,7 +694,7 @@ function LocalEvidence({
             }
           />
         </div>
-        <p className="text-[9px] uppercase tracking-[0.12em] text-[#66758A]">
+        <p className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
           As of {formatDate(dossier.operations.asOf)} · tasks and approved leave
         </p>
       </div>
@@ -703,22 +703,22 @@ function LocalEvidence({
 
   return (
     <div className="space-y-3">
-      <p className="rounded-lg border border-[#8197B2]/20 bg-[#0E1724] p-4 text-xs leading-relaxed text-[#8D99AA]">
+      <p className="rounded-lg border border-border bg-surface p-4 text-xs leading-relaxed text-muted-foreground">
         This network is assembled from verified evaluation mappings and active shared-client
         assignments. Edge labels explain why each person appears.
       </p>
       {dossier.network.edges.map((edge) => (
         <div
           key={edge.id}
-          className="flex items-center justify-between gap-4 rounded-lg border border-[#8197B2]/20 bg-[#0E1724] p-4"
+          className="flex items-center justify-between gap-4 rounded-lg border border-border bg-surface p-4"
         >
           <div>
-            <p className="text-sm text-[#ECE8DC]">{edge.person.name}</p>
-            <p className="mt-1 text-xs text-[#8D99AA]">
+            <p className="text-sm text-foreground">{edge.person.name}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
               {edge.person.position || 'Position unavailable'}
             </p>
           </div>
-          <span className="rounded-full border border-[#79B8D8]/25 bg-[#79B8D8]/10 px-2 py-1 text-[9px] uppercase tracking-[0.12em] text-[#79B8D8]">
+          <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-1 text-[9px] uppercase tracking-[0.12em] text-accent">
             {edge.label}
           </span>
         </div>
@@ -739,42 +739,42 @@ function ProfileHeader({
   onClearComparison: () => void
 }) {
   return (
-    <div className="mb-4 rounded-xl border border-[#8197B2]/20 bg-[#0A111C]/80 p-4 sm:p-5">
+    <div className="mb-4 rounded-xl border border-border bg-card/80 p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-5">
         <div className="flex min-w-0 items-center gap-4">
-          <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border border-[#E6BC58]/35 bg-[#E6BC58]/10">
-            <span className="font-mono text-xl font-semibold tracking-[-0.04em] text-[#ECE8DC]">
+          <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border border-primary/40 bg-primary/10">
+            <span className="font-mono text-xl font-semibold tracking-[-0.04em] text-foreground">
               {initials(dossier.identity.name)}
             </span>
             <span
               className={cn(
-                'absolute -bottom-1 -right-1 h-3 w-3 rounded-full border-2 border-[#0A111C]',
-                dossier.employment.status === 'ACTIVE' ? 'bg-[#5DC1A7]' : 'bg-[#718096]'
+                'absolute -bottom-1 -right-1 h-3 w-3 rounded-full border-2 border-card',
+                dossier.employment.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-muted-foreground'
               )}
               title={dossier.employment.status === 'ACTIVE' ? 'Active employee' : 'Archived employee'}
             />
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="truncate text-2xl font-semibold tracking-[-0.035em] text-[#F3EFE4] sm:text-3xl">
+              <h1 className="truncate text-2xl font-semibold tracking-[-0.035em] text-foreground sm:text-3xl">
                 {dossier.identity.name}
               </h1>
               <span
                 className={cn(
                   'rounded-full border px-2 py-0.5 text-[8px] font-semibold uppercase tracking-[0.13em]',
                   dossier.employment.status === 'ACTIVE'
-                    ? 'border-[#5DC1A7]/25 bg-[#5DC1A7]/10 text-[#76D2BA]'
-                    : 'border-[#8197B2]/20 bg-[#8197B2]/5 text-[#8D99AA]'
+                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                    : 'border-border bg-muted/50 text-muted-foreground'
                 )}
               >
                 {dossier.employment.status}
               </span>
             </div>
-            <p className="mt-1 text-xs text-[#8D99AA]">
+            <p className="mt-1 text-xs text-muted-foreground">
               {[dossier.identity.position, dossier.identity.department].filter(Boolean).join(' · ') ||
                 'Role not recorded'}
             </p>
-            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[9px] uppercase tracking-[0.12em] text-[#66758A]">
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
               <span className="inline-flex items-center gap-1.5">
                 <Clock3 className="h-3 w-3" /> {describeTenure(dossier.employment.joinedAt)}
               </span>
@@ -786,18 +786,18 @@ function ProfileHeader({
         </div>
 
         {comparison && (
-          <div className="rounded-lg border border-[#79B8D8]/30 bg-[#79B8D8]/8 px-3 py-2">
-            <p className="text-[8px] font-semibold uppercase tracking-[0.16em] text-[#79B8D8]">
+          <div className="rounded-lg border border-accent/30 bg-accent/10 px-3 py-2">
+            <p className="text-[8px] font-semibold uppercase tracking-[0.16em] text-accent">
               comparison subject
             </p>
             <div className="mt-1 flex items-center gap-3">
-              <span className="text-xs font-medium text-[#D9E9F1]">
+              <span className="text-xs font-medium text-foreground">
                 {comparison.identity.name}
               </span>
               <button
                 type="button"
                 onClick={onClearComparison}
-                className="rounded p-1 text-[#79B8D8] hover:bg-[#79B8D8]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#79B8D8]"
+                className="rounded p-1 text-accent hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label={`Stop comparing with ${comparison.identity.name}`}
               >
                 <X className="h-3 w-3" />
@@ -1081,7 +1081,7 @@ function OverviewDomain({
           <button
             type="button"
             onClick={() => onInspect({ domain: 'NETWORK', title: 'Relationship evidence' })}
-            className="rounded p-1 text-[#718096] hover:text-[#ECE8DC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E6BC58]"
+            className="rounded p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Inspect relationship evidence"
           >
             <PanelRightOpen className="h-4 w-4" />
@@ -1092,7 +1092,7 @@ function OverviewDomain({
         <div className={cn('grid gap-4', comparison && '2xl:grid-cols-2')}>
           <div>
             {comparison && (
-              <p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.14em] text-[#E6BC58]">
+              <p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.14em] text-primary">
                 {dossier.identity.name}
               </p>
             )}
@@ -1104,7 +1104,7 @@ function OverviewDomain({
           </div>
           {comparison && (
             <div>
-              <p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.14em] text-[#79B8D8]">
+              <p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.14em] text-accent">
                 {comparison.identity.name}
               </p>
               <RelationshipMapForDossier
@@ -1136,28 +1136,28 @@ function OverviewDomain({
               return (
                 <div
                   key={signal.label}
-                  className="rounded-lg border border-[#8197B2]/16 bg-[#0A111B]/80 p-3"
+                  className="rounded-lg border border-border bg-surface/80 p-3"
                 >
                   <div className="flex items-start gap-3">
                     <span
                       className={cn(
                         'mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border',
                         signal.tone === 'positive'
-                          ? 'border-[#5DC1A7]/25 bg-[#5DC1A7]/10 text-[#5DC1A7]'
+                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                           : signal.tone === 'attention'
-                            ? 'border-[#E57B69]/25 bg-[#E57B69]/10 text-[#E57B69]'
+                            ? 'border-destructive/30 bg-destructive/10 text-red-600 dark:text-red-400'
                             : signal.tone === 'comparison'
-                              ? 'border-[#79B8D8]/25 bg-[#79B8D8]/10 text-[#79B8D8]'
-                              : 'border-[#8197B2]/20 bg-[#8197B2]/5 text-[#8D99AA]'
+                              ? 'border-accent/30 bg-accent/10 text-accent'
+                              : 'border-border bg-muted/50 text-muted-foreground'
                       )}
                     >
                       <Icon className="h-3.5 w-3.5" />
                     </span>
                     <div>
-                      <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[#718096]">
+                      <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                         {signal.label}
                       </p>
-                      <p className="mt-1 text-xs leading-relaxed text-[#D9D7CF]">
+                      <p className="mt-1 text-xs leading-relaxed text-card-foreground">
                         {signal.value}
                       </p>
                     </div>
@@ -1182,7 +1182,7 @@ function OverviewDomain({
                   lens: 'SELF',
                 })
               }
-              className="rounded p-1 text-[#718096] hover:text-[#ECE8DC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#79B8D8]"
+              className="rounded p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Inspect self-evaluation evidence"
             >
               <PanelRightOpen className="h-4 w-4" />
@@ -1191,20 +1191,20 @@ function OverviewDomain({
         >
           <div className="flex items-end justify-between gap-4">
             <div>
-              <p className="font-mono text-3xl text-[#79B8D8]">
+              <p className="font-mono text-3xl text-accent">
                 {selfGap === null ? '—' : formatSigned(selfGap)}
               </p>
-              <p className="mt-1 text-[10px] leading-relaxed text-[#8D99AA]">
+              <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
                 Self score minus the weighted external-lens score on the 0–4 scale.
               </p>
             </div>
             {comparison?.evaluation.selfVsOthersGap !== null &&
               comparison?.evaluation.selfVsOthersGap !== undefined && (
                 <div className="text-right">
-                  <p className="text-[8px] uppercase tracking-[0.12em] text-[#718096]">
+                  <p className="text-[8px] uppercase tracking-[0.12em] text-muted-foreground">
                     comparison
                   </p>
-                  <p className="mt-1 font-mono text-sm text-[#79B8D8]">
+                  <p className="mt-1 font-mono text-sm text-accent">
                     {formatSigned(comparison.evaluation.selfVsOthersGap)}
                   </p>
                 </div>
@@ -1212,10 +1212,10 @@ function OverviewDomain({
           </div>
         </CockpitPanel>
 
-        <div className="rounded-xl border border-[#E6BC58]/20 bg-[#E6BC58]/5 p-4">
+        <div className="rounded-xl border border-primary/30 bg-primary/10 p-4">
           <div className="flex items-start gap-3">
-            <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#E6BC58]" />
-            <p className="text-[11px] leading-relaxed text-[#B7AA80]">
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
               Client footprint describes verified roster responsibility and connectivity. Compass
               does not currently contain outcome evidence, so this cockpit makes no client-impact
               claim.
@@ -1262,7 +1262,7 @@ function EvaluationDomainView({
               onClick={() =>
                 onInspect({ domain: 'EVALUATION', title: 'Relationship-lens evidence' })
               }
-              className="rounded p-1 text-[#718096] hover:text-[#ECE8DC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E6BC58]"
+              className="rounded p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Inspect relationship lens evidence"
             >
               <PanelRightOpen className="h-4 w-4" />
@@ -1284,7 +1284,7 @@ function EvaluationDomainView({
             <div className="overflow-x-auto">
               <table className="w-full min-w-[560px] text-left">
                 <thead>
-                  <tr className="border-b border-[#8197B2]/15 text-[9px] uppercase tracking-[0.14em] text-[#66758A]">
+                  <tr className="border-b border-border text-[9px] uppercase tracking-[0.14em] text-muted-foreground">
                     <th className="pb-2 font-medium">Source</th>
                     <th className="pb-2 font-medium">Lens</th>
                     <th className="pb-2 text-right font-medium">Mean given</th>
@@ -1296,35 +1296,35 @@ function EvaluationDomainView({
                   {dossier.evaluation.raters.map((rater) => (
                     <tr
                       key={rater.raterKey}
-                      className="border-b border-[#8197B2]/10 text-xs last:border-0"
+                      className="border-b border-border text-xs last:border-0"
                     >
-                      <td className="py-3 font-mono text-[#8D99AA]">
+                      <td className="py-3 font-mono text-muted-foreground">
                         {rater.raterKey.slice(0, 10)}
                         {rater.isProvisional && (
-                          <span className="ml-2 text-[8px] uppercase text-[#E6BC58]">
+                          <span className="ml-2 text-[8px] uppercase text-primary">
                             provisional
                           </span>
                         )}
                       </td>
-                      <td className="py-3 text-[#B5BDCA]">
+                      <td className="py-3 text-muted-foreground">
                         {LENS_LABELS[rater.relationshipType] ?? rater.relationshipType}
                       </td>
-                      <td className="py-3 text-right font-mono text-[#ECE8DC]">
+                      <td className="py-3 text-right font-mono text-foreground">
                         {rater.meanGiven === null ? '—' : rater.meanGiven.toFixed(2)}
                       </td>
                       <td
                         className={cn(
                           'py-3 text-right font-mono',
                           rater.deviation === null
-                            ? 'text-[#718096]'
+                            ? 'text-muted-foreground'
                             : rater.deviation < 0
-                              ? 'text-[#E57B69]'
-                              : 'text-[#5DC1A7]'
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-emerald-600 dark:text-emerald-400'
                         )}
                       >
                         {rater.deviation === null ? '—' : formatSigned(rater.deviation)}
                       </td>
-                      <td className="py-3 text-right font-mono text-[#8D99AA]">
+                      <td className="py-3 text-right font-mono text-muted-foreground">
                         {rater.responseCount}
                       </td>
                     </tr>
@@ -1333,7 +1333,7 @@ function EvaluationDomainView({
               </table>
             </div>
           ) : (
-            <p className="rounded-lg border border-dashed border-[#8197B2]/20 p-8 text-center text-sm text-[#8D99AA]">
+            <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
               No submitted evaluator evidence is available for this period.
             </p>
           )}
@@ -1342,27 +1342,27 @@ function EvaluationDomainView({
         <CockpitPanel title="Decision context" eyebrow="Descriptive, not predictive">
           <div className="space-y-4">
             <div>
-              <p className="text-[9px] uppercase tracking-[0.14em] text-[#718096]">
+              <p className="text-[9px] uppercase tracking-[0.14em] text-muted-foreground">
                 Performance band
               </p>
-              <p className="mt-1 text-xl font-semibold text-[#ECE8DC]">
+              <p className="mt-1 text-xl font-semibold text-foreground">
                 {dossier.evaluation.performanceBand ?? 'Not classified'}
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-3 border-t border-[#8197B2]/15 pt-4">
+            <div className="grid grid-cols-2 gap-3 border-t border-border pt-4">
               <div>
-                <p className="text-[9px] uppercase tracking-[0.14em] text-[#718096]">
+                <p className="text-[9px] uppercase tracking-[0.14em] text-muted-foreground">
                   Org baseline
                 </p>
-                <p className="mt-1 font-mono text-lg text-[#D9D7CF]">
+                <p className="mt-1 font-mono text-lg text-card-foreground">
                   {formatPercent(dossier.evaluation.companyBaseline)}
                 </p>
               </div>
               <div>
-                <p className="text-[9px] uppercase tracking-[0.14em] text-[#718096]">
+                <p className="text-[9px] uppercase tracking-[0.14em] text-muted-foreground">
                   Self gap
                 </p>
-                <p className="mt-1 font-mono text-lg text-[#79B8D8]">
+                <p className="mt-1 font-mono text-lg text-accent">
                   {formatSigned(dossier.evaluation.selfVsOthersGap)}
                 </p>
               </div>
@@ -1372,7 +1372,7 @@ function EvaluationDomainView({
               onClick={() =>
                 onInspect({ domain: 'EVALUATION', title: 'Question-level evaluation evidence' })
               }
-              className="flex w-full items-center justify-between rounded-lg border border-[#E6BC58]/25 bg-[#E6BC58]/5 px-3 py-2.5 text-left text-xs text-[#D8C98F] transition-colors hover:bg-[#E6BC58]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E6BC58]"
+              className="flex w-full items-center justify-between rounded-lg border border-primary/30 bg-primary/10 px-3 py-2.5 text-left text-xs text-foreground transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               Open question-level evidence
               <ChevronRight className="h-3.5 w-3.5" />
@@ -1387,7 +1387,7 @@ function EvaluationDomainView({
 function ClientAssignmentCards({ dossier }: { dossier: EmployeeDossier }) {
   if (!dossier.clientFootprint.assignments.length) {
     return (
-      <p className="rounded-lg border border-dashed border-[#8197B2]/20 p-8 text-center text-sm text-[#8D99AA]">
+      <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
         No active client roster assignment.
       </p>
     )
@@ -1398,17 +1398,17 @@ function ClientAssignmentCards({ dossier }: { dossier: EmployeeDossier }) {
       {dossier.clientFootprint.assignments.map((assignment) => (
         <div
           key={assignment.clientId}
-          className="rounded-lg border border-[#8197B2]/16 bg-[#0A111B] p-3"
+          className="rounded-lg border border-border bg-surface p-3"
         >
           <div className="flex items-center justify-between gap-3">
-            <p className="truncate text-xs font-medium text-[#D9D7CF]">
+            <p className="truncate text-xs font-medium text-card-foreground">
               {assignment.clientName}
             </p>
-            <span className="rounded-full border border-[#79B8D8]/25 bg-[#79B8D8]/10 px-2 py-0.5 text-[8px] uppercase tracking-[0.12em] text-[#79B8D8]">
+            <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[8px] uppercase tracking-[0.12em] text-accent">
               {assignment.role}
             </span>
           </div>
-          <div className="mt-2 grid grid-cols-2 gap-2 text-[9px] uppercase tracking-[0.1em] text-[#66758A]">
+          <div className="mt-2 grid grid-cols-2 gap-2 text-[9px] uppercase tracking-[0.1em] text-muted-foreground">
             <span>{assignment.tenureDays} recorded days</span>
             <span className="text-right">{assignment.teamSize ?? '—'} team members</span>
           </div>
@@ -1469,20 +1469,20 @@ function ClientFootprintTelemetry({
       {metrics.map((metric) => (
         <div
           key={metric.label}
-          className="rounded-lg border border-[#8197B2]/16 bg-[#0A111B] p-3"
+          className="rounded-lg border border-border bg-surface p-3"
         >
-          <p className="text-[8px] font-semibold uppercase tracking-[0.14em] text-[#718096]">
+          <p className="text-[8px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             {metric.label}
           </p>
           <p
             className={cn(
               'mt-2 font-mono text-xl',
-              tone === 'comparison' ? 'text-[#79B8D8]' : 'text-[#E6BC58]'
+              tone === 'comparison' ? 'text-accent' : 'text-primary'
             )}
           >
             {metric.value}
           </p>
-          <p className="mt-1 text-[9px] leading-relaxed text-[#66758A]">
+          <p className="mt-1 text-[9px] leading-relaxed text-muted-foreground">
             {metric.detail}
           </p>
         </div>
@@ -1504,10 +1504,10 @@ function ClientsDomainView({
 }) {
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-[#E6BC58]/20 bg-[#E6BC58]/5 px-4 py-3">
+      <div className="rounded-xl border border-primary/30 bg-primary/10 px-4 py-3">
         <div className="flex items-start gap-3">
-          <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#E6BC58]" />
-          <p className="text-[11px] leading-relaxed text-[#B7AA80]">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
             This domain measures current roster coverage, role, recorded tenure, and shared-client
             connectivity. It does not measure revenue, satisfaction, renewal, or delivery outcomes.
           </p>
@@ -1615,7 +1615,7 @@ function ClientsDomainView({
                 onClick={() =>
                   onInspect({ domain: 'CLIENTS', title: 'Client footprint evidence' })
                 }
-                className="rounded p-1 text-[#718096] hover:text-[#ECE8DC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E6BC58]"
+                className="rounded p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label="Inspect client footprint evidence"
               >
                 <PanelRightOpen className="h-4 w-4" />
@@ -1639,7 +1639,7 @@ function ClientsDomainView({
                 onClick={() =>
                   onInspect({ domain: 'CLIENTS', title: 'Client footprint evidence' })
                 }
-                className="rounded p-1 text-[#718096] hover:text-[#ECE8DC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E6BC58]"
+                className="rounded p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label="Inspect client footprint evidence"
               >
                 <PanelRightOpen className="h-4 w-4" />
@@ -1666,22 +1666,22 @@ function ClientsDomainView({
                 key={person.employeeId}
                 type="button"
                 onClick={() => onPivot(person.employeeId)}
-                className="rounded-lg border border-[#8197B2]/16 bg-[#0A111B] p-3 text-left transition-colors hover:border-[#79B8D8]/30 hover:bg-[#111C2A] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#79B8D8]"
+                className="rounded-lg border border-border bg-surface p-3 text-left transition-colors hover:border-accent/30 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <p className="truncate text-xs font-medium text-[#D9D7CF]">{person.name}</p>
-                  <span className="font-mono text-xs text-[#79B8D8]">
+                  <p className="truncate text-xs font-medium text-card-foreground">{person.name}</p>
+                  <span className="font-mono text-xs text-accent">
                     ×{person.sharedClients.length}
                   </span>
                 </div>
-                <p className="mt-1 truncate text-[9px] text-[#718096]">
+                <p className="mt-1 truncate text-[9px] text-muted-foreground">
                   {person.sharedClients.map((client) => client.name).join(', ')}
                 </p>
               </button>
             ))}
           </div>
         ) : (
-          <p className="text-sm text-[#8D99AA]">No shared-client collaborators recorded.</p>
+          <p className="text-sm text-muted-foreground">No shared-client collaborators recorded.</p>
         )}
       </CockpitPanel>
     </div>
@@ -1727,7 +1727,7 @@ function CompensationDomainView({
               onClick={() =>
                 onInspect({ domain: 'COMPENSATION', title: 'Compensation evidence' })
               }
-              className="rounded p-1 text-[#718096] hover:text-[#ECE8DC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E6BC58]"
+              className="rounded p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Inspect compensation evidence"
             >
               <PanelRightOpen className="h-4 w-4" />
@@ -1742,7 +1742,7 @@ function CompensationDomainView({
             evaluationMarkers={evaluationMarkers}
           />
           {dossier.compensation.currencies.length > 1 && (
-            <p className="mt-3 rounded-lg border border-[#E57B69]/20 bg-[#E57B69]/5 p-3 text-[10px] leading-relaxed text-[#D49388]">
+            <p className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-[10px] leading-relaxed text-red-600 dark:text-red-400">
               Multiple currencies are present. Compass keeps their histories separate and does not
               calculate cross-currency growth.
             </p>
@@ -1757,7 +1757,7 @@ function CompensationDomainView({
             <button
               type="button"
               onClick={() => onInspect({ domain: 'OPERATIONS', title: 'Capacity evidence' })}
-              className="rounded p-1 text-[#718096] hover:text-[#ECE8DC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E6BC58]"
+              className="rounded p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Inspect capacity evidence"
             >
               <PanelRightOpen className="h-4 w-4" />
@@ -1789,23 +1789,23 @@ function CompensationDomainView({
             ].map((metric) => (
               <div
                 key={metric.label}
-                className="rounded-lg border border-[#8197B2]/16 bg-[#0A111B] p-3"
+                className="rounded-lg border border-border bg-surface p-3"
               >
-                <p className="text-[9px] uppercase tracking-[0.13em] text-[#718096]">
+                <p className="text-[9px] uppercase tracking-[0.13em] text-muted-foreground">
                   {metric.label}
                 </p>
                 <p
                   className={cn(
                     'mt-2 font-mono text-2xl',
                     metric.label === 'Overdue' && Number(metric.value) > 0
-                      ? 'text-[#E57B69]'
-                      : 'text-[#ECE8DC]'
+                      ? 'text-red-600 dark:text-red-400'
+                      : 'text-foreground'
                   )}
                 >
                   {operationsAvailable ? metric.value : '—'}
                 </p>
                 {comparison && (
-                  <p className="mt-1 font-mono text-[10px] text-[#79B8D8]">
+                  <p className="mt-1 font-mono text-[10px] text-accent">
                     {comparison.identity.name.split(' ')[0]} ·{' '}
                     {comparisonOperationsAvailable ? metric.comparison : '—'}
                   </p>
@@ -1813,7 +1813,7 @@ function CompensationDomainView({
               </div>
             ))}
           </div>
-          <p className="mt-3 text-[10px] leading-relaxed text-[#718096]">
+          <p className="mt-3 text-[10px] leading-relaxed text-muted-foreground">
             Capacity context is never included in evaluation or talent classification.
           </p>
         </CockpitPanel>
@@ -1825,16 +1825,16 @@ function CompensationDomainView({
             {dossier.compensation.changeEvents.map((event) => (
               <div
                 key={`${event.currency}-${event.effectiveFrom}`}
-                className="rounded-lg border border-[#8197B2]/16 bg-[#0A111B] p-3"
+                className="rounded-lg border border-border bg-surface p-3"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-[9px] uppercase tracking-[0.12em] text-[#718096]">
+                  <p className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
                     {formatDate(event.effectiveFrom)}
                   </p>
                   <span
                     className={cn(
                       'font-mono text-xs',
-                      event.delta >= 0 ? 'text-[#5DC1A7]' : 'text-[#E57B69]'
+                      event.delta >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
                     )}
                   >
                     {event.percentChange === null
@@ -1842,18 +1842,18 @@ function CompensationDomainView({
                       : formatSigned(event.percentChange, '%')}
                   </span>
                 </div>
-                <p className="mt-2 font-mono text-xs text-[#D9D7CF]">
+                <p className="mt-2 font-mono text-xs text-card-foreground">
                   {formatMoney(event.previousAmount, event.currency)} →{' '}
                   {formatMoney(event.amount, event.currency)}
                 </p>
-                <p className="mt-2 text-[9px] text-[#66758A]">
+                <p className="mt-2 text-[9px] text-muted-foreground">
                   {event.periodName ?? 'Payroll period unavailable'}
                 </p>
               </div>
             ))}
           </div>
         ) : (
-          <p className="rounded-lg border border-dashed border-[#8197B2]/20 p-8 text-center text-sm text-[#8D99AA]">
+          <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
             No verified salary change event is available.
           </p>
         )}
@@ -2187,23 +2187,23 @@ export function Employee360Cockpit() {
         />
 
         <div className="flex min-h-0 min-w-0 flex-col">
-          <header className="z-20 flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-[#8197B2]/20 bg-[#070B12]/90 px-3 backdrop-blur-xl sm:px-5">
+          <header className="z-20 flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-background/90 px-3 backdrop-blur-xl sm:px-5">
             <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
                 onClick={() => setMobileDirectoryOpen(true)}
-                className="rounded-md border border-[#8197B2]/20 p-2 text-[#8D99AA] hover:text-[#ECE8DC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E6BC58] lg:hidden"
+                className="rounded-md border border-border p-2 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:hidden"
                 aria-label="Open employee directory"
               >
                 <Menu className="h-4 w-4" />
               </button>
               <div className="flex min-w-0 items-center gap-2">
-                <Radio className="h-3.5 w-3.5 shrink-0 text-[#E6BC58]" />
+                <Radio className="h-3.5 w-3.5 shrink-0 text-primary" />
                 <div className="min-w-0">
-                  <p className="truncate text-[9px] font-semibold uppercase tracking-[0.2em] text-[#8D99AA]">
+                  <p className="truncate text-[9px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                     Intelligence / Employee 360
                   </p>
-                  <p className="truncate text-[9px] text-[#586679]">
+                  <p className="truncate text-[9px] text-muted-foreground">
                     {selectedDirectoryPerson?.name ?? 'Select a subject'}
                   </p>
                 </div>
@@ -2218,16 +2218,16 @@ export function Employee360Cockpit() {
               >
                 <SelectTrigger
                   aria-label="Evaluation period"
-                  className="h-8 w-[132px] border-[#8197B2]/25 bg-[#0A111B] text-[10px] text-[#D9D7CF] focus:ring-[#E6BC58]/60 sm:w-[176px]"
+                  className="h-8 w-[132px] border-input bg-surface text-[10px] text-card-foreground focus:ring-ring/60 sm:w-[176px]"
                 >
                   <SelectValue placeholder="No scored periods" />
                 </SelectTrigger>
-                <SelectContent className="border-[#8197B2]/25 bg-[#0D1521] text-[#D9D7CF]">
+                <SelectContent className="border-border bg-popover text-card-foreground">
                   {directory.periods.map((period) => (
                     <SelectItem
                       key={period.id}
                       value={period.id}
-                      className="text-xs focus:bg-[#182233] focus:text-[#ECE8DC]"
+                      className="text-xs focus:bg-muted focus:text-foreground"
                     >
                       {period.name}
                       {period.isActive ? ' · active' : ''}
@@ -2240,7 +2240,7 @@ export function Employee360Cockpit() {
                 onClick={() =>
                   openInspection({ domain: 'NETWORK', title: 'Dossier source coverage' })
                 }
-                className="rounded-md border border-[#8197B2]/20 p-2 text-[#8D99AA] hover:text-[#ECE8DC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E6BC58]"
+                className="rounded-md border border-border p-2 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label="Open evidence layer"
               >
                 <PanelRightOpen className="h-3.5 w-3.5" />
@@ -2278,7 +2278,7 @@ export function Employee360Cockpit() {
                   }
                 >
                   <div className="mb-4 overflow-x-auto">
-                    <TabsList className="h-10 min-w-max justify-start rounded-lg border border-[#8197B2]/20 bg-[#090F18] p-1">
+                    <TabsList className="h-10 min-w-max justify-start rounded-lg border border-border bg-card p-1">
                       {DOMAINS.map((item) => {
                         const Icon =
                           item === 'overview'
@@ -2294,7 +2294,7 @@ export function Employee360Cockpit() {
                           <TabsTrigger
                             key={item}
                             value={item}
-                            className="gap-1.5 px-3 text-[10px] text-[#718096] data-[state=active]:bg-[#182233] data-[state=active]:text-[#ECE8DC] data-[state=active]:shadow-none"
+                            className="gap-1.5 px-3 text-[10px] text-muted-foreground data-[state=active]:bg-muted data-[state=active]:text-foreground data-[state=active]:shadow-none"
                           >
                             <Icon className="h-3.5 w-3.5" />
                             {DOMAIN_LABELS[item]}
@@ -2350,7 +2350,7 @@ export function Employee360Cockpit() {
       <Sheet open={mobileDirectoryOpen} onOpenChange={setMobileDirectoryOpen}>
         <SheetContent
           side="left"
-          className="w-[88vw] max-w-sm border-[#8197B2]/25 bg-[#090F18] p-0 text-[#ECE8DC] [&>button]:z-20 [&>button]:text-[#8D99AA]"
+          className="w-[88vw] max-w-sm border-border bg-card p-0 text-foreground [&>button]:z-20 [&>button]:text-muted-foreground"
         >
           <SheetTitle className="sr-only">Employee directory</SheetTitle>
           <SheetDescription className="sr-only">

@@ -28,9 +28,11 @@ const AVAILABILITY_LABEL: Record<CockpitAvailability, string> = {
 }
 
 const AVAILABILITY_CLASS: Record<CockpitAvailability, string> = {
-  AVAILABLE: 'border-[#5DC1A7]/30 bg-[#5DC1A7]/10 text-[#76D2BA]',
-  PARTIAL: 'border-[#E6BC58]/30 bg-[#E6BC58]/10 text-[#E6BC58]',
-  NO_DATA: 'border-[#8197B2]/20 bg-[#8197B2]/5 text-[#718096]',
+  AVAILABLE:
+    'border-emerald-600/30 bg-emerald-500/10 text-emerald-700 dark:border-emerald-400/30 dark:text-emerald-300',
+  PARTIAL:
+    'border-amber-600/30 bg-amber-500/10 text-amber-700 dark:border-amber-300/30 dark:text-amber-300',
+  NO_DATA: 'border-border bg-muted/40 text-muted-foreground',
 }
 
 export interface DirectoryPerson {
@@ -93,11 +95,11 @@ export function CockpitPanel({
       <div className="relative z-10 mb-4 flex items-start justify-between gap-4">
         <div>
           {eyebrow && (
-            <p className="mb-1 text-[9px] font-medium uppercase tracking-[0.2em] text-[#718096]">
+            <p className="mb-1 text-[9px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
               {eyebrow}
             </p>
           )}
-          <h2 className="text-sm font-semibold tracking-[-0.01em] text-[#ECE8DC]">{title}</h2>
+          <h2 className="text-sm font-semibold tracking-[-0.01em] text-foreground">{title}</h2>
         </div>
         <div className="flex items-center gap-2">
           {availability && <AvailabilityMark value={availability} />}
@@ -126,16 +128,16 @@ export function SignalTile({
   tone?: CockpitTone
   onInspect?: () => void
 }) {
-  const toneColor =
+  const toneClass =
     tone === 'positive'
-      ? '#5DC1A7'
+      ? 'text-emerald-700 dark:text-emerald-300'
       : tone === 'attention'
-        ? '#E57B69'
+        ? 'text-red-600 dark:text-red-400'
         : tone === 'comparison'
-          ? '#79B8D8'
+          ? 'text-accent'
           : tone === 'primary'
-            ? '#E6BC58'
-            : '#ECE8DC'
+            ? 'text-primary'
+            : 'text-foreground'
 
   const Comp = onInspect ? 'button' : 'div'
 
@@ -143,33 +145,38 @@ export function SignalTile({
     <Comp
       {...(onInspect ? { type: 'button' as const, onClick: onInspect } : {})}
       className={cn(
-        'group relative min-h-[118px] overflow-hidden rounded-xl border border-[#8197B2]/20 bg-[#0D1521]/90 p-3 text-left shadow-[inset_0_1px_rgba(255,255,255,0.025)]',
+        'group relative min-h-[118px] overflow-hidden rounded-xl border border-border bg-card p-3 text-left shadow-sm',
         onInspect &&
-          'transition-colors hover:border-[#E6BC58]/35 hover:bg-[#111C2A] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E6BC58]/70'
+          'transition-colors hover:border-primary/30 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background'
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[9px] font-semibold uppercase tracking-[0.17em] text-[#8D99AA]">
+        <p className="text-[9px] font-semibold uppercase tracking-[0.17em] text-muted-foreground">
           {label}
         </p>
         <AvailabilityMark value={availability} compact />
       </div>
       <div className="mt-3 flex items-end justify-between gap-3">
         <span
-          className={cn('font-mono text-2xl leading-none tracking-[-0.04em]', styles.telemetry)}
-          style={{ color: availability === 'NO_DATA' ? '#66758A' : toneColor }}
+          className={cn(
+            'font-mono text-2xl leading-none tracking-[-0.04em]',
+            styles.telemetry,
+            availability === 'NO_DATA' ? 'text-muted-foreground' : toneClass
+          )}
         >
           {availability === 'NO_DATA' ? '—' : value}
         </span>
         {comparisonValue && (
-          <span className="font-mono text-xs text-[#79B8D8]">{comparisonValue}</span>
+          <span className="font-mono text-xs text-accent">
+            {comparisonValue}
+          </span>
         )}
       </div>
-      <p className="mt-2 line-clamp-2 text-[10px] leading-relaxed text-[#718096]">
+      <p className="mt-2 line-clamp-2 text-[10px] leading-relaxed text-muted-foreground">
         {detail || (availability === 'NO_DATA' ? 'No source records available.' : 'Source verified.')}
       </p>
       {onInspect && (
-        <ArrowRight className="absolute bottom-3 right-3 h-3 w-3 text-[#66758A] transition-transform group-hover:translate-x-0.5 group-hover:text-[#E6BC58]" />
+        <ArrowRight className="absolute bottom-3 right-3 h-3 w-3 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
       )}
     </Comp>
   )
@@ -207,41 +214,41 @@ export function SubjectRail({
     <aside
       aria-label="Employee directory"
       className={cn(
-        'flex h-full min-h-0 flex-col border-r border-[#8197B2]/20 bg-[#090F18]/95',
+        'flex h-full min-h-0 flex-col border-r border-border bg-card',
         className
       )}
     >
-      <div className="border-b border-[#8197B2]/15 p-3">
+      <div className="border-b border-border p-3">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
-            <p className="text-[9px] uppercase tracking-[0.2em] text-[#718096]">Subject index</p>
-            <p className="mt-0.5 font-mono text-xs text-[#ECE8DC]">
+            <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground">Subject index</p>
+            <p className="mt-0.5 font-mono text-xs text-foreground">
               {people.length} records · {departments} teams
             </p>
           </div>
-          <Users className="h-4 w-4 text-[#E6BC58]" />
+          <Users className="h-4 w-4 text-primary" />
         </div>
         <label className="relative block">
           <span className="sr-only">Search employees</span>
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#718096]" />
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
             placeholder="Name, team, or role"
-            className="h-9 border-[#8197B2]/25 bg-[#070B12] pl-8 pr-8 text-xs text-[#ECE8DC] placeholder:text-[#66758A] focus-visible:ring-[#E6BC58]/60"
+            className="h-9 border-input bg-background pl-8 pr-8 text-xs text-foreground placeholder:text-muted-foreground focus-visible:ring-ring"
           />
           {query && (
             <button
               type="button"
               onClick={() => onQueryChange('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-[#718096] hover:text-[#ECE8DC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E6BC58]"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Clear employee search"
             >
               <X className="h-3 w-3" />
             </button>
           )}
         </label>
-        <div className="mt-2 grid grid-cols-2 rounded-lg border border-[#8197B2]/20 bg-[#070B12] p-0.5">
+        <div className="mt-2 grid grid-cols-2 rounded-lg border border-border bg-muted/30 p-0.5">
           {(['ACTIVE', 'ARCHIVED'] as const).map((value) => (
             <button
               key={value}
@@ -249,10 +256,10 @@ export function SubjectRail({
               onClick={() => onStatusChange(value)}
               aria-pressed={status === value}
               className={cn(
-                'inline-flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E6BC58]',
+                'inline-flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 status === value
-                  ? 'bg-[#182233] text-[#ECE8DC]'
-                  : 'text-[#66758A] hover:text-[#B5BDCA]'
+                  ? 'bg-card text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
               )}
             >
               {value === 'ACTIVE' ? <CircleDot className="h-3 w-3" /> : <Archive className="h-3 w-3" />}
@@ -264,7 +271,7 @@ export function SubjectRail({
 
       <div className={cn('min-h-0 flex-1 overflow-y-auto p-2', styles.rail)}>
         {people.length === 0 ? (
-          <div className="px-3 py-10 text-center text-xs text-[#718096]">
+          <div className="px-3 py-10 text-center text-xs text-muted-foreground">
             No employees match this view.
           </div>
         ) : (
@@ -279,12 +286,12 @@ export function SubjectRail({
                     onClick={() => onSelect(person.id)}
                     aria-current={selected ? 'true' : undefined}
                     className={cn(
-                      'w-full rounded-lg border px-3 py-2.5 pr-10 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E6BC58]',
+                      'w-full rounded-lg border px-3 py-2.5 pr-10 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                       selected
-                        ? 'border-[#E6BC58]/35 bg-[#E6BC58]/10'
+                        ? 'border-primary/30 bg-primary/10'
                         : comparing
-                          ? 'border-[#79B8D8]/30 bg-[#79B8D8]/10'
-                          : 'border-transparent hover:border-[#8197B2]/15 hover:bg-[#111A28]'
+                          ? 'border-accent/30 bg-accent/10'
+                          : 'border-transparent hover:border-border hover:bg-muted/40'
                     )}
                   >
                     <div className="flex items-center gap-2">
@@ -292,17 +299,17 @@ export function SubjectRail({
                         className={cn(
                           'h-1.5 w-1.5 shrink-0 rounded-full',
                           selected
-                            ? 'bg-[#E6BC58]'
+                            ? 'bg-primary'
                             : comparing
-                              ? 'bg-[#79B8D8]'
-                              : 'bg-[#4B586A]'
+                              ? 'bg-accent'
+                              : 'bg-muted-foreground/60'
                         )}
                       />
-                      <span className="truncate text-xs font-medium text-[#D9D7CF]">
+                      <span className="truncate text-xs font-medium text-foreground">
                         {person.name}
                       </span>
                     </div>
-                    <p className="mt-1 truncate pl-3.5 text-[9px] uppercase tracking-[0.08em] text-[#718096]">
+                    <p className="mt-1 truncate pl-3.5 text-[9px] uppercase tracking-[0.08em] text-muted-foreground">
                       {[person.position, person.department].filter(Boolean).join(' · ') ||
                         'Role not recorded'}
                     </p>
@@ -318,10 +325,10 @@ export function SubjectRail({
                           : `Compare with ${person.name}`
                       }
                       className={cn(
-                        'absolute right-2 top-1/2 -translate-y-1/2 rounded-md border p-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#79B8D8]',
+                        'absolute right-2 top-1/2 -translate-y-1/2 rounded-md border p-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                         comparing
-                          ? 'border-[#79B8D8]/40 bg-[#79B8D8]/15 text-[#79B8D8]'
-                          : 'border-transparent text-[#66758A] hover:border-[#8197B2]/20 hover:bg-[#182233] hover:text-[#B5BDCA]'
+                          ? 'border-accent/40 bg-accent/10 text-foreground'
+                          : 'border-transparent text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground'
                       )}
                     >
                       {comparing ? <Check className="h-3 w-3" /> : <GitCompareArrows className="h-3 w-3" />}
@@ -337,12 +344,12 @@ export function SubjectRail({
   )
 }
 
-function timelineTone(tone: CockpitTone | undefined) {
-  if (tone === 'positive') return '#5DC1A7'
-  if (tone === 'attention') return '#E57B69'
-  if (tone === 'comparison') return '#79B8D8'
-  if (tone === 'primary') return '#E6BC58'
-  return '#8D99AA'
+function timelineToneClass(tone: CockpitTone | undefined) {
+  if (tone === 'positive') return 'text-emerald-700 dark:text-emerald-300'
+  if (tone === 'attention') return 'text-red-600 dark:text-red-400'
+  if (tone === 'comparison') return 'text-accent'
+  if (tone === 'primary') return 'text-primary'
+  return 'text-muted-foreground'
 }
 
 function domainIcon(domain: string) {
@@ -366,7 +373,7 @@ export function CockpitTimeline({ events }: { events: CockpitTimelineEvent[] }) 
 
   if (!events.length) {
     return (
-      <div className="rounded-lg border border-dashed border-[#8197B2]/20 bg-black/10 px-6 py-14 text-center text-sm text-[#8D99AA]">
+      <div className="rounded-lg border border-dashed border-border bg-muted/20 px-6 py-14 text-center text-sm text-muted-foreground">
         No dated source events are available for this subject.
       </div>
     )
@@ -382,10 +389,10 @@ export function CockpitTimeline({ events }: { events: CockpitTimelineEvent[] }) 
             onClick={() => setDomain(item)}
             aria-pressed={domain === item}
             className={cn(
-              'rounded-full border px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E6BC58]',
+              'rounded-full border px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               domain === item
-                ? 'border-[#E6BC58]/40 bg-[#E6BC58]/10 text-[#E6BC58]'
-                : 'border-[#8197B2]/20 text-[#718096] hover:text-[#B5BDCA]'
+                ? 'border-primary/40 bg-primary/10 text-primary'
+                : 'border-border text-muted-foreground hover:bg-muted/40 hover:text-foreground'
             )}
           >
             {item}
@@ -400,23 +407,25 @@ export function CockpitTimeline({ events }: { events: CockpitTimelineEvent[] }) 
         {visible.map((event) => {
           const Icon = domainIcon(event.domain)
           return (
-            <li key={event.id} className="relative rounded-lg px-3 py-3 hover:bg-white/[0.02]">
+            <li key={event.id} className="relative rounded-lg px-3 py-3 hover:bg-muted/30">
               <span
-                className="absolute left-[-25px] top-3.5 flex h-[19px] w-[19px] items-center justify-center rounded-full border border-[#8197B2]/25 bg-[#0B111B]"
-                style={{ color: timelineTone(event.tone) }}
+                className={cn(
+                  'absolute left-[-25px] top-3.5 flex h-[19px] w-[19px] items-center justify-center rounded-full border border-border bg-card',
+                  timelineToneClass(event.tone)
+                )}
               >
                 <Icon className="h-2.5 w-2.5" />
               </span>
               <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
                 <div>
-                  <p className="text-xs font-medium text-[#D9D7CF]">{event.title}</p>
+                  <p className="text-xs font-medium text-foreground">{event.title}</p>
                   {event.detail && (
-                    <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-[#8D99AA]">
+                    <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-muted-foreground">
                       {event.detail}
                     </p>
                   )}
                 </div>
-                <time className="shrink-0 font-mono text-[10px] text-[#718096]">
+                <time className="shrink-0 font-mono text-[10px] text-muted-foreground">
                   {new Date(event.date).toLocaleDateString(undefined, {
                     day: '2-digit',
                     month: 'short',
@@ -424,7 +433,7 @@ export function CockpitTimeline({ events }: { events: CockpitTimelineEvent[] }) 
                   })}
                 </time>
               </div>
-              <p className="mt-1.5 text-[9px] uppercase tracking-[0.13em] text-[#586679]">
+              <p className="mt-1.5 text-[9px] uppercase tracking-[0.13em] text-muted-foreground/80">
                 {event.domain}
                 {event.source ? ` · ${event.source}` : ''}
                 {event.asOf

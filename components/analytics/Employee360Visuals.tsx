@@ -15,12 +15,12 @@ import {
   YAxis,
 } from 'recharts'
 
-const BONE = '#ECE8DC'
-const MUTED = '#8D99AA'
-const EDGE = 'rgba(129, 151, 178, 0.17)'
-const AMBER = '#E6BC58'
-const CYAN = '#79B8D8'
-const CORAL = '#E57B69'
+const MUTED = 'hsl(var(--muted-foreground))'
+const EDGE = 'hsl(var(--border))'
+const SURFACE = 'hsl(var(--card))'
+const AMBER = 'hsl(var(--primary))'
+const CYAN = 'hsl(var(--accent))'
+const CORAL = 'hsl(var(--destructive))'
 
 export interface EvaluationHistoryPoint {
   periodId: string
@@ -50,7 +50,7 @@ export interface EvaluationPeriodMarker {
 
 function EmptyVisual({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-44 items-center justify-center rounded-lg border border-dashed border-[#8197b2]/20 bg-black/10 px-6 text-center text-sm text-[#8D99AA]">
+    <div className="flex min-h-44 items-center justify-center rounded-lg border border-dashed border-border bg-muted/20 px-6 text-center text-sm text-muted-foreground">
       {children}
     </div>
   )
@@ -72,8 +72,8 @@ function ChartTooltip({
   if (!active || !payload?.length) return null
 
   return (
-    <div className="min-w-36 rounded-lg border border-[#8197b2]/30 bg-[#090f19]/95 px-3 py-2 shadow-2xl backdrop-blur">
-      <p className="mb-1 text-[10px] uppercase tracking-[0.16em] text-[#8D99AA]">
+    <div className="min-w-36 rounded-lg border border-border bg-popover/95 px-3 py-2 text-popover-foreground shadow-xl backdrop-blur">
+      <p className="mb-1 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
         {label && labelFormatter ? labelFormatter(label) : label}
       </p>
       {payload
@@ -81,7 +81,7 @@ function ChartTooltip({
         .map((item) => (
           <div key={item.name} className="flex items-center justify-between gap-4 text-xs">
             <span style={{ color: item.color }}>{item.name}</span>
-            <span className="font-mono text-[#ECE8DC]">{valueFormatter(item.value!)}</span>
+            <span className="font-mono text-foreground">{valueFormatter(item.value!)}</span>
           </div>
         ))}
     </div>
@@ -155,7 +155,10 @@ export function EvaluationTrajectory({
     .join('. ')
 
   return (
-    <div role="img" aria-label={`Evaluation trajectory. ${accessible}`}>
+    <div
+      role="img"
+      aria-label={`Evaluation trajectory. ${accessible}`}
+    >
       <ResponsiveContainer width="100%" height={270}>
         <ComposedChart data={rows} margin={{ top: 12, right: 12, bottom: 2, left: -20 }}>
           <defs>
@@ -201,7 +204,7 @@ export function EvaluationTrajectory({
             name={primaryName}
             stroke={AMBER}
             strokeWidth={2.25}
-            dot={{ r: 3.5, fill: AMBER, stroke: '#0A1019', strokeWidth: 2 }}
+            dot={{ r: 3.5, fill: AMBER, stroke: SURFACE, strokeWidth: 2 }}
             activeDot={{ r: 5 }}
             connectNulls={false}
             isAnimationActive={!reduceMotion}
@@ -214,7 +217,7 @@ export function EvaluationTrajectory({
               stroke={CYAN}
               strokeWidth={1.8}
               strokeDasharray="6 4"
-              dot={{ r: 3, fill: CYAN, stroke: '#0A1019', strokeWidth: 2 }}
+              dot={{ r: 3, fill: CYAN, stroke: SURFACE, strokeWidth: 2 }}
               activeDot={{ r: 5 }}
               connectNulls={false}
               isAnimationActive={!reduceMotion}
@@ -263,11 +266,11 @@ export function LensMatrix({
           <div key={row.lens}>
             <div className="mb-1.5 flex items-end justify-between gap-3">
               <div>
-                <p className="text-[10px] uppercase tracking-[0.16em] text-[#8D99AA]">
+                <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
                   {row.label}
                   {row.isSelf ? ' · self' : ''}
                 </p>
-                <p className="mt-0.5 text-[10px] text-[#66758A]">
+                <p className="mt-0.5 text-[10px] text-muted-foreground/80">
                   {row.evaluatorCount
                     ? `${row.evaluatorCount} evaluator${row.evaluatorCount === 1 ? '' : 's'}`
                     : row.isSelf
@@ -276,18 +279,24 @@ export function LensMatrix({
                 </p>
               </div>
               <div className="flex items-baseline gap-2 font-mono">
-                <span style={{ color: row.isSelf ? CYAN : BONE }}>
+                <span
+                  className={
+                    row.isSelf
+                      ? '[color:var(--employee-360-comparison)]'
+                      : 'text-foreground'
+                  }
+                >
                   {score === null ? '—' : score.toFixed(2)}
                 </span>
                 {comparisonName && (
-                  <span className="text-xs text-[#79B8D8]">
+                  <span className="text-xs [color:var(--employee-360-comparison)]">
                     {compareScore === null ? '—' : compareScore.toFixed(2)}
                   </span>
                 )}
               </div>
             </div>
             <div
-              className="relative h-2 rounded-full bg-[#182233]"
+              className="relative h-2 rounded-full bg-muted"
               role="meter"
               aria-label={`${row.label} for ${primaryName}`}
               aria-valuemin={0}
@@ -306,14 +315,14 @@ export function LensMatrix({
               )}
               {average !== null && (
                 <span
-                  className="absolute top-[-3px] h-3.5 w-px bg-[#ECE8DC]/60"
+                  className="absolute top-[-3px] h-3.5 w-px bg-foreground/60"
                   style={{ left: `${(average / 4) * 100}%` }}
                   title={`Organization average ${average.toFixed(2)}`}
                 />
               )}
               {compareScore !== null && (
                 <span
-                  className="absolute top-[-2px] h-3 w-3 -translate-x-1/2 rounded-full border-2 border-[#79B8D8] bg-[#0A1019]"
+                  className="absolute top-[-2px] h-3 w-3 -translate-x-1/2 rounded-full border-2 bg-card [border-color:var(--employee-360-comparison)]"
                   style={{ left: `${(compareScore / 4) * 100}%` }}
                   title={`${comparisonName} ${compareScore.toFixed(2)}`}
                 />
@@ -322,18 +331,19 @@ export function LensMatrix({
           </div>
         )
       })}
-      <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-[#8197b2]/15 pt-3 text-[10px] text-[#8D99AA]">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-border pt-3 text-[10px] text-muted-foreground">
         <span>
-          <i className="mr-1.5 inline-block h-1.5 w-4 rounded-full bg-[#E6BC58]" /> {primaryName}
+          <i className="mr-1.5 inline-block h-1.5 w-4 rounded-full [background-color:var(--employee-360-primary)]" />{' '}
+          {primaryName}
         </span>
         {comparisonName && (
           <span>
-            <i className="mr-1.5 inline-block h-2 w-2 rounded-full border border-[#79B8D8]" />{' '}
+            <i className="mr-1.5 inline-block h-2 w-2 rounded-full border [border-color:var(--employee-360-comparison)]" />{' '}
             {comparisonName}
           </span>
         )}
         <span>
-          <i className="mr-1.5 inline-block h-3 w-px bg-[#ECE8DC]/60" /> organization average
+          <i className="mr-1.5 inline-block h-3 w-px bg-foreground/60" /> organization average
         </span>
       </div>
     </div>
@@ -491,7 +501,7 @@ function CompensationCurrencyChart({
             name={primaryName}
             stroke={AMBER}
             strokeWidth={2.2}
-            dot={{ r: 3, fill: AMBER, stroke: '#0A1019', strokeWidth: 2 }}
+            dot={{ r: 3, fill: AMBER, stroke: SURFACE, strokeWidth: 2 }}
             connectNulls
             isAnimationActive={!reduceMotion}
           />
@@ -503,7 +513,7 @@ function CompensationCurrencyChart({
               stroke={CYAN}
               strokeWidth={1.8}
               strokeDasharray="6 4"
-              dot={{ r: 3, fill: CYAN, stroke: '#0A1019', strokeWidth: 2 }}
+              dot={{ r: 3, fill: CYAN, stroke: SURFACE, strokeWidth: 2 }}
               connectNulls
               isAnimationActive={!reduceMotion}
             />
@@ -556,14 +566,14 @@ export function CompensationTrajectory({
         return (
           <section
             key={currency}
-            className="rounded-lg border border-[#8197B2]/15 bg-black/10 p-3"
+            className="rounded-lg border border-border bg-muted/20 p-3"
           >
             <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-[#ECE8DC]">
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-foreground">
                 {currency}
               </span>
               {comparisonName && (
-                <span className="text-[9px] uppercase tracking-[0.12em] text-[#718096]">
+                <span className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
                   {comparable
                     ? 'Equivalent currency comparison'
                     : primarySeries.length
