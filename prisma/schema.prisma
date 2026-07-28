@@ -395,6 +395,7 @@ model User {
   evaluationAssignmentSnapshotsAsEvaluator EvaluationPeriodAssignmentSnapshot[] @relation("EvaluationSnapshotEvaluator")
   evaluationAssignmentSnapshotsAsEvaluatee EvaluationPeriodAssignmentSnapshot[] @relation("EvaluationSnapshotEvaluatee")
   subscriptionOwnerships SubscriptionOwner[]
+  evaluationEdits        EvaluationEdit[]   @relation("EvaluationEditor")
 
   @@index([name])
   @@index([email])
@@ -601,12 +602,38 @@ model Evaluation {
   leadQuestion   PreEvaluationLeadQuestion? @relation(fields: [leadQuestionId], references: [id], onDelete: Cascade)
   period         EvaluationPeriod           @relation(fields: [periodId], references: [id], onDelete: Cascade)
 
+  edits          EvaluationEdit[]
+
   @@unique([evaluatorId, evaluateeId, questionId, periodId])
   @@unique([evaluatorId, evaluateeId, leadQuestionId, periodId])
   @@index([evaluatorId])
   @@index([evaluateeId])
   @@index([periodId])
   @@index([leadQuestionId])
+}
+
+/// A correction made by HR to a submitted evaluation.
+///
+/// Submitted evaluations are otherwise locked, so HR is the only way to fix a
+/// mis-click. These scores feed the reports employees receive, so every change
+/// keeps the previous value: a changed rating with no history would be impossible
+/// to explain or dispute afterwards.
+model EvaluationEdit {
+  id             String   @id @default(cuid())
+  evaluationId   String
+  editedById     String
+  previousRating Float?
+  newRating      Float?
+  previousText   String?
+  newText        String?
+  reason         String?
+  createdAt      DateTime @default(now())
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  editedBy   User       @relation("EvaluationEditor", fields: [editedById], references: [id], onDelete: Cascade)
+
+  @@index([evaluationId])
+  @@index([editedById])
 }
 
 model EvaluationPeriodAssignmentOverride {

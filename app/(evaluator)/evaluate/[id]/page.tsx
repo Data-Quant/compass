@@ -196,7 +196,10 @@ export default function EvaluatePage() {
         setIsSubmitted(true)
         setIsClosedByPool(false)
         toast.success('Evaluation submitted successfully!')
-        router.push('/dashboard')
+        // Back to the evaluations list, not the dashboard: people work through
+        // their assignments in a run, so returning to the list lets them pick up
+        // the next one instead of navigating back every time.
+        router.push('/evaluations')
       }
       else { toast.error(data.error || 'Failed to submit evaluation') }
     } catch (error: any) { toast.error(error.message || 'Failed to submit evaluation') }

@@ -81,6 +81,7 @@ type EmployeeRow = {
 
 type ActivityResponse = {
   key: string
+  evaluationId: string | null
   questionText: string
   questionType: 'RATING' | 'TEXT'
   questionSource: 'GLOBAL' | 'LEAD'
@@ -216,6 +217,144 @@ function formatRatingValue(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')
 }
 
+/**
+ * One saved answer, correctable in place.
+ *
+ * A submitted evaluation is locked for its author, so this is the only way to fix
+ * a mis-clicked rating. Each correction is recorded with its previous value.
+ */
+function CorrectableResponse({
+  response,
+  onCorrect,
+}: {
+  response: ActivityResponse
+  onCorrect?: (evaluationId: string, input: { ratingValue?: number | null; textResponse?: string | null; reason?: string }) => Promise<boolean>
+}) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [draftRating, setDraftRating] = useState<string>(
+    response.ratingValue !== null ? String(response.ratingValue) : ''
+  )
+  const [draftText, setDraftText] = useState(response.textResponse ?? '')
+  const [reason, setReason] = useState('')
+
+  // Archived answers belong to questions no longer in the set, so correcting them
+  // would not affect any score.
+  const canCorrect = Boolean(onCorrect && response.evaluationId && !response.isArchived)
+
+  const submit = async () => {
+    if (!response.evaluationId || !onCorrect) return
+    setSaving(true)
+    const ok = await onCorrect(response.evaluationId, {
+      ratingValue:
+        response.questionType === 'RATING' ? (draftRating === '' ? null : Number(draftRating)) : undefined,
+      textResponse: response.questionType === 'TEXT' || draftText ? draftText : undefined,
+      reason: reason.trim() || undefined,
+    })
+    setSaving(false)
+    if (ok) setIsEditing(false)
+  }
+
+  return (
+    <div className="rounded-lg border border-border/60 bg-card/80 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="font-medium text-foreground">{response.questionText}</p>
+        <Badge variant="outline" className="border-border/60">
+          {response.questionType === 'RATING' ? 'Rating' : 'Text'}
+        </Badge>
+        {response.questionSource === 'LEAD' ? (
+          <Badge variant="outline" className="border-purple-500/20 text-purple-500">
+            Lead Question
+          </Badge>
+        ) : null}
+        {response.isArchived ? (
+          <Badge variant="outline" className="border-amber-500/20 text-amber-500">
+            Archived
+          </Badge>
+        ) : null}
+        {canCorrect ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-auto h-7 px-2 text-xs"
+            onClick={() => setIsEditing((prev) => !prev)}
+          >
+            {isEditing ? 'Cancel' : 'Correct'}
+          </Button>
+        ) : null}
+      </div>
+
+      {response.ratingValue !== null ? (
+        <p className="mt-2 text-sm text-foreground">
+          <span className="font-medium">
+            {formatRatingValue(response.ratingValue)} - {getRatingLabel(response.ratingValue)}
+          </span>
+        </p>
+      ) : null}
+      {response.textResponse ? (
+        <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{response.textResponse}</p>
+      ) : null}
+      {response.submittedAt || response.updatedAt ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          {response.submittedAt
+            ? `Submitted ${formatDateTime(response.submittedAt)}`
+            : `Saved ${formatDateTime(response.updatedAt)}`}
+        </p>
+      ) : null}
+
+      {isEditing ? (
+        <div className="mt-3 space-y-3 border-t border-border/60 pt-3">
+          {response.questionType === 'RATING' ? (
+            <div className="space-y-1.5">
+              <Label className="text-xs">Rating</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {[1, 2, 3, 4].map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setDraftRating(String(value))}
+                    className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
+                      draftRating === String(value)
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-background text-foreground border-border hover:bg-muted'
+                    }`}
+                  >
+                    {value} - {getRatingLabel(value)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <Label className="text-xs">Comment</Label>
+              <Textarea rows={3} value={draftText} onChange={(e) => setDraftText(e.target.value)} />
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">Reason (recorded in the audit trail)</Label>
+            <Textarea
+              rows={2}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="e.g. evaluator selected the wrong rating and asked for it to be corrected"
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              The previous value is kept, along with who made the change.
+            </p>
+            <Button size="sm" onClick={submit} disabled={saving}>
+              {saving ? 'Saving...' : 'Save Correction'}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function ActivityList({
   items,
   emptyState,
@@ -224,6 +363,7 @@ function ActivityList({
   excludeBusyKey,
   onResetEvaluation,
   resetBusyKey,
+  onCorrect,
 }: {
   items: ActivityAssignment[]
   emptyState: string
@@ -232,6 +372,7 @@ function ActivityList({
   excludeBusyKey?: string | null
   onResetEvaluation?: (item: ActivityAssignment) => void
   resetBusyKey?: string | null
+  onCorrect?: (evaluationId: string, input: { ratingValue?: number | null; textResponse?: string | null; reason?: string }) => Promise<boolean>
 }) {
   if (items.length === 0) {
     return (
@@ -335,43 +476,7 @@ function ActivityList({
                 </summary>
                 <div className="border-t border-border/60 px-4 py-3 space-y-3">
                   {item.responses.map((response) => (
-                    <div key={response.key} className="rounded-lg border border-border/60 bg-card/80 p-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-medium text-foreground">{response.questionText}</p>
-                        <Badge variant="outline" className="border-border/60">
-                          {response.questionType === 'RATING' ? 'Rating' : 'Text'}
-                        </Badge>
-                        {response.questionSource === 'LEAD' ? (
-                          <Badge variant="outline" className="border-purple-500/20 text-purple-500">
-                            Lead Question
-                          </Badge>
-                        ) : null}
-                        {response.isArchived ? (
-                          <Badge variant="outline" className="border-amber-500/20 text-amber-500">
-                            Archived
-                          </Badge>
-                        ) : null}
-                      </div>
-                      {response.ratingValue !== null ? (
-                        <p className="mt-2 text-sm text-foreground">
-                          <span className="font-medium">
-                            {formatRatingValue(response.ratingValue)} - {getRatingLabel(response.ratingValue)}
-                          </span>
-                        </p>
-                      ) : null}
-                      {response.textResponse ? (
-                        <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
-                          {response.textResponse}
-                        </p>
-                      ) : null}
-                      {response.submittedAt || response.updatedAt ? (
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          {response.submittedAt
-                            ? `Submitted ${formatDateTime(response.submittedAt)}`
-                            : `Saved ${formatDateTime(response.updatedAt)}`}
-                        </p>
-                      ) : null}
-                    </div>
+                    <CorrectableResponse key={response.key} response={response} onCorrect={onCorrect} />
                   ))}
                 </div>
               </details>
@@ -615,6 +720,30 @@ export default function AdminPerformanceOverviewPage() {
       toast.error(message)
     } finally {
       setOverrideBusyKey(null)
+    }
+  }
+
+  // Corrections only apply to the active period, which the API enforces; scores
+  // recompute from evaluations on read, so reloading the detail shows the result.
+  const handleCorrectResponse = async (
+    evaluationId: string,
+    input: { ratingValue?: number | null; textResponse?: string | null; reason?: string }
+  ): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/admin/evaluations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ evaluationId, ...input }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to save correction')
+
+      toast.success('Correction saved')
+      if (detailData) await loadEmployeeDetail(detailData.employee.id)
+      return true
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to save correction')
+      return false
     }
   }
 
@@ -1137,6 +1266,7 @@ export default function AdminPerformanceOverviewPage() {
                   items={detailData.outgoing}
                   direction="outgoing"
                   onResetEvaluation={handleResetAssignment}
+                  onCorrect={handleCorrectResponse}
                   resetBusyKey={resetBusyKey}
                   onExcludeForPeriod={handleExcludeAssignment}
                   excludeBusyKey={overrideBusyKey}
@@ -1250,6 +1380,7 @@ export default function AdminPerformanceOverviewPage() {
                   items={detailData.incoming}
                   direction="incoming"
                   onResetEvaluation={handleResetAssignment}
+                  onCorrect={handleCorrectResponse}
                   resetBusyKey={resetBusyKey}
                   onExcludeForPeriod={handleExcludeAssignment}
                   excludeBusyKey={overrideBusyKey}
