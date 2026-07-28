@@ -1783,6 +1783,92 @@ export async function sendMonthlyPublicHolidayDigest(
   }
 }
 
+/**
+ * Tell HR that a client manager wants their project roster changed.
+ *
+ * The request is already stored before this runs, so a mail failure costs the
+ * notification but not the request -- HR still finds it in the admin queue.
+ */
+export async function sendRosterChangeRequestNotification(requestId: string) {
+  const request = await prisma.clientRosterRequest.findUnique({
+    where: { id: requestId },
+    include: {
+      client: { select: { name: true } },
+      requestedBy: { select: { name: true, email: true } },
+      items: { include: { user: { select: { name: true } } } },
+    },
+  })
+
+  if (!request) return { success: false, message: 'Roster request not found' }
+
+  const hrEmails = await getHrRecipientEmails()
+  const fallbackRecipients = parseRecipientList(
+    process.env.CLIENTELE_FALLBACK_RECIPIENTS || 'hr@plutus21.com'
+  )
+  const recipients = mergeRecipientEmails(hrEmails, fallbackRecipients)
+
+  if (recipients.length === 0) {
+    return { success: false, message: 'No HR recipients configured' }
+  }
+
+  const additions = request.items.filter((item) => item.action === 'ADD')
+  const removals = request.items.filter((item) => item.action === 'REMOVE')
+
+  const listBlock = (title: string, items: typeof request.items) =>
+    items.length === 0
+      ? ''
+      : `<p style="margin: 12px 0 4px; font-weight: 600; color: #1E293B;">${title}</p>
+         <ul style="margin: 0; padding-left: 20px; color: #334155;">
+           ${items
+             .map(
+               (item) =>
+                 `<li>${escapeHtml(item.user.name)}${
+                   item.role ? ` <span style="color:#64748B;">(as ${escapeHtml(item.role.toLowerCase())})</span>` : ''
+                 }</li>`
+             )
+             .join('')}
+         </ul>`
+
+  const subject = `Roster change requested: ${request.client.name}`
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px;">
+      <h2 style="color: #1E293B;">Roster change requested</h2>
+      <p style="font-size: 16px; color: #334155;">
+        <strong>${escapeHtml(request.requestedBy.name)}</strong> has asked for changes to the
+        project roster for <strong>${escapeHtml(request.client.name)}</strong>.
+      </p>
+      ${listBlock('Add', additions)}
+      ${listBlock('Remove', removals)}
+      ${
+        request.note
+          ? `<p style="margin-top: 16px; color: #334155;"><strong>Note:</strong><br/>${escapeHtml(
+              request.note
+            )}</p>`
+          : ''
+      }
+      <p style="color: #64748B; font-size: 14px; margin-top: 20px;">
+        Apply these changes in Admin &rsaquo; Clients. The request is listed there as pending
+        until it is marked done.
+      </p>
+    </div>
+  `
+
+  try {
+    await transporter.sendMail({
+      from: `P21 Compass <${FROM_EMAIL}>`,
+      to: recipients.join(', '),
+      // So HR can reply straight to the manager who asked.
+      replyTo: request.requestedBy.email || undefined,
+      subject,
+      html,
+    })
+    return { success: true, message: `Sent to ${recipients.length} recipients` }
+  } catch (error) {
+    console.error('Failed to send roster change request notification:', error)
+    return { success: false, message: 'Failed to send notification' }
+  }
+}
+
 // Notify the applicant's team lead(s) that a transition plan was submitted for review.
 export async function sendTransitionPlanSubmittedNotification(requestId: string) {
   const leaveRequest = await prisma.leaveRequest.findUnique({
