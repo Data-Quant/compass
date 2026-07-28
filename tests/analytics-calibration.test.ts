@@ -96,3 +96,39 @@ test('computeCalibration flags insufficient data with no ratings', () => {
   assert.equal(result.orgMeanRating, 0)
   assert.equal(result.fourRatingShare, 0)
 })
+
+test('allEvaluators spans the full spectrum, lenient to severe', () => {
+  // The UI shows this whole list rather than two five-row ends, so the middle of
+  // the distribution stops being invisible.
+  const result = computeCalibration({
+    ratings: [
+      ...ratings('lenient', [4, 4, 4, 4, 4]),
+      ...ratings('middle', [3, 3, 2, 3, 2]),
+      ...ratings('severe', [1, 1, 1, 1, 1]),
+    ],
+    capUsage: [],
+    exemptEvaluatorIds: new Set(),
+  })
+
+  assert.deepEqual(
+    result.allEvaluators.map((e) => e.evaluatorId),
+    ['lenient', 'middle', 'severe']
+  )
+
+  // Descending deviation, with the truncated lists sitting at each end of it.
+  for (let i = 1; i < result.allEvaluators.length; i++) {
+    assert.ok(result.allEvaluators[i - 1].deviation >= result.allEvaluators[i].deviation)
+  }
+  assert.equal(result.allEvaluators[0].evaluatorId, result.mostLenient[0].evaluatorId)
+  assert.equal(
+    result.allEvaluators[result.allEvaluators.length - 1].evaluatorId,
+    result.mostSevere[0].evaluatorId
+  )
+})
+
+test('allEvaluators is empty when there is nothing to calibrate', () => {
+  const result = computeCalibration({ ratings: [], capUsage: [], exemptEvaluatorIds: new Set() })
+
+  assert.equal(result.insufficientData, true)
+  assert.deepEqual(result.allEvaluators, [])
+})

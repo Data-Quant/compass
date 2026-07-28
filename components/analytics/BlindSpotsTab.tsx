@@ -1,7 +1,9 @@
 'use client'
 
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import {
+  Legend,
   PolarAngleAxis,
   PolarGrid,
   PolarRadiusAxis,
@@ -11,7 +13,8 @@ import {
   Tooltip,
 } from 'recharts'
 import { Card, CardContent } from '@/components/ui/card'
-import { Eye, Users } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Eye, Search, Users } from 'lucide-react'
 import type { BlindSpotEntry, BlindSpotsResult } from '@/lib/analytics/blind-spots'
 import { RELATIONSHIP_TYPE_LABELS, type RelationshipType } from '@/types'
 import type { NameResolver } from '@/components/analytics/types'
@@ -42,21 +45,56 @@ function FlagList({
   onSelect,
   render,
 }: FlagListProps) {
+  const [query, setQuery] = useState('')
+
+  // These lists now hold everyone rather than a top five, so they need a filter
+  // and a bounded height; roughly fifty rows is otherwise a wall to scan.
+  const filtered = query.trim()
+    ? entries.filter((entry) => {
+        const term = query.trim().toLowerCase()
+        return (
+          resolveName(entry.employeeId).toLowerCase().includes(term) ||
+          (entry.department || '').toLowerCase().includes(term)
+        )
+      })
+    : entries
+
   return (
     <Card>
       <CardContent className="p-6">
-        <h3 className="text-lg font-semibold text-foreground">{title}</h3>
-        <p className="text-sm text-muted-foreground mb-4">{subtitle}</p>
-        {entries.length > 0 ? (
-          <div className="space-y-3">
-            {entries.map((entry, index) => (
+        <div className="flex items-baseline justify-between gap-2">
+          <h3 className="text-lg font-semibold text-foreground">{title}</h3>
+          <span className="text-xs text-muted-foreground shrink-0">
+            {filtered.length === entries.length
+              ? `${entries.length} people`
+              : `${filtered.length} of ${entries.length}`}
+          </span>
+        </div>
+        <p className="text-sm text-muted-foreground mb-3">{subtitle}</p>
+        {entries.length > 8 && (
+          <div className="relative mb-3">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search name or department..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="pl-10 h-9"
+            />
+          </div>
+        )}
+        {filtered.length > 0 ? (
+          <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+            {filtered.map((entry, index) => (
               <motion.button
                 key={entry.employeeId}
                 type="button"
                 onClick={() => onSelect(entry.employeeId)}
                 initial={{ opacity: 0, x: -12 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.05 * index }}
+                // Cap the stagger: at fifty rows a per-row delay would take
+                // seconds to finish drawing the list.
+                transition={{ delay: Math.min(index, 8) * 0.04 }}
                 className={`w-full flex items-center justify-between p-3 rounded-lg text-left transition-colors ${
                   selectedId === entry.employeeId ? 'bg-primary/10 ring-1 ring-primary' : 'bg-muted'
                 }`}
@@ -107,14 +145,23 @@ export function BlindSpotsTab({
   }
 
   const selected = blindSpots.entries.find((entry) => entry.employeeId === selectedId) ?? null
+
+  // Each lens is plotted against the average for that lens across everyone. A 3.1
+  // from peers means nothing on its own; against a 3.4 norm it is a dip, and that
+  // difference is what "split opinion" actually refers to.
   const radarData = selected
-    ? (Object.entries(selected.perLens) as Array<[RelationshipType, number]>).map(
-        ([lens, score]) => ({
+    ? (Object.entries(selected.perLens) as Array<[RelationshipType, number]>)
+        .map(([lens, score]) => ({
           lens: RELATIONSHIP_TYPE_LABELS[lens] ?? lens,
           score: Number(score.toFixed(2)),
-        })
-      )
+          average: Number((blindSpots.orgPerLensAverage[lens] ?? 0).toFixed(2)),
+        }))
+        .sort((a, b) => a.lens.localeCompare(b.lens))
     : []
+
+  const lensValues = selected ? Object.values(selected.perLens) : []
+  const highestLens = lensValues.length > 0 ? Math.max(...lensValues) : null
+  const lowestLens = lensValues.length > 0 ? Math.min(...lensValues) : null
 
   return (
     <div className="space-y-6">
@@ -122,7 +169,7 @@ export function BlindSpotsTab({
         <FlagList
           title="Largest Self-Awareness Gaps"
           subtitle="Self rating vs. how everyone else rates them (0-4 scale)"
-          entries={blindSpots.topSelfGaps}
+          entries={blindSpots.bySelfGap}
           resolveName={resolveName}
           selectedId={selectedId}
           onSelect={onSelectEmployee}
@@ -135,7 +182,7 @@ export function BlindSpotsTab({
         <FlagList
           title="Most Split Opinions"
           subtitle="Spread between the highest and lowest lens (0-4 scale)"
-          entries={blindSpots.topSpreads}
+          entries={blindSpots.bySpread}
           resolveName={resolveName}
           selectedId={selectedId}
           onSelect={onSelectEmployee}
@@ -154,9 +201,12 @@ export function BlindSpotsTab({
             </div>
             {selected && (
               <p className="text-sm text-muted-foreground mb-4">
-                Self {selected.selfScore?.toFixed(2) ?? '—'} • Others{' '}
-                {selected.weightedOthersScore?.toFixed(2) ?? '—'} • Spread{' '}
+                Others {selected.weightedOthersScore?.toFixed(2) ?? '—'} • Spread{' '}
                 {selected.lensSpread?.toFixed(2) ?? '—'}
+                {highestLens !== null && lowestLens !== null
+                  ? ` (${lowestLens.toFixed(2)} to ${highestLens.toFixed(2)})`
+                  : ''}
+                {selected.selfScore !== null ? ` • Self ${selected.selfScore.toFixed(2)}` : ''}
               </p>
             )}
             {radarData.length > 0 ? (
@@ -173,8 +223,19 @@ export function BlindSpotsTab({
                       color: 'hsl(var(--foreground))',
                     }}
                   />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  {/* Drawn first so the individual reads on top of the norm. */}
                   <Radar
-                    name="Score"
+                    name="Everyone (avg)"
+                    dataKey="average"
+                    stroke="hsl(var(--muted-foreground))"
+                    strokeDasharray="4 3"
+                    fill="hsl(var(--muted-foreground))"
+                    fillOpacity={0.08}
+                    animationDuration={700}
+                  />
+                  <Radar
+                    name="This person"
                     dataKey="score"
                     stroke="hsl(var(--primary))"
                     fill="hsl(var(--primary))"

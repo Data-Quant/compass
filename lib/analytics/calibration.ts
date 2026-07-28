@@ -38,6 +38,8 @@ export interface CalibrationResult {
   totalRatings: number
   distribution: Array<{ rating: number; count: number }>
   fourRatingShare: number
+  /** Every evaluator, most lenient first. mostLenient/mostSevere are its ends. */
+  allEvaluators: EvaluatorCalibration[]
   mostLenient: EvaluatorCalibration[]
   mostSevere: EvaluatorCalibration[]
   evaluatorsAtCap: number
@@ -67,6 +69,7 @@ export function computeCalibration(params: {
       totalRatings: 0,
       distribution: DISTRIBUTION_BUCKETS.map((rating) => ({ rating, count: 0 })),
       fourRatingShare: 0,
+      allEvaluators: [],
       mostLenient: [],
       mostSevere: [],
       evaluatorsAtCap: 0,
@@ -126,6 +129,9 @@ export function computeCalibration(params: {
     totalRatings,
     distribution,
     fourRatingShare: fourRatingCount / totalRatings,
+    // Lenient to severe, so the full range reads as one spectrum rather than two
+    // truncated ends with an invisible middle.
+    allEvaluators: [...evaluators].sort((a, b) => b.deviation - a.deviation),
     mostLenient: [...evaluators].sort((a, b) => b.deviation - a.deviation).slice(0, LENIENCY_LIMIT),
     mostSevere: [...evaluators].sort((a, b) => a.deviation - b.deviation).slice(0, LENIENCY_LIMIT),
     evaluatorsAtCap: atCap.size,
