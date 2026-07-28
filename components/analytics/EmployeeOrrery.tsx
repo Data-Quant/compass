@@ -6,6 +6,7 @@ import {
   buildOrreryPoints,
   polygonPath,
   averagePolygonPath,
+  unionLensOrder,
   MAX_LENS_SCORE,
 } from '@/lib/analytics/employee-360'
 import { RELATIONSHIP_TYPE_LABELS, type RelationshipType } from '@/types'
@@ -33,6 +34,10 @@ interface EmployeeOrreryProps {
   orgPerLensAverage: Partial<Record<RelationshipType, number>>
   overallScore: number | null
   clients: OrreryClient[]
+  /** A second subject overlaid on the same axes for direct comparison. */
+  compare?: { name: string; perLens: Partial<Record<RelationshipType, number>> } | null
+  /** Scale factor, so the same component works as a hero and as a thumbnail. */
+  size?: number
 }
 
 const SIZE = 600
@@ -50,8 +55,17 @@ export function EmployeeOrrery({
   orgPerLensAverage,
   overallScore,
   clients,
+  compare = null,
+  size = SIZE,
 }: EmployeeOrreryProps) {
   const reduceMotion = useReducedMotion()
+
+  // Both subjects plot against one axis list, or the outlines would sit at
+  // different bearings and the overlay would compare nothing.
+  const axes = useMemo(
+    () => (compare ? unionLensOrder(perLens, compare.perLens) : unionLensOrder(perLens)),
+    [perLens, compare]
+  )
 
   const points = useMemo(
     () =>
@@ -60,9 +74,25 @@ export function EmployeeOrrery({
         orgAverage: orgPerLensAverage,
         innerRadius: INNER_RADIUS,
         outerRadius: OUTER_RADIUS,
+        lensOrder: axes,
       }),
-    [perLens, orgPerLensAverage]
+    [perLens, orgPerLensAverage, axes]
   )
+
+  const comparePoints = useMemo(
+    () =>
+      compare
+        ? buildOrreryPoints({
+            perLens: compare.perLens,
+            innerRadius: INNER_RADIUS,
+            outerRadius: OUTER_RADIUS,
+            lensOrder: axes,
+          })
+        : [],
+    [compare, axes]
+  )
+
+  const comparePath = useMemo(() => polygonPath(comparePoints), [comparePoints])
 
   const scorePath = useMemo(() => polygonPath(points), [points])
   const averagePath = useMemo(() => averagePolygonPath(points), [points])
@@ -96,7 +126,8 @@ export function EmployeeOrrery({
   return (
     <svg
       viewBox={`0 0 ${SIZE} ${SIZE}`}
-      className="w-full max-w-[600px] mx-auto overflow-visible"
+      style={{ maxWidth: size }}
+      className="w-full mx-auto overflow-visible"
       role="img"
       aria-label={`Evaluation orbit for ${name}. ${points
         .map((point) => `${LENS_SHORT[point.lens] ?? point.lens} ${point.score.toFixed(2)} out of 4`)
@@ -161,6 +192,24 @@ export function EmployeeOrrery({
             transition={{ delay: 0.45, duration: reduceMotion ? 0 : 0.6 }}
           />
         )}
+
+        {/* The comparison subject, in cool blue so the two never read as one. */}
+        {comparePath && (
+          <motion.path
+            d={comparePath}
+            fill="#7FB2D9"
+            fillOpacity={0.12}
+            stroke="#7FB2D9"
+            strokeWidth={1.5}
+            strokeLinejoin="round"
+            initial={{ opacity: 0, scale: 0.7 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.5, duration: reduceMotion ? 0 : 0.7, ease: [0.16, 1, 0.3, 1] }}
+          />
+        )}
+        {comparePoints.map((point) => (
+          <circle key={`cmp-${point.lens}`} cx={point.x} cy={point.y} r={3.5} fill="#7FB2D9" />
+        ))}
 
         {/* The person's own shape. A regular outline means the groups agree. */}
         {scorePath && (
@@ -229,7 +278,7 @@ export function EmployeeOrrery({
         })}
 
         {/* Clients on the outer orbit; filled marks the ones they lead. */}
-        {clientPoints.map((client, index) => (
+        {!compare && clientPoints.map((client, index) => (
           <motion.g
             key={client.id}
             initial={{ opacity: 0, scale: 0.5 }}

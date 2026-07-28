@@ -8,7 +8,7 @@ import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { EmployeeOrrery } from '@/components/analytics/EmployeeOrrery'
 import { compGrowth, type Outlook } from '@/lib/analytics/employee-360'
 import { RELATIONSHIP_TYPE_LABELS, type RelationshipType } from '@/types'
-import { Search, Orbit, Radio } from 'lucide-react'
+import { Search, Orbit, Radio, X, GitCompare } from 'lucide-react'
 
 /* The cockpit is deliberately dense: an operator scanning one person should not
  * have to scroll to cross-reference how they perform, who rates them, who they
@@ -212,6 +212,8 @@ export default function Employee360Page() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [data, setData] = useState<Employee360 | null>(null)
+  const [compareId, setCompareId] = useState<string | null>(null)
+  const [compareData, setCompareData] = useState<Employee360 | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadingProfile, setLoadingProfile] = useState(false)
 
@@ -244,6 +246,29 @@ export default function Employee360Page() {
     if (selectedId) load(selectedId)
   }, [selectedId, load])
 
+  // The comparison subject is fetched through the same endpoint, so the two
+  // profiles can never be assembled by different rules.
+  useEffect(() => {
+    if (!compareId) {
+      setCompareData(null)
+      return
+    }
+    fetch(`/api/admin/analytics/employee-360?employeeId=${compareId}`)
+      .then((res) => res.json())
+      .then((payload) => {
+        if (payload.error) throw new Error(payload.error)
+        setCompareData(payload)
+      })
+      .catch(() => toast.error('Failed to load the comparison'))
+  }, [compareId])
+
+  /** Every person on the page is a subject, so the cockpit can be traversed. */
+  const pivotTo = useCallback((employeeId: string) => {
+    setSelectedId(employeeId)
+    setCompareId(null)
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [])
+
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase()
     if (!term) return directory
@@ -266,15 +291,30 @@ export default function Employee360Page() {
 
   return (
     <div className="p-4 sm:p-6" style={{ backgroundColor: INK, minHeight: '100%' }}>
-      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-3">
+      {/* Ambient field: a faint graticule and vignette, so the page reads as an
+          instrument surface rather than a card deck. Purely atmospheric, and it
+          sits behind everything at low contrast. */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 z-0"
+        style={{
+          backgroundImage:
+            'linear-gradient(rgba(233,228,214,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(233,228,214,0.03) 1px, transparent 1px)',
+          backgroundSize: '48px 48px',
+          maskImage: 'radial-gradient(ellipse at 50% 35%, black 20%, transparent 75%)',
+          WebkitMaskImage: 'radial-gradient(ellipse at 50% 35%, black 20%, transparent 75%)',
+        }}
+      />
+
+      <div className="relative z-10 mb-5 flex flex-wrap items-baseline justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Radio className="h-4 w-4" style={{ color: BRASS }} />
-          <h1
-            className="text-2xl"
-            style={{ color: BONE, fontFamily: 'var(--font-display, Instrument Serif), Georgia, serif' }}
+          <Radio className="h-3.5 w-3.5" style={{ color: BRASS }} />
+          <span
+            className="text-[10px] uppercase"
+            style={{ color: MUTED, letterSpacing: '0.28em' }}
           >
             Employee 360
-          </h1>
+          </span>
         </div>
         {data?.period && (
           <span className="text-[10px] uppercase" style={{ color: MUTED, letterSpacing: '0.18em' }}>
@@ -283,7 +323,7 @@ export default function Employee360Page() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
+      <div className="relative z-10 grid grid-cols-1 gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
         {/* Subject roster */}
         <aside
           className="rounded-xl border p-3 h-fit"
@@ -303,23 +343,43 @@ export default function Employee360Page() {
             {filtered.map((person) => {
               const active = selectedId === person.id
               return (
-                <button
-                  key={person.id}
-                  type="button"
-                  onClick={() => setSelectedId(person.id)}
-                  className="w-full rounded px-2 py-1.5 text-left transition-colors"
-                  style={{
-                    backgroundColor: active ? 'rgba(232,194,90,0.12)' : 'transparent',
-                    boxShadow: active ? `inset 2px 0 0 ${BRASS}` : 'none',
-                  }}
-                >
-                  <div className="truncate text-[13px]" style={{ color: active ? BONE : '#C6CCD8' }}>
-                    {person.name}
-                  </div>
-                  <div className="truncate text-[10px]" style={{ color: MUTED }}>
-                    {person.department || 'No department'}
-                  </div>
-                </button>
+                <div key={person.id} className="group relative">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedId(person.id)}
+                    className="w-full rounded px-2 py-1.5 pr-7 text-left transition-colors"
+                    style={{
+                      backgroundColor: active
+                        ? 'rgba(232,194,90,0.12)'
+                        : compareId === person.id
+                          ? 'rgba(127,178,217,0.12)'
+                          : 'transparent',
+                      boxShadow: active
+                        ? `inset 2px 0 0 ${BRASS}`
+                        : compareId === person.id
+                          ? `inset 2px 0 0 ${COOL}`
+                          : 'none',
+                    }}
+                  >
+                    <div className="truncate text-[13px]" style={{ color: active ? BONE : '#C6CCD8' }}>
+                      {person.name}
+                    </div>
+                    <div className="truncate text-[10px]" style={{ color: MUTED }}>
+                      {person.department || 'No department'}
+                    </div>
+                  </button>
+                  {!active && (
+                    <button
+                      type="button"
+                      title={compareId === person.id ? 'Stop comparing' : 'Compare with this person'}
+                      onClick={() => setCompareId(compareId === person.id ? null : person.id)}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100"
+                      style={{ color: compareId === person.id ? COOL : MUTED }}
+                    >
+                      <GitCompare className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
               )
             })}
             {filtered.length === 0 && (
@@ -335,23 +395,46 @@ export default function Employee360Page() {
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Identity + standing */}
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
-              <Panel title="Subject">
-                <h2
-                  className="text-3xl leading-none"
-                  style={{
-                    color: BONE,
-                    fontFamily: 'var(--font-display, Instrument Serif), Georgia, serif',
-                  }}
-                >
-                  {data.employee.name}
-                </h2>
-                <p className="mt-1.5 text-sm" style={{ color: MUTED }}>
+            {/* Masthead. The subject's name anchors the page; everything else is
+                measurement hung off it. */}
+            <motion.div
+              key={data.employee.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <h2
+                className="text-5xl leading-[0.95] sm:text-6xl"
+                style={{
+                  color: BONE,
+                  fontFamily: 'var(--font-display, Instrument Serif), Georgia, serif',
+                  letterSpacing: '-0.02em',
+                }}
+              >
+                {data.employee.name}
+              </h2>
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <p className="text-sm" style={{ color: MUTED }}>
                   {[data.employee.position, data.employee.department].filter(Boolean).join(' · ') ||
                     'No role recorded'}
                 </p>
-                <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+                {compareData && (
+                  <button
+                    type="button"
+                    onClick={() => setCompareId(null)}
+                    className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px]"
+                    style={{ backgroundColor: 'rgba(127,178,217,0.14)', color: COOL }}
+                  >
+                    comparing with {compareData.employee.name}
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            </motion.div>
+
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+              <Panel title="Readout">
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                   <Stat
                     label="Score"
                     value={data.performance.overallScore === null ? '—' : `${data.performance.overallScore.toFixed(0)}%`}
@@ -377,6 +460,41 @@ export default function Employee360Page() {
                   />
                   <Stat label="Clients" value={String(data.clients.length)} />
                 </div>
+                {compareData && (
+                  <div
+                    className="mt-4 grid grid-cols-2 gap-4 border-t pt-3 sm:grid-cols-4"
+                    style={{ borderColor: EDGE }}
+                  >
+                    <Stat
+                      label={compareData.employee.name.split(' ')[0]}
+                      value={
+                        compareData.performance.overallScore === null
+                          ? '—'
+                          : `${compareData.performance.overallScore.toFixed(0)}%`
+                      }
+                      tone={COOL}
+                    />
+                    <Stat
+                      label="Momentum"
+                      value={
+                        compareData.performance.momentumDelta === null
+                          ? 'new'
+                          : `${compareData.performance.momentumDelta > 0 ? '+' : ''}${compareData.performance.momentumDelta.toFixed(1)}`
+                      }
+                      tone={COOL}
+                    />
+                    <Stat
+                      label="Consensus"
+                      value={
+                        compareData.performance.consensus === null
+                          ? '—'
+                          : `${(compareData.performance.consensus * 100).toFixed(0)}%`
+                      }
+                      tone={COOL}
+                    />
+                    <Stat label="Clients" value={String(compareData.clients.length)} tone={COOL} />
+                  </div>
+                )}
               </Panel>
 
               <Panel title="Standing">
@@ -400,10 +518,30 @@ export default function Employee360Page() {
                   orgPerLensAverage={data.performance.orgPerLensAverage}
                   overallScore={data.performance.overallScore}
                   clients={data.clients}
+                  compare={
+                    compareData
+                      ? {
+                          name: compareData.employee.name,
+                          perLens: compareData.performance.perLens,
+                        }
+                      : null
+                  }
                 />
                 <p className="mt-1 text-center text-[10px]" style={{ color: MUTED }}>
-                  Solid is the subject. Dashed is the company average for the same lenses. Outer
-                  ring is clients; filled marks the ones they lead.
+                  {compareData ? (
+                    <>
+                      <span style={{ color: BRASS }}>Gold</span> is{' '}
+                      {data.employee.name.split(' ')[0]},{' '}
+                      <span style={{ color: COOL }}>blue</span> is{' '}
+                      {compareData.employee.name.split(' ')[0]}, dashed is the company average. Both
+                      sit on the same axes, so the outlines can be read against each other.
+                    </>
+                  ) : (
+                    <>
+                      Solid is the subject. Dashed is the company average for the same lenses. Outer
+                      ring is clients; filled marks the ones they lead.
+                    </>
+                  )}
                 </p>
               </Panel>
 
@@ -453,9 +591,12 @@ export default function Employee360Page() {
                     {data.evaluators.map((rater) => {
                       const harsh = rater.raterDeviation !== null && rater.raterDeviation < 0
                       return (
-                        <div
+                        <button
                           key={rater.id}
-                          className="flex items-center gap-3 rounded px-2 py-1.5"
+                          type="button"
+                          onClick={() => pivotTo(rater.id)}
+                          title="Open this person"
+                          className="flex w-full items-center gap-3 rounded px-2 py-1.5 text-left transition-colors hover:brightness-125"
                           style={{ backgroundColor: 'rgba(255,255,255,0.02)' }}
                         >
                           <div className="min-w-0 flex-1">
@@ -482,7 +623,7 @@ export default function Employee360Page() {
                               {rater.raterIsProvisional ? ' · thin' : ''}
                             </div>
                           </div>
-                        </div>
+                        </button>
                       )
                     })}
                     <p className="pt-1 text-[10px]" style={{ color: MUTED }}>
@@ -520,15 +661,17 @@ export default function Employee360Page() {
                     ) : (
                       <div className="mt-1 flex flex-wrap gap-1">
                         {data.network.colleagues.map((c) => (
-                          <span
+                          <button
                             key={c.id}
-                            className="rounded px-1.5 py-0.5 text-[11px]"
+                            type="button"
+                            onClick={() => pivotTo(c.id)}
+                            className="rounded px-1.5 py-0.5 text-[11px] transition-colors hover:brightness-125"
                             style={{ backgroundColor: 'rgba(127,178,217,0.12)', color: COOL }}
-                            title={c.clients.join(', ')}
+                            title="Open this person"
                           >
                             {c.name}
                             {c.clients.length > 1 ? ` ×${c.clients.length}` : ''}
-                          </span>
+                          </button>
                         ))}
                       </div>
                     )}
