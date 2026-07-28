@@ -14,7 +14,7 @@
     },
     {
       "path": "/api/payroll/public-holidays/reminders",
-      "schedule": "30 5 * * *"
+      "schedule": "30 5 1 * *"
     }
   ]
 }

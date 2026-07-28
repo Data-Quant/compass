@@ -109,6 +109,10 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
   })
   const [editingHolidayId, setEditingHolidayId] = useState<string | null>(null)
   const [editingTeamTags, setEditingTeamTags] = useState<TeamTag[]>([])
+  const [sendingDigest, setSendingDigest] = useState(false)
+  // Defaults to the current month, which is what the "send now" case needs after
+  // this month's holidays have just been entered.
+  const [digestMonth, setDigestMonth] = useState(() => new Date().toISOString().slice(0, 7))
 
   const [travelForm, setTravelForm] = useState({
     transportMode: 'BIKE',
@@ -367,6 +371,57 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
     }
   }
 
+  /**
+   * Send the month's holiday digest now, rather than waiting for the 1st.
+   *
+   * Mail to the whole company cannot be recalled, so this previews first and asks
+   * for confirmation using the real recipient counts. The preview runs the same
+   * code path as the send, so what is confirmed is what goes out.
+   */
+  const sendHolidayDigest = async () => {
+    setSendingDigest(true)
+    try {
+      const previewRes = await fetch(
+        `/api/payroll/public-holidays/reminders?month=${digestMonth}&dryRun=true`
+      )
+      const preview = await previewRes.json()
+      if (!previewRes.ok) throw new Error(preview.error || 'Failed to preview digest')
+
+      if (!preview.plan?.length) {
+        toast.info(`No holidays are tagged for ${preview.month}, so there is nothing to send.`)
+        return
+      }
+
+      const teamLines = preview.plan
+        .map(
+          (entry: { teamLabel: string; recipients: number; holidays: string[] }) =>
+            `• ${entry.teamLabel}: ${entry.recipients} people (${entry.holidays.join(', ')})`
+        )
+        .join('\n')
+
+      const confirmed = window.confirm(
+        `Send the ${preview.month} public holiday digest now?\n\n${teamLines}\n\n` +
+          `CC: ${preview.ccCount} (HR, Partners, Execution)\n\nThis sends real email immediately.`
+      )
+      if (!confirmed) return
+
+      const res = await fetch(`/api/payroll/public-holidays/reminders?month=${digestMonth}`, {
+        method: 'POST',
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to send digest')
+
+      toast.success(`Sent ${data.sent} team digest${data.sent === 1 ? '' : 's'} for ${data.month}`)
+      if (data.skipped?.length) {
+        toast.warning(`Skipped: ${data.skipped.join('; ')}`)
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to send digest')
+    } finally {
+      setSendingDigest(false)
+    }
+  }
+
   const saveHolidayTeams = async (id: string) => {
     if (editingTeamTags.length === 0) {
       toast.error('Select at least one team for this holiday')
@@ -579,6 +634,33 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
             <h3 className="text-lg font-semibold font-display">Public Holidays</h3>
             {!canEdit && <p className="text-xs text-muted-foreground">O&A can manage holidays in the Attendance tab</p>}
           </div>
+
+          {canEdit && (
+            <div className="flex flex-wrap items-end justify-between gap-3 rounded-lg border border-border bg-muted/20 p-3">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Send monthly digest</p>
+                <p className="text-xs text-muted-foreground">
+                  Each team is emailed its holidays automatically on the 1st. Use this to send
+                  now, after adding a month&apos;s holidays late.
+                </p>
+              </div>
+              <div className="flex items-end gap-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="digest-month" className="text-xs">Month</Label>
+                  <Input
+                    id="digest-month"
+                    type="month"
+                    value={digestMonth}
+                    onChange={(e) => setDigestMonth(e.target.value)}
+                    className="w-[150px]"
+                  />
+                </div>
+                <Button variant="outline" onClick={sendHolidayDigest} disabled={sendingDigest}>
+                  {sendingDigest ? 'Checking...' : 'Send Digest'}
+                </Button>
+              </div>
+            </div>
+          )}
           <div className="space-y-2">
             {publicHolidays.map((holiday) => (
               <div key={holiday.id} className="rounded-md bg-muted/40 px-3 py-2 space-y-2">

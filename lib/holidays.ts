@@ -72,3 +72,49 @@ export function teamsObserving(
 ): TeamTag[] {
   return isUntaggedHoliday(holiday) ? [...allTeams] : [...holiday.teamTags]
 }
+
+/**
+ * Bounds of the month containing `reference`, in UTC.
+ *
+ * UTC throughout, to match how holiday dates are stored and so the monthly digest
+ * covers the same month regardless of where the cron happens to run.
+ */
+export function monthRangeUtc(reference: Date): { start: Date; end: Date } {
+  const year = reference.getUTCFullYear()
+  const month = reference.getUTCMonth()
+
+  return {
+    start: new Date(Date.UTC(year, month, 1, 0, 0, 0, 0)),
+    // Day 0 of the next month is the last day of this one, which sidesteps
+    // month-length and leap-year handling.
+    end: new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999)),
+  }
+}
+
+/**
+ * Holidays grouped by the team that observes them, for the monthly digest.
+ *
+ * Teams with nothing that month are left out entirely rather than mapped to an
+ * empty list, so callers cannot accidentally send "no holidays this month" mail.
+ * A user carries a single team tag, so nobody appears in two groups and nobody
+ * receives the digest twice.
+ */
+export function groupHolidaysByTeam<T extends Pick<HolidayLike, 'teamTags'>>(
+  holidays: readonly T[],
+  allTeams: readonly TeamTag[]
+): Map<TeamTag, T[]> {
+  const grouped = new Map<TeamTag, T[]>()
+
+  for (const holiday of holidays) {
+    for (const team of teamsObserving(holiday, allTeams)) {
+      const existing = grouped.get(team)
+      if (existing) {
+        existing.push(holiday)
+      } else {
+        grouped.set(team, [holiday])
+      }
+    }
+  }
+
+  return grouped
+}

@@ -8,6 +8,8 @@ import {
   filterHolidaysForTeam,
   holidayDatesForTeam,
   teamsObserving,
+  monthRangeUtc,
+  groupHolidaysByTeam,
 } from '../lib/holidays'
 
 const eid = { holidayDate: new Date('2026-05-27'), teamTags: ['PAKISTAN', 'THREE_E_PAKISTAN'] as TeamTag[] }
@@ -86,4 +88,60 @@ test('working days cannot be cut by another country holiday', () => {
 test('notification audience is the observing teams', () => {
   assert.deepEqual(teamsObserving(eid, ALL_TEAMS), ['PAKISTAN', 'THREE_E_PAKISTAN'])
   assert.deepEqual(teamsObserving(legacy, ALL_TEAMS), [...ALL_TEAMS])
+})
+
+test('the month range covers the whole month in UTC', () => {
+  const { start, end } = monthRangeUtc(new Date('2026-05-14T09:30:00Z'))
+
+  assert.equal(start.toISOString(), '2026-05-01T00:00:00.000Z')
+  assert.equal(end.toISOString(), '2026-05-31T23:59:59.999Z')
+})
+
+test('month length and leap years are handled', () => {
+  assert.equal(monthRangeUtc(new Date('2026-02-10T00:00:00Z')).end.toISOString().slice(0, 10), '2026-02-28')
+  assert.equal(monthRangeUtc(new Date('2028-02-10T00:00:00Z')).end.toISOString().slice(0, 10), '2028-02-29')
+  assert.equal(monthRangeUtc(new Date('2026-12-31T23:00:00Z')).end.toISOString().slice(0, 10), '2026-12-31')
+})
+
+test('a holiday on the last instant of the month is still inside the range', () => {
+  // The digest runs on the 1st, so an off-by-one at either edge would drop a
+  // holiday from the month it belongs to.
+  const { start, end } = monthRangeUtc(new Date('2026-05-14T00:00:00Z'))
+  const lastMoment = new Date('2026-05-31T23:59:59.000Z')
+
+  assert.ok(lastMoment >= start && lastMoment <= end)
+})
+
+test('the digest groups holidays by observing team', () => {
+  const grouped = groupHolidaysByTeam([eid, throneDay], ALL_TEAMS)
+
+  assert.deepEqual(grouped.get('PAKISTAN'), [eid])
+  assert.deepEqual(grouped.get('THREE_E_PAKISTAN'), [eid])
+  assert.deepEqual(grouped.get('MOROCCO'), [throneDay])
+  assert.deepEqual(grouped.get('THREE_E_MOROCCO'), [throneDay])
+})
+
+test('teams with nothing that month get no entry, so no empty digest is sent', () => {
+  const grouped = groupHolidaysByTeam([eid], ALL_TEAMS)
+
+  assert.equal(grouped.has('COLOMBIA'), false)
+  assert.equal(grouped.has('INDONESIA'), false)
+  assert.equal(grouped.has('MOROCCO'), false)
+})
+
+test('an untagged holiday reaches every team exactly once', () => {
+  const grouped = groupHolidaysByTeam([legacy], ALL_TEAMS)
+
+  assert.equal(grouped.size, ALL_TEAMS.length)
+  for (const team of ALL_TEAMS) {
+    assert.deepEqual(grouped.get(team), [legacy], `${team} should have it once`)
+  }
+})
+
+test('a team observing several holidays gets them all in one group', () => {
+  const secondEid = { holidayDate: new Date('2026-05-28'), teamTags: ['PAKISTAN'] as TeamTag[] }
+  const grouped = groupHolidaysByTeam([eid, secondEid], ALL_TEAMS)
+
+  assert.equal(grouped.get('PAKISTAN')?.length, 2)
+  assert.equal(grouped.get('THREE_E_PAKISTAN')?.length, 1)
 })
