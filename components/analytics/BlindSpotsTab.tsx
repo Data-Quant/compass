@@ -214,7 +214,10 @@ export function BlindSpotsTab({
                 <RadarChart data={radarData}>
                   <PolarGrid stroke="hsl(var(--border))" />
                   <PolarAngleAxis dataKey="lens" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                  <PolarRadiusAxis domain={[0, 4]} tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                  {/* Labels and axis line hidden, but the domain stays pinned to
+                      0-4: without it Recharts rescales per person, so shapes stop
+                      being comparable and the average overlay misleads. */}
+                  <PolarRadiusAxis domain={[0, 4]} tick={false} axisLine={false} />
                   <Tooltip
                     contentStyle={{
                       backgroundColor: 'hsl(var(--card))',
