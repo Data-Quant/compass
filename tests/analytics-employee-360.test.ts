@@ -11,6 +11,7 @@ import {
   compGrowth,
   MAX_LENS_SCORE,
   LOW_CONSENSUS_THRESHOLD,
+  unionLensOrder,
 } from '../lib/analytics/employee-360'
 
 const geometry = { innerRadius: 40, outerRadius: 140 }
@@ -150,4 +151,34 @@ test('comp growth needs a trajectory, not a single figure', () => {
     { effectiveFrom: '2026-06-01', total: 125 },
   ])
   assert.equal(growth, 25)
+})
+
+test('two people compared share one set of axes', () => {
+  // Without a shared axis list each outline would sit at different bearings and
+  // the overlay would compare nothing.
+  const a = { TEAM_LEAD: 3, PEER: 2 } as Partial<Record<RelationshipType, number>>
+  const b = { PEER: 4, HR: 3 } as Partial<Record<RelationshipType, number>>
+  const axes = unionLensOrder(a, b)
+
+  assert.deepEqual(axes, ['TEAM_LEAD', 'PEER', 'HR'])
+
+  const pa = buildOrreryPoints({ perLens: a, lensOrder: axes, ...geometry })
+  const pb = buildOrreryPoints({ perLens: b, lensOrder: axes, ...geometry })
+
+  // Only the readings each person has are plotted...
+  assert.deepEqual(pa.map((p) => p.lens), ['TEAM_LEAD', 'PEER'])
+  assert.deepEqual(pb.map((p) => p.lens), ['PEER', 'HR'])
+
+  // ...but the lens they share sits at exactly the same bearing on both.
+  const peerA = pa.find((p) => p.lens === 'PEER')!
+  const peerB = pb.find((p) => p.lens === 'PEER')!
+  assert.equal(peerA.angle, peerB.angle)
+})
+
+test('a person missing an axis simply has no point there', () => {
+  const axes = unionLensOrder({ TEAM_LEAD: 3, PEER: 2, HR: 4 })
+  const points = buildOrreryPoints({ perLens: { PEER: 2 }, lensOrder: axes, ...geometry })
+
+  assert.equal(points.length, 1)
+  assert.equal(points[0].lens, 'PEER')
 })

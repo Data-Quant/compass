@@ -54,33 +54,53 @@ export function lensAngle(index: number, total: number): number {
   return -Math.PI / 2 + (index / total) * Math.PI * 2
 }
 
+/**
+ * Every lens either person has, in canonical order.
+ *
+ * Comparing two people requires both shapes on the same axes; if each used only
+ * its own lenses the two outlines would sit at different bearings and could not
+ * be read against each other.
+ */
+export function unionLensOrder(
+  ...sets: Array<Partial<Record<RelationshipType, number>>>
+): RelationshipType[] {
+  return ORRERY_LENS_ORDER.filter((lens) => sets.some((set) => set[lens] !== undefined))
+}
+
 export function buildOrreryPoints(params: {
   perLens: Partial<Record<RelationshipType, number>>
   orgAverage?: Partial<Record<RelationshipType, number>>
   innerRadius: number
   outerRadius: number
+  /** Axes to plot against. Defaults to this person's own lenses. */
+  lensOrder?: RelationshipType[]
 }): OrreryPoint[] {
-  // Only lenses this person actually has, kept in the canonical order.
-  const lenses = ORRERY_LENS_ORDER.filter((lens) => params.perLens[lens] !== undefined)
+  // Angles come from the shared axis list so overlaid shapes align, but a point
+  // is only emitted where this person actually has a reading.
+  const axes = params.lensOrder ?? ORRERY_LENS_ORDER.filter((lens) => params.perLens[lens] !== undefined)
 
-  return lenses.map((lens, index) => {
-    const score = params.perLens[lens] as number
+  return axes.flatMap((lens, index) => {
+    const raw = params.perLens[lens]
+    if (raw === undefined) return []
+    const score = raw
     const average = params.orgAverage?.[lens] ?? null
-    const angle = lensAngle(index, lenses.length)
+    const angle = lensAngle(index, axes.length)
     const radius = scoreToRadius(score, params.innerRadius, params.outerRadius)
     const averageRadius =
       average === null ? null : scoreToRadius(average, params.innerRadius, params.outerRadius)
 
-    return {
-      lens,
-      score,
-      average,
-      angle,
-      x: Math.cos(angle) * radius,
-      y: Math.sin(angle) * radius,
-      averageX: averageRadius === null ? null : Math.cos(angle) * averageRadius,
-      averageY: averageRadius === null ? null : Math.sin(angle) * averageRadius,
-    }
+    return [
+      {
+        lens,
+        score,
+        average,
+        angle,
+        x: Math.cos(angle) * radius,
+        y: Math.sin(angle) * radius,
+        averageX: averageRadius === null ? null : Math.cos(angle) * averageRadius,
+        averageY: averageRadius === null ? null : Math.sin(angle) * averageRadius,
+      },
+    ]
   })
 }
 
