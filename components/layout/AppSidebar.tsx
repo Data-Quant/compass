@@ -9,6 +9,10 @@ import { CompanyBrandMark } from '@/components/brand/CompanyBrandMark'
 import { CompanyBrandLockup } from '@/components/brand/CompanyBrandLockup'
 import { useCompanyBranding } from '@/components/providers/company-branding-provider'
 import {
+  ADMIN_INSIGHTS_NAV_ITEMS,
+  type AdminInsightsHref,
+} from '@/lib/admin-insights-navigation'
+import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -100,6 +104,11 @@ export const SECURITY_SIDEBAR: SidebarConfig = {
 
 // ─── Admin sidebar config ────────────────────────────────────────────────────
 
+const ADMIN_INSIGHTS_ICONS: Record<AdminInsightsHref, LucideIcon> = {
+  '/admin/analytics': BarChart3,
+  '/admin/employee-360': Radio,
+}
+
 export const ADMIN_SIDEBAR: SidebarConfig = {
   items: [
     { label: 'Dashboard', href: '/admin', icon: Home },
@@ -158,10 +167,10 @@ export const ADMIN_SIDEBAR: SidebarConfig = {
     {
       label: 'Insights',
       defaultOpen: false,
-      items: [
-        { label: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
-        { label: 'Employee 360', href: '/admin/employee-360', icon: Radio },
-      ],
+      items: ADMIN_INSIGHTS_NAV_ITEMS.map((item) => ({
+        ...item,
+        icon: ADMIN_INSIGHTS_ICONS[item.href],
+      })),
     },
   ],
 }

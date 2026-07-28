@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { ADMIN_INSIGHTS_NAV_ITEMS } from '../lib/admin-insights-navigation'
 
 /**
  * Navigation & Sidebar Tests
@@ -8,9 +9,8 @@ import assert from 'node:assert/strict'
  * and ensure nav items have valid hrefs.
  */
 
-// Import the sidebar configs (they're pure data, no React needed)
-// We need to test the structure without importing React components
-// So we duplicate the config data here for structural testing
+// Keep broad legacy structure checks dependency-free. Insights links are imported
+// from their production source of truth so the test verifies the rendered routes.
 
 const EMPLOYEE_NAV_ITEMS = [
   { label: 'Home', href: '/dashboard' },
@@ -59,9 +59,7 @@ const ADMIN_NAV_GROUPS = [
   },
   {
     label: 'Insights',
-    items: [
-      { label: 'Analytics', href: '/admin/analytics' },
-    ],
+    items: ADMIN_INSIGHTS_NAV_ITEMS,
   },
   {
     label: 'Onboarding',
@@ -173,6 +171,15 @@ test('admin nav Operations group includes Leave, Assets, Payroll, and Subscripti
   assert.ok(labels.includes('Assets'), 'Missing Assets')
   assert.ok(labels.includes('Payroll'), 'Missing Payroll')
   assert.ok(labels.includes('Subscription Management'), 'Missing Subscription Management')
+})
+
+test('admin nav Insights group includes Employee 360 at its canonical route', () => {
+  const insightsGroup = ADMIN_NAV_GROUPS.find((g) => g.label === 'Insights')
+  assert.ok(insightsGroup, 'Insights group not found')
+
+  const employee360 = insightsGroup.items.find((item) => item.label === 'Employee 360')
+  assert.ok(employee360, 'Missing Employee 360')
+  assert.equal(employee360.href, '/admin/employee-360')
 })
 
 test('admin nav Onboarding group includes all onboarding routes', () => {

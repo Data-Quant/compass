@@ -1,0 +1,107 @@
+.cockpit {
+  --e360-ink: #070b12;
+  --e360-panel: rgba(13, 20, 31, 0.92);
+  --e360-panel-raised: rgba(17, 26, 40, 0.96);
+  --e360-edge: rgba(129, 151, 178, 0.2);
+  --e360-edge-strong: rgba(142, 168, 199, 0.34);
+  --e360-bone: #ece8dc;
+  --e360-muted: #8d99aa;
+  --e360-amber: #e6bc58;
+  --e360-cyan: #79b8d8;
+  --e360-coral: #e57b69;
+  --e360-mint: #5dc1a7;
+  min-height: 100%;
+  color: var(--e360-bone);
+  background:
+    radial-gradient(circle at 64% 12%, rgba(51, 96, 126, 0.16), transparent 30rem),
+    radial-gradient(circle at 24% 34%, rgba(168, 126, 41, 0.1), transparent 26rem),
+    linear-gradient(rgba(124, 151, 180, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124, 151, 180, 0.035) 1px, transparent 1px),
+    var(--e360-ink);
+  background-size: auto, auto, 44px 44px, 44px 44px, auto;
+}
+
+.panel {
+  position: relative;
+  border: 1px solid var(--e360-edge);
+  background: linear-gradient(145deg, rgba(18, 27, 42, 0.94), rgba(9, 14, 23, 0.96));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.025),
+    0 18px 42px rgba(0, 0, 0, 0.16);
+}
+
+.panel::before {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  border-radius: inherit;
+  background: linear-gradient(120deg, rgba(230, 188, 88, 0.025), transparent 38%);
+}
+
+.rail {
+  scrollbar-color: rgba(141, 153, 170, 0.34) transparent;
+  scrollbar-width: thin;
+}
+
+.rail::-webkit-scrollbar {
+  width: 5px;
+}
+
+.rail::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(141, 153, 170, 0.34);
+}
+
+.telemetry {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.signalAmber {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.025),
+    inset 3px 0 0 rgba(230, 188, 88, 0.74);
+}
+
+.signalCyan {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.025),
+    inset 3px 0 0 rgba(121, 184, 216, 0.74);
+}
+
+.timelineLine {
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(121, 184, 216, 0.36) 6%,
+    rgba(230, 188, 88, 0.32) 94%,
+    transparent
+  );
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.025) 0%,
+    rgba(255, 255, 255, 0.065) 48%,
+    rgba(255, 255, 255, 0.025) 100%
+  );
+  background-size: 220% 100%;
+  animation: e360-shimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes e360-shimmer {
+  from {
+    background-position: 160% 0;
+  }
+  to {
+    background-position: -60% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer {
+    animation: none;
+  }
+}

@@ -12,6 +12,16 @@ import {
   MAX_LENS_SCORE,
   LOW_CONSENSUS_THRESHOLD,
   unionLensOrder,
+  buildCompensationTrajectory,
+  computeClientConcentration,
+  deriveAvailability,
+  getScorablePeriods,
+  resolveEmploymentStatus,
+  selectScorablePeriod,
+  selfVsOthersGap,
+  sortEvaluationLenses,
+  sumApprovedWorkingLeaveDays,
+  summarizeAvailability,
 } from '../lib/analytics/employee-360'
 
 const geometry = { innerRadius: 40, outerRadius: 140 }
@@ -181,4 +191,263 @@ test('a person missing an axis simply has no point there', () => {
 
   assert.equal(points.length, 1)
   assert.equal(points[0].lens, 'PEER')
+})
+
+test('SELF is a canonical, separately ordered lens', () => {
+  const axes = unionLensOrder({ SELF: 4, PEER: 3, TEAM_LEAD: 2 })
+  assert.deepEqual(axes, ['TEAM_LEAD', 'PEER', 'SELF'])
+
+  const sorted = sortEvaluationLenses([
+    {
+      relationshipType: 'SELF' as const,
+      score: 4,
+      evaluatorCount: 1,
+      orgAverage: null,
+      weight: 0,
+      includedInOverall: false,
+    },
+    {
+      relationshipType: 'TEAM_LEAD' as const,
+      score: 2,
+      evaluatorCount: 1,
+      orgAverage: 3,
+      weight: 1,
+      includedInOverall: true,
+    },
+  ])
+  assert.deepEqual(sorted.map((lens) => lens.relationshipType), ['TEAM_LEAD', 'SELF'])
+  assert.equal(sorted[1].includedInOverall, false)
+})
+
+test('period selection excludes an empty newest period', () => {
+  const periods = [
+    {
+      id: 'empty',
+      name: 'Q3',
+      startDate: '2026-07-01T00:00:00.000Z',
+      endDate: '2026-09-30T00:00:00.000Z',
+      isActive: true,
+      submittedScoreCount: 0,
+    },
+    {
+      id: 'newest-scorable',
+      name: 'Q2',
+      startDate: '2026-04-01T00:00:00.000Z',
+      endDate: '2026-06-30T00:00:00.000Z',
+      isActive: false,
+      submittedScoreCount: 12,
+    },
+    {
+      id: 'older',
+      name: 'Q1',
+      startDate: '2026-01-01T00:00:00.000Z',
+      endDate: '2026-03-31T00:00:00.000Z',
+      isActive: false,
+      submittedScoreCount: 9,
+    },
+  ]
+
+  assert.deepEqual(getScorablePeriods(periods).map((period) => period.id), [
+    'newest-scorable',
+    'older',
+  ])
+  assert.equal(selectScorablePeriod(periods)?.id, 'newest-scorable')
+})
+
+test('period selection prefers an active scorable period and honors a valid request', () => {
+  const periods = [
+    {
+      id: 'newer',
+      name: 'Q2',
+      startDate: '2026-04-01T00:00:00.000Z',
+      endDate: '2026-06-30T00:00:00.000Z',
+      isActive: false,
+      submittedScoreCount: 12,
+    },
+    {
+      id: 'active',
+      name: 'Q1',
+      startDate: '2026-01-01T00:00:00.000Z',
+      endDate: '2026-03-31T00:00:00.000Z',
+      isActive: true,
+      submittedScoreCount: 9,
+    },
+  ]
+
+  assert.equal(selectScorablePeriod(periods)?.id, 'active')
+  assert.equal(selectScorablePeriod(periods, 'newer')?.id, 'newer')
+  assert.equal(selectScorablePeriod(periods, 'not-scorable')?.id, 'active')
+})
+
+test('availability distinguishes complete, partial, and absent evidence', () => {
+  assert.equal(deriveAvailability([true, true]), 'AVAILABLE')
+  assert.equal(deriveAvailability([true, false]), 'PARTIAL')
+  assert.equal(deriveAvailability([false, false]), 'NO_DATA')
+  assert.equal(deriveAvailability([]), 'NO_DATA')
+
+  const summary = summarizeAvailability({
+    evaluation: 'AVAILABLE',
+    clients: 'PARTIAL',
+    compensation: 'NO_DATA',
+    operations: 'AVAILABLE',
+    network: 'NO_DATA',
+  })
+  assert.equal(summary.status, 'PARTIAL')
+  assert.equal(summary.availableDomains, 2)
+  assert.equal(summary.partialDomains, 1)
+  assert.equal(summary.noDataDomains, 2)
+  assert.equal(summary.completeness, 0.5)
+})
+
+test('employees without a payroll profile remain active', () => {
+  assert.equal(resolveEmploymentStatus(undefined), 'ACTIVE')
+  assert.equal(resolveEmploymentStatus(null), 'ACTIVE')
+  assert.equal(resolveEmploymentStatus(true), 'ACTIVE')
+  assert.equal(resolveEmploymentStatus(false), 'ARCHIVED')
+})
+
+test('salary observations collapse unchanged months into verified change events', () => {
+  const trajectory = buildCompensationTrajectory([
+    {
+      effectiveFrom: '2026-01-01T00:00:00.000Z',
+      amount: 100_000,
+      currency: 'pkr',
+      periodId: 'jan',
+      periodName: 'January',
+      periodStatus: 'APPROVED',
+      receiptStatus: 'COMPLETED',
+    },
+    {
+      effectiveFrom: '2026-02-01T00:00:00.000Z',
+      amount: 100_000,
+      currency: 'PKR',
+      periodId: 'feb',
+      periodName: 'February',
+      periodStatus: 'SENT',
+      receiptStatus: 'SENT',
+    },
+    {
+      effectiveFrom: '2026-03-01T00:00:00.000Z',
+      amount: 120_000,
+      currency: 'PKR',
+      periodId: 'mar',
+      periodName: 'March',
+      periodStatus: 'LOCKED',
+      receiptStatus: 'COMPLETED',
+    },
+    {
+      effectiveFrom: '2026-04-01T00:00:00.000Z',
+      amount: 999_999,
+      currency: 'PKR',
+      periodStatus: 'FAILED',
+      receiptStatus: 'FAILED',
+    },
+  ])
+
+  assert.equal(trajectory.currency, 'PKR')
+  assert.equal(trajectory.currentBasic, 120_000)
+  assert.deepEqual(trajectory.history.map((point) => point.amount), [100_000, 120_000])
+  assert.equal(trajectory.changeEvents.length, 1)
+  assert.equal(trajectory.changeEvents[0].delta, 20_000)
+  assert.equal(trajectory.changeEvents[0].percentChange, 20)
+  assert.equal(trajectory.growth, 20)
+})
+
+test('mixed-currency salary streams are retained but never combined', () => {
+  const trajectory = buildCompensationTrajectory([
+    {
+      effectiveFrom: '2026-01-01T00:00:00.000Z',
+      amount: 100_000,
+      currency: 'PKR',
+      periodStatus: 'APPROVED',
+      receiptStatus: 'COMPLETED',
+    },
+    {
+      effectiveFrom: '2026-02-01T00:00:00.000Z',
+      amount: 1_000,
+      currency: 'USD',
+      periodStatus: 'APPROVED',
+      receiptStatus: 'COMPLETED',
+    },
+    {
+      effectiveFrom: '2026-03-01T00:00:00.000Z',
+      amount: 110_000,
+      currency: 'PKR',
+      periodStatus: 'LOCKED',
+      receiptStatus: 'SENT',
+    },
+  ])
+
+  assert.deepEqual(trajectory.currencies, ['PKR', 'USD'])
+  assert.equal(trajectory.currency, null)
+  assert.equal(trajectory.currentBasic, null)
+  assert.equal(trajectory.growth, null)
+  assert.deepEqual(
+    trajectory.history.map((point) => `${point.currency}:${point.amount}`),
+    ['PKR:100000', 'USD:1000', 'PKR:110000']
+  )
+  assert.equal(trajectory.changeEvents.length, 1)
+  assert.equal(trajectory.changeEvents[0].currency, 'PKR')
+})
+
+test('salary observations without verified statuses are ignored', () => {
+  const trajectory = buildCompensationTrajectory([
+    {
+      effectiveFrom: '2026-01-01T00:00:00.000Z',
+      amount: 100_000,
+      currency: 'PKR',
+      periodStatus: null,
+      receiptStatus: null,
+    },
+  ])
+
+  assert.equal(trajectory.currentBasic, null)
+  assert.deepEqual(trajectory.history, [])
+})
+
+test('client concentration describes recorded assignment share without inventing a primary', () => {
+  const result = computeClientConcentration([
+    { clientId: 'a', clientName: 'Alpha' },
+    { clientId: 'b', clientName: 'Beta' },
+    { clientId: 'c', clientName: 'Gamma' },
+  ])
+
+  assert.deepEqual(result, {
+    primaryClientId: null,
+    primaryClientName: null,
+    share: 1 / 3,
+    basis: 'ASSIGNMENT_COUNT',
+  })
+  assert.equal(computeClientConcentration([]), null)
+})
+
+test('approved leave uses weekday and half-day semantics', () => {
+  const total = sumApprovedWorkingLeaveDays([
+    {
+      status: 'APPROVED',
+      startDate: '2026-02-06T00:00:00.000Z',
+      endDate: '2026-02-09T00:00:00.000Z',
+      isHalfDay: false,
+    },
+    {
+      status: 'APPROVED',
+      startDate: '2026-02-10T00:00:00.000Z',
+      endDate: '2026-02-10T00:00:00.000Z',
+      isHalfDay: true,
+    },
+    {
+      status: 'PENDING',
+      startDate: '2026-02-11T00:00:00.000Z',
+      endDate: '2026-02-13T00:00:00.000Z',
+      isHalfDay: false,
+    },
+  ])
+
+  assert.equal(total, 2.5)
+})
+
+test('self-versus-others gap uses the weighted overall without changing it', () => {
+  assert.equal(selfVsOthersGap(4, 75), 1)
+  assert.equal(selfVsOthersGap(null, 75), null)
+  assert.equal(selfVsOthersGap(4, null), null)
 })
