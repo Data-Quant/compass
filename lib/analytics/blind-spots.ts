@@ -22,8 +22,18 @@ export interface BlindSpotEntry {
 
 export interface BlindSpotsResult {
   entries: BlindSpotEntry[]
+  /** Everyone with a spread, widest first. topSpreads is just the head of this. */
+  bySpread: BlindSpotEntry[]
+  /** Everyone with a self gap, largest absolute gap first. */
+  bySelfGap: BlindSpotEntry[]
   topSelfGaps: BlindSpotEntry[]
   topSpreads: BlindSpotEntry[]
+  /**
+   * Mean score per lens across everyone analysed, so a single person's radar can
+   * be read against the norm. A 3.1 from peers means little until you know the
+   * typical peer score is 3.4.
+   */
+  orgPerLensAverage: Partial<Record<RelationshipType, number>>
   insufficientData: boolean
 }
 
@@ -78,20 +88,40 @@ export function computeBlindSpots(matrix: PeriodScoreMatrix): BlindSpotsResult {
     })
   }
 
-  const topSelfGaps = entries
+  const bySelfGap = entries
     .filter((entry): entry is BlindSpotEntry & { selfGap: number } => entry.selfGap !== null)
     .sort((a, b) => Math.abs(b.selfGap) - Math.abs(a.selfGap))
-    .slice(0, BLIND_SPOT_FLAG_LIMIT)
 
-  const topSpreads = entries
+  const bySpread = entries
     .filter((entry): entry is BlindSpotEntry & { lensSpread: number } => entry.lensSpread !== null)
     .sort((a, b) => b.lensSpread - a.lensSpread)
-    .slice(0, BLIND_SPOT_FLAG_LIMIT)
+
+  // Mean per lens across everyone, for the comparison line on the radar.
+  const lensTotals = new Map<RelationshipType, { total: number; count: number }>()
+  for (const entry of entries) {
+    for (const [lens, value] of Object.entries(entry.perLens) as Array<[RelationshipType, number]>) {
+      const bucket = lensTotals.get(lens)
+      if (bucket) {
+        bucket.total += value
+        bucket.count += 1
+      } else {
+        lensTotals.set(lens, { total: value, count: 1 })
+      }
+    }
+  }
+
+  const orgPerLensAverage: Partial<Record<RelationshipType, number>> = {}
+  for (const [lens, { total, count }] of lensTotals.entries()) {
+    if (count > 0) orgPerLensAverage[lens] = total / count
+  }
 
   return {
     entries,
-    topSelfGaps,
-    topSpreads,
+    bySpread,
+    bySelfGap,
+    topSelfGaps: bySelfGap.slice(0, BLIND_SPOT_FLAG_LIMIT),
+    topSpreads: bySpread.slice(0, BLIND_SPOT_FLAG_LIMIT),
+    orgPerLensAverage,
     insufficientData: entries.length === 0,
   }
 }

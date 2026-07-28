@@ -1,9 +1,11 @@
 'use client'
 
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Card, CardContent } from '@/components/ui/card'
-import { Scale, ShieldCheck } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Scale, Search, ShieldCheck } from 'lucide-react'
 import type { CalibrationResult, EvaluatorCalibration } from '@/lib/analytics/calibration'
 import type { NameResolver } from '@/components/analytics/types'
 
@@ -12,57 +14,123 @@ interface CalibrationTabProps {
   resolveName: NameResolver
 }
 
-interface EvaluatorListProps {
-  title: string
-  subtitle: string
+/**
+ * Every evaluator on one axis, most lenient to most severe.
+ *
+ * Two five-row lists showed only the extremes and hid the middle, which is where
+ * most people sit and where the shape of the distribution actually lives. Each row
+ * carries a bar running left or right of the org mean, so the spread is legible at
+ * a glance rather than by reading numbers.
+ */
+function EvaluatorSpectrum({
+  evaluators,
+  resolveName,
+  orgMeanRating,
+}: {
   evaluators: EvaluatorCalibration[]
   resolveName: NameResolver
-}
+  orgMeanRating: number
+}) {
+  const [query, setQuery] = useState('')
 
-function EvaluatorList({ title, subtitle, evaluators, resolveName }: EvaluatorListProps) {
+  const filtered = query.trim()
+    ? evaluators.filter((evaluator) =>
+        resolveName(evaluator.evaluatorId).toLowerCase().includes(query.trim().toLowerCase())
+      )
+    : evaluators
+
+  // Bars are scaled to the widest deviation present, so the spread fills the
+  // available width whether the range is 0.2 or 1.5.
+  const maxAbs = evaluators.reduce((max, e) => Math.max(max, Math.abs(e.deviation)), 0) || 1
+
   return (
     <Card>
       <CardContent className="p-6">
-        <h3 className="text-lg font-semibold text-foreground">{title}</h3>
-        <p className="text-sm text-muted-foreground mb-4">{subtitle}</p>
-        {evaluators.length > 0 ? (
-          <div className="space-y-3">
-            {evaluators.map((evaluator, index) => (
-              <motion.div
-                key={evaluator.evaluatorId}
-                initial={{ opacity: 0, x: -12 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.05 * index }}
-                className="flex items-center justify-between p-3 bg-muted rounded-lg"
-              >
-                <div>
-                  <div className="font-medium text-foreground">
-                    {resolveName(evaluator.evaluatorId)}
-                    {evaluator.isExempt && (
-                      <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-background text-muted-foreground">
-                        uncapped
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {evaluator.ratingCount} ratings • mean {evaluator.meanRating.toFixed(2)}
-                  </div>
-                </div>
-                <div
-                  className={`font-semibold ${
-                    evaluator.deviation >= 0
-                      ? 'text-amber-600 dark:text-amber-400'
-                      : 'text-blue-600 dark:text-blue-400'
-                  }`}
+        <div className="flex items-baseline justify-between gap-2">
+          <h3 className="text-lg font-semibold text-foreground">All Evaluators</h3>
+          <span className="text-xs text-muted-foreground shrink-0">
+            {filtered.length === evaluators.length
+              ? `${evaluators.length} evaluators`
+              : `${filtered.length} of ${evaluators.length}`}
+          </span>
+        </div>
+        <p className="text-sm text-muted-foreground mb-3">
+          Lenient to severe, against the org mean of {orgMeanRating.toFixed(2)}. Amber rates above
+          it, blue below.
+        </p>
+
+        {evaluators.length > 8 && (
+          <div className="relative mb-3">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search evaluator..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="pl-10 h-9"
+            />
+          </div>
+        )}
+
+        {filtered.length > 0 ? (
+          <div className="space-y-1.5 max-h-[520px] overflow-y-auto pr-1">
+            {filtered.map((evaluator, index) => {
+              const lenient = evaluator.deviation >= 0
+              const width = (Math.abs(evaluator.deviation) / maxAbs) * 50
+
+              return (
+                <motion.div
+                  key={evaluator.evaluatorId}
+                  initial={{ opacity: 0, x: -12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: Math.min(index, 8) * 0.04 }}
+                  className="flex items-center gap-3 rounded-lg bg-muted px-3 py-2"
                 >
-                  {evaluator.deviation > 0 ? '+' : ''}
-                  {evaluator.deviation.toFixed(2)}
-                </div>
-              </motion.div>
-            ))}
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-foreground">
+                      {resolveName(evaluator.evaluatorId)}
+                      {evaluator.isExempt && (
+                        <span className="ml-2 rounded-full bg-background px-2 py-0.5 text-xs text-muted-foreground">
+                          uncapped
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {evaluator.ratingCount} ratings • mean {evaluator.meanRating.toFixed(2)}
+                    </div>
+                  </div>
+
+                  {/* Centre line is the org mean; bars grow out from it. */}
+                  <div className="relative hidden h-5 w-[42%] shrink-0 sm:block">
+                    <div className="absolute inset-y-0 left-1/2 w-px bg-border" />
+                    <div
+                      className={`absolute top-1/2 h-2.5 -translate-y-1/2 rounded-sm ${
+                        lenient ? 'bg-amber-500/70' : 'bg-blue-500/70'
+                      }`}
+                      style={
+                        lenient
+                          ? { left: '50%', width: `${width}%` }
+                          : { right: '50%', width: `${width}%` }
+                      }
+                    />
+                  </div>
+
+                  <div
+                    className={`w-14 shrink-0 text-right text-sm font-semibold ${
+                      lenient
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : 'text-blue-600 dark:text-blue-400'
+                    }`}
+                  >
+                    {evaluator.deviation > 0 ? '+' : ''}
+                    {evaluator.deviation.toFixed(2)}
+                  </div>
+                </motion.div>
+              )
+            })}
           </div>
         ) : (
-          <div className="text-center text-muted-foreground py-8">No data available</div>
+          <div className="py-8 text-center text-muted-foreground">No evaluators match.</div>
         )}
       </CardContent>
     </Card>
@@ -148,20 +216,11 @@ export function CalibrationTab({ calibration, resolveName }: CalibrationTabProps
         </Card>
       </motion.div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <EvaluatorList
-          title="Most Lenient"
-          subtitle="Rates above the org mean"
-          evaluators={calibration.mostLenient}
-          resolveName={resolveName}
-        />
-        <EvaluatorList
-          title="Most Severe"
-          subtitle="Rates below the org mean"
-          evaluators={calibration.mostSevere}
-          resolveName={resolveName}
-        />
-      </div>
+      <EvaluatorSpectrum
+        evaluators={calibration.allEvaluators}
+        resolveName={resolveName}
+        orgMeanRating={calibration.orgMeanRating}
+      />
     </div>
   )
 }

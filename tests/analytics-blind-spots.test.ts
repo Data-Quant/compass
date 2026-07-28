@@ -110,3 +110,53 @@ test('computeBlindSpots ranks a negative self gap by magnitude', () => {
   assert.equal(result.topSelfGaps[0].employeeId, 'emp-under')
   assert.equal(result.topSelfGaps[0].selfGap, -3)
 })
+
+test('bySpread holds everyone, not just the flagged few', () => {
+  // The UI lists all of them now; topSpreads is only the head of this list.
+  const scores = Array.from({ length: BLIND_SPOT_FLAG_LIMIT + 4 }, (_, index) =>
+    employee(
+      `emp-${index}`,
+      { C_LEVEL: lens(1 + index * 0.1), PEER: lens(4) },
+      { C_LEVEL: 0.5, PEER: 0.5 }
+    )
+  )
+  const result = computeBlindSpots({ periodId: 'p1', periodName: 'Q1', scores })
+
+  assert.equal(result.bySpread.length, scores.length)
+  assert.equal(result.topSpreads.length, BLIND_SPOT_FLAG_LIMIT)
+
+  // Widest first, and the truncated list is a prefix of the full one.
+  for (let i = 1; i < result.bySpread.length; i++) {
+    assert.ok(
+      result.bySpread[i - 1].lensSpread! >= result.bySpread[i].lensSpread!,
+      'bySpread must be sorted widest first'
+    )
+  }
+  assert.deepEqual(
+    result.topSpreads.map((e) => e.employeeId),
+    result.bySpread.slice(0, BLIND_SPOT_FLAG_LIMIT).map((e) => e.employeeId)
+  )
+})
+
+test('bySelfGap holds everyone with a gap, largest absolute first', () => {
+  const scores = [
+    employee('small', { C_LEVEL: lens(3), PEER: lens(3), SELF: lens(3.2) }, { C_LEVEL: 0.5, PEER: 0.5 }),
+    employee('big-negative', { C_LEVEL: lens(3), PEER: lens(3), SELF: lens(1) }, { C_LEVEL: 0.5, PEER: 0.5 }),
+    employee('no-self', { C_LEVEL: lens(2), PEER: lens(4) }, { C_LEVEL: 0.5, PEER: 0.5 }),
+  ]
+  const result = computeBlindSpots({ periodId: 'p1', periodName: 'Q1', scores })
+
+  // Sorted on magnitude, so a large negative gap outranks a small positive one.
+  assert.deepEqual(result.bySelfGap.map((e) => e.employeeId), ['big-negative', 'small'])
+})
+
+test('the org average per lens is the mean across everyone analysed', () => {
+  const scores = [
+    employee('a', { C_LEVEL: lens(2), PEER: lens(4) }, { C_LEVEL: 0.5, PEER: 0.5 }),
+    employee('b', { C_LEVEL: lens(4), PEER: lens(2) }, { C_LEVEL: 0.5, PEER: 0.5 }),
+  ]
+  const result = computeBlindSpots({ periodId: 'p1', periodName: 'Q1', scores })
+
+  assert.equal(result.orgPerLensAverage.C_LEVEL, 3)
+  assert.equal(result.orgPerLensAverage.PEER, 3)
+})
