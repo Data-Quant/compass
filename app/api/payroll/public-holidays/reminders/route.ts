@@ -2,18 +2,26 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getSession } from '@/lib/auth'
 import { canManagePayroll } from '@/lib/permissions'
-import { sendPublicHolidayReminders } from '@/lib/email'
+import { sendMonthlyPublicHolidayDigest } from '@/lib/email'
 
 /**
- * Daily job that emails the teams observing a public holiday a few days out.
+ * Monthly job that emails each team its public holidays for the month ahead.
  *
- * Runs from the Vercel cron in vercel.json, alongside the leave and project
- * reminder jobs. Authorised either by the cron secret or by a signed-in payroll
- * manager, so HR can trigger it manually when needed.
+ * Runs on the 1st from the Vercel cron in vercel.json. Authorised either by the
+ * cron secret or by a signed-in payroll manager, so HR can trigger it manually.
+ *
+ * `month` (YYYY-MM) targets a specific month, which is how HR can preview or
+ * resend one without waiting for the next cycle.
  */
 
 const querySchema = z.object({
-  daysAhead: z.coerce.number().int().min(0).max(30).optional(),
+  month: z
+    .string()
+    .regex(/^\d{4}-\d{2}$/, 'month must be YYYY-MM')
+    .optional(),
+  // Reports what would be sent without sending it, so HR can confirm against real
+  // numbers before mailing the company.
+  dryRun: z.coerce.boolean().optional(),
 })
 
 function isCronAuthorized(request: NextRequest) {
@@ -41,16 +49,30 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const parsed = querySchema.safeParse({ daysAhead: searchParams.get('daysAhead') ?? undefined })
+    const parsed = querySchema.safeParse({
+      month: searchParams.get('month') ?? undefined,
+      dryRun: searchParams.get('dryRun') ?? undefined,
+    })
     if (!parsed.success) {
       return NextResponse.json({ error: 'Invalid query', details: parsed.error.errors }, { status: 400 })
     }
 
-    const result = await sendPublicHolidayReminders(parsed.data.daysAhead ?? 3)
+    // Midday UTC so the reference date cannot slip into an adjacent month.
+    const reference = parsed.data.month
+      ? new Date(`${parsed.data.month}-01T12:00:00Z`)
+      : new Date()
+
+    if (Number.isNaN(reference.getTime())) {
+      return NextResponse.json({ error: 'Invalid month' }, { status: 400 })
+    }
+
+    const result = await sendMonthlyPublicHolidayDigest(reference, {
+      dryRun: parsed.data.dryRun ?? false,
+    })
     return NextResponse.json(result)
   } catch (error) {
-    console.error('Failed to send public holiday reminders:', error)
-    return NextResponse.json({ error: 'Failed to send public holiday reminders' }, { status: 500 })
+    console.error('Failed to send public holiday digest:', error)
+    return NextResponse.json({ error: 'Failed to send public holiday digest' }, { status: 500 })
   }
 }
 

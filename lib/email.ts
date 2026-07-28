@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db'
 import { formatReportAsHTML, generateDetailedReport } from './reports'
 import { escapeHtml } from '@/lib/sanitize'
 import { ALL_TEAMS, TEAM_LABELS } from '@/lib/handbook/teams'
-import { teamsObserving } from '@/lib/holidays'
+import { groupHolidaysByTeam, monthRangeUtc } from '@/lib/holidays'
 import { calculateLeaveDuration, getExpectedReturnDate } from '@/lib/leave-utils'
 import { safeRecordLeaveAuditEvent } from '@/lib/leave-audit'
 import { calculateWfhDays } from '@/lib/wfh-utils'
@@ -1642,69 +1642,116 @@ async function getHolidayCcEmails() {
 }
 
 /**
- * Remind the teams that observe an upcoming public holiday.
+ * The month's public holidays, sent to each team at the start of the month.
  *
- * Only the teams tagged on the holiday are notified: telling the Colombia team
- * about Eid is noise, and it was the reason for tagging in the first place. People
- * with no team tag are not notified, since there is no way to tell which holidays
+ * One digest per team rather than one mail per holiday, so people get a single
+ * planning view of the month instead of scattered nudges. Only the teams tagged on
+ * a holiday hear about it -- telling the Colombia team about Eid is the noise that
+ * tagging exists to remove. A user carries one team tag, so nobody is mailed twice.
+ *
+ * People with no team tag are not notified: there is no way to tell which holidays
  * apply to them.
  */
-export async function sendPublicHolidayReminders(daysAhead = 3) {
-  // Day boundaries in UTC to match how holiday dates are stored and to stay
-  // stable regardless of where the cron executes.
-  const now = new Date()
-  const start = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + daysAhead)
-  )
-  const end = new Date(start)
-  end.setUTCHours(23, 59, 59, 999)
+export async function sendMonthlyPublicHolidayDigest(
+  reference: Date = new Date(),
+  options: { dryRun?: boolean } = {}
+) {
+  const { dryRun = false } = options
+  const { start, end } = monthRangeUtc(reference)
 
   const holidays = await prisma.payrollPublicHoliday.findMany({
     where: { holidayDate: { gte: start, lte: end } },
     orderBy: { holidayDate: 'asc' },
   })
 
+  const monthLabel = new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(start)
+
+  type DigestPlanEntry = { team: string; teamLabel: string; recipients: number; holidays: string[] }
+
   if (holidays.length === 0) {
-    return { success: true, holidays: 0, sent: 0, skipped: [] as string[] }
+    // A month with no holidays sends nothing at all, rather than telling everyone
+    // there is nothing to tell them.
+    return {
+      success: true,
+      dryRun,
+      month: monthLabel,
+      holidays: 0,
+      sent: 0,
+      ccCount: 0,
+      plan: [] as DigestPlanEntry[],
+      skipped: [] as string[],
+    }
   }
 
+  const byTeam = groupHolidaysByTeam(holidays, ALL_TEAMS)
   const ccEmails = await getHolidayCcEmails()
   const skipped: string[] = []
+  const plan: DigestPlanEntry[] = []
   let sent = 0
 
-  for (const holiday of holidays) {
-    const teams = teamsObserving(holiday, ALL_TEAMS)
+  const formatDay = (date: Date) =>
+    new Intl.DateTimeFormat('en-US', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      timeZone: 'UTC',
+    }).format(date)
+
+  for (const [team, teamHolidays] of byTeam.entries()) {
     const recipients = await prisma.user.findMany({
-      where: { teamTag: { in: teams }, email: { not: null } },
+      where: { teamTag: team, email: { not: null } },
       select: { email: true },
     })
     const to = mergeRecipientEmails(recipients.map((r) => r.email))
 
     if (to.length === 0) {
-      skipped.push(`${holiday.name}: no tagged recipients`)
+      skipped.push(`${TEAM_LABELS[team]}: nobody tagged`)
       continue
     }
 
-    const dateLabel = new Intl.DateTimeFormat('en-US', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-      timeZone: 'UTC',
-    }).format(holiday.holidayDate)
+    plan.push({
+      team,
+      teamLabel: TEAM_LABELS[team],
+      recipients: to.length,
+      holidays: teamHolidays.map((holiday) => holiday.name),
+    })
 
-    const teamLabels = teams.map((team) => TEAM_LABELS[team]).join(', ')
-    const subject = `Upcoming Public Holiday: ${holiday.name} — ${dateLabel}`
+    // A dry run reports exactly what a real run would send, so the confirmation
+    // shown to HR is built from the same code path that does the sending.
+    if (dryRun) continue
+
+    const rows = teamHolidays
+      .map(
+        (holiday) => `
+        <tr>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #E2E8F0; color: #334155;">
+            ${escapeHtml(formatDay(holiday.holidayDate))}
+          </td>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">
+            ${escapeHtml(holiday.name)}
+          </td>
+        </tr>`
+      )
+      .join('')
+
+    const count = teamHolidays.length
+    const subject = `Public Holidays in ${monthLabel} — ${TEAM_LABELS[team]}`
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px;">
-        <h2 style="color: #1E293B;">${escapeHtml(holiday.name)}</h2>
+        <h2 style="color: #1E293B;">Public Holidays in ${escapeHtml(monthLabel)}</h2>
         <p style="font-size: 16px; color: #334155;">
-          A reminder that <strong>${escapeHtml(holiday.name)}</strong> falls on
-          <strong>${escapeHtml(dateLabel)}</strong>, in ${daysAhead} days.
+          ${count === 1 ? 'There is 1 public holiday' : `There are ${count} public holidays`}
+          for the ${escapeHtml(TEAM_LABELS[team])} this month.
         </p>
-        <p style="color: #475569;">This holiday applies to: ${escapeHtml(teamLabels)}.</p>
+        <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+          <tbody>${rows}</tbody>
+        </table>
         <p style="color: #64748B; font-size: 14px;">
-          Please plan any deadlines or handovers around it.
+          Please plan any deadlines or handovers around these dates.
         </p>
       </div>
     `
@@ -1719,12 +1766,21 @@ export async function sendPublicHolidayReminders(daysAhead = 3) {
       })
       sent++
     } catch (error) {
-      console.error(`Failed to send holiday reminder for ${holiday.name}:`, error)
-      skipped.push(`${holiday.name}: send failed`)
+      console.error(`Failed to send holiday digest to ${TEAM_LABELS[team]}:`, error)
+      skipped.push(`${TEAM_LABELS[team]}: send failed`)
     }
   }
 
-  return { success: true, holidays: holidays.length, sent, skipped }
+  return {
+    success: true,
+    dryRun,
+    month: monthLabel,
+    holidays: holidays.length,
+    sent,
+    ccCount: ccEmails.length,
+    plan,
+    skipped,
+  }
 }
 
 // Notify the applicant's team lead(s) that a transition plan was submitted for review.
