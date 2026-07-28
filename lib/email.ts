@@ -2,6 +2,8 @@ import nodemailer from 'nodemailer'
 import { prisma } from '@/lib/db'
 import { formatReportAsHTML, generateDetailedReport } from './reports'
 import { escapeHtml } from '@/lib/sanitize'
+import { ALL_TEAMS, TEAM_LABELS } from '@/lib/handbook/teams'
+import { teamsObserving } from '@/lib/holidays'
 import { calculateLeaveDuration, getExpectedReturnDate } from '@/lib/leave-utils'
 import { safeRecordLeaveAuditEvent } from '@/lib/leave-audit'
 import { calculateWfhDays } from '@/lib/wfh-utils'
@@ -1605,6 +1607,124 @@ function leaveDateRangeLabels(leaveRequest: { startDate: Date; endDate: Date }) 
   const start = new Date(leaveRequest.startDate).toLocaleDateString()
   const end = new Date(leaveRequest.endDate).toLocaleDateString()
   return { start, end }
+}
+
+/**
+ * Partners, matched on job title.
+ *
+ * There is no PARTNER role, and the titles in use are "Partner", "Junior Partner"
+ * and "Principal and Junior Partner", so this is a contains match. Deliberately
+ * separate from isPartnerReportExcluded in evaluation-profile-rules, which matches
+ * "partner" exactly because it governs who is excluded from evaluations -- widening
+ * that rule would quietly change who gets evaluated.
+ */
+async function getPartnerRecipientEmails() {
+  const partners = await prisma.user.findMany({
+    where: {
+      position: { contains: 'partner', mode: 'insensitive' },
+      email: { not: null },
+    },
+    select: { email: true },
+  })
+
+  return partners.map((u) => u.email).filter(Boolean) as string[]
+}
+
+/** HR, Partners and Execution are copied on every public holiday notice. */
+async function getHolidayCcEmails() {
+  const [hr, partners, execution] = await Promise.all([
+    getHrRecipientEmails(),
+    getPartnerRecipientEmails(),
+    getExecutionRecipientEmails(),
+  ])
+
+  return mergeRecipientEmails(hr, partners, execution)
+}
+
+/**
+ * Remind the teams that observe an upcoming public holiday.
+ *
+ * Only the teams tagged on the holiday are notified: telling the Colombia team
+ * about Eid is noise, and it was the reason for tagging in the first place. People
+ * with no team tag are not notified, since there is no way to tell which holidays
+ * apply to them.
+ */
+export async function sendPublicHolidayReminders(daysAhead = 3) {
+  // Day boundaries in UTC to match how holiday dates are stored and to stay
+  // stable regardless of where the cron executes.
+  const now = new Date()
+  const start = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + daysAhead)
+  )
+  const end = new Date(start)
+  end.setUTCHours(23, 59, 59, 999)
+
+  const holidays = await prisma.payrollPublicHoliday.findMany({
+    where: { holidayDate: { gte: start, lte: end } },
+    orderBy: { holidayDate: 'asc' },
+  })
+
+  if (holidays.length === 0) {
+    return { success: true, holidays: 0, sent: 0, skipped: [] as string[] }
+  }
+
+  const ccEmails = await getHolidayCcEmails()
+  const skipped: string[] = []
+  let sent = 0
+
+  for (const holiday of holidays) {
+    const teams = teamsObserving(holiday, ALL_TEAMS)
+    const recipients = await prisma.user.findMany({
+      where: { teamTag: { in: teams }, email: { not: null } },
+      select: { email: true },
+    })
+    const to = mergeRecipientEmails(recipients.map((r) => r.email))
+
+    if (to.length === 0) {
+      skipped.push(`${holiday.name}: no tagged recipients`)
+      continue
+    }
+
+    const dateLabel = new Intl.DateTimeFormat('en-US', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'UTC',
+    }).format(holiday.holidayDate)
+
+    const teamLabels = teams.map((team) => TEAM_LABELS[team]).join(', ')
+    const subject = `Upcoming Public Holiday: ${holiday.name} — ${dateLabel}`
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px;">
+        <h2 style="color: #1E293B;">${escapeHtml(holiday.name)}</h2>
+        <p style="font-size: 16px; color: #334155;">
+          A reminder that <strong>${escapeHtml(holiday.name)}</strong> falls on
+          <strong>${escapeHtml(dateLabel)}</strong>, in ${daysAhead} days.
+        </p>
+        <p style="color: #475569;">This holiday applies to: ${escapeHtml(teamLabels)}.</p>
+        <p style="color: #64748B; font-size: 14px;">
+          Please plan any deadlines or handovers around it.
+        </p>
+      </div>
+    `
+
+    try {
+      await transporter.sendMail({
+        from: `P21 Compass <${FROM_EMAIL}>`,
+        to: to.join(', '),
+        cc: ccEmails.length > 0 ? ccEmails.join(', ') : undefined,
+        subject,
+        html,
+      })
+      sent++
+    } catch (error) {
+      console.error(`Failed to send holiday reminder for ${holiday.name}:`, error)
+      skipped.push(`${holiday.name}: send failed`)
+    }
+  }
+
+  return { success: true, holidays: holidays.length, sent, skipped }
 }
 
 // Notify the applicant's team lead(s) that a transition plan was submitted for review.

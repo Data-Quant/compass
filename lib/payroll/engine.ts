@@ -9,7 +9,8 @@ import {
   computeNetPaid,
   type PaymentCategory,
 } from '@/lib/payroll/payments'
-import type { Prisma } from '@prisma/client'
+import type { Prisma, TeamTag } from '@prisma/client'
+import { holidayDatesForTeam } from '@/lib/holidays'
 
 export type InputBucket = Record<string, number>
 
@@ -171,7 +172,7 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
           lte: period.periodEnd,
         },
       },
-      select: { holidayDate: true },
+      select: { holidayDate: true, teamTags: true },
     }),
     prisma.payrollTravelAllowanceTier.findMany({
       where: {
@@ -285,11 +286,14 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
     // never write a receipt FK that references a missing user.
     prisma.user.findMany({
       where: { id: { in: [...userIds] } },
-      select: { id: true },
+      // teamTag decides which public holidays count against this person's working
+      // days, which is the denominator for their travel allowance.
+      select: { id: true, teamTag: true },
     }),
   ])
 
   const validUserIds = new Set(existingUsers.map((u) => u.id))
+  const teamTagByUserId = new Map(existingUsers.map((u) => [u.id, u.teamTag]))
   const profileByUserId = new Map(profiles.map((row) => [row.userId, row]))
   const latestRevisionByUserId = new Map<string, (typeof salaryRevisions)[number]>()
   for (const revision of salaryRevisions) {
@@ -308,11 +312,23 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
   const salaryHeadByCode = new Map(
     salaryHeads.map((head) => [head.code.toUpperCase(), head] as const)
   )
-  const workingDays = calculateWorkingDays({
-    periodStart: period.periodStart,
-    periodEnd: period.periodEnd,
-    holidays: holidays.map((h) => h.holidayDate),
-  })
+  // Working days are per team, not company-wide: a Moroccan holiday must not
+  // shorten the Pakistani month and cut travel allowance for people who worked
+  // that day. There are only a handful of team tags, so the result is memoised
+  // per tag rather than recomputed for each employee.
+  const workingDaysByTeam = new Map<TeamTag | null, number>()
+  const workingDaysFor = (teamTag: TeamTag | null): number => {
+    const cached = workingDaysByTeam.get(teamTag)
+    if (cached !== undefined) return cached
+
+    const value = calculateWorkingDays({
+      periodStart: period.periodStart,
+      periodEnd: period.periodEnd,
+      holidays: holidayDatesForTeam(holidays, teamTag),
+    })
+    workingDaysByTeam.set(teamTag, value)
+    return value
+  }
   const autoInputUpserts: Array<{
     periodId: string
     payrollName: string
@@ -428,16 +444,22 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
         const tier = resolveTravelTier(travelTiers, profile.transportMode, profile.distanceKm, period.periodEnd)
         if (!tier) {
           travelSkips.push({ payrollName, reason: 'NO_TIER_MATCH' })
-        } else if (workingDays > 0) {
+        } else if (workingDaysFor(teamTagByUserId.get(userId) ?? null) > 0) {
           // Unmarked attendance is treated exactly like absence: present days come
           // straight from marked PRESENT entries (0 when nothing is marked), so
           // travel prorates down to 0 instead of paying a full month. The value is
           // always persisted, overwriting any stale auto-written amount.
+          const teamTag = teamTagByUserId.get(userId) ?? null
+          const teamHolidays = holidayDatesForTeam(holidays, teamTag)
           const userAttendance = attendanceByUserId.get(userId) || []
           const presentDays = calculatePresentDays(userAttendance, period.periodStart, period.periodEnd, {
-            holidays: holidays.map((h) => h.holidayDate),
+            holidays: teamHolidays,
           })
-          travelReimbursement = computeTravelPayable(tier.monthlyRate, presentDays, workingDays)
+          travelReimbursement = computeTravelPayable(
+            tier.monthlyRate,
+            presentDays,
+            workingDaysFor(teamTag)
+          )
           autoInputUpserts.push({
             periodId,
             payrollName,
@@ -505,7 +527,9 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
         lineageJson: {
           periodKey,
           taxFinancialYearId: activeFinancialYear?.id || null,
-          workingDays,
+          // Recorded per team now, since two employees in the same period can
+          // legitimately have different working-day counts.
+          workingDays: workingDaysFor(userId ? teamTagByUserId.get(userId) ?? null : null),
           fixes: [
             FIX_IDS.TRAVEL_SUMIF_RANGE,
             FIX_IDS.GROSS_MEDICAL_ALIGNMENT,

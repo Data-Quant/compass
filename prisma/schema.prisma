@@ -1208,14 +1208,20 @@ model PayrollTaxBracket {
 
 model PayrollPublicHoliday {
   id               String             @id @default(cuid())
-  holidayDate      DateTime           @unique
+  holidayDate      DateTime
   name             String
+  // Which teams observe this holiday. Empty means every team, so holidays
+  // created before tagging existed keep applying company-wide.
+  teamTags         TeamTag[]
   financialYearId  String?
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
 
   financialYear    PayrollFinancialYear? @relation(fields: [financialYearId], references: [id], onDelete: SetNull)
 
+  // Was unique on the date alone, which made it impossible to record a Pakistani
+  // and a Moroccan holiday that fall on the same day.
+  @@unique([holidayDate, name])
   @@index([holidayDate])
   @@index([financialYearId])
 }
