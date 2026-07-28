@@ -15,7 +15,6 @@ import {
 import { AlertCircle } from 'lucide-react'
 import { OverviewTab } from '@/components/analytics/OverviewTab'
 import { TrendsTab } from '@/components/analytics/TrendsTab'
-import { Employee360Tab } from '@/components/analytics/Employee360Tab'
 import { CalibrationTab } from '@/components/analytics/CalibrationTab'
 import { BlindSpotsTab } from '@/components/analytics/BlindSpotsTab'
 import { TalentGridTab } from '@/components/analytics/TalentGridTab'
@@ -27,9 +26,6 @@ export default function AnalyticsPage() {
   const [periodId, setPeriodId] = useState<string>('active')
   const [loading, setLoading] = useState(true)
   const [namesById, setNamesById] = useState<Record<string, string>>({})
-  // Employee 360 lists people by name and department, so the full records are
-  // kept rather than only the id-to-name map the other tabs need.
-  const [directory, setDirectory] = useState<Array<{ id: string; name: string; department: string | null }>>([])
   const [tab, setTab] = useState('overview')
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null)
 
@@ -79,17 +75,13 @@ export default function AnalyticsPage() {
     // GET /api/users responds with { users: [{ id, name, department, position }] }.
     fetch('/api/users')
       .then((res) => res.json())
-      .then((data: { users?: Array<{ id?: string; name?: string; department?: string | null }> }) => {
+      .then((data: { users?: Array<{ id?: string; name?: string }> }) => {
         if (cancelled || !Array.isArray(data.users)) return
         const entries: Record<string, string> = {}
-        const records: Array<{ id: string; name: string; department: string | null }> = []
         for (const entry of data.users) {
-          if (!entry.id || !entry.name) continue
-          entries[entry.id] = entry.name
-          records.push({ id: entry.id, name: entry.name, department: entry.department ?? null })
+          if (entry.id && entry.name) entries[entry.id] = entry.name
         }
         setNamesById(entries)
-        setDirectory(records.sort((a, b) => a.name.localeCompare(b.name)))
       })
       .catch(() => {
         // Names are cosmetic; the views fall back to the id.
@@ -156,7 +148,6 @@ export default function AnalyticsPage() {
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="mb-6">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="employee360">Employee 360</TabsTrigger>
           <TabsTrigger value="trends">Trends</TabsTrigger>
           <TabsTrigger value="talent">Talent Grid</TabsTrigger>
           <TabsTrigger value="blindspots">Blind Spots</TabsTrigger>
@@ -165,13 +156,6 @@ export default function AnalyticsPage() {
 
         <TabsContent value="overview">
           <OverviewTab analytics={analytics} />
-        </TabsContent>
-        <TabsContent value="employee360">
-          <Employee360Tab
-            employees={directory}
-            selectedEmployeeId={selectedEmployeeId}
-            onSelectEmployee={handleSelectEmployee}
-          />
         </TabsContent>
         <TabsContent value="trends">
           {insights ? (
