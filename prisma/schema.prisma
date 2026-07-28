@@ -396,6 +396,10 @@ model User {
   evaluationAssignmentSnapshotsAsEvaluatee EvaluationPeriodAssignmentSnapshot[] @relation("EvaluationSnapshotEvaluatee")
   subscriptionOwnerships SubscriptionOwner[]
   evaluationEdits        EvaluationEdit[]   @relation("EvaluationEditor")
+  clientAssignments      ClientAssignment[] @relation("ClientAssignee")
+  rosterRequestsMade     ClientRosterRequest[] @relation("RosterRequester")
+  rosterRequestsResolved ClientRosterRequest[] @relation("RosterResolver")
+  rosterRequestSubjects  ClientRosterRequestItem[] @relation("RosterRequestSubject")
 
   @@index([name])
   @@index([email])
@@ -2021,4 +2025,104 @@ model HandbookAudience {
 
   @@id([variantId, team])
   @@index([team])
+}
+
+// ---------------------------------------------------------------------------
+// Clientele
+//
+// The client roster is HR-governed, which is why it does not reuse Project:
+// projects are created by any signed-in user and own their own tasks, whereas a
+// client and who works on it are set by HR alone.
+// ---------------------------------------------------------------------------
+
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ClientRole {
+  MANAGER
+  MEMBER
+}
+
+enum RosterRequestAction {
+  ADD
+  REMOVE
+}
+
+enum RosterRequestStatus {
+  PENDING
+  COMPLETED
+  DISMISSED
+}
+
+model Client {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  description String?
+  status      ClientStatus @default(ACTIVE)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  assignments    ClientAssignment[]
+  rosterRequests ClientRosterRequest[]
+
+  @@index([status])
+}
+
+model ClientAssignment {
+  id        String     @id @default(cuid())
+  clientId  String
+  userId    String
+  role      ClientRole @default(MEMBER)
+  createdAt DateTime   @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user   User   @relation("ClientAssignee", fields: [userId], references: [id], onDelete: Cascade)
+
+  // One row per person per client; the role says whether they lead it.
+  @@unique([clientId, userId])
+  @@index([clientId])
+  @@index([userId])
+}
+
+/// A manager asking HR to change who works on their client.
+///
+/// Stored rather than only emailed, so HR can work from a queue in the admin page
+/// and so a request that arrives while someone is away is not lost in an inbox.
+model ClientRosterRequest {
+  id            String              @id @default(cuid())
+  clientId      String
+  requestedById String
+  note          String?
+  status        RosterRequestStatus @default(PENDING)
+  resolvedById  String?
+  resolvedAt    DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  client      Client                    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  requestedBy User                      @relation("RosterRequester", fields: [requestedById], references: [id], onDelete: Cascade)
+  resolvedBy  User?                     @relation("RosterResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  items       ClientRosterRequestItem[]
+
+  @@index([clientId])
+  @@index([status])
+  @@index([requestedById])
+}
+
+model ClientRosterRequestItem {
+  id        String              @id @default(cuid())
+  requestId String
+  userId    String
+  action    RosterRequestAction
+  /// Which role to give them; only meaningful for ADD.
+  role      ClientRole?
+
+  request ClientRosterRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  user    User                @relation("RosterRequestSubject", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, userId, action])
+  @@index([requestId])
+  @@index([userId])
 }

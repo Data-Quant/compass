@@ -20,6 +20,7 @@ import {
   User,
   Users,
   Network,
+  Handshake,
   CalendarDays,
   HelpCircle,
   Link2,
@@ -109,6 +110,7 @@ export const ADMIN_SIDEBAR: SidebarConfig = {
       items: [
         { label: 'Users', href: '/admin/users', icon: Users },
         { label: 'Org Chart', href: '/admin/org-chart', icon: Network },
+        { label: 'Clients', href: '/admin/clients', icon: Handshake },
       ],
     },
     {

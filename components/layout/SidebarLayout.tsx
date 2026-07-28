@@ -11,6 +11,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
+import { Handshake } from 'lucide-react'
 
 // Context so child pages can access user info
 interface LayoutUser {
@@ -56,6 +57,10 @@ export function SidebarLayout({
   const router = useRouter()
   const pathname = usePathname()
   const [user, setUser] = useState<LayoutUser | null>(null)
+  // Clientele is visible only to people assigned to a client, so its nav entry is
+  // resolved from data rather than role. Checked live because the session cookie
+  // would not reflect a fresh assignment until the next login.
+  const [hasClientele, setHasClientele] = useState(false)
   const [loading, setLoading] = useState(true)
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -89,6 +94,12 @@ export function SidebarLayout({
           }
         }
         setUser(data.user)
+
+        // Non-blocking: a failure here just leaves the section hidden.
+        fetch('/api/clientele/access')
+          .then((res) => res.json())
+          .then((access) => setHasClientele(Boolean(access?.hasAccess)))
+          .catch(() => setHasClientele(false))
         setLoading(false)
       })
       .catch(() => router.push('/login'))
@@ -116,10 +127,28 @@ export function SidebarLayout({
     return <LoadingScreen message="Loading..." />
   }
 
-  const effectiveSidebarConfig =
+  const baseSidebarConfig =
     user?.onboardingCompleted === false && onboardingSidebarConfig
       ? onboardingSidebarConfig
       : sidebarConfig
+
+  // Slotted next to Projects, the other client-facing work item. Left out during
+  // onboarding, where the sidebar is deliberately stripped back.
+  const effectiveSidebarConfig =
+    hasClientele && baseSidebarConfig !== onboardingSidebarConfig
+      ? {
+          ...baseSidebarConfig,
+          items: baseSidebarConfig.items.some((item) => item.href === '/clientele')
+            ? baseSidebarConfig.items
+            : (() => {
+                const items = [...baseSidebarConfig.items]
+                const anchor = items.findIndex((item) => item.href === '/projects')
+                const entry = { label: 'Clientele', href: '/clientele', icon: Handshake }
+                items.splice(anchor >= 0 ? anchor + 1 : items.length - 1, 0, entry)
+                return items
+              })(),
+        }
+      : baseSidebarConfig
 
   return (
     <LayoutUserContext.Provider value={user}>
