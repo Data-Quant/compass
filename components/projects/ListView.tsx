@@ -7,12 +7,13 @@ import {
   DragOverlay,
   DragOverEvent,
   DragStartEvent,
+  KeyboardSensor,
   PointerSensor,
   closestCorners,
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { SectionGroup } from './SectionGroup'
@@ -23,6 +24,8 @@ interface ListViewProps {
   projectId: string
   tasks: PanelTask[]
   sections: ProjectStatusSection[]
+  viewerId: string
+  canManage: boolean
   onTaskClick: (task: PanelTask) => void
   onTasksChange: () => void
 }
@@ -39,7 +42,7 @@ function parseSectionContainerId(containerId: string) {
   return value === 'unsectioned' ? null : value
 }
 
-export function ListView({ projectId, tasks, sections, onTaskClick, onTasksChange }: ListViewProps) {
+export function ListView({ projectId, tasks, sections, viewerId, canManage, onTaskClick, onTasksChange }: ListViewProps) {
   const [addingSectionName, setAddingSectionName] = useState('')
   const [showSectionInput, setShowSectionInput] = useState(false)
   const [localTasks, setLocalTasks] = useState<PanelTask[]>(tasks)
@@ -50,7 +53,8 @@ export function ListView({ projectId, tasks, sections, onTaskClick, onTasksChang
   }, [tasks])
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
   const sectionStatusById = useMemo(() => {
@@ -62,6 +66,7 @@ export function ListView({ projectId, tasks, sections, onTaskClick, onTasksChang
   }, [sections])
 
   const activeTask = activeId ? localTasks.find((task) => task.id === activeId) : null
+  const canEditTask = (task: PanelTask) => canManage || task.assigneeId === viewerId
 
   const getTargetSectionId = (overId: string, sourceTasks = localTasks) => {
     const containerSectionId = parseSectionContainerId(overId)
@@ -73,13 +78,19 @@ export function ListView({ projectId, tasks, sections, onTaskClick, onTasksChang
 
   // Group tasks by section
   const unsectionedTasks = localTasks.filter((t) => !t.sectionId)
-  const sectionedTasks = sections.map((s) => ({
+  const orderedSections = [...sections].sort((a, b) => {
+    if (Boolean(a.isBacklog) !== Boolean(b.isBacklog)) return a.isBacklog ? 1 : -1
+    return a.orderIndex - b.orderIndex
+  })
+  const sectionedTasks = orderedSections.map((s) => ({
     ...s,
     tasks: localTasks.filter((t) => t.sectionId === s.id),
   }))
 
   const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(String(event.active.id))
+    const task = localTasks.find((candidate) => candidate.id === String(event.active.id))
+    if (!task || !canEditTask(task)) return
+    setActiveId(task.id)
   }
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -87,6 +98,8 @@ export function ListView({ projectId, tasks, sections, onTaskClick, onTasksChang
     if (!over) return
 
     const activeTaskId = String(active.id)
+    const activeTask = localTasks.find((task) => task.id === activeTaskId)
+    if (!activeTask || !canEditTask(activeTask)) return
     const targetSectionId = getTargetSectionId(String(over.id))
     if (targetSectionId === undefined) return
 
@@ -126,10 +139,25 @@ export function ListView({ projectId, tasks, sections, onTaskClick, onTasksChang
     const task = localTasks.find((item) => item.id === activeTaskId)
     const original = tasks.find((item) => item.id === activeTaskId)
     if (!task || !original) return
+    if (!canEditTask(original)) {
+      setLocalTasks(tasks)
+      return
+    }
 
     const sectionChanged = task.sectionId !== original.sectionId
     const statusChanged = task.status !== original.status
     if (!sectionChanged && !statusChanged) return
+
+    if (
+      original.section?.isBacklog &&
+      !task.section?.isBacklog &&
+      (!original.assigneeId || !original.dueDate)
+    ) {
+      setLocalTasks(tasks)
+      toast.error('Add an assignee and due date before moving this task out of Backlog')
+      onTaskClick(original)
+      return
+    }
 
     const targetSectionTasks = tasks.filter((item) => item.id !== task.id && item.sectionId === task.sectionId)
     const maxOrderIndex = Math.max(0, ...targetSectionTasks.map((item) => Number(item.orderIndex) || 0))
@@ -161,18 +189,22 @@ export function ListView({ projectId, tasks, sections, onTaskClick, onTasksChang
       const res = await fetch(`/api/projects/${projectId}/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, sectionId }),
+        body: JSON.stringify({
+          title,
+          sectionId,
+          ...(!canManage ? { assigneeId: viewerId } : {}),
+        }),
       })
       const data = await res.json()
-      if (data.success) {
-        onTasksChange()
-      }
-    } catch {
-      toast.error('Failed to create task')
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to create task')
+      onTasksChange()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to create task')
     }
   }
 
   const handleAddSection = async () => {
+    if (!canManage) return
     if (!addingSectionName.trim()) {
       setShowSectionInput(false)
       return
@@ -184,30 +216,30 @@ export function ListView({ projectId, tasks, sections, onTaskClick, onTasksChang
         body: JSON.stringify({ name: addingSectionName.trim() }),
       })
       const data = await res.json()
-      if (data.success) {
-        onTasksChange()
-        setAddingSectionName('')
-        setShowSectionInput(false)
-      }
-    } catch {
-      toast.error('Failed to create section')
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to create section')
+      onTasksChange()
+      setAddingSectionName('')
+      setShowSectionInput(false)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to create section')
     }
   }
 
   const handleDeleteSection = async (sectionId: string) => {
+    if (!canManage) return
     try {
       const res = await fetch(`/api/projects/${projectId}/sections?sectionId=${sectionId}`, { method: 'DELETE' })
       const data = await res.json()
-      if (data.success) {
-        onTasksChange()
-        toast.success('Section deleted')
-      }
-    } catch {
-      toast.error('Failed to delete section')
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to delete section')
+      onTasksChange()
+      toast.success('Section deleted')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to delete section')
     }
   }
 
   const handleRenameSection = async (sectionId: string, name: string) => {
+    if (!canManage) return
     try {
       const res = await fetch(`/api/projects/${projectId}/sections`, {
         method: 'PUT',
@@ -215,9 +247,10 @@ export function ListView({ projectId, tasks, sections, onTaskClick, onTasksChang
         body: JSON.stringify({ sectionId, name }),
       })
       const data = await res.json()
-      if (data.success) onTasksChange()
-    } catch {
-      toast.error('Failed to rename section')
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to rename section')
+      onTasksChange()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to rename section')
     }
   }
 
@@ -241,6 +274,8 @@ export function ListView({ projectId, tasks, sections, onTaskClick, onTasksChang
             onAddTask={handleAddTask}
             collapsible={sections.length > 0}
             containerId={getSectionContainerId(null)}
+            viewerId={viewerId}
+            canManage={canManage}
           />
         </SortableContext>
       )}
@@ -254,15 +289,18 @@ export function ListView({ projectId, tasks, sections, onTaskClick, onTasksChang
             tasks={section.tasks}
             onTaskClick={onTaskClick}
             onAddTask={handleAddTask}
-            onDeleteSection={section.isDefault ? undefined : handleDeleteSection}
-            onRenameSection={handleRenameSection}
+            onDeleteSection={canManage && !section.isDefault ? handleDeleteSection : undefined}
+            onRenameSection={canManage && !section.isDefault ? handleRenameSection : undefined}
+            defaultCollapsed={Boolean(section.isBacklog)}
             containerId={getSectionContainerId(section.id)}
+            viewerId={viewerId}
+            canManage={canManage}
           />
         </SortableContext>
       ))}
 
       {/* Add section */}
-      {showSectionInput ? (
+      {canManage && (showSectionInput ? (
         <div className="flex items-center gap-2 px-4 py-2">
           <input
             autoFocus
@@ -285,7 +323,7 @@ export function ListView({ projectId, tasks, sections, onTaskClick, onTasksChang
           <Plus className="w-4 h-4" />
           Add status
         </button>
-      )}
+      ))}
       </div>
 
       <DragOverlay>

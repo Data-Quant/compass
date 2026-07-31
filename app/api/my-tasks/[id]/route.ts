@@ -8,6 +8,10 @@ import {
   getTaskStatusForSection,
   resolveTaskStatusSection,
 } from '@/lib/project-status-sections'
+import { shouldMarkTaskCompletedLate } from '@/lib/project-progress'
+import { syncProjectCompletion } from '@/lib/project-completion'
+import { getProjectAuthorization, projectAuthorizationFailure } from '@/lib/project-access'
+import { isProjectTaskDateRangeValid, isProjectTaskPriority } from '@/lib/project-task-utils'
 
 export async function PATCH(
   request: NextRequest,
@@ -27,29 +31,38 @@ export async function PATCH(
         projectId: true,
         assigneeId: true,
         status: true,
+        completedAt: true,
+        completedLate: true,
         parentTaskId: true,
         startDate: true,
         dueDate: true,
         sectionId: true,
-        section: { select: { name: true } },
+        section: { select: { name: true, isBacklog: true } },
       },
     })
 
     if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 })
+    const authorization = await getProjectAuthorization(task.projectId, sessionUser)
+    const authorizationFailure = projectAuthorizationFailure(authorization)
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
     if (task.assigneeId !== sessionUser.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    if (task.section?.isBacklog) {
+      return NextResponse.json({ error: 'Backlog tasks are managed from the project workspace' }, { status: 400 })
     }
 
     const startDate = body.startDate !== undefined ? (body.startDate ? new Date(body.startDate) : null) : undefined
     const dueDate = body.dueDate !== undefined ? (body.dueDate ? new Date(body.dueDate) : null) : undefined
 
     const validStatuses = ['TODO', 'IN_PROGRESS', 'DONE']
-    const validPriorities = ['LOW', 'MEDIUM', 'HIGH', 'URGENT']
 
     if (body.status !== undefined && !validStatuses.includes(body.status)) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
     }
-    if (body.priority !== undefined && !validPriorities.includes(body.priority)) {
+    if (body.priority !== undefined && !isProjectTaskPriority(body.priority)) {
       return NextResponse.json({ error: 'Invalid priority' }, { status: 400 })
     }
 
@@ -62,7 +75,7 @@ export async function PATCH(
 
     const effectiveStart = startDate === undefined ? task.startDate : startDate
     const effectiveDue = dueDate === undefined ? task.dueDate : dueDate
-    if (effectiveStart && effectiveDue && effectiveStart.getTime() > effectiveDue.getTime()) {
+    if (!isProjectTaskDateRangeValid(effectiveStart, effectiveDue)) {
       return NextResponse.json({ error: 'startDate cannot be after dueDate' }, { status: 400 })
     }
 
@@ -77,9 +90,25 @@ export async function PATCH(
       })
       if (!nextSection) return NextResponse.json({ error: 'Invalid status section' }, { status: 400 })
       const nextStatus = getTaskStatusForSection(nextSection)
+      if (task.section?.isBacklog && !nextSection.isBacklog && !effectiveDue) {
+        return NextResponse.json(
+          { error: 'Backlog tasks require an assignee and due date before promotion' },
+          { status: 400 }
+        )
+      }
       updateData.status = nextStatus
       updateData.sectionId = nextSection.id
-      updateData.completedAt = nextStatus === 'DONE' ? new Date() : null
+      updateData.completedAt = nextStatus === 'DONE'
+        ? (task.status === 'DONE' ? task.completedAt || new Date() : new Date())
+        : null
+      const completedLate = shouldMarkTaskCompletedLate({
+        wasCompletedLate: task.completedLate,
+        previousStatus: task.status,
+        nextStatus,
+        dueDate: effectiveDue,
+        section: nextSection,
+      })
+      if (completedLate !== task.completedLate) updateData.completedLate = completedLate
     }
     if (body.priority !== undefined) updateData.priority = body.priority
     if (body.startDate !== undefined) updateData.startDate = effectiveStart
@@ -91,7 +120,7 @@ export async function PATCH(
       include: {
         project: { select: { id: true, name: true, color: true } },
         assignee: { select: { id: true, name: true } },
-        section: { select: { id: true, name: true, color: true, canonicalStatus: true, isDefault: true, isDone: true, orderIndex: true } },
+        section: { select: { id: true, name: true, color: true, canonicalStatus: true, isDefault: true, isDone: true, isBacklog: true, orderIndex: true } },
         parentTask: {
           select: {
             id: true,
@@ -110,26 +139,30 @@ export async function PATCH(
     })
 
     const actorName = sessionUser.name || 'Someone'
-    if (body.status !== undefined && (updatedTask.sectionId !== task.sectionId || updatedTask.status !== task.status)) {
-      await recordTaskActivity({
-        taskId: task.id,
-        actorId: sessionUser.id,
-        summary: `${actorName} moved the task to ${updatedTask.section?.name || updatedTask.status}`,
-        kind: 'status',
-        origin: request.nextUrl.origin,
-      })
-    }
-    if (body.dueDate !== undefined && (task.dueDate?.toISOString().slice(0, 10) || null) !== (updatedTask.dueDate?.toISOString().slice(0, 10) || null)) {
-      const dueLabel = updatedTask.dueDate
-        ? updatedTask.dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-        : 'no deadline'
-      await recordTaskActivity({
-        taskId: task.id,
-        actorId: sessionUser.id,
-        summary: `${actorName} changed the deadline to ${dueLabel}`,
-        kind: 'dueDate',
-        origin: request.nextUrl.origin,
-      })
+    try {
+      if (body.status !== undefined && (updatedTask.sectionId !== task.sectionId || updatedTask.status !== task.status)) {
+        await recordTaskActivity({
+          taskId: task.id,
+          actorId: sessionUser.id,
+          summary: `${actorName} moved the task to ${updatedTask.section?.name || updatedTask.status}`,
+          kind: 'status',
+          origin: request.nextUrl.origin,
+        })
+      }
+      if (body.dueDate !== undefined && (task.dueDate?.toISOString().slice(0, 10) || null) !== (updatedTask.dueDate?.toISOString().slice(0, 10) || null)) {
+        const dueLabel = updatedTask.dueDate
+          ? updatedTask.dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          : 'no deadline'
+        await recordTaskActivity({
+          taskId: task.id,
+          actorId: sessionUser.id,
+          summary: `${actorName} changed the deadline to ${dueLabel}`,
+          kind: 'dueDate',
+          origin: request.nextUrl.origin,
+        })
+      }
+    } catch (activityError) {
+      console.error('Failed to record My Tasks activity:', activityError)
     }
 
     if (updatedTask.status === 'DONE' && task.status !== 'DONE' && task.parentTaskId) {
@@ -137,6 +170,14 @@ export async function PATCH(
         await sendChildTaskCompletedNotification(task.id, request.nextUrl.origin)
       } catch (notificationError) {
         console.error('Failed to send child task completion notification:', notificationError)
+      }
+    }
+
+    if (body.status !== undefined || body.dueDate !== undefined || body.startDate !== undefined) {
+      try {
+        await syncProjectCompletion(task.projectId)
+      } catch (syncError) {
+        console.error('Failed to sync project completion after my task update:', syncError)
       }
     }
 

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db'
 import { buildDashboardMetrics } from '@/lib/my-tasks/analytics'
 import { SMART_BUCKET_LABELS } from '@/lib/my-tasks/buckets'
 import type { MyTaskRecord } from '@/lib/my-tasks/types'
+import { accessibleProjectsWhere } from '@/lib/project-access'
 
 function parseWindow(window: string | null): number {
   if (window === '90d') return 90
@@ -23,7 +24,12 @@ export async function GET(request: NextRequest) {
     const tasks = await prisma.task.findMany({
       where: {
         assigneeId: user.id,
+        project: accessibleProjectsWhere(user),
         ...(projectId ? { projectId } : {}),
+        OR: [
+          { sectionId: null },
+          { section: { is: { isBacklog: false } } },
+        ],
       },
       include: {
         project: { select: { id: true, name: true, color: true } },

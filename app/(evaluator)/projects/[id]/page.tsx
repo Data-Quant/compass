@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { UserAvatar } from '@/components/composed/UserAvatar'
+import { useLayoutUser } from '@/components/layout/SidebarLayout'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { EmptyState } from '@/components/composed/EmptyState'
 import { ListView } from '@/components/projects/ListView'
@@ -14,9 +15,10 @@ import { MemberManager } from '@/components/projects/MemberManager'
 import {
   List, LayoutGrid, UserPlus, Settings, ListTodo,
   ChevronLeft, MoreHorizontal, Pencil, Archive, Trash2, Tag, Plus,
-  CheckCircle2, RotateCcw,
+  CheckCircle2, RotateCcw, AlertTriangle, PauseCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { calculateTaskVariance } from '@/lib/project-progress'
 
 /* ─── Types ───────────────────────────────────────────────────────────── */
 
@@ -34,6 +36,7 @@ interface Project {
   sections: ProjectStatusSection[]
   labels: Label[]
   tasks: PanelTask[]
+  canManage?: boolean
 }
 
 const PRESET_COLORS = [
@@ -51,6 +54,7 @@ const LABEL_COLORS = [
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
+  const viewer = useLayoutUser()
 
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
@@ -108,13 +112,11 @@ export default function ProjectDetailPage() {
 
   const handleTaskUpdate = (updatedTask: PanelTask) => {
     setSelectedTask(updatedTask)
-    loadProject()
   }
 
   const handleTaskDelete = (taskId: string) => {
     setPanelOpen(false)
     setSelectedTask(null)
-    loadProject()
   }
 
   const handleOpenTaskById = (taskId: string) => {
@@ -125,41 +127,65 @@ export default function ProjectDetailPage() {
   }
 
   const handleDeleteProject = async () => {
+    if (!window.confirm('Delete this project and all of its tasks? This cannot be undone.')) return
     try {
-      await fetch(`/api/projects/${id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/projects/${id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to delete project')
       toast.success('Project deleted')
       router.push('/projects')
-    } catch {
-      toast.error('Failed to delete project')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to delete project')
     }
   }
 
   const handleArchiveProject = async () => {
     try {
-      await fetch(`/api/projects/${id}`, {
+      const res = await fetch(`/api/projects/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: project?.status === 'ARCHIVED' ? 'ACTIVE' : 'ARCHIVED' }),
       })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to update project')
       loadProject()
       toast.success(project?.status === 'ARCHIVED' ? 'Project restored' : 'Project archived')
-    } catch {
-      toast.error('Failed to update project')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update project')
     }
   }
 
   const handleToggleComplete = async () => {
     const nextStatus = project?.status === 'COMPLETED' ? 'ACTIVE' : 'COMPLETED'
     try {
-      await fetch(`/api/projects/${id}`, {
+      const res = await fetch(`/api/projects/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: nextStatus }),
       })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to update project')
       loadProject()
       toast.success(nextStatus === 'COMPLETED' ? 'Project marked complete' : 'Project reopened')
-    } catch {
-      toast.error('Failed to update project')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update project')
+    }
+  }
+
+  const handleToggleOnHold = async () => {
+    const nextStatus = project?.status === 'ON_HOLD' ? 'ACTIVE' : 'ON_HOLD'
+    try {
+      const res = await fetch(`/api/projects/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to update project')
+      await loadProject()
+      toast.success(nextStatus === 'ON_HOLD' ? 'Project put on hold' : 'Project resumed')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update project')
     }
   }
 
@@ -197,10 +223,32 @@ export default function ProjectDetailPage() {
   if (!project) return <EmptyState icon={<ListTodo className="h-12 w-12" />} title="Project not found" />
 
   const members = project.members.map((m) => ({ ...m.user, role: m.role }))
+  const canManage = project.canManage ?? (
+    viewer?.role === 'HR' ||
+    project.owner.id === viewer?.id ||
+    members.some((member) => member.id === viewer?.id && ['OWNER', 'LEAD'].includes(member.role))
+  )
   const statusCounts = project.sections.map((section) => ({
     section,
     count: project.tasks.filter((task) => task.sectionId === section.id).length,
   }))
+  const activeTasks = project.tasks.filter((task) => !task.section?.isBacklog)
+  const completedTasks = activeTasks.filter((task) => task.status === 'DONE')
+  const overdueTasks = activeTasks.filter((task) => calculateTaskVariance({
+    status: task.status,
+    dueDate: task.dueDate,
+    section: { isBacklog: Boolean(task.section?.isBacklog) },
+  }).isOverdue)
+  const progressPercent = activeTasks.length > 0
+    ? Math.round((completedTasks.length / activeTasks.length) * 100)
+    : 0
+  const progressColor = progressPercent === 100
+    ? '#22c55e'
+    : progressPercent >= 67
+      ? '#3b82f6'
+      : progressPercent >= 34
+        ? '#f59e0b'
+        : '#ef4444'
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
@@ -231,10 +279,16 @@ export default function ProjectDetailPage() {
                       'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
                       project.status === 'COMPLETED'
                         ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
-                        : 'bg-muted text-muted-foreground'
+                        : project.status === 'ON_HOLD'
+                          ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                          : 'bg-muted text-muted-foreground'
                     )}
                   >
-                    {project.status === 'COMPLETED' ? 'Completed' : 'Archived'}
+                    {project.status === 'COMPLETED'
+                      ? 'Completed'
+                      : project.status === 'ON_HOLD'
+                        ? 'On hold'
+                        : 'Archived'}
                   </span>
                 )}
               </div>
@@ -247,8 +301,11 @@ export default function ProjectDetailPage() {
           <div className="flex items-center gap-2">
             {/* Members */}
             <button
-              onClick={() => setMemberModalOpen(true)}
-              className="flex items-center -space-x-1.5 hover:opacity-80 transition-opacity"
+              onClick={() => canManage && setMemberModalOpen(true)}
+              disabled={!canManage}
+              aria-label={canManage ? 'Manage project members' : 'Project members'}
+              title={canManage ? 'Manage project members' : 'Project members'}
+              className="flex items-center -space-x-1.5 hover:opacity-80 transition-opacity disabled:cursor-default"
             >
               {members.slice(0, 4).map((m) => (
                 <UserAvatar key={m.id} name={m.name} size="xs" className="ring-2 ring-background" />
@@ -258,46 +315,69 @@ export default function ProjectDetailPage() {
                   +{members.length - 4}
                 </span>
               )}
-              <span className="ml-2 p-1 rounded-full bg-muted/50 hover:bg-muted transition-colors">
-                <UserPlus className="w-3.5 h-3.5 text-muted-foreground" />
-              </span>
+              {canManage && (
+                <span className="ml-2 p-1 rounded-full bg-muted/50 hover:bg-muted transition-colors">
+                  <UserPlus className="w-3.5 h-3.5 text-muted-foreground" />
+                </span>
+              )}
             </button>
 
             {/* Settings menu */}
-            <div className="relative">
-              <button
-                onClick={() => setShowMenu(!showMenu)}
-                className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-              >
-                <MoreHorizontal className="w-4 h-4" />
-              </button>
-              <AnimatePresence>
-                {showMenu && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    className="absolute right-0 top-full mt-1 z-50 min-w-[180px] rounded-lg border border-border/60 bg-card shadow-xl"
-                    onClick={() => setShowMenu(false)}
+            {canManage && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowMenu(!showMenu)}
+                  aria-label="Project actions"
+                  aria-expanded={showMenu}
+                  className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                >
+                  <MoreHorizontal className="w-4 h-4" />
+                </button>
+                <AnimatePresence>
+                  {showMenu && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      className="absolute right-0 top-full mt-1 z-50 min-w-[180px] rounded-lg border border-border/60 bg-card shadow-xl"
+                      onClick={() => setShowMenu(false)}
                   >
                     <div className="p-1">
                       {project.status !== 'ARCHIVED' && (
-                        <button
-                          onClick={handleToggleComplete}
-                          className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors"
-                        >
-                          {project.status === 'COMPLETED' ? (
-                            <>
-                              <RotateCcw className="w-4 h-4" />
-                              Reopen project
-                            </>
-                          ) : (
-                            <>
-                              <CheckCircle2 className="w-4 h-4" />
-                              Mark complete
-                            </>
-                          )}
-                        </button>
+                        <>
+                          <button
+                            onClick={handleToggleComplete}
+                            className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors"
+                          >
+                            {project.status === 'COMPLETED' ? (
+                              <>
+                                <RotateCcw className="w-4 h-4" />
+                                Reopen project
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle2 className="w-4 h-4" />
+                                Mark complete
+                              </>
+                            )}
+                          </button>
+                          <button
+                            onClick={handleToggleOnHold}
+                            className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors"
+                          >
+                            {project.status === 'ON_HOLD' ? (
+                              <>
+                                <RotateCcw className="w-4 h-4" />
+                                Resume project
+                              </>
+                            ) : (
+                              <>
+                                <PauseCircle className="w-4 h-4" />
+                                Put on hold
+                              </>
+                            )}
+                          </button>
+                        </>
                       )}
                       <button
                         onClick={handleArchiveProject}
@@ -314,15 +394,45 @@ export default function ProjectDetailPage() {
                         Delete project
                       </button>
                     </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Stats + Labels row */}
         <div className="flex items-center gap-4 mt-4 flex-wrap">
+          <div className="min-w-[220px] max-w-sm flex-1">
+            <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
+              <span className="font-medium text-foreground">
+                {activeTasks.length === 0
+                  ? 'No tasks yet'
+                  : `${completedTasks.length}/${activeTasks.length} · ${progressPercent}%`}
+              </span>
+              {overdueTasks.length > 0 && (
+                <span className="inline-flex items-center gap-1 font-medium text-red-500">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  {overdueTasks.length} overdue
+                </span>
+              )}
+            </div>
+            <div
+              className="h-2 overflow-hidden rounded-full bg-muted/60"
+              role="progressbar"
+              aria-label="Project progress"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={progressPercent}
+            >
+              <div
+                className="h-full rounded-full transition-[width] duration-300"
+                style={{ width: `${progressPercent}%`, backgroundColor: progressColor }}
+              />
+            </div>
+          </div>
+
           <div className="flex items-center gap-3 text-sm">
             {statusCounts.map(({ section, count }) => (
               <span key={section.id} style={{ color: section.color }}>
@@ -342,50 +452,56 @@ export default function ProjectDetailPage() {
                 style={{ backgroundColor: l.color + '20', color: l.color }}
               >
                 {l.name}
-                <button
-                  onClick={() => handleDeleteLabel(l.id)}
-                  className="hidden group-hover:inline-flex w-3 h-3 items-center justify-center rounded-full hover:bg-black/10"
-                >
-                  ×
-                </button>
+                {canManage && (
+                  <button
+                    onClick={() => handleDeleteLabel(l.id)}
+                    aria-label={`Delete ${l.name} label`}
+                    className="inline-flex h-3 w-3 items-center justify-center rounded-full opacity-0 transition-opacity hover:bg-black/10 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-current"
+                  >
+                    ×
+                  </button>
+                )}
               </span>
             ))}
-            {showLabelInput ? (
-              <div className="flex items-center gap-1">
-                <div className="flex gap-0.5">
-                  {LABEL_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      onClick={() => setNewLabelColor(c)}
-                      className={cn(
-                        'w-4 h-4 rounded-full transition-transform',
-                        newLabelColor === c && 'scale-125 ring-2 ring-white/30'
-                      )}
-                      style={{ backgroundColor: c }}
-                    />
-                  ))}
+            {canManage && (
+              showLabelInput ? (
+                <div className="flex items-center gap-1">
+                  <div className="flex gap-0.5">
+                    {LABEL_COLORS.map((c) => (
+                      <button
+                        key={c}
+                        onClick={() => setNewLabelColor(c)}
+                        aria-label={`Use ${c} for the new label`}
+                        className={cn(
+                          'w-4 h-4 rounded-full transition-transform',
+                          newLabelColor === c && 'scale-125 ring-2 ring-white/30'
+                        )}
+                        style={{ backgroundColor: c }}
+                      />
+                    ))}
+                  </div>
+                  <input
+                    autoFocus
+                    value={newLabelName}
+                    onChange={(e) => setNewLabelName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleAddLabel()
+                      if (e.key === 'Escape') { setShowLabelInput(false); setNewLabelName('') }
+                    }}
+                    onBlur={handleAddLabel}
+                    placeholder="Label name"
+                    className="w-20 bg-transparent border-b border-primary/40 outline-none text-[10px] py-0.5"
+                  />
                 </div>
-                <input
-                  autoFocus
-                  value={newLabelName}
-                  onChange={(e) => setNewLabelName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleAddLabel()
-                    if (e.key === 'Escape') { setShowLabelInput(false); setNewLabelName('') }
-                  }}
-                  onBlur={handleAddLabel}
-                  placeholder="Label name"
-                  className="w-20 bg-transparent border-b border-primary/40 outline-none text-[10px] py-0.5"
-                />
-              </div>
-            ) : (
-              <button
-                onClick={() => setShowLabelInput(true)}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
-              >
-                <Tag className="w-3 h-3" />
-                Label
-              </button>
+              ) : (
+                <button
+                  onClick={() => setShowLabelInput(true)}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
+                >
+                  <Tag className="w-3 h-3" />
+                  Label
+                </button>
+              )
             )}
           </div>
         </div>
@@ -395,6 +511,7 @@ export default function ProjectDetailPage() {
       <div className="flex items-center gap-1 mb-4 p-1 bg-muted/50 rounded-lg w-fit">
         <button
           onClick={() => setView('list')}
+          aria-pressed={view === 'list'}
           className={cn(
             'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all',
             view === 'list' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
@@ -405,6 +522,7 @@ export default function ProjectDetailPage() {
         </button>
         <button
           onClick={() => setView('board')}
+          aria-pressed={view === 'board'}
           className={cn(
             'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all',
             view === 'board' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
@@ -427,6 +545,8 @@ export default function ProjectDetailPage() {
             projectId={id}
             tasks={project.tasks}
             sections={project.sections}
+            viewerId={viewer?.id || ''}
+            canManage={canManage}
             onTaskClick={handleTaskClick}
             onTasksChange={loadProject}
           />
@@ -435,6 +555,8 @@ export default function ProjectDetailPage() {
             projectId={id}
             tasks={project.tasks}
             sections={project.sections}
+            viewerId={viewer?.id || ''}
+            canManage={canManage}
             onTaskClick={handleTaskClick}
             onTasksChange={loadProject}
           />
@@ -454,17 +576,21 @@ export default function ProjectDetailPage() {
         onTaskDelete={handleTaskDelete}
         onTasksChange={loadProject}
         onOpenTask={handleOpenTaskById}
+        canManage={canManage}
+        canEdit={canManage || selectedTask?.assigneeId === viewer?.id}
       />
 
       {/* Member Manager Modal */}
-      <MemberManager
-        projectId={id}
-        members={members}
-        ownerId={project.owner.id}
-        open={memberModalOpen}
-        onClose={() => setMemberModalOpen(false)}
-        onMembersChange={loadProject}
-      />
+      {canManage && (
+        <MemberManager
+          projectId={id}
+          members={members}
+          ownerId={project.owner.id}
+          open={memberModalOpen}
+          onClose={() => setMemberModalOpen(false)}
+          onMembersChange={loadProject}
+        />
+      )}
     </div>
   )
 }

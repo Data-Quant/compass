@@ -40,6 +40,7 @@ export interface ProjectStatusSection {
   canonicalStatus: 'TODO' | 'IN_PROGRESS' | 'DONE'
   isDefault: boolean
   isDone: boolean
+  isBacklog?: boolean
   orderIndex: number
 }
 
@@ -97,6 +98,7 @@ export interface PanelTask {
   sectionId: string | null
   section: ProjectStatusSection | null
   orderIndex: number
+  completedLate?: boolean
   parentTaskId?: string | null
   parentTask?: ParentTaskSummary | null
   childTasks?: ChildTaskSummary[]
@@ -117,6 +119,9 @@ interface TaskDetailPanelProps {
   onTaskDelete: (taskId: string) => void
   onTasksChange?: () => Promise<void> | void
   onOpenTask?: (taskId: string) => void
+  canManage?: boolean
+  canEdit?: boolean
+  canComment?: boolean
 }
 
 const PRIORITY_CONFIG: Record<string, { color: string; label: string }> = {
@@ -391,6 +396,7 @@ function Dropdown({ trigger, children, className }: {
 export function TaskDetailPanel({
   task, projectId, members, sections, labels,
   open, onClose, onTaskUpdate, onTaskDelete, onTasksChange, onOpenTask,
+  canManage = true, canEdit = true, canComment = true,
 }: TaskDetailPanelProps) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -409,41 +415,69 @@ export function TaskDetailPanel({
   const commentTextareaRef = useRef<HTMLTextAreaElement>(null)
   const descriptionImageInputRef = useRef<HTMLInputElement>(null)
   const commentImageInputRef = useRef<HTMLInputElement>(null)
+  const activeTaskKeyRef = useRef<string | null>(null)
+  const commentsRequestRef = useRef(0)
+  const activitiesRequestRef = useRef(0)
 
   // Reset state when task changes
   useEffect(() => {
+    activeTaskKeyRef.current = task ? `${projectId}:${task.id}` : null
+    setComments([])
+    setActivities([])
+    setLoadingComments(false)
+    setLoadingActivities(false)
     if (task) {
       setTitle(task.title)
       setDescription(task.description || '')
       setNewChildTitle('')
       setDueDateOpen(false)
-      loadComments(task.id)
-      loadActivities(task.id)
+      void loadComments(task.id)
+      void loadActivities(task.id)
     }
-  }, [task?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [projectId, task?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Same-task updates can arrive from the workspace table, Kanban, or a
+  // refetch. Rehydrate fields unless the user is actively editing that field.
+  useEffect(() => {
+    if (!task) return
+    if (document.activeElement !== titleRef.current) setTitle(task.title)
+    if (document.activeElement !== descriptionTextareaRef.current) setDescription(task.description || '')
+  }, [task?.title, task?.description])
 
   const loadComments = async (taskId: string) => {
+    const requestId = ++commentsRequestRef.current
+    const taskKey = `${projectId}:${taskId}`
     setLoadingComments(true)
     try {
       const res = await fetch(`/api/projects/${projectId}/comments?taskId=${taskId}`)
       const data = await res.json()
-      setComments(data.comments || [])
+      if (requestId === commentsRequestRef.current && activeTaskKeyRef.current === taskKey) {
+        setComments(data.comments || [])
+      }
     } catch { /* ignore */ }
-    setLoadingComments(false)
+    if (requestId === commentsRequestRef.current && activeTaskKeyRef.current === taskKey) {
+      setLoadingComments(false)
+    }
   }
 
   const loadActivities = async (taskId: string) => {
+    const requestId = ++activitiesRequestRef.current
+    const taskKey = `${projectId}:${taskId}`
     setLoadingActivities(true)
     try {
       const res = await fetch(`/api/projects/${projectId}/task-activities?taskId=${taskId}`)
       const data = await res.json()
-      setActivities(data.activities || [])
+      if (requestId === activitiesRequestRef.current && activeTaskKeyRef.current === taskKey) {
+        setActivities(data.activities || [])
+      }
     } catch { /* ignore */ }
-    setLoadingActivities(false)
+    if (requestId === activitiesRequestRef.current && activeTaskKeyRef.current === taskKey) {
+      setLoadingActivities(false)
+    }
   }
 
   const updateTask = useCallback(async (updates: Record<string, any>) => {
-    if (!task) return
+    if (!task || !canEdit) return
     setSaving(true)
     try {
       const res = await fetch(`/api/projects/${projectId}/tasks`, {
@@ -452,45 +486,76 @@ export function TaskDetailPanel({
         body: JSON.stringify({ taskId: task.id, ...updates }),
       })
       const data = await res.json()
-      if (data.success) {
-        onTaskUpdate(data.task)
-        void loadActivities(task.id)
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to update task')
       }
-    } catch {
-      toast.error('Failed to update task')
+      onTaskUpdate(data.task)
+      await onTasksChange?.()
+      void loadActivities(task.id)
+      return data.task as PanelTask
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update task')
+      return undefined
+    } finally {
+      setSaving(false)
     }
-    setSaving(false)
-  }, [task, projectId, onTaskUpdate])
+  }, [task, projectId, onTaskUpdate, onTasksChange, canEdit])
 
-  const handleTitleBlur = () => {
-    if (title.trim() && title !== task?.title) {
-      updateTask({ title: title.trim() })
+  const handleStatusChange = (section: ProjectStatusSection) => {
+    if (
+      task?.section?.isBacklog &&
+      !section.isBacklog &&
+      (!task.assigneeId || !task.dueDate)
+    ) {
+      toast.error('Add an assignee and due date before moving this task out of Backlog')
+      return
+    }
+    void updateTask({ sectionId: section.id })
+  }
+
+  const handleTitleBlur = async () => {
+    if (!task) return
+    const nextTitle = title.trim()
+    if (!nextTitle) {
+      setTitle(task.title)
+      return
+    }
+    if (nextTitle !== task.title) {
+      const saved = await updateTask({ title: nextTitle })
+      if (!saved) setTitle(task.title)
     }
   }
 
-  const handleDescBlur = () => {
-    if (description !== (task?.description || '')) {
-      updateTask({ description })
+  const handleDescBlur = async () => {
+    if (!task) return
+    if (description !== (task.description || '')) {
+      const saved = await updateTask({ description })
+      if (!saved) setDescription(task.description || '')
     }
   }
 
   const handleDelete = async () => {
-    if (!task) return
+    if (!task || !canManage) return
+    const childCount = task.childTasks?.length || 0
+    const warning = childCount > 0
+      ? `Delete this task and its ${childCount} child task${childCount === 1 ? '' : 's'}? This cannot be undone.`
+      : 'Delete this task? This cannot be undone.'
+    if (!window.confirm(warning)) return
     try {
       const res = await fetch(`/api/projects/${projectId}/tasks?taskId=${task.id}`, { method: 'DELETE' })
       const data = await res.json()
-      if (data.success) {
-        onTaskDelete(task.id)
-        onClose()
-        toast.success('Task deleted')
-      }
-    } catch {
-      toast.error('Failed to delete task')
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to delete task')
+      onTaskDelete(task.id)
+      onClose()
+      toast.success('Task deleted')
+      await onTasksChange?.()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to delete task')
     }
   }
 
   const postComment = async () => {
-    if (!newComment.trim() || !task) return
+    if (!newComment.trim() || !task || !canComment) return
     try {
       const res = await fetch(`/api/projects/${projectId}/comments`, {
         method: 'POST',
@@ -498,18 +563,17 @@ export function TaskDetailPanel({
         body: JSON.stringify({ taskId: task.id, content: newComment.trim() }),
       })
       const data = await res.json()
-      if (data.success) {
-        setComments((prev) => [...prev, data.comment])
-        setNewComment('')
-        void loadActivities(task.id)
-      }
-    } catch {
-      toast.error('Failed to post comment')
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to post comment')
+      setComments((prev) => [...prev, data.comment])
+      setNewComment('')
+      void loadActivities(task.id)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to post comment')
     }
   }
 
   const uploadImage = async (file: File | undefined, target: 'description' | 'comment') => {
-    if (!file || !task) return
+    if (!file || !task || (target === 'description' ? !canEdit : !canComment)) return
     try {
       setUploadingImage(target)
       const formData = new FormData()
@@ -588,7 +652,7 @@ export function TaskDetailPanel({
   }
 
   const toggleLabel = async (labelId: string) => {
-    if (!task) return
+    if (!task || !canEdit) return
     const current = task.labelAssignments.map((la) => la.label.id)
     const next = current.includes(labelId)
       ? current.filter((id) => id !== labelId)
@@ -597,7 +661,7 @@ export function TaskDetailPanel({
   }
 
   const toggleAssistant = async (memberId: string) => {
-    if (!task || memberId === task.assigneeId) return
+    if (!task || !canEdit || memberId === task.assigneeId) return
     const current = (task.assistants || []).map((assistant) => assistant.user.id)
     const next = current.includes(memberId)
       ? current.filter((id) => id !== memberId)
@@ -606,12 +670,12 @@ export function TaskDetailPanel({
   }
 
   const clearAssistants = async () => {
-    if (!task || !task.assistants?.length) return
+    if (!task || !canEdit || !task.assistants?.length) return
     updateTask({ assistantIds: [] })
   }
 
   const createChildTask = async () => {
-    if (!task || !newChildTitle.trim()) return
+    if (!task || !canEdit || !newChildTitle.trim()) return
     setCreatingChild(true)
     try {
       const res = await fetch(`/api/projects/${projectId}/tasks`, {
@@ -621,6 +685,7 @@ export function TaskDetailPanel({
           title: newChildTitle.trim(),
           parentTaskId: task.id,
           sectionId: task.sectionId,
+          ...(!canManage ? { assigneeId: task.assigneeId } : {}),
         }),
       })
       const data = await res.json()
@@ -698,18 +763,25 @@ export function TaskDetailPanel({
             {saving && (
               <span className="text-[10px] text-muted-foreground animate-pulse">Saving...</span>
             )}
+            {!canEdit && (
+              <span className="rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Task fields read only</span>
+            )}
           </div>
           <div className="flex items-center gap-1">
-            <button
-              onClick={handleDelete}
-              className="p-2 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-colors"
-              title="Delete task"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
+            {canManage && (
+              <button
+                onClick={handleDelete}
+                className="p-2 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                title="Delete task"
+                aria-label="Delete task"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
             <button
               onClick={onClose}
               className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+              aria-label="Close task details"
             >
               <X className="w-4 h-4" />
             </button>
@@ -724,9 +796,13 @@ export function TaskDetailPanel({
               ref={titleRef}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              onBlur={handleTitleBlur}
-              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-              className="w-full text-lg font-semibold bg-transparent border-none outline-none placeholder:text-muted-foreground/50"
+              onBlur={() => canEdit && handleTitleBlur()}
+              onKeyDown={(e) => { if (canEdit && e.key === 'Enter') e.currentTarget.blur() }}
+              readOnly={!canEdit}
+              className={cn(
+                'w-full text-lg font-semibold bg-transparent border-none outline-none placeholder:text-muted-foreground/50',
+                !canEdit && 'cursor-default',
+              )}
               placeholder="Task name"
             />
           </div>
@@ -735,6 +811,7 @@ export function TaskDetailPanel({
           <div className="px-5 py-3 space-y-3">
             {/* Status */}
             <FieldRow icon={<Check className="w-4 h-4" />} label="Status">
+              {canEdit ? (
               <Dropdown
                 trigger={
                   <span
@@ -757,7 +834,7 @@ export function TaskDetailPanel({
                   {sections.map((section) => (
                     <button
                       key={section.id}
-                      onClick={() => updateTask({ sectionId: section.id })}
+                      onClick={() => handleStatusChange(section)}
                       className={cn(
                         'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors',
                         task.sectionId === section.id && 'bg-muted/50'
@@ -770,51 +847,77 @@ export function TaskDetailPanel({
                   ))}
                 </div>
               </Dropdown>
+              ) : (
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm font-medium"
+                  style={{
+                    backgroundColor: `${statusColorForSection(task.section, task.status)}22`,
+                    color: statusColorForSection(task.section, task.status),
+                  }}
+                >
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: statusColorForSection(task.section, task.status) }} />
+                  {statusLabelForTask(task)}
+                </span>
+              )}
             </FieldRow>
 
             {/* Assignee */}
             <FieldRow icon={<Users className="w-4 h-4" />} label="Assignee">
-              <Dropdown
-                trigger={
-                  <span className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md text-sm hover:bg-muted/30 transition-colors">
-                    {task.assignee ? (
-                      <>
-                        <UserAvatar name={task.assignee.name} size="xs" />
-                        {task.assignee.name}
-                      </>
-                    ) : (
-                      <span className="text-muted-foreground">Unassigned</span>
-                    )}
-                    <ChevronDown className="w-3 h-3 opacity-60" />
-                  </span>
-                }
-              >
-                <div className="p-1 max-h-48 overflow-y-auto">
-                  <button
-                    onClick={() => updateTask({ assigneeId: null })}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors text-muted-foreground"
-                  >
-                    Unassigned
-                  </button>
-                  {members.map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => updateTask({ assigneeId: m.id })}
-                      className={cn(
-                        'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors',
-                        task.assigneeId === m.id && 'bg-muted/50'
+              {canManage && canEdit ? (
+                <Dropdown
+                  trigger={
+                    <span className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md text-sm hover:bg-muted/30 transition-colors">
+                      {task.assignee ? (
+                        <>
+                          <UserAvatar name={task.assignee.name} size="xs" />
+                          {task.assignee.name}
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">Unassigned</span>
                       )}
+                      <ChevronDown className="w-3 h-3 opacity-60" />
+                    </span>
+                  }
+                >
+                  <div className="p-1 max-h-48 overflow-y-auto">
+                    <button
+                      onClick={() => updateTask({ assigneeId: null })}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors text-muted-foreground"
                     >
-                      <UserAvatar name={m.name} size="xs" />
-                      {m.name}
+                      Unassigned
                     </button>
-                  ))}
-                </div>
-              </Dropdown>
+                    {members.map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={() => updateTask({ assigneeId: m.id })}
+                        className={cn(
+                          'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors',
+                          task.assigneeId === m.id && 'bg-muted/50'
+                        )}
+                      >
+                        <UserAvatar name={m.name} size="xs" />
+                        {m.name}
+                      </button>
+                    ))}
+                  </div>
+                </Dropdown>
+              ) : (
+                <span className="inline-flex items-center gap-2 px-2.5 py-1 text-sm">
+                  {task.assignee ? (
+                    <>
+                      <UserAvatar name={task.assignee.name} size="xs" />
+                      {task.assignee.name}
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground">Unassigned</span>
+                  )}
+                </span>
+              )}
             </FieldRow>
 
             {/* Assistants */}
             <FieldRow icon={<UserRoundCheck className="w-4 h-4" />} label="Assistants">
+              {canEdit ? (
               <Dropdown
                 trigger={
                   <span className="inline-flex max-w-full items-center gap-2 rounded-md px-2.5 py-1 text-sm hover:bg-muted/30 transition-colors">
@@ -871,10 +974,25 @@ export function TaskDetailPanel({
                   )}
                 </div>
               </Dropdown>
+              ) : (
+                <span className="inline-flex max-w-full items-center gap-2 px-2.5 py-1 text-sm">
+                  {assistants.length > 0 ? (
+                    <>
+                      <span className="flex -space-x-1.5">
+                        {assistants.slice(0, 3).map((assistant) => (
+                          <UserAvatar key={assistant.user.id} name={assistant.user.name} size="xs" className="ring-2 ring-background" />
+                        ))}
+                      </span>
+                      <span className="truncate">{assistants.map((assistant) => assistant.user.name).join(', ')}</span>
+                    </>
+                  ) : <span className="text-muted-foreground">No assistants</span>}
+                </span>
+              )}
             </FieldRow>
 
             {/* Due Date */}
             <FieldRow icon={<CalendarIcon className="w-4 h-4" />} label="Due date">
+              {canEdit ? (
               <Popover open={dueDateOpen} onOpenChange={setDueDateOpen}>
                 <PopoverTrigger asChild>
                   <button
@@ -916,10 +1034,17 @@ export function TaskDetailPanel({
                   ) : null}
                 </PopoverContent>
               </Popover>
+              ) : (
+                <span className={cn('inline-flex items-center gap-2 px-2.5 py-1 text-sm', !task.dueDate && 'text-muted-foreground')}>
+                  <CalendarIcon className="w-3.5 h-3.5" />
+                  {formatTaskDate(task.dueDate)}
+                </span>
+              )}
             </FieldRow>
 
             {/* Priority */}
             <FieldRow icon={<Flag className="w-4 h-4" />} label="Priority">
+              {canEdit ? (
               <Dropdown
                 trigger={
                   <span className={cn(
@@ -933,7 +1058,7 @@ export function TaskDetailPanel({
                 }
               >
                 <div className="p-1">
-                  {Object.entries(PRIORITY_CONFIG).map(([key, cfg]) => (
+                  {Object.entries(PRIORITY_CONFIG).filter(([key]) => key !== 'URGENT').map(([key, cfg]) => (
                     <button
                       key={key}
                       onClick={() => updateTask({ priority: key })}
@@ -948,11 +1073,18 @@ export function TaskDetailPanel({
                   ))}
                 </div>
               </Dropdown>
+              ) : (
+                <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 text-sm', PRIORITY_CONFIG[task.priority].color)}>
+                  <Flag className="w-3.5 h-3.5" />
+                  {PRIORITY_CONFIG[task.priority].label}
+                </span>
+              )}
             </FieldRow>
 
             {/* Labels */}
             {labels.length > 0 && (
               <FieldRow icon={<Tag className="w-4 h-4" />} label="Labels">
+                {canEdit ? (
                 <Dropdown
                   trigger={
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-sm hover:bg-muted/30 transition-colors flex-wrap">
@@ -991,6 +1123,19 @@ export function TaskDetailPanel({
                     ))}
                   </div>
                 </Dropdown>
+                ) : (
+                  <span className="inline-flex flex-wrap items-center gap-1.5 px-2.5 py-1 text-sm">
+                    {task.labelAssignments.length > 0 ? task.labelAssignments.map((assignment) => (
+                      <span
+                        key={assignment.label.id}
+                        className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+                        style={{ backgroundColor: `${assignment.label.color}20`, color: assignment.label.color }}
+                      >
+                        {assignment.label.name}
+                      </span>
+                    )) : <span className="text-muted-foreground">No labels</span>}
+                  </span>
+                )}
               </FieldRow>
             )}
           </div>
@@ -1077,7 +1222,7 @@ export function TaskDetailPanel({
                 )}
               </div>
 
-              <div className="mt-3 flex items-center gap-2">
+              {canEdit && <div className="mt-3 flex items-center gap-2">
                 <input
                   value={newChildTitle}
                   onChange={(e) => setNewChildTitle(e.target.value)}
@@ -1097,7 +1242,7 @@ export function TaskDetailPanel({
                 >
                   <Plus className="w-4 h-4" />
                 </button>
-              </div>
+              </div>}
             </div>
           </div>
 
@@ -1108,22 +1253,30 @@ export function TaskDetailPanel({
           <div className="px-5 py-4">
             <div className="mb-2 flex items-center justify-between gap-2">
               <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Description</h4>
-              {renderFormatToolbar('description')}
-              <input
-                ref={descriptionImageInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(event) => void uploadImage(event.target.files?.[0], 'description')}
-              />
+              {canEdit && (
+                <>
+                  {renderFormatToolbar('description')}
+                  <input
+                    ref={descriptionImageInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    className="hidden"
+                    onChange={(event) => void uploadImage(event.target.files?.[0], 'description')}
+                  />
+                </>
+              )}
             </div>
             <textarea
               ref={descriptionTextareaRef}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              onBlur={handleDescBlur}
+              onBlur={() => canEdit && handleDescBlur()}
+              readOnly={!canEdit}
               placeholder="Add a more detailed description..."
-              className="w-full min-h-[80px] bg-muted/20 rounded-lg p-3 text-sm border border-border/30 outline-none resize-y placeholder:text-muted-foreground/40 focus:border-primary/30 transition-colors"
+              className={cn(
+                'w-full min-h-[80px] bg-muted/20 rounded-lg p-3 text-sm border border-border/30 outline-none resize-y placeholder:text-muted-foreground/40 focus:border-primary/30 transition-colors',
+                !canEdit && 'cursor-default resize-none',
+              )}
               rows={3}
             />
             {description.trim() && (
@@ -1172,7 +1325,7 @@ export function TaskDetailPanel({
             </div>
 
             {/* New comment */}
-            <div className="flex items-start gap-2">
+            {canComment && <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
                 <div className="mb-1 flex items-center justify-end">
                   {renderFormatToolbar('comment')}
@@ -1197,7 +1350,7 @@ export function TaskDetailPanel({
               <input
                 ref={commentImageInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/png,image/jpeg,image/webp,image/gif"
                 className="hidden"
                 onChange={(event) => void uploadImage(event.target.files?.[0], 'comment')}
               />
@@ -1206,10 +1359,11 @@ export function TaskDetailPanel({
                 onClick={postComment}
                 disabled={!newComment.trim()}
                 className="p-2.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                aria-label="Send comment"
               >
                 <Send className="w-4 h-4" />
               </button>
-            </div>
+            </div>}
           </div>
 
           {/* Divider */}

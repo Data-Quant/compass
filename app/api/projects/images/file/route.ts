@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { get } from '@vercel/blob'
 import { getSession } from '@/lib/auth'
-import { prisma } from '@/lib/db'
+import { getProjectAuthorization, projectAuthorizationFailure } from '@/lib/project-access'
+import {
+  isProjectImageMimeType,
+  projectImageExtension,
+} from '@/lib/project-image-validation'
 
 export const runtime = 'nodejs'
 
@@ -33,17 +37,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid image path' }, { status: 400 })
     }
 
-    const project = await prisma.project.findFirst({
-      where: {
-        id: projectId,
-        OR: [
-          { ownerId: user.id },
-          { members: { some: { userId: user.id } } },
-        ],
-      },
-      select: { id: true },
-    })
-    if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    const authorization = await getProjectAuthorization(projectId, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization)
+    if (authorizationFailure) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
 
     const result = await get(pathname, {
       access: 'private',
@@ -64,10 +62,16 @@ export async function GET(request: NextRequest) {
     if (result.statusCode !== 200 || !result.stream) {
       return new NextResponse('Not found', { status: 404 })
     }
+    const contentType = result.blob.contentType || ''
+    if (!isProjectImageMimeType(contentType)) {
+      return new NextResponse('Unsupported image type', { status: 415 })
+    }
 
     return new NextResponse(result.stream, {
       headers: {
-        'Content-Type': result.blob.contentType || 'application/octet-stream',
+        'Content-Type': contentType,
+        'Content-Disposition': `inline; filename="task-image.${projectImageExtension(contentType)}"`,
+        'Content-Security-Policy': "default-src 'none'; sandbox",
         'X-Content-Type-Options': 'nosniff',
         ETag: result.blob.etag,
         'Cache-Control': 'private, no-cache',

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { accessibleProjectsWhere } from '@/lib/project-access'
 
 type SortKey = 'due_asc' | 'due_desc' | 'recent' | 'priority'
 type StatusFilter = 'TODO' | 'IN_PROGRESS' | 'DONE' | 'ACTIVE' | 'ALL'
@@ -35,15 +36,26 @@ export async function GET(request: NextRequest) {
 
     const where: any = {
       assigneeId: user.id,
+      project: accessibleProjectsWhere(user),
+      AND: [
+        {
+          OR: [
+            { sectionId: null },
+            { section: { is: { isBacklog: false } } },
+          ],
+        },
+      ],
     }
 
     if (projectId) where.projectId = projectId
     if (q) {
-      where.OR = [
-        { title: { contains: q, mode: 'insensitive' } },
-        { description: { contains: q, mode: 'insensitive' } },
-        { project: { name: { contains: q, mode: 'insensitive' } } },
-      ]
+      where.AND.push({
+        OR: [
+          { title: { contains: q, mode: 'insensitive' } },
+          { description: { contains: q, mode: 'insensitive' } },
+          { project: { name: { contains: q, mode: 'insensitive' } } },
+        ],
+      })
     }
 
     if (from || to) {
@@ -77,7 +89,7 @@ export async function GET(request: NextRequest) {
       include: {
         project: { select: { id: true, name: true, color: true } },
         assignee: { select: { id: true, name: true } },
-        section: { select: { id: true, name: true, color: true, canonicalStatus: true, isDefault: true, isDone: true, orderIndex: true } },
+        section: { select: { id: true, name: true, color: true, canonicalStatus: true, isDefault: true, isDone: true, isBacklog: true, orderIndex: true } },
         parentTask: {
           select: {
             id: true,

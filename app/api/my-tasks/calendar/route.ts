@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { accessibleProjectsWhere } from '@/lib/project-access'
 
 function startOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate())
@@ -35,24 +36,35 @@ export async function GET(request: NextRequest) {
     const tasks = await prisma.task.findMany({
       where: {
         assigneeId: user.id,
+        project: accessibleProjectsWhere(user),
         ...(projectId ? { projectId } : {}),
-        OR: [
+        AND: [
           {
-            dueDate: {
-              gte: startDate,
-              lte: endDate,
-            },
+            OR: [
+              { sectionId: null },
+              { section: { is: { isBacklog: false } } },
+            ],
           },
           {
-            startDate: {
-              gte: startDate,
-              lte: endDate,
-            },
-          },
-          {
-            AND: [
-              { startDate: { lte: endDate } },
-              { dueDate: { gte: startDate } },
+            OR: [
+              {
+                dueDate: {
+                  gte: startDate,
+                  lte: endDate,
+                },
+              },
+              {
+                startDate: {
+                  gte: startDate,
+                  lte: endDate,
+                },
+              },
+              {
+                AND: [
+                  { startDate: { lte: endDate } },
+                  { dueDate: { gte: startDate } },
+                ],
+              },
             ],
           },
         ],

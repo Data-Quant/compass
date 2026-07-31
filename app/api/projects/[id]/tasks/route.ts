@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { ProjectStatus } from '@prisma/client'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import {
@@ -11,47 +12,39 @@ import {
   getTaskStatusForSection,
   resolveTaskStatusSection,
 } from '@/lib/project-status-sections'
-import { isProjectTaskStatus } from '@/lib/project-task-utils'
+import {
+  isProjectTaskDateRangeValid,
+  isProjectTaskPriority,
+  isProjectTaskStatus,
+  wouldCreateTaskParentCycle,
+} from '@/lib/project-task-utils'
 import { syncProjectCompletion } from '@/lib/project-completion'
+import {
+  canEditAssignedProjectTask,
+  getProjectAuthorization,
+  projectAuthorizationFailure,
+} from '@/lib/project-access'
+import { PROJECT_TASK_INCLUDE } from '@/lib/project-task-data'
+import { shouldMarkTaskCompletedLate } from '@/lib/project-progress'
 
-const TASK_INCLUDE = {
-  assignee: { select: { id: true, name: true } },
-  section: { select: { id: true, name: true, color: true, canonicalStatus: true, isDefault: true, isDone: true, orderIndex: true } },
-  parentTask: {
-    select: {
-      id: true,
-      title: true,
-      assigneeId: true,
-      assignee: { select: { id: true, name: true } },
-    },
-  },
-  childTasks: {
-    select: {
-      id: true,
-      title: true,
-      status: true,
-      priority: true,
-      assigneeId: true,
-      dueDate: true,
-      sectionId: true,
-      parentTaskId: true,
-      assignee: { select: { id: true, name: true } },
-      section: { select: { id: true, name: true, color: true, canonicalStatus: true, isDone: true } },
-      _count: { select: { comments: true } },
-    },
-    orderBy: [{ orderIndex: 'asc' as const }, { createdAt: 'asc' as const }],
-  },
-  assistants: {
-    include: { user: { select: { id: true, name: true } } },
-    orderBy: { createdAt: 'asc' as const },
-  },
-  labelAssignments: { include: { label: true } },
-  _count: { select: { comments: true } },
-}
+const MAX_TASK_ORDER_INDEX = 1_000_000_000
+
+class ProjectTaskInputError extends Error {}
 
 function uniqueStringArray(value: unknown) {
   if (!Array.isArray(value)) return null
   return [...new Set(value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map((item) => item.trim()))]
+}
+
+function parseTaskDate(value: unknown, fieldName: string) {
+  if (value === undefined) return undefined
+  if (value === null || value === '') return null
+  if (typeof value !== 'string' && !(value instanceof Date)) {
+    throw new ProjectTaskInputError(`Invalid ${fieldName}`)
+  }
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) throw new ProjectTaskInputError(`Invalid ${fieldName}`)
+  return date
 }
 
 function formatDateForActivity(value: Date | string | null | undefined) {
@@ -145,18 +138,38 @@ function buildTaskUpdateActivities(input: {
 async function validateProjectMemberIds(projectId: string, userIds: string[]) {
   if (userIds.length === 0) return []
 
-  const members = await prisma.projectMember.findMany({
-    where: { projectId, userId: { in: userIds } },
-    select: { userId: true },
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: {
+      ownerId: true,
+      members: { where: { userId: { in: userIds } }, select: { userId: true } },
+    },
   })
-  const memberIds = new Set(members.map((member) => member.userId))
+  const memberIds = new Set(project?.members.map((member) => member.userId) || [])
+  if (project?.ownerId) memberIds.add(project.ownerId)
   const invalidIds = userIds.filter((userId) => !memberIds.has(userId))
 
   if (invalidIds.length > 0) {
-    throw new Error('Assistants must be project members')
+    throw new ProjectTaskInputError('Assignees and assistants must be project members')
   }
 
   return userIds
+}
+
+async function validateProjectLabelIds(projectId: string, value: unknown) {
+  if (value === undefined) return undefined
+  const labelIds = uniqueStringArray(value)
+  if (!labelIds) throw new ProjectTaskInputError('labelIds must be an array of label IDs')
+  if (labelIds.length === 0) return []
+
+  const labels = await prisma.taskLabel.findMany({
+    where: { projectId, id: { in: labelIds } },
+    select: { id: true },
+  })
+  if (labels.length !== labelIds.length) {
+    throw new ProjectTaskInputError('Labels must belong to this project')
+  }
+  return labelIds
 }
 
 // POST - Create a new task
@@ -169,17 +182,40 @@ export async function POST(
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id: projectId } = await params
+    const authorization = await getProjectAuthorization(projectId, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization)
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
     const { title, description, status, assigneeId, priority, startDate, dueDate, sectionId, parentTaskId, labelIds, assistantIds } = await request.json()
 
     if (!title?.trim()) {
       return NextResponse.json({ error: 'Task title is required' }, { status: 400 })
     }
 
-    const normalizedAssigneeId = typeof assigneeId === 'string' && assigneeId.trim() ? assigneeId.trim() : null
+    const requestedAssigneeId = typeof assigneeId === 'string' && assigneeId.trim() ? assigneeId.trim() : null
+    // Member-created work belongs to its creator by default. Leads/HR retain
+    // the ability to create genuinely unassigned backlog items.
+    const normalizedAssigneeId = requestedAssigneeId || (!authorization.canManage ? user.id : null)
+
+    if (normalizedAssigneeId && !authorization.canManage && normalizedAssigneeId !== user.id) {
+      return NextResponse.json({ error: 'Only a project lead or HR can assign tasks to someone else' }, { status: 403 })
+    }
+    if (normalizedAssigneeId) await validateProjectMemberIds(projectId, [normalizedAssigneeId])
 
     if (status !== undefined && !isProjectTaskStatus(status)) {
       return NextResponse.json({ error: 'Invalid task status' }, { status: 400 })
     }
+    if (priority !== undefined && !isProjectTaskPriority(priority)) {
+      return NextResponse.json({ error: 'Invalid task priority' }, { status: 400 })
+    }
+
+    const parsedStartDate = parseTaskDate(startDate, 'startDate')
+    const parsedDueDate = parseTaskDate(dueDate, 'dueDate')
+    if (!isProjectTaskDateRangeValid(parsedStartDate, parsedDueDate)) {
+      return NextResponse.json({ error: 'startDate cannot be after dueDate' }, { status: 400 })
+    }
+    const cleanLabelIds = await validateProjectLabelIds(projectId, labelIds)
 
     await ensureProjectStatusSections(projectId)
     const section = await resolveTaskStatusSection({
@@ -219,6 +255,12 @@ export async function POST(
     }
 
     const taskStatus = getTaskStatusForSection(section)
+    const completedLate = shouldMarkTaskCompletedLate({
+      previousStatus: 'TODO',
+      nextStatus: taskStatus,
+      dueDate: parsedDueDate,
+      section,
+    })
 
     // Get next order index (within section if specified)
     const lastTask = await prisma.task.findFirst({
@@ -235,14 +277,15 @@ export async function POST(
         description: description?.trim() || null,
         status: taskStatus,
         completedAt: taskStatus === 'DONE' ? new Date() : null,
+        completedLate,
         assigneeId: normalizedAssigneeId,
         priority: priority || 'MEDIUM',
-        startDate: startDate ? new Date(startDate) : null,
-        dueDate: dueDate ? new Date(dueDate) : null,
-        orderIndex: (lastTask?.orderIndex || 0) + 1,
-        ...(labelIds?.length > 0 && {
+        startDate: parsedStartDate ?? null,
+        dueDate: parsedDueDate ?? null,
+        orderIndex: Math.min(Math.max(0, lastTask?.orderIndex || 0) + 1, MAX_TASK_ORDER_INDEX),
+        ...(cleanLabelIds && cleanLabelIds.length > 0 && {
           labelAssignments: {
-            create: labelIds.map((labelId: string) => ({ labelId })),
+            create: cleanLabelIds.map((labelId) => ({ labelId })),
           },
         }),
         ...(taskAssistantIds.length > 0 && {
@@ -251,17 +294,23 @@ export async function POST(
           },
         }),
       },
-      include: TASK_INCLUDE,
+      include: PROJECT_TASK_INCLUDE,
     })
 
-    await recordTaskActivity({
-      taskId: task.id,
-      actorId: user.id,
-      summary: `${displayName(user)} created this task`,
-      kind: 'created',
-      notify: false,
-      origin: request.nextUrl.origin,
-    })
+    try {
+      await recordTaskActivity({
+        taskId: task.id,
+        actorId: user.id,
+        summary: `${displayName(user)} created this task`,
+        kind: 'created',
+        notify: false,
+        origin: request.nextUrl.origin,
+      })
+    } catch (activityError) {
+      // The task is already committed. Activity history is supplementary and
+      // must not turn a successful create into a retryable 500 response.
+      console.error('Failed to record task creation activity:', activityError)
+    }
 
     if (normalizedAssigneeId) {
       try {
@@ -299,14 +348,18 @@ export async function POST(
       }
     }
 
+    let projectStatus: ProjectStatus | null = null
     try {
-      await syncProjectCompletion(projectId)
+      projectStatus = await syncProjectCompletion(projectId)
     } catch (syncError) {
       console.error('Failed to sync project completion status:', syncError)
     }
 
-    return NextResponse.json({ success: true, task })
+    return NextResponse.json({ success: true, task, projectStatus })
   } catch (error) {
+    if (error instanceof ProjectTaskInputError) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
     console.error('Failed to create task:', error)
     return NextResponse.json({ error: 'Failed to create task' }, { status: 500 })
   }
@@ -322,6 +375,11 @@ export async function PUT(
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id: projectId } = await params
+    const authorization = await getProjectAuthorization(projectId, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization)
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
     const { taskId, title, description, status, priority, assigneeId, startDate, dueDate, sectionId, parentTaskId, labelIds, assistantIds, orderIndex } = await request.json()
 
     if (!taskId) {
@@ -340,9 +398,11 @@ export async function PUT(
         assigneeId: true,
         startDate: true,
         dueDate: true,
+        completedAt: true,
+        completedLate: true,
         sectionId: true,
         parentTaskId: true,
-        section: { select: { name: true } },
+        section: { select: { name: true, isBacklog: true } },
         assignee: { select: { name: true } },
         assistants: { select: { userId: true } },
       },
@@ -352,8 +412,31 @@ export async function PUT(
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })
     }
 
+    if (!canEditAssignedProjectTask({
+      viewerId: user.id,
+      assigneeId: existingTask.assigneeId,
+      canManage: authorization.canManage,
+    })) {
+      return NextResponse.json(
+        { error: 'You can only update tasks assigned to you' },
+        { status: 403 }
+      )
+    }
+
     if (status !== undefined && !isProjectTaskStatus(status)) {
       return NextResponse.json({ error: 'Invalid task status' }, { status: 400 })
+    }
+    if (priority !== undefined && !isProjectTaskPriority(priority)) {
+      return NextResponse.json({ error: 'Invalid task priority' }, { status: 400 })
+    }
+    if (title !== undefined && !String(title).trim()) {
+      return NextResponse.json({ error: 'Task title cannot be empty' }, { status: 400 })
+    }
+    if (
+      orderIndex !== undefined &&
+      (!Number.isInteger(orderIndex) || orderIndex < 0 || orderIndex > MAX_TASK_ORDER_INDEX)
+    ) {
+      return NextResponse.json({ error: 'orderIndex must be a non-negative integer' }, { status: 400 })
     }
 
     await ensureProjectStatusSections(projectId)
@@ -376,12 +459,15 @@ export async function PUT(
       }
 
       if (parentTaskId) {
-        const parentTask = await prisma.task.findFirst({
-          where: { id: parentTaskId, projectId },
-          select: { id: true },
+        const projectTasks = await prisma.task.findMany({
+          where: { projectId },
+          select: { id: true, parentTaskId: true },
         })
-        if (!parentTask) {
+        if (!projectTasks.some((candidate) => candidate.id === parentTaskId)) {
           return NextResponse.json({ error: 'Invalid parent task for this project' }, { status: 400 })
+        }
+        if (wouldCreateTaskParentCycle(taskId, parentTaskId, projectTasks)) {
+          return NextResponse.json({ error: 'A task cannot be nested beneath itself or one of its descendants' }, { status: 400 })
         }
       }
     }
@@ -389,6 +475,20 @@ export async function PUT(
     const normalizedAssigneeId = assigneeId === undefined
       ? undefined
       : (typeof assigneeId === 'string' && assigneeId.trim() ? assigneeId.trim() : null)
+    if (normalizedAssigneeId !== undefined && normalizedAssigneeId !== existingTask.assigneeId && !authorization.canManage) {
+      return NextResponse.json({ error: 'Only a project lead or HR can reassign tasks' }, { status: 403 })
+    }
+    if (normalizedAssigneeId) await validateProjectMemberIds(projectId, [normalizedAssigneeId])
+
+    const parsedStartDate = parseTaskDate(startDate, 'startDate')
+    const parsedDueDate = parseTaskDate(dueDate, 'dueDate')
+    const effectiveStartDate = parsedStartDate === undefined ? existingTask.startDate : parsedStartDate
+    const effectiveDueDate = parsedDueDate === undefined ? existingTask.dueDate : parsedDueDate
+    if (!isProjectTaskDateRangeValid(effectiveStartDate, effectiveDueDate)) {
+      return NextResponse.json({ error: 'startDate cannot be after dueDate' }, { status: 400 })
+    }
+
+    const cleanLabelIds = await validateProjectLabelIds(projectId, labelIds)
     const cleanAssistantIds = assistantIds === undefined ? undefined : uniqueStringArray(assistantIds)
     if (assistantIds !== undefined && !cleanAssistantIds) {
       return NextResponse.json({ error: 'assistantIds must be an array of user IDs' }, { status: 400 })
@@ -399,45 +499,72 @@ export async function PUT(
       ? (await validateProjectMemberIds(projectId, cleanAssistantIds)).filter((userId) => userId !== nextAssigneeId)
       : undefined
 
+    const nextSection = section || existingTask.section
+    const nextStatus = section ? getTaskStatusForSection(section) : existingTask.status
+    if (existingTask.section?.isBacklog && !nextSection?.isBacklog) {
+      if (!nextAssigneeId || !effectiveDueDate) {
+        return NextResponse.json(
+          { error: 'Backlog tasks require an assignee and due date before promotion' },
+          { status: 400 }
+        )
+      }
+    }
+
+    const completedLate = shouldMarkTaskCompletedLate({
+      wasCompletedLate: existingTask.completedLate,
+      previousStatus: existingTask.status,
+      nextStatus,
+      dueDate: effectiveDueDate,
+      section: nextSection,
+    })
+
     const updateData: any = {}
     if (title !== undefined) updateData.title = title.trim()
     if (description !== undefined) updateData.description = description?.trim() || null
     if (section) {
-      const nextStatus = getTaskStatusForSection(section)
       updateData.sectionId = section.id
       updateData.status = nextStatus
-      updateData.completedAt = nextStatus === 'DONE' ? new Date() : null
+      updateData.completedAt = nextStatus === 'DONE'
+        ? (existingTask.status === 'DONE' ? existingTask.completedAt || new Date() : new Date())
+        : null
     }
+    if (completedLate !== existingTask.completedLate) updateData.completedLate = completedLate
     if (priority !== undefined) updateData.priority = priority
     if (normalizedAssigneeId !== undefined) updateData.assigneeId = normalizedAssigneeId
-    if (startDate !== undefined) updateData.startDate = startDate ? new Date(startDate) : null
-    if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null
+    if (parsedStartDate !== undefined) updateData.startDate = parsedStartDate
+    if (parsedDueDate !== undefined) updateData.dueDate = parsedDueDate
     if (parentTaskId !== undefined) updateData.parentTaskId = parentTaskId || null
     if (orderIndex !== undefined) updateData.orderIndex = orderIndex
 
-    // Handle labels update: replace all label assignments
-    if (labelIds !== undefined) {
-      await prisma.taskLabelAssignment.deleteMany({ where: { taskId } })
-      if (labelIds.length > 0) {
-        await prisma.taskLabelAssignment.createMany({
-          data: labelIds.map((labelId: string) => ({ taskId, labelId })),
-        })
+    // Replace relation sets inside the task update so a validation or write
+    // failure cannot leave labels/assistants partially changed.
+    if (cleanLabelIds !== undefined) {
+      updateData.labelAssignments = {
+        deleteMany: {},
+        ...(cleanLabelIds.length > 0 && {
+          create: cleanLabelIds.map((labelId) => ({ labelId })),
+        }),
       }
     }
 
     if (validAssistantIds !== undefined) {
-      await prisma.taskAssistant.deleteMany({ where: { taskId } })
-      if (validAssistantIds.length > 0) {
-        await prisma.taskAssistant.createMany({
-          data: validAssistantIds.map((userId) => ({ taskId, userId, assignedById: user.id })),
-        })
+      updateData.assistants = {
+        deleteMany: {},
+        ...(validAssistantIds.length > 0 && {
+          create: validAssistantIds.map((userId) => ({ userId, assignedById: user.id })),
+        }),
+      }
+    } else if (normalizedAssigneeId) {
+      // The primary assignee must not also remain attached as an assistant.
+      updateData.assistants = {
+        deleteMany: { userId: normalizedAssigneeId },
       }
     }
 
     const task = await prisma.task.update({
       where: { id: taskId },
       data: updateData,
-      include: TASK_INCLUDE,
+      include: PROJECT_TASK_INCLUDE,
     })
 
     const activities = buildTaskUpdateActivities({
@@ -447,14 +574,20 @@ export async function PUT(
     })
 
     for (const activity of activities) {
-      await recordTaskActivity({
-        taskId: task.id,
-        actorId: user.id,
-        summary: activity.summary,
-        kind: activity.kind,
-        metadata: { taskId: task.id },
-        origin: request.nextUrl.origin,
-      })
+      try {
+        await recordTaskActivity({
+          taskId: task.id,
+          actorId: user.id,
+          summary: activity.summary,
+          kind: activity.kind,
+          metadata: { taskId: task.id },
+          origin: request.nextUrl.origin,
+        })
+      } catch (activityError) {
+        // Preserve the successful task mutation even when its audit entry
+        // cannot be written; the client must not roll back committed data.
+        console.error('Failed to record task update activity:', activityError)
+      }
     }
 
     if (normalizedAssigneeId !== undefined && normalizedAssigneeId && normalizedAssigneeId !== existingTask.assigneeId) {
@@ -496,14 +629,18 @@ export async function PUT(
       }
     }
 
+    let projectStatus: ProjectStatus | null = null
     try {
-      await syncProjectCompletion(projectId)
+      projectStatus = await syncProjectCompletion(projectId)
     } catch (syncError) {
       console.error('Failed to sync project completion status:', syncError)
     }
 
-    return NextResponse.json({ success: true, task })
+    return NextResponse.json({ success: true, task, projectStatus })
   } catch (error) {
+    if (error instanceof ProjectTaskInputError) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
     console.error('Failed to update task:', error)
     return NextResponse.json({ error: 'Failed to update task' }, { status: 500 })
   }
@@ -519,6 +656,18 @@ export async function DELETE(
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id: projectId } = await params
+    const authorization = await getProjectAuthorization(projectId, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization, 'manage')
+    if (authorizationFailure) {
+      return NextResponse.json(
+        {
+          error: authorizationFailure.status === 403
+            ? 'Only a project lead or HR can delete tasks'
+            : authorizationFailure.error,
+        },
+        { status: authorizationFailure.status }
+      )
+    }
     const { searchParams } = new URL(request.url)
     const taskId = searchParams.get('taskId')
 
@@ -537,13 +686,14 @@ export async function DELETE(
 
     await prisma.task.delete({ where: { id: taskId } })
 
+    let projectStatus: ProjectStatus | null = null
     try {
-      await syncProjectCompletion(projectId)
+      projectStatus = await syncProjectCompletion(projectId)
     } catch (syncError) {
       console.error('Failed to sync project completion status:', syncError)
     }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, projectStatus })
   } catch (error) {
     console.error('Failed to delete task:', error)
     return NextResponse.json({ error: 'Failed to delete task' }, { status: 500 })

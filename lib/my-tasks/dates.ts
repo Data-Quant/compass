@@ -1,8 +1,10 @@
+import { projectTaskCalendarDayKey } from '@/lib/project-progress'
+
 const DAY_MS = 24 * 60 * 60 * 1000
 
 export function toStartOfDay(input: Date | string): Date {
-  const d = typeof input === 'string' ? new Date(input) : new Date(input)
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
+  const key = projectTaskCalendarDayKey(input)
+  return new Date(key ?? Number.NaN)
 }
 
 export function addDays(date: Date, days: number): Date {

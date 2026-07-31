@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { recordTaskActivity } from '@/lib/project-task-activity'
+import { getProjectAuthorization, projectAuthorizationFailure } from '@/lib/project-access'
 
 export async function GET(
   request: NextRequest,
@@ -12,6 +13,11 @@ export async function GET(
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id: projectId } = await params
+    const authorization = await getProjectAuthorization(projectId, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization)
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
     const { searchParams } = new URL(request.url)
     const taskId = searchParams.get('taskId')
     if (!taskId) return NextResponse.json({ error: 'taskId required' }, { status: 400 })
@@ -44,6 +50,11 @@ export async function POST(
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id: projectId } = await params
+    const authorization = await getProjectAuthorization(projectId, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization)
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
     const { taskId, content } = await request.json()
     if (!taskId || !content?.trim()) {
       return NextResponse.json({ error: 'taskId and content required' }, { status: 400 })
@@ -64,14 +75,18 @@ export async function POST(
       include: { author: { select: { id: true, name: true } } },
     })
 
-    await recordTaskActivity({
-      taskId,
-      actorId: user.id,
-      summary: `${user.name || 'Someone'} commented on this task`,
-      kind: 'comment',
-      metadata: { commentId: comment.id },
-      origin: request.nextUrl.origin,
-    })
+    try {
+      await recordTaskActivity({
+        taskId,
+        actorId: user.id,
+        summary: `${user.name || 'Someone'} commented on this task`,
+        kind: 'comment',
+        metadata: { commentId: comment.id },
+        origin: request.nextUrl.origin,
+      })
+    } catch (activityError) {
+      console.error('Failed to record comment activity:', activityError)
+    }
 
     return NextResponse.json({ success: true, comment })
   } catch (error) {
@@ -80,17 +95,29 @@ export async function POST(
   }
 }
 
-export async function DELETE(request: NextRequest) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { id: projectId } = await params
+    const authorization = await getProjectAuthorization(projectId, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization)
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
 
     const { searchParams } = new URL(request.url)
     const commentId = searchParams.get('commentId')
     if (!commentId) return NextResponse.json({ error: 'commentId required' }, { status: 400 })
 
     // Only allow deleting own comments
-    const comment = await prisma.taskComment.findUnique({ where: { id: commentId } })
+    const comment = await prisma.taskComment.findFirst({
+      where: { id: commentId, task: { projectId } },
+    })
     if (!comment || comment.authorId !== user.id) {
       return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
     }

@@ -1,11 +1,10 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { UserAvatar } from '@/components/composed/UserAvatar'
-import { Search, X, UserPlus, Crown, Trash2 } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { cn } from '@/lib/utils'
+import { Search, UserPlus, Crown, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { Modal } from '@/components/ui/modal'
 
 interface MemberManagerProps {
   projectId: string
@@ -28,7 +27,6 @@ export function MemberManager({
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [usersError, setUsersError] = useState<string | null>(null)
-  const overlayRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (open) {
@@ -100,52 +98,26 @@ export function MemberManager({
     .filter((u) => !memberIds.includes(u.id))
     .filter((u) => u.name.toLowerCase().includes(search.toLowerCase()))
 
-  if (!open) return null
-
   return (
-    <AnimatePresence>
-      <motion.div
-        ref={overlayRef}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-        onClick={(e) => { if (e.target === overlayRef.current) onClose() }}
-      >
-        <motion.div
-          initial={{ scale: 0.95, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.95, opacity: 0 }}
-          transition={{ duration: 0.2 }}
-          className="bg-card border border-border/60 rounded-xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col"
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between px-5 pt-5 pb-3">
-            <h3 className="text-base font-semibold">Manage Members</h3>
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
+    <Modal isOpen={open} onClose={onClose} title="Manage Members" size="sm">
+      <div className="flex max-h-[65vh] flex-col">
           {/* Current members */}
-          <div className="px-5 pb-3">
+          <div className="pb-3">
             <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
               Members ({members.length})
             </h4>
             <div className="space-y-1 max-h-[160px] overflow-y-auto">
               {members.map((m) => (
-                <div key={m.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-muted/30 transition-colors">
+                <div key={m.id} className="group flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-muted/30 transition-colors">
                   <UserAvatar name={m.name} size="sm" />
                   <span className="text-sm flex-1">{m.name}</span>
-                  {m.role === 'OWNER' ? (
+                  {m.id === ownerId || m.role === 'OWNER' ? (
                     <span title="Owner"><Crown className="w-4 h-4 text-amber-400" /></span>
                   ) : (
                     <button
                       onClick={() => removeMember(m.id)}
-                      className="p-1 rounded hover:bg-red-400/10 text-muted-foreground hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                      aria-label={`Remove ${m.name} from project`}
+                      className="p-1 rounded hover:bg-red-400/10 text-muted-foreground hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       title="Remove member"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -156,10 +128,10 @@ export function MemberManager({
             </div>
           </div>
 
-          <div className="mx-5 border-t border-border/40" />
+          <div className="border-t border-border/40" />
 
           {/* Add members */}
-          <div className="px-5 py-3 flex-1 overflow-hidden flex flex-col">
+          <div className="py-3 flex-1 overflow-hidden flex flex-col">
             <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
               Add People
             </h4>
@@ -201,8 +173,7 @@ export function MemberManager({
               )}
             </div>
           </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+      </div>
+    </Modal>
   )
 }

@@ -5,7 +5,16 @@ import {
   ensureProjectStatusSections,
   getDefaultProjectStatusSection,
   getStatusSectionDefaults,
+  normalizeStatusName,
 } from '@/lib/project-status-sections'
+import { getProjectAuthorization, projectAuthorizationFailure } from '@/lib/project-access'
+import { syncProjectCompletion } from '@/lib/project-completion'
+
+const MAX_SECTION_ORDER_INDEX = 1_000_000_000
+
+function isValidSectionOrderIndex(value: unknown): value is number {
+  return Number.isInteger(value) && Number(value) >= 0 && Number(value) <= MAX_SECTION_ORDER_INDEX
+}
 
 export async function GET(
   _request: NextRequest,
@@ -15,6 +24,11 @@ export async function GET(
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const { id: projectId } = await params
+    const authorization = await getProjectAuthorization(projectId, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization)
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
     await ensureProjectStatusSections(projectId)
 
     const sections = await prisma.taskSection.findMany({
@@ -38,6 +52,11 @@ export async function POST(
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const { id: projectId } = await params
+    const authorization = await getProjectAuthorization(projectId, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization, 'manage')
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
     const { name } = await request.json()
 
     if (!name?.trim()) {
@@ -50,8 +69,12 @@ export async function POST(
       where: { projectId },
       orderBy: { orderIndex: 'desc' },
     })
-    const orderIndex = (lastSection?.orderIndex || 0) + 1
+    const orderIndex = Math.min(Math.max(0, lastSection?.orderIndex || 0) + 1, MAX_SECTION_ORDER_INDEX)
     const statusDefaults = getStatusSectionDefaults(name.trim(), orderIndex)
+
+    if (statusDefaults.isDefault) {
+      return NextResponse.json({ error: 'That name is reserved for a default project status' }, { status: 409 })
+    }
 
     const section = await prisma.taskSection.create({
       data: {
@@ -69,19 +92,46 @@ export async function POST(
   }
 }
 
-export async function PUT(request: NextRequest) {
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { id: projectId } = await params
+    const authorization = await getProjectAuthorization(projectId, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization, 'manage')
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
+
     const { sectionId, name, orderIndex, color } = await request.json()
 
     if (!sectionId) return NextResponse.json({ error: 'sectionId required' }, { status: 400 })
 
     const existing = await prisma.taskSection.findUnique({
       where: { id: sectionId },
-      select: { id: true, isDefault: true },
+      select: { id: true, projectId: true, name: true, isDefault: true, isBacklog: true },
     })
-    if (!existing) return NextResponse.json({ error: 'Section not found' }, { status: 404 })
+    if (!existing || existing.projectId !== projectId) {
+      return NextResponse.json({ error: 'Section not found' }, { status: 404 })
+    }
+    if (name !== undefined && !String(name).trim()) {
+      return NextResponse.json({ error: 'Section name cannot be empty' }, { status: 400 })
+    }
+    if (orderIndex !== undefined && !isValidSectionOrderIndex(orderIndex)) {
+      return NextResponse.json({ error: 'orderIndex must be a non-negative integer' }, { status: 400 })
+    }
+    if (existing.isDefault && name !== undefined && String(name).trim() !== existing.name) {
+      return NextResponse.json({ error: 'Default statuses cannot be renamed' }, { status: 400 })
+    }
+    if (existing.isBacklog && name !== undefined && normalizeStatusName(String(name)) !== 'backlog') {
+      return NextResponse.json({ error: 'The default Backlog section cannot be renamed' }, { status: 400 })
+    }
+    if (!existing.isDefault && name !== undefined && getStatusSectionDefaults(String(name)).isDefault) {
+      return NextResponse.json({ error: 'That name is reserved for a default project status' }, { status: 409 })
+    }
 
     const section = await prisma.taskSection.update({
       where: { id: sectionId },
@@ -99,10 +149,20 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-export async function DELETE(request: NextRequest) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { id: projectId } = await params
+    const authorization = await getProjectAuthorization(projectId, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization, 'manage')
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
+
     const { searchParams } = new URL(request.url)
     const sectionId = searchParams.get('sectionId')
 
@@ -112,7 +172,9 @@ export async function DELETE(request: NextRequest) {
       where: { id: sectionId },
       select: { id: true, projectId: true, isDefault: true },
     })
-    if (!section) return NextResponse.json({ error: 'Section not found' }, { status: 404 })
+    if (!section || section.projectId !== projectId) {
+      return NextResponse.json({ error: 'Section not found' }, { status: 404 })
+    }
     if (section.isDefault) {
       return NextResponse.json({ error: 'Default statuses cannot be deleted' }, { status: 400 })
     }
@@ -122,13 +184,20 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'To Do status is missing for this project' }, { status: 400 })
     }
 
-    // Move tasks back to To Do before deleting a custom status.
-    await prisma.task.updateMany({
-      where: { sectionId },
-      data: { sectionId: todoSection.id, status: 'TODO', completedAt: null },
-    })
-
-    await prisma.taskSection.delete({ where: { id: sectionId } })
+    // Move tasks and remove the custom status atomically so a failed delete
+    // cannot leave a partially migrated project.
+    await prisma.$transaction([
+      prisma.task.updateMany({
+        where: { sectionId },
+        data: { sectionId: todoSection.id, status: 'TODO', completedAt: null },
+      }),
+      prisma.taskSection.delete({ where: { id: sectionId } }),
+    ])
+    try {
+      await syncProjectCompletion(projectId)
+    } catch (syncError) {
+      console.error('Failed to sync project completion after deleting section:', syncError)
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {

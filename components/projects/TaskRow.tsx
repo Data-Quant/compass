@@ -1,9 +1,16 @@
 'use client'
 
 import { UserAvatar } from '@/components/composed/UserAvatar'
-import { Circle, CheckCircle2, Clock, Flag, MessageSquare, Calendar } from 'lucide-react'
+import { Circle, CheckCircle2, Clock, Flag, MessageSquare, Calendar, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { calculateTaskVariance, PROJECT_TASK_TIME_ZONE } from '@/lib/project-progress'
 import type { PanelTask } from './TaskDetailPanel'
+
+const TASK_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  timeZone: PROJECT_TASK_TIME_ZONE,
+  month: 'short',
+  day: 'numeric',
+})
 
 const STATUS_ICON: Record<string, { icon: typeof Circle; color: string }> = {
   TODO: { icon: Circle, color: 'text-slate-400' },
@@ -26,12 +33,21 @@ interface TaskRowProps {
 
 export function TaskRow({ task, onClick, showProject }: TaskRowProps) {
   const StatusIcon = STATUS_ICON[task.status].icon
-  const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'DONE'
+  const variance = calculateTaskVariance({
+    status: task.status,
+    dueDate: task.dueDate,
+    section: { isBacklog: Boolean(task.section?.isBacklog) },
+  })
+  const isOverdue = variance.isOverdue
+  const daysLate = variance.daysLate
 
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-muted/30 transition-colors text-left group"
+      className={cn(
+        'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border border-transparent hover:bg-muted/30 transition-colors text-left group',
+        isOverdue && 'border-red-500/20 bg-red-500/[0.07] hover:bg-red-500/10'
+      )}
     >
       {/* Status icon */}
       <StatusIcon className={cn('w-4 h-4 shrink-0', STATUS_ICON[task.status].color)} />
@@ -78,6 +94,19 @@ export function TaskRow({ task, onClick, showProject }: TaskRowProps) {
 
       {/* Meta */}
       <div className="flex items-center gap-2 shrink-0">
+        {isOverdue && (
+          <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-500">
+            <AlertTriangle className="h-3 w-3" />
+            Overdue · {daysLate}d
+          </span>
+        )}
+
+        {task.completedLate && task.status === 'DONE' && (
+          <span className="hidden sm:inline-flex rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+            Completed late
+          </span>
+        )}
+
         {/* Comment count */}
         {task._count.comments > 0 && (
           <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
@@ -90,10 +119,10 @@ export function TaskRow({ task, onClick, showProject }: TaskRowProps) {
         {task.dueDate && (
           <span className={cn(
             'flex items-center gap-1 text-[11px]',
-            isOverdue ? 'text-red-400' : 'text-muted-foreground'
+            isOverdue ? 'font-semibold text-red-500' : 'text-muted-foreground'
           )}>
             <Calendar className="w-3 h-3" />
-            {new Date(task.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+            {TASK_DATE_FORMATTER.format(new Date(task.dueDate))}
           </span>
         )}
 

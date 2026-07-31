@@ -7,19 +7,27 @@ import {
   DragOverEvent,
   DragOverlay,
   DragStartEvent,
+  KeyboardSensor,
   PointerSensor,
   closestCorners,
   useDroppable,
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
-import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Calendar, Flag, MessageSquare, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import { cn } from '@/lib/utils'
+import { calculateTaskVariance, PROJECT_TASK_TIME_ZONE } from '@/lib/project-progress'
 import type { PanelTask, ProjectStatusSection } from './TaskDetailPanel'
+
+const TASK_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  timeZone: PROJECT_TASK_TIME_ZONE,
+  month: 'short',
+  day: 'numeric',
+})
 
 const PRIORITY_DOT: Record<string, string> = {
   LOW: 'bg-slate-400',
@@ -32,11 +40,13 @@ interface BoardViewProps {
   projectId: string
   tasks: PanelTask[]
   sections: ProjectStatusSection[]
+  viewerId: string
+  canManage: boolean
   onTaskClick: (task: PanelTask) => void
   onTasksChange: () => void
 }
 
-export function BoardView({ projectId, tasks, sections, onTaskClick, onTasksChange }: BoardViewProps) {
+export function BoardView({ projectId, tasks, sections, viewerId, canManage, onTaskClick, onTasksChange }: BoardViewProps) {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [localTasks, setLocalTasks] = useState<PanelTask[]>(tasks)
   const [addingStatus, setAddingStatus] = useState(false)
@@ -52,13 +62,17 @@ export function BoardView({ projectId, tasks, sections, onTaskClick, onTasksChan
   )
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
   const activeTask = activeId ? localTasks.find((task) => task.id === activeId) : null
+  const canEditTask = (task: PanelTask) => canManage || task.assigneeId === viewerId
 
   const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(event.active.id as string)
+    const task = localTasks.find((candidate) => candidate.id === event.active.id)
+    if (!task || !canEditTask(task)) return
+    setActiveId(task.id)
   }
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -66,7 +80,7 @@ export function BoardView({ projectId, tasks, sections, onTaskClick, onTasksChan
     if (!over) return
 
     const draggedTask = localTasks.find((task) => task.id === active.id)
-    if (!draggedTask) return
+    if (!draggedTask || !canEditTask(draggedTask)) return
 
     const overId = String(over.id)
     const targetSectionId = sectionById.has(overId)
@@ -97,6 +111,21 @@ export function BoardView({ projectId, tasks, sections, onTaskClick, onTasksChan
     const task = localTasks.find((item) => item.id === active.id)
     const original = tasks.find((item) => item.id === active.id)
     if (!task || !original || (task.sectionId === original.sectionId && task.status === original.status)) return
+    if (!canEditTask(original)) {
+      setLocalTasks(tasks)
+      return
+    }
+
+    if (
+      original.section?.isBacklog &&
+      !task.section?.isBacklog &&
+      (!original.assigneeId || !original.dueDate)
+    ) {
+      setLocalTasks(tasks)
+      toast.error('Add an assignee and due date before moving this task out of Backlog')
+      onTaskClick(original)
+      return
+    }
 
     try {
       const res = await fetch(`/api/projects/${projectId}/tasks`, {
@@ -120,7 +149,11 @@ export function BoardView({ projectId, tasks, sections, onTaskClick, onTasksChan
       const res = await fetch(`/api/projects/${projectId}/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, sectionId }),
+        body: JSON.stringify({
+          title,
+          sectionId,
+          ...(!canManage ? { assigneeId: viewerId } : {}),
+        }),
       })
       const data = await res.json()
       if (!res.ok || !data.success) {
@@ -133,6 +166,7 @@ export function BoardView({ projectId, tasks, sections, onTaskClick, onTasksChan
   }
 
   const handleAddStatus = async () => {
+    if (!canManage) return
     if (!newStatusName.trim()) {
       setAddingStatus(false)
       return
@@ -170,12 +204,14 @@ export function BoardView({ projectId, tasks, sections, onTaskClick, onTasksChan
             key={section.id}
             section={section}
             tasks={localTasks.filter((task) => task.sectionId === section.id)}
+            viewerId={viewerId}
+            canManage={canManage}
             onTaskClick={onTaskClick}
             onAddTask={handleAddTask}
           />
         ))}
 
-        <div className="flex-shrink-0 w-72 pt-10">
+        {canManage && <div className="flex-shrink-0 w-72 pt-10">
           {addingStatus ? (
             <input
               autoFocus
@@ -200,7 +236,7 @@ export function BoardView({ projectId, tasks, sections, onTaskClick, onTasksChan
               + Add status
             </button>
           )}
-        </div>
+        </div>}
       </div>
 
       <DragOverlay>
@@ -213,11 +249,15 @@ export function BoardView({ projectId, tasks, sections, onTaskClick, onTasksChan
 function BoardColumn({
   section,
   tasks,
+  viewerId,
+  canManage,
   onTaskClick,
   onAddTask,
 }: {
   section: ProjectStatusSection
   tasks: PanelTask[]
+  viewerId: string
+  canManage: boolean
   onTaskClick: (task: PanelTask) => void
   onAddTask: (title: string, sectionId: string) => void
 }) {
@@ -255,6 +295,7 @@ function BoardColumn({
               <SortableTaskCard
                 key={task.id}
                 task={task}
+                disabled={!canManage && task.assigneeId !== viewerId}
                 onClick={() => onTaskClick(task)}
               />
             ))}
@@ -293,8 +334,8 @@ function BoardColumn({
   )
 }
 
-function SortableTaskCard({ task, onClick }: { task: PanelTask; onClick: () => void }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id })
+function SortableTaskCard({ task, disabled, onClick }: { task: PanelTask; disabled: boolean; onClick: () => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id, disabled })
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -302,20 +343,26 @@ function SortableTaskCard({ task, onClick }: { task: PanelTask; onClick: () => v
   }
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={disabled ? 'cursor-default' : undefined}>
       <TaskCard task={task} isDragging={isDragging} onClick={onClick} />
     </div>
   )
 }
 
 function TaskCard({ task, isDragging, onClick }: { task: PanelTask; isDragging?: boolean; onClick?: () => void }) {
-  const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'DONE'
+  const isOverdue = calculateTaskVariance({
+    status: task.status,
+    dueDate: task.dueDate,
+    section: { isBacklog: Boolean(task.section?.isBacklog) },
+  }).isOverdue
 
   return (
-    <div
+    <button
+      type="button"
       onClick={() => { if (!isDragging) onClick?.() }}
       className={cn(
-        'bg-card border border-border/40 rounded-lg p-3 cursor-pointer hover:border-border/70 transition-all',
+        'w-full bg-card border border-border/40 rounded-lg p-3 cursor-pointer hover:border-border/70 transition-all text-left',
+        isOverdue && 'border-red-500/30 bg-red-500/[0.07] hover:border-red-500/50',
         isDragging && 'opacity-50 shadow-xl scale-105 rotate-2',
       )}
     >
@@ -347,7 +394,7 @@ function TaskCard({ task, isDragging, onClick }: { task: PanelTask; isDragging?:
             isOverdue ? 'text-red-400 bg-red-400/10' : 'text-muted-foreground bg-muted/30'
           )}>
             <Calendar className="w-3 h-3" />
-            {new Date(task.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+            {TASK_DATE_FORMATTER.format(new Date(task.dueDate))}
           </span>
         )}
 
@@ -372,6 +419,6 @@ function TaskCard({ task, isDragging, onClick }: { task: PanelTask; isDragging?:
         <div className="flex-1" />
         {task.assignee && <UserAvatar name={task.assignee.name} size="xs" />}
       </div>
-    </div>
+    </button>
   )
 }

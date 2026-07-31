@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { getProjectAuthorization, projectAuthorizationFailure } from '@/lib/project-access'
 
 export async function GET(
   request: NextRequest,
@@ -11,6 +12,11 @@ export async function GET(
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id: projectId } = await params
+    const authorization = await getProjectAuthorization(projectId, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization)
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
     const { searchParams } = new URL(request.url)
     const taskId = searchParams.get('taskId')
     if (!taskId) return NextResponse.json({ error: 'taskId required' }, { status: 400 })

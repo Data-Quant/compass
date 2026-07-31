@@ -4,6 +4,8 @@ import { prisma } from '@/lib/db'
 import { DEFAULT_STATUS_SECTIONS } from '@/lib/project-status-sections'
 import { resolveProjectStatusForCompletion } from '@/lib/project-completion'
 import { sendProjectInvitationNotification } from '@/lib/project-task-notifications'
+import { accessibleProjectsWhere, resolveProjectCapabilities } from '@/lib/project-access'
+import { calculateProjectProgress } from '@/lib/project-progress'
 
 // GET - List projects for the current user
 export async function GET() {
@@ -12,17 +14,17 @@ export async function GET() {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const projects = await prisma.project.findMany({
-      where: {
-        OR: [
-          { ownerId: user.id },
-          { members: { some: { userId: user.id } } },
-        ],
-      },
+      where: accessibleProjectsWhere(user),
       include: {
         owner: { select: { id: true, name: true } },
         members: { include: { user: { select: { id: true, name: true } } } },
-        _count: { select: { tasks: true } },
-        tasks: { where: { status: 'DONE' }, select: { id: true } },
+        tasks: {
+          select: {
+            status: true,
+            assigneeId: true,
+            section: { select: { isBacklog: true } },
+          },
+        },
       },
       orderBy: { updatedAt: 'desc' },
     })
@@ -32,7 +34,8 @@ export async function GET() {
     // demotion happens on task mutations so a manual completion is not undone
     // on every list load.
     const corrections = projects.flatMap((p) => {
-      const next = resolveProjectStatusForCompletion(p.status, p._count.tasks, p.tasks.length, {
+      const progress = calculateProjectProgress(p.tasks)
+      const next = resolveProjectStatusForCompletion(p.status, progress.total, progress.completed, {
         allowDemote: false,
       })
       return next ? [{ id: p.id, status: next }] : []
@@ -44,19 +47,29 @@ export async function GET() {
     }
     const correctedStatusById = new Map(corrections.map((c) => [c.id, c.status]))
 
-    const result = projects.map((p) => ({
-      id: p.id,
-      name: p.name,
-      description: p.description,
-      color: p.color,
-      status: correctedStatusById.get(p.id) ?? p.status,
-      owner: p.owner,
-      members: p.members.map((m) => ({ ...m.user, role: m.role })),
-      taskCount: p._count.tasks,
-      completedTasks: p.tasks.length,
-      createdAt: p.createdAt,
-      updatedAt: p.updatedAt,
-    }))
+    const result = projects.map((p) => {
+      const progress = calculateProjectProgress(p.tasks)
+      const capabilities = resolveProjectCapabilities({
+        viewer: user,
+        ownerId: p.ownerId,
+        members: p.members,
+      })
+      return {
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        color: p.color,
+        status: correctedStatusById.get(p.id) ?? p.status,
+        owner: p.owner,
+        members: p.members.map((m) => ({ ...m.user, role: m.role })),
+        canManage: capabilities.canManage,
+        taskCount: progress.total,
+        completedTasks: progress.completed,
+        progress,
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt,
+      }
+    })
 
     return NextResponse.json({ projects: result })
   } catch (error) {
@@ -105,6 +118,7 @@ export async function POST(request: NextRequest) {
             canonicalStatus: section.canonicalStatus,
             isDefault: true,
             isDone: section.isDone,
+            isBacklog: section.isBacklog,
             orderIndex: section.orderIndex,
           })),
         },

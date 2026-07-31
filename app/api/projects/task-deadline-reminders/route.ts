@@ -175,6 +175,10 @@ async function runProjectTaskDeadlineReminders(input: {
       assigneeId: { not: null },
       dueDate: dueDateFilter,
       project: { status: 'ACTIVE' },
+      OR: [
+        { sectionId: null },
+        { section: { is: { isBacklog: false } } },
+      ],
     },
     select: {
       id: true,

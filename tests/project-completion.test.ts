@@ -18,6 +18,10 @@ test('already-completed project at 100% needs no change', () => {
   assert.equal(resolveProjectStatusForCompletion('COMPLETED', 5, 5), null)
 })
 
+test('backlog-only work does not reopen a completed project', () => {
+  assert.equal(resolveProjectStatusForCompletion('COMPLETED', 0, 0, { allowDemote: true }), null)
+})
+
 test('reverts a completed project to active when work reopens (demote allowed)', () => {
   assert.equal(resolveProjectStatusForCompletion('COMPLETED', 5, 4, { allowDemote: true }), 'ACTIVE')
 })
@@ -29,4 +33,9 @@ test('does not revert a completed project when demotion is disallowed (list self
 test('never touches archived projects', () => {
   assert.equal(resolveProjectStatusForCompletion('ARCHIVED', 5, 5), null)
   assert.equal(resolveProjectStatusForCompletion('ARCHIVED', 5, 2, { allowDemote: true }), null)
+})
+
+test('preserves an explicitly on-hold project regardless of task completion', () => {
+  assert.equal(resolveProjectStatusForCompletion('ON_HOLD', 5, 5), null)
+  assert.equal(resolveProjectStatusForCompletion('ON_HOLD', 5, 2, { allowDemote: true }), null)
 })

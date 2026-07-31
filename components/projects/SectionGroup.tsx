@@ -19,17 +19,23 @@ interface SectionGroupProps {
   onDeleteSection?: (sectionId: string) => void
   onRenameSection?: (sectionId: string, name: string) => void
   collapsible?: boolean
+  defaultCollapsed?: boolean
   containerId?: string
   dragDisabled?: boolean
+  viewerId?: string
+  canManage?: boolean
 }
 
 export function SectionGroup({
   sectionId, sectionName, tasks, onTaskClick, onAddTask,
   onDeleteSection, onRenameSection, collapsible = true,
+  defaultCollapsed = false,
   containerId = `section:${sectionId || 'unsectioned'}`,
   dragDisabled = false,
+  viewerId = '',
+  canManage = false,
 }: SectionGroupProps) {
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(defaultCollapsed)
   const [addingTask, setAddingTask] = useState(false)
   const [newTaskTitle, setNewTaskTitle] = useState('')
   const [editing, setEditing] = useState(false)
@@ -59,6 +65,8 @@ export function SectionGroup({
         {collapsible && (
           <button
             onClick={() => setCollapsed(!collapsed)}
+            aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${sectionName}`}
+            aria-expanded={!collapsed}
             className="p-0.5 rounded hover:bg-muted/50 transition-colors"
           >
             <ChevronRight className={cn(
@@ -86,26 +94,31 @@ export function SectionGroup({
           </span>
         )}
 
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
           <button
             onClick={() => setAddingTask(true)}
+            aria-label={`Add task to ${sectionName}`}
             className="p-1 rounded hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
             title="Add task"
           >
             <Plus className="w-3.5 h-3.5" />
           </button>
-          {sectionId && (
+          {canManage && sectionId && (
             <>
-              <button
-                onClick={() => { setEditName(sectionName); setEditing(true) }}
-                className="p-1 rounded hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
-                title="Rename section"
-              >
-                <Pencil className="w-3.5 h-3.5" />
-              </button>
+              {onRenameSection && (
+                <button
+                  onClick={() => { setEditName(sectionName); setEditing(true) }}
+                  aria-label={`Rename ${sectionName}`}
+                  className="p-1 rounded hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+                  title="Rename section"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              )}
               {onDeleteSection && (
                 <button
                   onClick={() => onDeleteSection(sectionId)}
+                  aria-label={`Delete ${sectionName}`}
                   className="p-1 rounded hover:bg-red-400/10 text-muted-foreground hover:text-red-400 transition-colors"
                   title="Delete status"
                 >
@@ -135,7 +148,7 @@ export function SectionGroup({
               )}
             >
               {tasks.map((task) => (
-                dragDisabled ? (
+                dragDisabled || (!canManage && task.assigneeId !== viewerId) ? (
                   <TaskRow key={task.id} task={task} onClick={() => onTaskClick(task)} />
                 ) : (
                   <SortableTaskRow

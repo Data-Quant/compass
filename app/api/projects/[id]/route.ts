@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { ensureProjectStatusSections } from '@/lib/project-status-sections'
+import { getProjectAuthorization, projectAuthorizationFailure } from '@/lib/project-access'
+import { PROJECT_TASK_INCLUDE } from '@/lib/project-task-data'
 
 // GET - Get project detail with tasks
 export async function GET(
@@ -13,6 +15,11 @@ export async function GET(
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id } = await params
+    const authorization = await getProjectAuthorization(id, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization)
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
     await ensureProjectStatusSections(id)
 
     const project = await prisma.project.findUnique({
@@ -23,40 +30,7 @@ export async function GET(
         sections: { orderBy: { orderIndex: 'asc' } },
         labels: { orderBy: { name: 'asc' } },
         tasks: {
-          include: {
-            assignee: { select: { id: true, name: true } },
-            section: { select: { id: true, name: true } },
-            parentTask: {
-              select: {
-                id: true,
-                title: true,
-                assigneeId: true,
-                assignee: { select: { id: true, name: true } },
-              },
-            },
-            childTasks: {
-              select: {
-                id: true,
-                title: true,
-                status: true,
-                priority: true,
-                assigneeId: true,
-                dueDate: true,
-                sectionId: true,
-                parentTaskId: true,
-                assignee: { select: { id: true, name: true } },
-                section: { select: { id: true, name: true, color: true, canonicalStatus: true, isDone: true } },
-                _count: { select: { comments: true } },
-              },
-              orderBy: [{ orderIndex: 'asc' }, { createdAt: 'asc' }],
-            },
-            assistants: {
-              include: { user: { select: { id: true, name: true } } },
-              orderBy: { createdAt: 'asc' },
-            },
-            labelAssignments: { include: { label: true } },
-            _count: { select: { comments: true } },
-          },
+          include: PROJECT_TASK_INCLUDE,
           orderBy: [{ orderIndex: 'asc' }, { createdAt: 'desc' }],
         },
       },
@@ -66,7 +40,7 @@ export async function GET(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ project })
+    return NextResponse.json({ project: { ...project, canManage: authorization.canManage } })
   } catch (error) {
     console.error('Failed to fetch project:', error)
     return NextResponse.json({ error: 'Failed to fetch project' }, { status: 500 })
@@ -83,12 +57,24 @@ export async function PUT(
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id } = await params
+    const authorization = await getProjectAuthorization(id, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization, 'manage')
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
     const { name, description, status, color } = await request.json()
+
+    if (status !== undefined && !['ACTIVE', 'ON_HOLD', 'COMPLETED', 'ARCHIVED'].includes(status)) {
+      return NextResponse.json({ error: 'Invalid project status' }, { status: 400 })
+    }
+    if (name !== undefined && (typeof name !== 'string' || !name.trim())) {
+      return NextResponse.json({ error: 'Project name cannot be empty' }, { status: 400 })
+    }
 
     const project = await prisma.project.update({
       where: { id },
       data: {
-        ...(name && { name: name.trim() }),
+        ...(name !== undefined && { name: name.trim() }),
         ...(description !== undefined && { description: description?.trim() || null }),
         ...(status && { status }),
         ...(color !== undefined && { color }),
@@ -112,6 +98,12 @@ export async function DELETE(
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id } = await params
+
+    const authorization = await getProjectAuthorization(id, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization, 'manage')
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
 
     await prisma.project.delete({ where: { id } })
 

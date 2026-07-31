@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import {
+  accessibleProjectsWhere,
+  getProjectAuthorization,
+  projectAuthorizationFailure,
+} from '@/lib/project-access'
 
 function isValidUrl(value: string): boolean {
   try {
@@ -9,20 +14,6 @@ function isValidUrl(value: string): boolean {
   } catch {
     return false
   }
-}
-
-async function canAccessProject(userId: string, projectId: string): Promise<boolean> {
-  const project = await prisma.project.findFirst({
-    where: {
-      id: projectId,
-      OR: [
-        { ownerId: userId },
-        { members: { some: { userId } } },
-      ],
-    },
-    select: { id: true },
-  })
-  return !!project
 }
 
 export async function GET(request: NextRequest) {
@@ -37,17 +28,16 @@ export async function GET(request: NextRequest) {
       ...(projectId
         ? { projectId }
         : {
-            project: {
-              OR: [
-                { ownerId: user.id },
-                { members: { some: { userId: user.id } } },
-              ],
-            },
+            project: accessibleProjectsWhere(user),
           }),
     } as any
 
-    if (projectId && !(await canAccessProject(user.id, projectId))) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (projectId) {
+      const authorization = await getProjectAuthorization(projectId, user)
+      const authorizationFailure = projectAuthorizationFailure(authorization)
+      if (authorizationFailure) {
+        return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+      }
     }
 
     const references = await prisma.projectReference.findMany({
@@ -76,8 +66,11 @@ export async function POST(request: NextRequest) {
     if (!title?.trim()) return NextResponse.json({ error: 'title is required' }, { status: 400 })
     if (url && !isValidUrl(url)) return NextResponse.json({ error: 'url must be a valid http/https URL' }, { status: 400 })
 
-    const hasAccess = await canAccessProject(user.id, projectId)
-    if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    const authorization = await getProjectAuthorization(projectId, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization)
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
 
     const reference = await prisma.projectReference.create({
       data: {

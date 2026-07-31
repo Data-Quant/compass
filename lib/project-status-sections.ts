@@ -1,30 +1,44 @@
 import type { TaskSection, TaskStatus } from '@prisma/client'
 import { prisma } from '@/lib/db'
 
-type StatusSectionFields = Pick<TaskSection, 'id' | 'name' | 'color' | 'canonicalStatus' | 'isDefault' | 'isDone' | 'orderIndex'>
+type StatusSectionFields = Pick<TaskSection, 'id' | 'name' | 'color' | 'canonicalStatus' | 'isDefault' | 'isDone' | 'isBacklog' | 'orderIndex'>
 
-const DEFAULT_STATUS_SECTIONS: Array<{
+type DefaultStatusDefinition = {
   name: string
   color: string
   canonicalStatus: TaskStatus
   isDone: boolean
+  isBacklog: boolean
   orderIndex: number
   aliases: string[]
-}> = [
+}
+
+const DEFAULT_STATUS_SECTIONS: DefaultStatusDefinition[] = [
+  {
+    name: 'Backlog',
+    color: '#64748b',
+    canonicalStatus: 'TODO',
+    isDone: false,
+    isBacklog: true,
+    orderIndex: 0,
+    aliases: ['backlog'],
+  },
   {
     name: 'To Do',
     color: '#94a3b8',
     canonicalStatus: 'TODO',
     isDone: false,
-    orderIndex: 0,
-    aliases: ['todo', 'backlog'],
+    isBacklog: false,
+    orderIndex: 1,
+    aliases: ['todo'],
   },
   {
     name: 'In Progress',
     color: '#60a5fa',
     canonicalStatus: 'IN_PROGRESS',
     isDone: false,
-    orderIndex: 1,
+    isBacklog: false,
+    orderIndex: 2,
     aliases: ['inprogress', 'doing'],
   },
   {
@@ -32,7 +46,8 @@ const DEFAULT_STATUS_SECTIONS: Array<{
     color: '#22c55e',
     canonicalStatus: 'DONE',
     isDone: true,
-    orderIndex: 2,
+    isBacklog: false,
+    orderIndex: 3,
     aliases: ['done', 'complete', 'completed'],
   },
 ]
@@ -52,11 +67,21 @@ export function normalizeStatusName(name: string | null | undefined) {
 
 function getDefaultStatusDefinition(nameOrStatus: string | null | undefined) {
   const normalized = normalizeStatusName(nameOrStatus)
-  return DEFAULT_STATUS_SECTIONS.find((definition) => (
+  const namedDefinition = DEFAULT_STATUS_SECTIONS.find((definition) => (
     definition.aliases.includes(normalized) ||
-    normalizeStatusName(definition.name) === normalized ||
-    definition.canonicalStatus === nameOrStatus
+    normalizeStatusName(definition.name) === normalized
   ))
+
+  if (namedDefinition) return namedDefinition
+
+  // Backlog intentionally shares TODO's canonical status, so status-only
+  // resolution must continue to point at the active To Do section.
+  return (
+    DEFAULT_STATUS_SECTIONS.find((definition) => (
+      !definition.isBacklog && definition.canonicalStatus === nameOrStatus
+    )) ||
+    DEFAULT_STATUS_SECTIONS.find((definition) => definition.canonicalStatus === nameOrStatus)
+  )
 }
 
 export function getStatusSectionDefaults(name: string, orderIndex = 0) {
@@ -67,6 +92,7 @@ export function getStatusSectionDefaults(name: string, orderIndex = 0) {
       canonicalStatus: defaultDefinition.canonicalStatus,
       isDefault: true,
       isDone: defaultDefinition.isDone,
+      isBacklog: defaultDefinition.isBacklog,
     }
   }
 
@@ -75,6 +101,7 @@ export function getStatusSectionDefaults(name: string, orderIndex = 0) {
     canonicalStatus: 'IN_PROGRESS' as TaskStatus,
     isDefault: false,
     isDone: false,
+    isBacklog: false,
   }
 }
 
@@ -86,22 +113,57 @@ export function getTaskStatusForSection(section: Pick<TaskSection, 'canonicalSta
   return isDoneTaskSection(section) ? 'DONE' : section.canonicalStatus
 }
 
+export function selectPreferredStatusSection(
+  sections: StatusSectionFields[],
+  status: TaskStatus
+) {
+  return (
+    sections.find((section) => section.isDefault && !section.isBacklog && section.canonicalStatus === status) ||
+    sections.find((section) => !section.isBacklog && section.canonicalStatus === status) ||
+    sections.find((section) => section.isDefault && section.canonicalStatus === status) ||
+    sections.find((section) => section.canonicalStatus === status) ||
+    null
+  )
+}
+
+export function findExistingDefaultStatusSection(
+  sections: StatusSectionFields[],
+  definition: DefaultStatusDefinition,
+  claimedIds: ReadonlySet<string> = new Set()
+) {
+  const available = sections.filter((section) => !claimedIds.has(section.id))
+  const canonicalName = normalizeStatusName(definition.name)
+
+  return (
+    available.find((section) => normalizeStatusName(section.name) === canonicalName) ||
+    available.find((section) => definition.aliases.includes(normalizeStatusName(section.name))) ||
+    available.find((section) => definition.isBacklog && section.isBacklog) ||
+    available.find((section) => (
+      section.isDefault &&
+      !section.isBacklog &&
+      !definition.isBacklog &&
+      normalizeStatusName(section.name) !== 'backlog' &&
+      section.canonicalStatus === definition.canonicalStatus &&
+      section.isDone === definition.isDone
+    )) ||
+    null
+  )
+}
+
 export async function ensureProjectStatusSections(projectId: string): Promise<StatusSectionFields[]> {
   const existingSections = await prisma.taskSection.findMany({
     where: { projectId },
     orderBy: { orderIndex: 'asc' },
   })
 
-  const existingByNormalized = new Map(existingSections.map((section) => [normalizeStatusName(section.name), section]))
+  const claimedDefaultIds = new Set<string>()
   let changed = false
 
   for (const definition of DEFAULT_STATUS_SECTIONS) {
-    const existing = definition.aliases
-      .map((alias) => existingByNormalized.get(alias))
-      .find(Boolean)
+    const existing = findExistingDefaultStatusSection(existingSections, definition, claimedDefaultIds)
 
     if (!existing) {
-      await prisma.taskSection.create({
+      const created = await prisma.taskSection.create({
         data: {
           projectId,
           name: definition.name,
@@ -109,30 +171,49 @@ export async function ensureProjectStatusSections(projectId: string): Promise<St
           canonicalStatus: definition.canonicalStatus,
           isDefault: true,
           isDone: definition.isDone,
+          isBacklog: definition.isBacklog,
           orderIndex: definition.orderIndex,
         },
       })
+      claimedDefaultIds.add(created.id)
       changed = true
       continue
     }
 
+    claimedDefaultIds.add(existing.id)
+
     if (
+      existing.name !== definition.name ||
       existing.canonicalStatus !== definition.canonicalStatus ||
       existing.isDefault !== true ||
       existing.isDone !== definition.isDone ||
+      existing.isBacklog !== definition.isBacklog ||
       !existing.color
     ) {
       await prisma.taskSection.update({
         where: { id: existing.id },
         data: {
+          name: definition.name,
           color: existing.color || definition.color,
           canonicalStatus: definition.canonicalStatus,
           isDefault: true,
           isDone: definition.isDone,
+          isBacklog: definition.isBacklog,
         },
       })
       changed = true
     }
+  }
+
+  const redundantDefaultIds = existingSections
+    .filter((section) => section.isDefault && !claimedDefaultIds.has(section.id))
+    .map((section) => section.id)
+  if (redundantDefaultIds.length > 0) {
+    await prisma.taskSection.updateMany({
+      where: { id: { in: redundantDefaultIds }, projectId },
+      data: { isDefault: false, isBacklog: false },
+    })
+    changed = true
   }
 
   const sections = changed
@@ -140,10 +221,9 @@ export async function ensureProjectStatusSections(projectId: string): Promise<St
     : existingSections
 
   const defaultSectionByStatus = new Map<TaskStatus, StatusSectionFields>()
-  for (const section of sections) {
-    if (section.isDefault && !defaultSectionByStatus.has(section.canonicalStatus)) {
-      defaultSectionByStatus.set(section.canonicalStatus, section)
-    }
+  for (const status of ['TODO', 'IN_PROGRESS', 'DONE'] as TaskStatus[]) {
+    const preferred = selectPreferredStatusSection(sections, status)
+    if (preferred) defaultSectionByStatus.set(status, preferred)
   }
 
   await Promise.all(
@@ -167,8 +247,7 @@ export async function ensureProjectStatusSections(projectId: string): Promise<St
 export async function getDefaultProjectStatusSection(projectId: string, status: TaskStatus) {
   const sections = await ensureProjectStatusSections(projectId)
   return (
-    sections.find((section) => section.isDefault && section.canonicalStatus === status) ||
-    sections.find((section) => section.canonicalStatus === status) ||
+    selectPreferredStatusSection(sections, status) ||
     sections[0] ||
     null
   )

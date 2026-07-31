@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { getProjectAuthorization, projectAuthorizationFailure } from '@/lib/project-access'
 
 export async function GET(
   _request: NextRequest,
@@ -10,6 +11,11 @@ export async function GET(
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const { id: projectId } = await params
+    const authorization = await getProjectAuthorization(projectId, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization)
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
 
     const labels = await prisma.taskLabel.findMany({
       where: { projectId },
@@ -31,6 +37,11 @@ export async function POST(
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const { id: projectId } = await params
+    const authorization = await getProjectAuthorization(projectId, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization, 'manage')
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
     const { name, color } = await request.json()
 
     if (!name?.trim()) {
@@ -55,16 +66,29 @@ export async function POST(
   }
 }
 
-export async function DELETE(request: NextRequest) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { id: projectId } = await params
+    const authorization = await getProjectAuthorization(projectId, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization, 'manage')
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
 
     const { searchParams } = new URL(request.url)
     const labelId = searchParams.get('labelId')
     if (!labelId) return NextResponse.json({ error: 'labelId required' }, { status: 400 })
 
-    await prisma.taskLabel.delete({ where: { id: labelId } })
+    const label = await prisma.taskLabel.findFirst({ where: { id: labelId, projectId }, select: { id: true } })
+    if (!label) return NextResponse.json({ error: 'Label not found' }, { status: 404 })
+
+    await prisma.taskLabel.delete({ where: { id: label.id } })
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Failed to delete label:', error)

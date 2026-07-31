@@ -2,23 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { sendProjectInvitationNotification } from '@/lib/project-task-notifications'
-
-async function ensureProjectOwner(projectId: string, actorId: string) {
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    select: { ownerId: true },
-  })
-
-  if (!project) {
-    return NextResponse.json({ error: 'Project not found' }, { status: 404 })
-  }
-
-  if (project.ownerId !== actorId) {
-    return NextResponse.json({ error: 'Only the project owner can manage members' }, { status: 403 })
-  }
-
-  return null
-}
+import { getProjectAuthorization, projectAuthorizationFailure } from '@/lib/project-access'
 
 export async function POST(
   request: NextRequest,
@@ -31,8 +15,14 @@ export async function POST(
     const { userId } = await request.json()
 
     if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 })
-    const ownerError = await ensureProjectOwner(projectId, user.id)
-    if (ownerError) return ownerError
+    const authorization = await getProjectAuthorization(projectId, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization, 'manage')
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
+
+    const targetUser = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } })
+    if (!targetUser) return NextResponse.json({ error: 'User not found' }, { status: 404 })
 
     const member = await prisma.projectMember.create({
       data: { projectId, userId, role: 'MEMBER' },
@@ -72,8 +62,11 @@ export async function DELETE(
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('userId')
     if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 })
-    const ownerError = await ensureProjectOwner(projectId, user.id)
-    if (ownerError) return ownerError
+    const authorization = await getProjectAuthorization(projectId, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization, 'manage')
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
 
     // Don't allow removing the owner
     const membership = await prisma.projectMember.findUnique({
@@ -81,13 +74,25 @@ export async function DELETE(
     })
 
     if (!membership) return NextResponse.json({ error: 'Member not found' }, { status: 404 })
-    if (membership.role === 'OWNER') {
+    if (userId === authorization.ownerId || membership.role.trim().toUpperCase() === 'OWNER') {
       return NextResponse.json({ error: 'Cannot remove the project owner' }, { status: 403 })
     }
 
-    await prisma.projectMember.delete({
-      where: { projectId_userId: { projectId, userId } },
-    })
+    // Revoke task-derived access at the same time as membership. Leaving the
+    // assignee relation in place would keep the removed user's My Tasks routes
+    // pointed at a project they can no longer access.
+    await prisma.$transaction([
+      prisma.task.updateMany({
+        where: { projectId, assigneeId: userId },
+        data: { assigneeId: null },
+      }),
+      prisma.taskAssistant.deleteMany({
+        where: { userId, task: { projectId } },
+      }),
+      prisma.projectMember.delete({
+        where: { projectId_userId: { projectId, userId } },
+      }),
+    ])
 
     return NextResponse.json({ success: true })
   } catch (error) {

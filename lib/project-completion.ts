@@ -1,12 +1,13 @@
 import { prisma } from '@/lib/db'
 import type { ProjectStatus } from '@prisma/client'
+import { calculateProjectProgress } from '@/lib/project-progress'
 
 /**
  * Decides what a project's status should be given its task completion.
  *
- * - All tasks done (and at least one task) -> COMPLETED.
+ * - All non-backlog tasks done (and at least one active task) -> COMPLETED.
  * - Otherwise a COMPLETED project reverts to ACTIVE (only when `allowDemote`).
- * - ARCHIVED projects are never touched.
+ * - ON_HOLD and ARCHIVED projects are never touched.
  *
  * Returns the new status, or null when no change is needed. Progress mirrors the
  * dashboard definition: a task counts as done when its status is DONE.
@@ -17,7 +18,11 @@ export function resolveProjectStatusForCompletion(
   doneTasks: number,
   options: { allowDemote?: boolean } = {}
 ): ProjectStatus | null {
-  if (current === 'ARCHIVED') return null
+  if (current === 'ARCHIVED' || current === 'ON_HOLD') return null
+
+  // Backlog-only work is excluded from progress and therefore must not reopen
+  // a manually completed project.
+  if (totalTasks === 0) return null
 
   const allDone = totalTasks > 0 && doneTasks >= totalTasks
   if (allDone) {
@@ -43,12 +48,16 @@ export async function syncProjectCompletion(projectId: string): Promise<ProjectS
   })
   if (!project) return null
 
-  const [totalTasks, doneTasks] = await Promise.all([
-    prisma.task.count({ where: { projectId } }),
-    prisma.task.count({ where: { projectId, status: 'DONE' } }),
-  ])
+  const tasks = await prisma.task.findMany({
+    where: { projectId },
+    select: {
+      status: true,
+      section: { select: { isBacklog: true } },
+    },
+  })
+  const progress = calculateProjectProgress(tasks)
 
-  const nextStatus = resolveProjectStatusForCompletion(project.status, totalTasks, doneTasks, {
+  const nextStatus = resolveProjectStatusForCompletion(project.status, progress.total, progress.completed, {
     allowDemote: true,
   })
   if (!nextStatus) return null

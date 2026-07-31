@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { put } from '@vercel/blob'
 import { getSession } from '@/lib/auth'
-import { prisma } from '@/lib/db'
+import { getProjectAuthorization, projectAuthorizationFailure } from '@/lib/project-access'
+import {
+  detectProjectImageMimeType,
+  isProjectImageMimeType,
+  projectImageExtension,
+} from '@/lib/project-image-validation'
 
 export const runtime = 'nodejs'
 
@@ -37,27 +42,26 @@ export async function POST(request: NextRequest) {
     if (!(file instanceof File)) {
       return NextResponse.json({ error: 'A valid image file is required' }, { status: 400 })
     }
-    if (!file.type.startsWith('image/')) {
-      return NextResponse.json({ error: 'Only image uploads are supported' }, { status: 400 })
+    if (!isProjectImageMimeType(file.type)) {
+      return NextResponse.json({ error: 'Only PNG, JPEG, WebP, and GIF images are supported' }, { status: 400 })
     }
     if (file.size > MAX_IMAGE_SIZE) {
       return NextResponse.json({ error: 'Image must be 5 MB or smaller' }, { status: 400 })
     }
 
-    const project = await prisma.project.findFirst({
-      where: {
-        id: projectId,
-        OR: [
-          { ownerId: user.id },
-          { members: { some: { userId: user.id } } },
-        ],
-      },
-      select: { id: true },
-    })
-    if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    const detectedMimeType = detectProjectImageMimeType(new Uint8Array(await file.arrayBuffer()))
+    if (!detectedMimeType || detectedMimeType !== file.type) {
+      return NextResponse.json({ error: 'The file contents do not match a supported image format' }, { status: 400 })
+    }
+
+    const authorization = await getProjectAuthorization(projectId, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization)
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
 
     const blob = await put(
-      `project-task-images/${projectId}/${Date.now()}-${safeFileName(file.name)}`,
+      `project-task-images/${projectId}/${Date.now()}-${safeFileName(file.name.replace(/\.[^.]+$/, ''))}.${projectImageExtension(detectedMimeType)}`,
       file,
       {
         access: 'private',

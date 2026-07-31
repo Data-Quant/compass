@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { resolveProjectCapabilities, type ProjectViewer } from '@/lib/project-access'
 
 function isValidUrl(value: string): boolean {
   try {
@@ -11,7 +12,7 @@ function isValidUrl(value: string): boolean {
   }
 }
 
-async function resolveReferenceWithAccess(referenceId: string, userId: string) {
+async function resolveReferenceWithAccess(referenceId: string, viewer: ProjectViewer) {
   const reference = await prisma.projectReference.findUnique({
     where: { id: referenceId },
     include: {
@@ -19,17 +20,19 @@ async function resolveReferenceWithAccess(referenceId: string, userId: string) {
         select: {
           id: true,
           ownerId: true,
-          members: { select: { userId: true } },
+          members: { select: { userId: true, role: true } },
         },
       },
     },
   })
 
   if (!reference) return { reference: null, hasAccess: false }
-  const hasAccess =
-    reference.project.ownerId === userId
-    || reference.project.members.some((member: { userId: string }) => member.userId === userId)
-  return { reference, hasAccess }
+  const capabilities = resolveProjectCapabilities({
+    viewer,
+    ownerId: reference.project.ownerId,
+    members: reference.project.members,
+  })
+  return { reference, hasAccess: capabilities.canAccess }
 }
 
 export async function PATCH(
@@ -41,7 +44,7 @@ export async function PATCH(
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id } = await params
-    const { reference, hasAccess } = await resolveReferenceWithAccess(id, user.id)
+    const { reference, hasAccess } = await resolveReferenceWithAccess(id, user)
     if (!reference) return NextResponse.json({ error: 'Reference not found' }, { status: 404 })
     if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
@@ -83,7 +86,7 @@ export async function DELETE(
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id } = await params
-    const { reference, hasAccess } = await resolveReferenceWithAccess(id, user.id)
+    const { reference, hasAccess } = await resolveReferenceWithAccess(id, user)
     if (!reference) return NextResponse.json({ error: 'Reference not found' }, { status: 404 })
     if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
