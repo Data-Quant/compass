@@ -64,6 +64,7 @@ interface ParentTaskSummary {
   title: string
   assigneeId: string | null
   assignee: TaskUser | null
+  assistants?: TaskAssistant[]
 }
 
 interface ChildTaskSummary {
@@ -76,6 +77,7 @@ interface ChildTaskSummary {
   sectionId: string | null
   parentTaskId: string | null
   assignee: TaskUser | null
+  assistants?: TaskAssistant[]
   section?: Pick<ProjectStatusSection, 'id' | 'name' | 'color' | 'canonicalStatus' | 'isDone'> | null
   _count: { comments: number }
 }
@@ -536,9 +538,9 @@ export function TaskDetailPanel({
 
   const handleDelete = async () => {
     if (!task || !canManage) return
-    const childCount = task.childTasks?.length || 0
-    const warning = childCount > 0
-      ? `Delete this task and its ${childCount} child task${childCount === 1 ? '' : 's'}? This cannot be undone.`
+    const hasChildren = Boolean(task.childTasks?.length)
+    const warning = hasChildren
+      ? 'Delete this task and all of its subtasks? This cannot be undone.'
       : 'Delete this task? This cannot be undone.'
     if (!window.confirm(warning)) return
     try {
@@ -661,7 +663,7 @@ export function TaskDetailPanel({
   }
 
   const toggleAssistant = async (memberId: string) => {
-    if (!task || !canEdit || memberId === task.assigneeId) return
+    if (!task || !canEdit || !canManage || memberId === task.assigneeId) return
     const current = (task.assistants || []).map((assistant) => assistant.user.id)
     const next = current.includes(memberId)
       ? current.filter((id) => id !== memberId)
@@ -670,7 +672,7 @@ export function TaskDetailPanel({
   }
 
   const clearAssistants = async () => {
-    if (!task || !canEdit || !task.assistants?.length) return
+    if (!task || !canEdit || !canManage || !task.assistants?.length) return
     updateTask({ assistantIds: [] })
   }
 
@@ -685,7 +687,6 @@ export function TaskDetailPanel({
           title: newChildTitle.trim(),
           parentTaskId: task.id,
           sectionId: task.sectionId,
-          ...(!canManage ? { assigneeId: task.assigneeId } : {}),
         }),
       })
       const data = await res.json()
@@ -693,7 +694,7 @@ export function TaskDetailPanel({
         throw new Error(data.error || 'Failed to create child task')
       }
       setNewChildTitle('')
-      toast.success('Child task created')
+      toast.success('Subtask created')
       await onTasksChange?.()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to create child task')
@@ -915,9 +916,9 @@ export function TaskDetailPanel({
               )}
             </FieldRow>
 
-            {/* Assistants */}
-            <FieldRow icon={<UserRoundCheck className="w-4 h-4" />} label="Assistants">
-              {canEdit ? (
+            {/* Co-assignees */}
+            <FieldRow icon={<UserRoundCheck className="w-4 h-4" />} label="Co-assignees">
+              {canManage && canEdit ? (
               <Dropdown
                 trigger={
                   <span className="inline-flex max-w-full items-center gap-2 rounded-md px-2.5 py-1 text-sm hover:bg-muted/30 transition-colors">
@@ -939,7 +940,7 @@ export function TaskDetailPanel({
                         </span>
                       </>
                     ) : (
-                      <span className="text-muted-foreground">No assistants</span>
+                      <span className="text-muted-foreground">No co-assignees</span>
                     )}
                     <ChevronDown className="w-3 h-3 opacity-60 shrink-0" />
                   </span>
@@ -952,7 +953,7 @@ export function TaskDetailPanel({
                       onClick={(e) => { e.stopPropagation(); clearAssistants() }}
                       className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors text-muted-foreground"
                     >
-                      Clear assistants
+                      Clear co-assignees
                     </button>
                   )}
                   {availableAssistantMembers.map((m) => (
@@ -985,7 +986,7 @@ export function TaskDetailPanel({
                       </span>
                       <span className="truncate">{assistants.map((assistant) => assistant.user.name).join(', ')}</span>
                     </>
-                  ) : <span className="text-muted-foreground">No assistants</span>}
+                  ) : <span className="text-muted-foreground">No co-assignees</span>}
                 </span>
               )}
             </FieldRow>
@@ -1163,6 +1164,21 @@ export function TaskDetailPanel({
                       {task.parentTask.assignee.name}
                     </span>
                   )}
+                  {Boolean(task.parentTask.assistants?.length) && (
+                    <span className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <span className="flex -space-x-1">
+                        {task.parentTask.assistants!.slice(0, 3).map((assistant) => (
+                          <UserAvatar
+                            key={assistant.user.id}
+                            name={assistant.user.name}
+                            size="xs"
+                            className="ring-1 ring-background"
+                          />
+                        ))}
+                      </span>
+                      +{task.parentTask.assistants!.length} co-assignee{task.parentTask.assistants!.length === 1 ? '' : 's'}
+                    </span>
+                  )}
                 </button>
               </div>
             )}
@@ -1170,12 +1186,12 @@ export function TaskDetailPanel({
             <div>
               <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
                 <GitBranch className="w-3.5 h-3.5" />
-                Child tasks ({childTasks.length})
+                Subtasks ({childTasks.length})
               </h4>
 
               <div className="space-y-2">
                 {childTasks.length === 0 ? (
-                  <p className="text-sm text-muted-foreground/60 py-1">No child tasks yet.</p>
+                  <p className="text-sm text-muted-foreground/60 py-1">No subtasks yet.</p>
                 ) : (
                   childTasks.map((child) => {
                     const status = STATUS_CONFIG[child.status] || STATUS_CONFIG.IN_PROGRESS
@@ -1204,6 +1220,21 @@ export function TaskDetailPanel({
                                   {child.assignee.name}
                                 </span>
                               )}
+                              {Boolean(child.assistants?.length) && (
+                                <span className="inline-flex items-center gap-1">
+                                  <span className="flex -space-x-1">
+                                    {child.assistants!.slice(0, 3).map((assistant) => (
+                                      <UserAvatar
+                                        key={assistant.user.id}
+                                        name={assistant.user.name}
+                                        size="xs"
+                                        className="ring-1 ring-background"
+                                      />
+                                    ))}
+                                  </span>
+                                  +{child.assistants!.length} co-assignee{child.assistants!.length === 1 ? '' : 's'}
+                                </span>
+                              )}
                               {child.dueDate && (
                                 <span>{formatTaskDate(child.dueDate)}</span>
                               )}
@@ -1230,7 +1261,7 @@ export function TaskDetailPanel({
                     if (e.key === 'Enter') createChildTask()
                     if (e.key === 'Escape') setNewChildTitle('')
                   }}
-                  placeholder="Add child task"
+                  placeholder="Add subtask"
                   className="min-w-0 flex-1 rounded-lg border border-border/30 bg-muted/20 px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground/40 focus:border-primary/30"
                 />
                 <button
@@ -1238,7 +1269,7 @@ export function TaskDetailPanel({
                   onClick={createChildTask}
                   disabled={!newChildTitle.trim() || creatingChild}
                   className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-30"
-                  title="Create child task"
+                  title="Create subtask"
                 >
                   <Plus className="w-4 h-4" />
                 </button>

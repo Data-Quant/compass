@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import Link from 'next/link'
 import {
   Archive,
@@ -23,8 +23,10 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -35,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   Table,
   TableBody,
@@ -57,6 +60,7 @@ import type {
 } from './workspace-types'
 import {
   dateInputValue,
+  displayDueDate,
   isDoneTask,
   isTaskOverdue,
   overdueDays,
@@ -77,13 +81,11 @@ interface WorkspaceTaskTableProps {
   sortDirection: SortDirection
   selectedIds: Set<string>
   pendingTaskIds: Set<string>
-  collapsedProjectIds: Set<string>
   backlogCollapsed: boolean
   quickAddProjects: WorkspaceProject[]
   quickAddProjectId: string
   quickAdding: boolean
   onSort: (key: WorkspaceSortKey) => void
-  onToggleProject: (projectId: string) => void
   onToggleBacklog: () => void
   onToggleSelected: (taskId: string, selected: boolean) => void
   onToggleManySelected: (taskIds: string[], selected: boolean) => void
@@ -104,7 +106,9 @@ interface WorkspaceTaskTableProps {
 const PRIORITIES: WorkspacePriority[] = ['HIGH', 'MEDIUM', 'LOW']
 
 function canEditTask(project: WorkspaceProject, task: WorkspaceTask, viewerId: string) {
-  return project.canManage || task.assigneeId === viewerId
+  return project.canManage
+    || task.assigneeId === viewerId
+    || Boolean(task.assistants?.some((assistant) => assistant.user.id === viewerId))
 }
 
 const STATUS_CLASS: Record<string, string> = {
@@ -122,13 +126,11 @@ export function WorkspaceTaskTable({
   sortDirection,
   selectedIds,
   pendingTaskIds,
-  collapsedProjectIds,
   backlogCollapsed,
   quickAddProjects,
   quickAddProjectId,
   quickAdding,
   onSort,
-  onToggleProject,
   onToggleBacklog,
   onToggleSelected,
   onToggleManySelected,
@@ -140,6 +142,7 @@ export function WorkspaceTaskTable({
   onQuickAddProjectChange,
   onQuickAdd,
 }: WorkspaceTaskTableProps) {
+  const [openProjectId, setOpenProjectId] = useState<string | null>(null)
   const backlogItems = projectViews
     .flatMap(({ project, visibleBacklogTasks }) => visibleBacklogTasks.map((task) => ({ project, task })))
     .sort((left, right) => {
@@ -152,30 +155,55 @@ export function WorkspaceTaskTable({
       return ordered[0].id === left.task.id ? -1 : 1
     })
 
+  const orderedProjectViews = sortKey === 'project'
+    ? [...projectViews].sort((left, right) => {
+      const result = left.project.name.localeCompare(right.project.name, undefined, { sensitivity: 'base' })
+      return sortDirection === 'asc' ? result : -result
+    })
+    : projectViews
+
   return (
     <div className="space-y-4">
-      {projectViews.map((view) => (
-        <ProjectTaskGroup
-          key={view.project.id}
-          view={view}
-          viewerId={viewerId}
-          progressScopeLabel={progressScopeLabel}
-          sortKey={sortKey}
-          sortDirection={sortDirection}
-          selectedIds={selectedIds}
-          pendingTaskIds={pendingTaskIds}
-          collapsed={collapsedProjectIds.has(view.project.id)}
-          onSort={onSort}
-          onToggleProject={onToggleProject}
-          onToggleSelected={onToggleSelected}
-          onToggleManySelected={onToggleManySelected}
-          onPatchTask={onPatchTask}
-          onOpenTask={onOpenTask}
-          onFilterByAssignee={onFilterByAssignee}
-          onRenameProject={onRenameProject}
-          onArchiveProject={onArchiveProject}
-        />
-      ))}
+      {orderedProjectViews.length > 0 && (
+        <Card className="overflow-hidden border-border/60 shadow-sm">
+          <CardContent className="p-0">
+            <Table className="min-w-[980px]">
+              <TableHeader>
+                <TableRow>
+                  <SortableHead label="Project" sortKey="project" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-[30%] min-w-[290px]" />
+                  <SortableHead label="Tasks" sortKey="title" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-[28%] min-w-[280px]" />
+                  <SortableHead label="Deadline" sortKey="dueDate" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-[16%] min-w-[170px]" />
+                  <SortableHead label="Assignee" sortKey="assignee" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-[15%] min-w-[170px]" />
+                  <SortableHead label="Priority" sortKey="priority" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-[11%] min-w-[130px]" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {orderedProjectViews.map((view) => (
+                  <ProjectMatrixRow
+                    key={view.project.id}
+                    view={view}
+                    viewerId={viewerId}
+                    progressScopeLabel={progressScopeLabel}
+                    sortKey={sortKey}
+                    sortDirection={sortDirection}
+                    selectedIds={selectedIds}
+                    pendingTaskIds={pendingTaskIds}
+                    open={openProjectId === view.project.id}
+                    onOpenChange={(open) => setOpenProjectId(open ? view.project.id : null)}
+                    onToggleSelected={onToggleSelected}
+                    onToggleManySelected={onToggleManySelected}
+                    onPatchTask={onPatchTask}
+                    onOpenTask={onOpenTask}
+                    onFilterByAssignee={onFilterByAssignee}
+                    onRenameProject={onRenameProject}
+                    onArchiveProject={onArchiveProject}
+                  />
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       <BacklogGroup
         items={backlogItems}
@@ -202,7 +230,44 @@ export function WorkspaceTaskTable({
   )
 }
 
-function ProjectTaskGroup({
+interface WorkspaceTaskNode {
+  task: WorkspaceTask
+  children: WorkspaceTaskNode[]
+}
+
+export function buildWorkspaceTaskTree(tasks: WorkspaceTask[]): WorkspaceTaskNode[] {
+  const taskIds = new Set(tasks.map((task) => task.id))
+  const nodes = new Map(tasks.map((task) => [task.id, { task, children: [] as WorkspaceTaskNode[] }]))
+  const roots: WorkspaceTaskNode[] = []
+
+  const hasParentCycle = (task: WorkspaceTask) => {
+    const seen = new Set([task.id])
+    let parentId = task.parentTaskId
+    while (parentId && taskIds.has(parentId)) {
+      if (seen.has(parentId)) return true
+      seen.add(parentId)
+      parentId = nodes.get(parentId)?.task.parentTaskId
+    }
+    return false
+  }
+
+  for (const task of tasks) {
+    const node = nodes.get(task.id)!
+    const parent = task.parentTaskId ? nodes.get(task.parentTaskId) : undefined
+    if (parent && task.parentTaskId !== task.id && !hasParentCycle(task)) parent.children.push(node)
+    else roots.push(node)
+  }
+
+  return roots
+}
+
+export function taskAssignees(task: WorkspaceTask) {
+  const people = [task.assignee, ...(task.assistants || []).map((assistant) => assistant.user)]
+    .filter((person): person is NonNullable<typeof person> => Boolean(person))
+  return people.filter((person, index) => people.findIndex((candidate) => candidate.id === person.id) === index)
+}
+
+function ProjectMatrixRow({
   view,
   viewerId,
   progressScopeLabel,
@@ -210,9 +275,8 @@ function ProjectTaskGroup({
   sortDirection,
   selectedIds,
   pendingTaskIds,
-  collapsed,
-  onSort,
-  onToggleProject,
+  open,
+  onOpenChange,
   onToggleSelected,
   onToggleManySelected,
   onPatchTask,
@@ -228,9 +292,8 @@ function ProjectTaskGroup({
   sortDirection: SortDirection
   selectedIds: Set<string>
   pendingTaskIds: Set<string>
-  collapsed: boolean
-  onSort: (key: WorkspaceSortKey) => void
-  onToggleProject: (projectId: string) => void
+  open: boolean
+  onOpenChange: (open: boolean) => void
   onToggleSelected: (taskId: string, selected: boolean) => void
   onToggleManySelected: (taskIds: string[], selected: boolean) => void
   onPatchTask: WorkspaceTaskTableProps['onPatchTask']
@@ -241,155 +304,539 @@ function ProjectTaskGroup({
 }) {
   const { project, progress } = view
   const tasks = sortTasks(project, view.visibleActiveTasks, sortKey, sortDirection)
-  const taskIds = tasks.filter((task) => canEditTask(project, task, viewerId)).map((task) => task.id)
-  const selectedCount = taskIds.filter((id) => selectedIds.has(id)).length
-  const hasOverdue = project.tasks.some((task) => isTaskOverdue(project, task))
+  const taskTree = buildWorkspaceTaskTree(tasks)
+  const [expandedTaskIds, setExpandedTaskIds] = useState(new Set<string>())
+  const selectableTaskIds = tasks.filter((task) => canEditTask(project, task, viewerId)).map((task) => task.id)
+  const selectedCount = selectableTaskIds.filter((id) => selectedIds.has(id)).length
+  const hasOverdue = tasks.some((task) => isTaskOverdue(project, task))
   const band = progressBand(progress.percent)
-
   const progressText = progress.total === 0
     ? 'No tasks yet'
     : `${progressScopeLabel}: ${progress.completed}/${progress.total} · ${progress.percent}%`
+  const nearestDeadline = tasks
+    .map((task) => task.dueDate)
+    .filter((dueDate): dueDate is string => Boolean(dueDate))
+    .sort()[0] || null
+  const priorityOrder: Record<WorkspacePriority, number> = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 }
+  const highestPriority = tasks.reduce<WorkspacePriority | null>((current, task) => (
+    current === null || priorityOrder[task.priority] < priorityOrder[current] ? task.priority : current
+  ), null)
+  const assignedPeople = tasks
+    .flatMap(taskAssignees)
+    .filter((person, index, people) => people.findIndex((candidate) => candidate.id === person.id) === index)
+
+  const toggleTask = (taskId: string) => setExpandedTaskIds((current) => {
+    const next = new Set(current)
+    if (next.has(taskId)) next.delete(taskId)
+    else next.add(taskId)
+    return next
+  })
 
   return (
-    <Card
-      className="overflow-hidden border-border/60 shadow-sm"
-      style={{ borderLeftColor: project.color || undefined, borderLeftWidth: project.color ? 3 : undefined }}
-    >
-      <div className="flex flex-col gap-3 border-b border-border/50 bg-card/90 px-4 py-3 lg:flex-row lg:items-center">
+    <TableRow data-row-kind="project" className="bg-muted/20 hover:bg-muted/35">
+      <TableCell
+        className="py-2"
+        style={{ borderLeftColor: project.color || 'transparent', borderLeftStyle: 'solid', borderLeftWidth: 3 }}
+      >
         <div className="flex min-w-0 items-center gap-2">
+          <Checkbox
+            checked={selectableTaskIds.length > 0 && selectedCount === selectableTaskIds.length
+              ? true
+              : selectedCount > 0 ? 'indeterminate' : false}
+            onCheckedChange={(checked) => onToggleManySelected(selectableTaskIds, checked === true)}
+            aria-label={`Select all visible tasks in ${project.name}`}
+            disabled={selectableTaskIds.length === 0}
+          />
+
+          <Popover open={open} onOpenChange={onOpenChange}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                aria-expanded={open}
+                aria-label={`${open ? 'Close' : 'Open'} tasks for ${project.name}`}
+                className="group min-w-0 flex-1 rounded-md px-1.5 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <ChevronRight className={cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-90')} />
+                  <span className="truncate font-semibold text-foreground group-hover:text-primary">{project.name}</span>
+                  <Badge variant="outline" className={cn('shrink-0 text-[10px]', STATUS_CLASS[project.status])}>
+                    {project.status.replace('_', ' ')}
+                  </Badge>
+                  {hasOverdue && (
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full bg-red-500 shadow-[0_0_0_3px_rgba(239,68,68,0.14)]"
+                      title="This project has overdue tasks"
+                      role="img"
+                      aria-label="This project has overdue tasks"
+                    />
+                  )}
+                </div>
+                <div className="mt-1.5 flex max-w-sm items-center gap-2 pl-6">
+                  <div
+                    className={cn('h-1.5 min-w-0 flex-1 overflow-hidden rounded-full', band.track)}
+                    role="progressbar"
+                    aria-label={`${project.name} ${progressScopeLabel.toLocaleLowerCase()} progress`}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={progress.percent ?? 0}
+                    aria-valuetext={progressText}
+                  >
+                    <div className={cn('h-full rounded-full transition-[width] duration-300', band.fill)} style={{ width: `${progress.percent ?? 0}%` }} />
+                  </div>
+                  <span className={cn('whitespace-nowrap text-[10px] font-medium', band.text)}>{progressText}</span>
+                  {progress.percent === 100 && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" aria-label="Complete" />}
+                </div>
+              </button>
+            </PopoverTrigger>
+
+            <PopoverContent
+              align="start"
+              side="bottom"
+              sideOffset={8}
+              collisionPadding={16}
+              className="w-[min(96vw,1120px)] max-w-none overflow-hidden p-0"
+            >
+              <div className="flex items-center justify-between gap-4 border-b border-border/60 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="truncate font-semibold">{project.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {tasks.length} active {tasks.length === 1 ? 'task' : 'tasks'} · expand any task to see its subtasks
+                  </p>
+                </div>
+                <Badge variant="secondary" className="shrink-0">{selectedCount} selected</Badge>
+              </div>
+
+              {tasks.length === 0 ? (
+                <div className="px-5 py-10 text-center text-sm text-muted-foreground">
+                  {project.tasks.length === 0
+                    ? 'No tasks yet. Use the Backlog quick-add below to capture the first task.'
+                    : 'No active tasks match this view. Try another teammate, status, or search filter.'}
+                </div>
+              ) : (
+                <div className="max-h-[70vh] overflow-auto">
+                  <Table className="min-w-[920px]">
+                    <TableHeader className="sticky top-0 z-10 bg-popover">
+                      <TableRow>
+                        <TableHead className="min-w-[390px]">Task</TableHead>
+                        <TableHead className="w-44">Deadline</TableHead>
+                        <TableHead className="min-w-[230px]">Assignees</TableHead>
+                        <TableHead className="w-36">Priority</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {taskTree.map((node) => (
+                        <WorkspacePopupTaskRows
+                          key={node.task.id}
+                          node={node}
+                          depth={0}
+                          project={project}
+                          viewerId={viewerId}
+                          selectedIds={selectedIds}
+                          pendingTaskIds={pendingTaskIds}
+                          expandedTaskIds={expandedTaskIds}
+                          onToggleTask={toggleTask}
+                          onToggleSelected={onToggleSelected}
+                          onPatchTask={onPatchTask}
+                          onOpenTask={onOpenTask}
+                          onFilterByAssignee={onFilterByAssignee}
+                        />
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
+
+          <ProjectActions project={project} onRenameProject={onRenameProject} onArchiveProject={onArchiveProject} />
+        </div>
+      </TableCell>
+      <TableCell><Badge variant="secondary" className="font-normal">{tasks.length} active</Badge></TableCell>
+      <TableCell>
+        {nearestDeadline ? (
+          <div className="text-xs">
+            <p className="font-medium">{displayDueDate(nearestDeadline)}</p>
+            <p className="text-[10px] text-muted-foreground">{relativeDueDate(nearestDeadline)}</p>
+          </div>
+        ) : <span className="text-xs text-muted-foreground">No deadline</span>}
+      </TableCell>
+      <TableCell>
+        {assignedPeople.length > 0 ? (
+          <div className="flex items-center gap-2" title={assignedPeople.map((person) => person.name).join(', ')}>
+            <div className="flex -space-x-2">
+              {assignedPeople.slice(0, 3).map((person) => (
+                <UserAvatar key={person.id} name={person.name} size="xs" className="ring-2 ring-background" />
+              ))}
+            </div>
+            <span className="truncate text-xs">{assignedPeople.length === 1 ? assignedPeople[0].name : `${assignedPeople.length} people`}</span>
+          </div>
+        ) : <span className="text-xs text-muted-foreground">Unassigned</span>}
+      </TableCell>
+      <TableCell>
+        {highestPriority ? (
+          <Badge variant="outline" className={cn('font-normal', PRIORITY_CLASS[highestPriority])}>{PRIORITY_LABEL[highestPriority]}</Badge>
+        ) : <span className="text-xs text-muted-foreground">—</span>}
+      </TableCell>
+    </TableRow>
+  )
+}
+
+function ProjectActions({
+  project,
+  onRenameProject,
+  onArchiveProject,
+}: {
+  project: WorkspaceProject
+  onRenameProject: (project: WorkspaceProject) => void
+  onArchiveProject: (project: WorkspaceProject) => void
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label={`Project actions for ${project.name}`}>
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem asChild><Link href={`/projects/${project.id}`}>Open project</Link></DropdownMenuItem>
+        {project.canManage && (
+          <>
+            <DropdownMenuItem onSelect={() => onRenameProject(project)}><Pencil className="h-4 w-4" /> Rename</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => onArchiveProject(project)} className="text-red-600 focus:text-red-600 dark:text-red-300">
+              <Archive className="h-4 w-4" /> Archive
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function WorkspacePopupTaskRows({
+  node,
+  depth,
+  project,
+  viewerId,
+  selectedIds,
+  pendingTaskIds,
+  expandedTaskIds,
+  onToggleTask,
+  onToggleSelected,
+  onPatchTask,
+  onOpenTask,
+  onFilterByAssignee,
+}: {
+  node: WorkspaceTaskNode
+  depth: number
+  project: WorkspaceProject
+  viewerId: string
+  selectedIds: Set<string>
+  pendingTaskIds: Set<string>
+  expandedTaskIds: Set<string>
+  onToggleTask: (taskId: string) => void
+  onToggleSelected: (taskId: string, selected: boolean) => void
+  onPatchTask: WorkspaceTaskTableProps['onPatchTask']
+  onOpenTask: (projectId: string, taskId: string) => void
+  onFilterByAssignee: (assigneeId: string) => void
+}) {
+  const { task, children } = node
+  const expanded = children.length > 0 && expandedTaskIds.has(task.id)
+  return (
+    <Fragment>
+      <WorkspacePopupTaskRow
+        project={project}
+        task={task}
+        depth={depth}
+        childCount={children.length}
+        expanded={expanded}
+        viewerId={viewerId}
+        selected={selectedIds.has(task.id)}
+        pending={pendingTaskIds.has(task.id)}
+        onToggleChildren={() => onToggleTask(task.id)}
+        onToggleSelected={onToggleSelected}
+        onPatchTask={onPatchTask}
+        onOpenTask={onOpenTask}
+        onFilterByAssignee={onFilterByAssignee}
+      />
+      {expanded && children.map((child) => (
+        <WorkspacePopupTaskRows
+          key={child.task.id}
+          node={child}
+          depth={depth + 1}
+          project={project}
+          viewerId={viewerId}
+          selectedIds={selectedIds}
+          pendingTaskIds={pendingTaskIds}
+          expandedTaskIds={expandedTaskIds}
+          onToggleTask={onToggleTask}
+          onToggleSelected={onToggleSelected}
+          onPatchTask={onPatchTask}
+          onOpenTask={onOpenTask}
+          onFilterByAssignee={onFilterByAssignee}
+        />
+      ))}
+    </Fragment>
+  )
+}
+
+function WorkspacePopupTaskRow({
+  project,
+  task,
+  depth,
+  childCount,
+  expanded,
+  viewerId,
+  selected,
+  pending,
+  onToggleChildren,
+  onToggleSelected,
+  onPatchTask,
+  onOpenTask,
+  onFilterByAssignee,
+}: {
+  project: WorkspaceProject
+  task: WorkspaceTask
+  depth: number
+  childCount: number
+  expanded: boolean
+  viewerId: string
+  selected: boolean
+  pending: boolean
+  onToggleChildren: () => void
+  onToggleSelected: (taskId: string, selected: boolean) => void
+  onPatchTask: WorkspaceTaskTableProps['onPatchTask']
+  onOpenTask: (projectId: string, taskId: string) => void
+  onFilterByAssignee: (assigneeId: string) => void
+}) {
+  const done = isDoneTask(project, task)
+  const overdue = isTaskOverdue(project, task)
+  const lateDays = overdueDays(project, task)
+  const canEdit = canEditTask(project, task, viewerId)
+
+  const toggleDone = async (checked: boolean) => {
+    const section = sectionForColumn(project, checked ? 'DONE' : 'TODO')
+    if (!section) {
+      toast.error(`No ${checked ? 'Done' : 'To Do'} status is configured for ${project.name}`)
+      return
+    }
+    await onPatchTask(project.id, task.id, { sectionId: section.id }, {
+      sectionId: section.id,
+      section,
+      status: section.canonicalStatus,
+      completedLate: checked && overdue ? true : task.completedLate,
+    })
+  }
+
+  return (
+    <TableRow
+      data-row-kind="task"
+      data-task-depth={depth}
+      data-parent-task-id={task.parentTaskId || undefined}
+      data-state={selected ? 'selected' : undefined}
+      className={cn('bg-popover', overdue && 'bg-red-500/[0.07] hover:bg-red-500/[0.11]', pending && 'opacity-65')}
+    >
+      <TableCell style={{ paddingLeft: `${12 + depth * 24}px` }}>
+        <div className="flex min-w-0 items-center gap-2">
+          {childCount > 0 ? (
+            <button
+              type="button"
+              onClick={onToggleChildren}
+              aria-expanded={expanded}
+              aria-label={`${expanded ? 'Collapse' : 'Expand'} subtasks for ${task.title}`}
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ChevronRight className={cn('h-4 w-4 transition-transform', expanded && 'rotate-90')} />
+            </button>
+          ) : <span className="h-7 w-7 shrink-0" aria-hidden="true" />}
+          <Checkbox checked={selected} onCheckedChange={(checked) => onToggleSelected(task.id, checked === true)} aria-label={`Select ${task.title}`} disabled={pending || !canEdit} />
+          <Checkbox
+            checked={done}
+            onCheckedChange={(checked) => void toggleDone(checked === true)}
+            aria-label={`Mark ${task.title} ${done ? 'incomplete' : 'complete'}`}
+            disabled={pending || !canEdit}
+            className="h-5 w-5 rounded-full"
+          />
+          {depth > 0 && <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Subtask" />}
+          <InlineTitle project={project} task={task} pending={pending || !canEdit} onPatchTask={onPatchTask} />
+          {childCount > 0 && <Badge variant="secondary" className="shrink-0 px-1.5 text-[9px]">{childCount}</Badge>}
+          {task.completedLate && (
+            <Badge variant="outline" className="shrink-0 border-orange-500/20 bg-orange-500/10 text-[10px] text-orange-600 dark:text-orange-300">Completed late</Badge>
+          )}
           <button
             type="button"
-            onClick={() => onToggleProject(project.id)}
-            aria-expanded={!collapsed}
-            aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${project.name}`}
+            onClick={() => onOpenTask(project.id, task.id)}
             className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={`Open notes and details for ${task.title}`}
+            title={plainTextPreview(task.description) || 'Open notes and details'}
           >
-            <ChevronRight className={cn('h-4 w-4 transition-transform', !collapsed && 'rotate-90')} />
+            <FileText className="h-3.5 w-3.5" />
           </button>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <Link
-                href={`/projects/${project.id}`}
-                className="truncate font-semibold text-foreground underline-offset-4 hover:text-primary hover:underline"
-              >
-                {project.name}
-              </Link>
-              <Badge variant="outline" className={cn('text-[10px]', STATUS_CLASS[project.status])}>
-                {project.status.replace('_', ' ')}
-              </Badge>
-            </div>
-            {project.description && (
-              <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{project.description}</p>
-            )}
+        </div>
+      </TableCell>
+      <TableCell>
+        <div className="space-y-1">
+          <Input
+            type="date"
+            value={dateInputValue(task.dueDate)}
+            onChange={(event) => void onPatchTask(project.id, task.id, { dueDate: event.target.value || null }, { dueDate: event.target.value || null })}
+            aria-label={`Due date for ${task.title}`}
+            disabled={pending || !canEdit}
+            className={cn('h-8 min-w-[142px] border-transparent bg-transparent px-2 text-xs shadow-none hover:border-border focus:border-border', overdue && 'font-semibold text-red-600 dark:text-red-300')}
+          />
+          <div className="flex min-h-4 items-center gap-1.5 px-2">
+            <span className={cn('text-[10px] text-muted-foreground', overdue && 'font-semibold text-red-600 dark:text-red-300')}>{relativeDueDate(task.dueDate)}</span>
+            {overdue && <Badge className="border border-red-500/20 bg-red-500/10 px-1.5 py-0 text-[9px] text-red-600 hover:bg-red-500/10 dark:text-red-300">{lateDays}d overdue</Badge>}
           </div>
         </div>
+      </TableCell>
+      <TableCell>
+        <TaskAssignees
+          project={project}
+          task={task}
+          pending={pending}
+          onPatchTask={onPatchTask}
+          onFilterByAssignee={onFilterByAssignee}
+        />
+      </TableCell>
+      <TableCell>
+        <Select
+          value={task.priority}
+          onValueChange={(value) => void onPatchTask(project.id, task.id, { priority: value as WorkspacePriority }, { priority: value as WorkspacePriority })}
+          disabled={pending || !canEdit}
+        >
+          <SelectTrigger aria-label={`Priority for ${task.title}`} className={cn('h-8 border px-2 text-xs shadow-none', PRIORITY_CLASS[task.priority])}><SelectValue /></SelectTrigger>
+          <SelectContent>{PRIORITIES.map((priority) => <SelectItem key={priority} value={priority}>{PRIORITY_LABEL[priority]}</SelectItem>)}</SelectContent>
+        </Select>
+      </TableCell>
+    </TableRow>
+  )
+}
 
-        <div className="flex min-w-0 flex-1 items-center gap-2 lg:ml-auto lg:max-w-xl">
-          <div className="min-w-0 flex-1">
-            <div className="mb-1 flex items-center justify-between gap-2 text-xs">
-              <span className={cn('truncate font-medium', band.text)}>{progressText}</span>
-              {progress.percent === 100 && <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" aria-label="Complete" />}
-            </div>
-            <div
-              className={cn('h-2 overflow-hidden rounded-full', band.track)}
-              role="progressbar"
-              aria-label={`${project.name} ${progressScopeLabel.toLocaleLowerCase()} progress`}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={progress.percent ?? 0}
-              aria-valuetext={progressText}
-            >
-              <div
-                className={cn('h-full rounded-full transition-[width] duration-300', band.fill)}
-                style={{ width: `${progress.percent ?? 0}%` }}
-              />
-            </div>
-          </div>
-          {hasOverdue && (
-            <span
-              className="h-2.5 w-2.5 shrink-0 rounded-full bg-red-500 shadow-[0_0_0_3px_rgba(239,68,68,0.14)]"
-              title="This project has overdue tasks"
-              role="img"
-              aria-label="This project has overdue tasks"
-            />
-          )}
-          {project.canManage && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label={`Manage ${project.name}`}>
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem asChild>
-                  <Link href={`/projects/${project.id}`}>Open project</Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => onRenameProject(project)}>
-                  <Pencil className="h-4 w-4" /> Rename
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={() => onArchiveProject(project)} className="text-red-600 focus:text-red-600 dark:text-red-300">
-                  <Archive className="h-4 w-4" /> Archive
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </div>
+function TaskAssignees({
+  project,
+  task,
+  pending,
+  onPatchTask,
+  onFilterByAssignee,
+}: {
+  project: WorkspaceProject
+  task: WorkspaceTask
+  pending: boolean
+  onPatchTask: WorkspaceTaskTableProps['onPatchTask']
+  onFilterByAssignee: (assigneeId: string) => void
+}) {
+  const assignedPeople = taskAssignees(task)
+  const projectPeople = [project.owner, ...project.members]
+    .filter((person, index, people) => people.findIndex((candidate) => candidate.id === person.id) === index)
+  const assignedIds = new Set(assignedPeople.map((person) => person.id))
+
+  const summary = assignedPeople.length === 0 ? (
+    <span className="text-xs text-muted-foreground">Unassigned</span>
+  ) : (
+    <span className="flex min-w-0 items-center gap-2">
+      <span className="flex shrink-0 -space-x-1.5">
+        {assignedPeople.slice(0, 3).map((person) => (
+          <UserAvatar key={person.id} name={person.name} size="xs" className="ring-2 ring-background" />
+        ))}
+      </span>
+      <span className="truncate text-xs">
+        {assignedPeople.length === 1 ? assignedPeople[0].name : `${assignedPeople.length} people`}
+      </span>
+    </span>
+  )
+
+  if (!project.canManage) {
+    if (assignedPeople.length === 0) return summary
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {assignedPeople.map((person, index) => (
+          <button
+            key={person.id}
+            type="button"
+            onClick={() => onFilterByAssignee(person.id)}
+            className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/70 bg-background px-2 py-1 text-[11px] transition-colors hover:border-primary/30 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={`Show tasks assigned to ${person.name}`}
+            title={`${index === 0 && task.assignee?.id === person.id ? 'Primary assignee' : 'Co-assignee'}: ${person.name}`}
+          >
+            <UserAvatar name={person.name} size="xs" />
+            <span className="max-w-28 truncate">{person.name}</span>
+          </button>
+        ))}
       </div>
+    )
+  }
 
-      {!collapsed && (
-        <CardContent className="p-0">
-          {tasks.length === 0 ? (
-            <div className="px-5 py-8 text-center">
-              <p className="text-sm font-medium text-foreground">
-                {project.tasks.length === 0 ? 'No tasks yet' : 'No active tasks in this view'}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {project.tasks.length === 0 ? 'Use the Backlog quick-add below to capture the first task.' : 'Try another assignee, status, or search filter.'}
-              </p>
-            </div>
-          ) : (
-            <Table className="min-w-[1060px]">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">
-                    <Checkbox
-                      checked={taskIds.length > 0 && selectedCount === taskIds.length ? true : selectedCount > 0 ? 'indeterminate' : false}
-                      onCheckedChange={(checked) => onToggleManySelected(taskIds, checked === true)}
-                      aria-label={`Select all tasks in ${project.name}`}
-                      disabled={taskIds.length === 0}
-                    />
-                  </TableHead>
-                  <SortableHead label="Done" sortKey="status" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-20" />
-                  <SortableHead label="Task" sortKey="title" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="min-w-[260px]" />
-                  <SortableHead label="Priority" sortKey="priority" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-36" />
-                  <SortableHead label="Due date" sortKey="dueDate" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-44" />
-                  <SortableHead label="Variance" sortKey="variance" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-32" />
-                  <SortableHead label="Assignee" sortKey="assignee" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-48" />
-                  <SortableHead label="Notes" sortKey="notes" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="min-w-[220px]" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tasks.map((task) => (
-                  <WorkspaceTaskRow
-                    key={task.id}
-                    project={project}
-                    task={task}
-                    viewerId={viewerId}
-                    selected={selectedIds.has(task.id)}
-                    pending={pendingTaskIds.has(task.id)}
-                    onToggleSelected={onToggleSelected}
-                    onPatchTask={onPatchTask}
-                    onOpenTask={onOpenTask}
-                    onFilterByAssignee={onFilterByAssignee}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      )}
-    </Card>
+  const togglePerson = (personId: string) => {
+    const currentAssistantIds = (task.assistants || []).map((assistant) => assistant.user.id)
+    let assigneeId = task.assigneeId
+    let assistantIds = [...currentAssistantIds]
+
+    if (personId === task.assigneeId) {
+      assigneeId = assistantIds[0] || null
+      assistantIds = assistantIds.slice(1)
+    } else if (assistantIds.includes(personId)) {
+      assistantIds = assistantIds.filter((id) => id !== personId)
+    } else if (!assigneeId) {
+      assigneeId = personId
+    } else {
+      assistantIds.push(personId)
+    }
+
+    const assignee = projectPeople.find((person) => person.id === assigneeId) || null
+    const existingAssistants = new Map((task.assistants || []).map((assistant) => [assistant.user.id, assistant]))
+    const assistants = assistantIds.flatMap((id) => {
+      const person = projectPeople.find((candidate) => candidate.id === id)
+      if (!person) return []
+      return [existingAssistants.get(id) || {
+        id: `optimistic-${task.id}-${id}`,
+        user: person,
+      }]
+    })
+
+    void onPatchTask(
+      project.id,
+      task.id,
+      { assigneeId, assistantIds },
+      { assigneeId, assignee, assistants },
+    )
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-auto min-h-8 w-full justify-start px-2 py-1 font-normal"
+          aria-label={`Edit assignees for ${task.title}`}
+          disabled={pending}
+        >
+          {summary}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-60">
+        <DropdownMenuLabel>Assigned people</DropdownMenuLabel>
+        {projectPeople.map((person) => (
+          <DropdownMenuCheckboxItem
+            key={person.id}
+            checked={assignedIds.has(person.id)}
+            disabled={pending}
+            onSelect={(event) => {
+              event.preventDefault()
+              togglePerson(person.id)
+            }}
+            className="gap-2"
+          >
+            <UserAvatar name={person.name} size="xs" />
+            <span className="min-w-0 flex-1 truncate">{person.name}</span>
+            {task.assigneeId === person.id && (
+              <Badge variant="outline" className="ml-auto px-1.5 text-[9px]">Primary</Badge>
+            )}
+          </DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -421,160 +868,6 @@ function SortableHead({
         <Icon className={cn('h-3.5 w-3.5', !active && 'opacity-45')} />
       </button>
     </TableHead>
-  )
-}
-
-function WorkspaceTaskRow({
-  project,
-  task,
-  viewerId,
-  selected,
-  pending,
-  onToggleSelected,
-  onPatchTask,
-  onOpenTask,
-  onFilterByAssignee,
-}: {
-  project: WorkspaceProject
-  task: WorkspaceTask
-  viewerId: string
-  selected: boolean
-  pending: boolean
-  onToggleSelected: (taskId: string, selected: boolean) => void
-  onPatchTask: WorkspaceTaskTableProps['onPatchTask']
-  onOpenTask: (projectId: string, taskId: string) => void
-  onFilterByAssignee: (assigneeId: string) => void
-}) {
-  const done = isDoneTask(project, task)
-  const overdue = isTaskOverdue(project, task)
-  const lateDays = overdueDays(project, task)
-  const canEdit = canEditTask(project, task, viewerId)
-
-  const toggleDone = async (checked: boolean) => {
-    const section = sectionForColumn(project, checked ? 'DONE' : 'TODO')
-    if (!section) {
-      toast.error(`No ${checked ? 'Done' : 'To Do'} status is configured for ${project.name}`)
-      return
-    }
-    await onPatchTask(
-      project.id,
-      task.id,
-      { sectionId: section.id },
-      {
-        sectionId: section.id,
-        section,
-        status: section.canonicalStatus,
-        completedLate: checked && overdue ? true : task.completedLate,
-      },
-    )
-  }
-
-  return (
-    <TableRow
-      data-state={selected ? 'selected' : undefined}
-      className={cn(overdue && 'bg-red-500/[0.07] hover:bg-red-500/[0.11]', pending && 'opacity-65')}
-    >
-      <TableCell>
-        <Checkbox
-          checked={selected}
-          onCheckedChange={(checked) => onToggleSelected(task.id, checked === true)}
-          aria-label={`Select ${task.title}`}
-          disabled={pending || !canEdit}
-        />
-      </TableCell>
-      <TableCell>
-        <Checkbox
-          checked={done}
-          onCheckedChange={(checked) => void toggleDone(checked === true)}
-          aria-label={`Mark ${task.title} ${done ? 'incomplete' : 'complete'}`}
-          disabled={pending || !canEdit}
-          className="h-5 w-5 rounded-full"
-        />
-      </TableCell>
-      <TableCell>
-        <div className="flex min-w-0 items-center gap-2">
-          {task.parentTaskId && <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Child task" />}
-          <InlineTitle project={project} task={task} pending={pending || !canEdit} onPatchTask={onPatchTask} />
-          {task.completedLate && (
-            <Badge variant="outline" className="shrink-0 border-orange-500/20 bg-orange-500/10 text-[10px] text-orange-600 dark:text-orange-300">
-              Completed late
-            </Badge>
-          )}
-        </div>
-      </TableCell>
-      <TableCell>
-        <Select
-          value={task.priority}
-          onValueChange={(value) => void onPatchTask(
-            project.id,
-            task.id,
-            { priority: value as WorkspacePriority },
-            { priority: value as WorkspacePriority },
-          )}
-          disabled={pending || !canEdit}
-        >
-          <SelectTrigger aria-label={`Priority for ${task.title}`} className={cn('h-8 border px-2 text-xs shadow-none', PRIORITY_CLASS[task.priority])}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {PRIORITIES.map((priority) => (
-              <SelectItem key={priority} value={priority}>{PRIORITY_LABEL[priority]}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </TableCell>
-      <TableCell>
-        <div className="space-y-0.5">
-          <Input
-            type="date"
-            value={dateInputValue(task.dueDate)}
-            onChange={(event) => void onPatchTask(
-              project.id,
-              task.id,
-              { dueDate: event.target.value || null },
-              { dueDate: event.target.value || null },
-            )}
-            aria-label={`Due date for ${task.title}`}
-            disabled={pending || !canEdit}
-            className={cn('h-8 min-w-[142px] border-transparent bg-transparent px-2 text-xs shadow-none hover:border-border focus:border-border', overdue && 'font-semibold text-red-600 dark:text-red-300')}
-          />
-          <p className={cn('px-2 text-[10px] text-muted-foreground', overdue && 'font-semibold text-red-600 dark:text-red-300')}>
-            {relativeDueDate(task.dueDate)}
-          </p>
-        </div>
-      </TableCell>
-      <TableCell>
-        {overdue ? (
-          <Badge className="whitespace-nowrap border border-red-500/20 bg-red-500/10 text-red-600 hover:bg-red-500/10 dark:text-red-300">
-            Overdue · {lateDays}d
-          </Badge>
-        ) : task.completedLate ? (
-          <span className="text-xs text-orange-600 dark:text-orange-300">Completed late</span>
-        ) : (
-          <span className="text-xs text-muted-foreground">On track</span>
-        )}
-      </TableCell>
-      <TableCell>
-        <AssigneeCell
-          project={project}
-          task={task}
-          pending={pending}
-          onPatchTask={onPatchTask}
-          onFilterByAssignee={onFilterByAssignee}
-        />
-      </TableCell>
-      <TableCell>
-        <button
-          type="button"
-          onClick={() => onOpenTask(project.id, task.id)}
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={`Open notes and details for ${task.title}`}
-        >
-          <FileText className="h-3.5 w-3.5 shrink-0" />
-          <span className="line-clamp-2">{plainTextPreview(task.description) || 'Add notes'}</span>
-        </button>
-      </TableCell>
-    </TableRow>
   )
 }
 
@@ -638,44 +931,14 @@ function AssigneeCell({
   onPatchTask: WorkspaceTaskTableProps['onPatchTask']
   onFilterByAssignee: (assigneeId: string) => void
 }) {
-  if (!project.canManage) {
-    return task.assignee ? (
-      <button
-        type="button"
-        onClick={() => onFilterByAssignee(task.assigneeId!)}
-        className="inline-flex max-w-full items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors hover:bg-muted hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label={`Show tasks assigned to ${task.assignee.name}`}
-        title={`Filter by ${task.assignee.name}`}
-      >
-        <UserAvatar name={task.assignee.name} size="xs" />
-        <span className="truncate">{task.assignee.name}</span>
-      </button>
-    ) : <span className="text-xs text-muted-foreground">Unassigned</span>
-  }
-
-  const people = [project.owner, ...project.members]
-    .filter((person, index, list) => list.findIndex((candidate) => candidate.id === person.id) === index)
-
   return (
-    <Select
-      value={task.assigneeId || '__UNASSIGNED__'}
-      onValueChange={(value) => {
-        const assigneeId = value === '__UNASSIGNED__' ? null : value
-        const assignee = people.find((person) => person.id === assigneeId) || null
-        void onPatchTask(project.id, task.id, { assigneeId }, { assigneeId, assignee })
-      }}
-      disabled={pending}
-    >
-      <SelectTrigger aria-label={`Assignee for ${task.title}`} className="h-8 border-transparent bg-transparent px-2 text-xs shadow-none hover:border-border">
-        <SelectValue placeholder="Unassigned" />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="__UNASSIGNED__">Unassigned</SelectItem>
-        {people.map((person) => (
-          <SelectItem key={person.id} value={person.id}>{person.name}</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <TaskAssignees
+      project={project}
+      task={task}
+      pending={pending}
+      onPatchTask={onPatchTask}
+      onFilterByAssignee={onFilterByAssignee}
+    />
   )
 }
 

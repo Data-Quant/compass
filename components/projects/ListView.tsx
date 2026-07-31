@@ -16,6 +16,7 @@ import {
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
+import { isTaskAssignedTo } from '@/lib/project-progress'
 import { SectionGroup } from './SectionGroup'
 import type { PanelTask, ProjectStatusSection } from './TaskDetailPanel'
 import { TaskRow } from './TaskRow'
@@ -66,7 +67,7 @@ export function ListView({ projectId, tasks, sections, viewerId, canManage, onTa
   }, [sections])
 
   const activeTask = activeId ? localTasks.find((task) => task.id === activeId) : null
-  const canEditTask = (task: PanelTask) => canManage || task.assigneeId === viewerId
+  const canEditTask = (task: PanelTask) => canManage || isTaskAssignedTo(task, viewerId)
 
   const getTargetSectionId = (overId: string, sourceTasks = localTasks) => {
     const containerSectionId = parseSectionContainerId(overId)

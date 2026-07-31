@@ -10,6 +10,7 @@ import {
   isTaskOverdue,
   progressBand,
   sortTasks,
+  taskMatchesAssignee,
   taskMatchesSearch,
 } from '../components/projects/workspace-utils'
 
@@ -117,6 +118,18 @@ test('search includes rich notes as well as task titles', () => {
   assert.equal(taskMatchesSearch(candidate, 'materials'), true)
   assert.equal(taskMatchesSearch(candidate, 'investment committee'), true)
   assert.equal(taskMatchesSearch(candidate, 'payroll'), false)
+})
+
+test('assignee filtering includes primary and co-assigned people', () => {
+  const candidate = task({
+    id: 'shared',
+    title: 'Shared task',
+    assistants: [{ id: 'assistant-link', user: { id: 'u2', name: 'Hira' } }],
+  })
+
+  assert.equal(taskMatchesAssignee(candidate, 'u1', 'viewer'), true)
+  assert.equal(taskMatchesAssignee(candidate, 'u2', 'viewer'), true)
+  assert.equal(taskMatchesAssignee(candidate, 'u3', 'viewer'), false)
 })
 
 test('variance excludes backlog and completed tasks, and progress bands meet the specification', () => {

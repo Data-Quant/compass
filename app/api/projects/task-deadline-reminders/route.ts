@@ -30,6 +30,7 @@ type PendingTask = {
   section: { name: string } | null
   project: { id: string; name: string }
   assignee: { id: string; name: string; email: string | null } | null
+  assistants: Array<{ user: { id: string; name: string; email: string | null } }>
 }
 
 function normalizeBaseUrl(value: string | null | undefined) {
@@ -172,12 +173,21 @@ async function runProjectTaskDeadlineReminders(input: {
   const tasks = await prisma.task.findMany({
     where: {
       status: { not: 'DONE' },
-      assigneeId: { not: null },
       dueDate: dueDateFilter,
       project: { status: 'ACTIVE' },
-      OR: [
-        { sectionId: null },
-        { section: { is: { isBacklog: false } } },
+      AND: [
+        {
+          OR: [
+            { assigneeId: { not: null } },
+            { assistants: { some: {} } },
+          ],
+        },
+        {
+          OR: [
+            { sectionId: null },
+            { section: { is: { isBacklog: false } } },
+          ],
+        },
       ],
     },
     select: {
@@ -189,6 +199,9 @@ async function runProjectTaskDeadlineReminders(input: {
       section: { select: { name: true } },
       project: { select: { id: true, name: true } },
       assignee: { select: { id: true, name: true, email: true } },
+      assistants: {
+        select: { user: { select: { id: true, name: true, email: true } } },
+      },
     },
     orderBy: [{ dueDate: 'asc' }, { priority: 'desc' }, { createdAt: 'asc' }],
   })
@@ -197,19 +210,26 @@ async function runProjectTaskDeadlineReminders(input: {
   let skipped = 0
 
   for (const task of tasks as PendingTask[]) {
-    if (!task.assignee?.email?.trim()) {
-      skipped += 1
-      continue
-    }
+    const assignedPeople = [
+      ...(task.assignee ? [task.assignee] : []),
+      ...(task.assistants || []).map((assistant) => assistant.user),
+    ].filter((person, index, people) => people.findIndex((candidate) => candidate.id === person.id) === index)
 
-    const existing = tasksByAssignee.get(task.assignee.id)
-    if (existing) {
-      existing.tasks.push(task)
-    } else {
-      tasksByAssignee.set(task.assignee.id, {
-        assignee: task.assignee,
-        tasks: [task],
-      })
+    for (const person of assignedPeople) {
+      if (!person.email?.trim()) {
+        skipped += 1
+        continue
+      }
+
+      const existing = tasksByAssignee.get(person.id)
+      if (existing) {
+        existing.tasks.push(task)
+      } else {
+        tasksByAssignee.set(person.id, {
+          assignee: person,
+          tasks: [task],
+        })
+      }
     }
   }
 

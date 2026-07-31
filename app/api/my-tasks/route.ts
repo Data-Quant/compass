@@ -35,9 +35,14 @@ export async function GET(request: NextRequest) {
     const sort = parseSort(searchParams.get('sort'))
 
     const where: any = {
-      assigneeId: user.id,
       project: accessibleProjectsWhere(user),
       AND: [
+        {
+          OR: [
+            { assigneeId: user.id },
+            { assistants: { some: { userId: user.id } } },
+          ],
+        },
         {
           OR: [
             { sectionId: null },

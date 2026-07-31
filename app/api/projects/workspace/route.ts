@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { accessibleProjectsWhere, resolveProjectCapabilities } from '@/lib/project-access'
-import { calculateProjectProgress, calculateTaskVariance } from '@/lib/project-progress'
+import { calculateProjectProgress, calculateTaskVariance, isTaskAssignedTo } from '@/lib/project-progress'
 import { PROJECT_TASK_INCLUDE } from '@/lib/project-task-data'
 
 export async function GET() {
@@ -70,7 +70,7 @@ export async function GET() {
         variance: calculateTaskVariance(task),
       }))
       const visibleTasks = scopedAssigneeId
-        ? taskRows.filter((task) => task.assigneeId === scopedAssigneeId)
+        ? taskRows.filter((task) => isTaskAssignedTo(task, scopedAssigneeId))
         : taskRows
 
       return {

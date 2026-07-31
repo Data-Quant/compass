@@ -146,9 +146,9 @@ export async function sendTaskAssignmentNotification(input: {
     if (!email || email.toLowerCase() === actorEmail) continue
 
     try {
-      const label = input.context === 'assistant' ? 'added you as an assistant on' : 'assigned you to'
+      const label = input.context === 'assistant' ? 'added you as a co-assignee on' : 'assigned you to'
       const subject = `Compass task: ${task.title}`
-      const heading = input.context === 'assistant' ? 'Task assistant added' : 'Task assigned'
+      const heading = input.context === 'assistant' ? 'Task co-assignee added' : 'Task assigned'
       const bodyHtml = `
           <p>${escapeHtml(actor?.name || 'A teammate')} ${label} <strong>${escapeHtml(task.title)}</strong>.</p>
           <p><strong>Project:</strong> ${escapeHtml(task.project.name)}</p>
@@ -206,6 +206,9 @@ export async function sendTaskActivityNotification(input: {
         },
       },
       assignee: { select: { id: true, name: true, email: true } },
+      assistants: {
+        select: { user: { select: { id: true, name: true, email: true } } },
+      },
     },
   })
 
@@ -217,6 +220,9 @@ export async function sendTaskActivityNotification(input: {
   const actorEmail = actor?.email?.trim().toLowerCase()
   const recipientsById = new Map<string, { id: string; name: string | null; email: string | null }>()
   if (task.assignee?.id) recipientsById.set(task.assignee.id, task.assignee)
+  for (const assistant of task.assistants || []) {
+    recipientsById.set(assistant.user.id, assistant.user)
+  }
   recipientsById.set(task.project.owner.id, task.project.owner)
   const recipients = [...recipientsById.values()].filter((recipient) => {
     const email = recipient.email?.trim().toLowerCase()
@@ -285,51 +291,65 @@ export async function sendChildTaskCompletedNotification(taskId: string, origin?
           id: true,
           title: true,
           assignee: { select: { id: true, name: true, email: true } },
+          assistants: {
+            select: { user: { select: { id: true, name: true, email: true } } },
+          },
         },
       },
     },
   })
 
   const parentTask = childTask?.parentTask
-  const parentAssignee = parentTask?.assignee
-  const recipientEmail = parentAssignee?.email?.trim()
-  if (!childTask || !parentTask || !parentAssignee || !recipientEmail) {
-    return { success: false, skipped: true, reason: 'No parent assignee email found' }
+  if (!childTask || !parentTask) {
+    return { success: false, skipped: true, reason: 'No parent task found' }
+  }
+  const recipients = [
+    ...(parentTask.assignee ? [parentTask.assignee] : []),
+    ...(parentTask.assistants || []).map((assistant) => assistant.user),
+  ].filter((recipient, index, people) => (
+    Boolean(recipient.email?.trim())
+    && people.findIndex((candidate) => candidate.id === recipient.id) === index
+  ))
+  if (recipients.length === 0) {
+    return { success: false, skipped: true, reason: 'No parent task recipient email found' }
   }
 
   const projectUrl = `${getAppBaseUrl(origin)}/projects/${encodeURIComponent(childTask.project.id)}`
-  const subject = `Child task completed: ${childTask.title}`
-  const heading = 'Child Task Completed'
+  const subject = `Subtask completed: ${childTask.title}`
+  const heading = 'Subtask Completed'
   const bodyHtml = `
-      <p>The child task <strong>${escapeHtml(childTask.title)}</strong> has been completed.</p>
+      <p>The subtask <strong>${escapeHtml(childTask.title)}</strong> has been completed.</p>
       <p><strong>Parent task:</strong> ${escapeHtml(parentTask.title)}</p>
       <p><strong>Project:</strong> ${escapeHtml(childTask.project.name)}</p>
   `
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #111827; line-height: 1.5;">
-      <h2 style="color: #2563eb; margin-bottom: 8px;">Child Task Completed</h2>
-      <p>Hi ${escapeHtml(parentAssignee.name || 'there')},</p>
-      ${bodyHtml}
-      <p>
-        <a href="${projectUrl}" style="display: inline-block; background: #4f46e5; color: #ffffff; padding: 10px 14px; border-radius: 8px; text-decoration: none;">
-          Open project in Compass
-        </a>
-      </p>
-    </div>
-  `
+  const results = await Promise.all(recipients.map(async (recipient) => {
+    const email = recipient.email!.trim()
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #111827; line-height: 1.5;">
+        <h2 style="color: #2563eb; margin-bottom: 8px;">Subtask Completed</h2>
+        <p>Hi ${escapeHtml(recipient.name || 'there')},</p>
+        ${bodyHtml}
+        <p>
+          <a href="${projectUrl}" style="display: inline-block; background: #4f46e5; color: #ffffff; padding: 10px 14px; border-radius: 8px; text-decoration: none;">
+            Open project in Compass
+          </a>
+        </p>
+      </div>
+    `
+    const info = await queueOrSendProjectNotification({
+      recipient,
+      type: 'CHILD_TASK_COMPLETED',
+      projectId: childTask.project.id,
+      taskId: childTask.id,
+      subject,
+      heading,
+      bodyHtml,
+      actionUrl: projectUrl,
+      actionLabel: 'Open project in Compass',
+      sendNow: () => sendMail(email, subject, html),
+    })
+    return { userId: recipient.id, messageId: info.messageId, queued: info.queued }
+  }))
 
-  const info = await queueOrSendProjectNotification({
-    recipient: parentAssignee,
-    type: 'CHILD_TASK_COMPLETED',
-    projectId: childTask.project.id,
-    taskId: childTask.id,
-    subject,
-    heading,
-    bodyHtml,
-    actionUrl: projectUrl,
-    actionLabel: 'Open project in Compass',
-    sendNow: () => sendMail(recipientEmail, subject, html),
-  })
-
-  return { success: true, messageId: info.messageId, queued: info.queued }
+  return { success: true, results }
 }

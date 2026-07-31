@@ -62,7 +62,9 @@ export function assigneeIdForFilter(filter: AssigneeFilter, viewerId: string) {
 
 export function taskMatchesAssignee(task: WorkspaceTask, filter: AssigneeFilter, viewerId: string) {
   const assigneeId = assigneeIdForFilter(filter, viewerId)
-  return assigneeId === null || task.assigneeId === assigneeId
+  return assigneeId === null
+    || task.assigneeId === assigneeId
+    || Boolean(task.assistants?.some((assistant) => assistant.user.id === assigneeId))
 }
 
 export function taskMatchesSearch(task: WorkspaceTask, search: string) {

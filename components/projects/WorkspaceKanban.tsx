@@ -195,7 +195,11 @@ function KanbanColumn({
             key={task.id}
             project={project}
             task={task}
-            disabled={pendingTaskIds.has(task.id) || (!project.canManage && task.assigneeId !== viewerId)}
+            disabled={pendingTaskIds.has(task.id) || (
+              !project.canManage
+              && task.assigneeId !== viewerId
+              && !task.assistants?.some((assistant) => assistant.user.id === viewerId)
+            )}
             onOpen={() => onOpenTask(project.id, task.id)}
           />
         ))}

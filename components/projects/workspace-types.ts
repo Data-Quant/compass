@@ -74,6 +74,7 @@ export interface TaskPatchRequest {
   priority?: WorkspacePriority
   dueDate?: string | null
   assigneeId?: string | null
+  assistantIds?: string[]
   sectionId?: string
   status?: WorkspaceTaskStatus
 }

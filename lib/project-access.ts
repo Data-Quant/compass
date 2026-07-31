@@ -43,9 +43,12 @@ export function resolveProjectCapabilities(input: {
 export function canEditAssignedProjectTask(input: {
   viewerId: string
   assigneeId: string | null
+  assistantIds?: string[]
   canManage: boolean
 }) {
-  return input.canManage || input.assigneeId === input.viewerId
+  return input.canManage
+    || input.assigneeId === input.viewerId
+    || Boolean(input.assistantIds?.includes(input.viewerId))
 }
 
 export function accessibleProjectsWhere(viewer: ProjectViewer): Prisma.ProjectWhereInput {

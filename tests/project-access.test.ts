@@ -56,6 +56,13 @@ test('members may edit only their assigned tasks while managers may edit any tas
   assert.equal(canEditAssignedProjectTask({
     viewerId: 'member-1',
     assigneeId: 'member-2',
+    assistantIds: ['member-1'],
+    canManage: false,
+  }), true)
+  assert.equal(canEditAssignedProjectTask({
+    viewerId: 'member-1',
+    assigneeId: 'member-2',
+    assistantIds: ['member-3'],
     canManage: false,
   }), false)
   assert.equal(canEditAssignedProjectTask({

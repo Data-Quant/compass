@@ -20,7 +20,7 @@ import { Calendar, Flag, MessageSquare, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import { cn } from '@/lib/utils'
-import { calculateTaskVariance, PROJECT_TASK_TIME_ZONE } from '@/lib/project-progress'
+import { calculateTaskVariance, isTaskAssignedTo, PROJECT_TASK_TIME_ZONE } from '@/lib/project-progress'
 import type { PanelTask, ProjectStatusSection } from './TaskDetailPanel'
 
 const TASK_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
@@ -67,7 +67,7 @@ export function BoardView({ projectId, tasks, sections, viewerId, canManage, onT
   )
 
   const activeTask = activeId ? localTasks.find((task) => task.id === activeId) : null
-  const canEditTask = (task: PanelTask) => canManage || task.assigneeId === viewerId
+  const canEditTask = (task: PanelTask) => canManage || isTaskAssignedTo(task, viewerId)
 
   const handleDragStart = (event: DragStartEvent) => {
     const task = localTasks.find((candidate) => candidate.id === event.active.id)
@@ -295,7 +295,7 @@ function BoardColumn({
               <SortableTaskCard
                 key={task.id}
                 task={task}
-                disabled={!canManage && task.assigneeId !== viewerId}
+                disabled={!canManage && !isTaskAssignedTo(task, viewerId)}
                 onClick={() => onTaskClick(task)}
               />
             ))}

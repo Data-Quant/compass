@@ -6,6 +6,7 @@ import { useDroppable } from '@dnd-kit/core'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { cn } from '@/lib/utils'
+import { isTaskAssignedTo } from '@/lib/project-progress'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { PanelTask } from './TaskDetailPanel'
 import { TaskRow } from './TaskRow'
@@ -148,7 +149,7 @@ export function SectionGroup({
               )}
             >
               {tasks.map((task) => (
-                dragDisabled || (!canManage && task.assigneeId !== viewerId) ? (
+                dragDisabled || (!canManage && !isTaskAssignedTo(task, viewerId)) ? (
                   <TaskRow key={task.id} task={task} onClick={() => onTaskClick(task)} />
                 ) : (
                   <SortableTaskRow

@@ -30,6 +30,7 @@ export async function PATCH(
         id: true,
         projectId: true,
         assigneeId: true,
+        assistants: { select: { userId: true } },
         status: true,
         completedAt: true,
         completedLate: true,
@@ -47,7 +48,10 @@ export async function PATCH(
     if (authorizationFailure) {
       return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
     }
-    if (task.assigneeId !== sessionUser.id) {
+    if (
+      task.assigneeId !== sessionUser.id
+      && !task.assistants.some((assistant) => assistant.userId === sessionUser.id)
+    ) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     if (task.section?.isBacklog) {

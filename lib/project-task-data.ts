@@ -20,6 +20,10 @@ export const PROJECT_TASK_INCLUDE = {
       title: true,
       assigneeId: true,
       assignee: { select: { id: true, name: true } },
+      assistants: {
+        include: { user: { select: { id: true, name: true } } },
+        orderBy: { createdAt: 'asc' },
+      },
     },
   },
   childTasks: {
@@ -34,6 +38,10 @@ export const PROJECT_TASK_INCLUDE = {
       sectionId: true,
       parentTaskId: true,
       assignee: { select: { id: true, name: true } },
+      assistants: {
+        include: { user: { select: { id: true, name: true } } },
+        orderBy: { createdAt: 'asc' },
+      },
       section: {
         select: {
           id: true,

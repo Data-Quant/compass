@@ -23,12 +23,21 @@ export async function GET(request: NextRequest) {
 
     const tasks = await prisma.task.findMany({
       where: {
-        assigneeId: user.id,
         project: accessibleProjectsWhere(user),
         ...(projectId ? { projectId } : {}),
-        OR: [
-          { sectionId: null },
-          { section: { is: { isBacklog: false } } },
+        AND: [
+          {
+            OR: [
+              { assigneeId: user.id },
+              { assistants: { some: { userId: user.id } } },
+            ],
+          },
+          {
+            OR: [
+              { sectionId: null },
+              { section: { is: { isBacklog: false } } },
+            ],
+          },
         ],
       },
       include: {

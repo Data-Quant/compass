@@ -577,7 +577,9 @@ export default function ProjectDetailPage() {
         onTasksChange={loadProject}
         onOpenTask={handleOpenTaskById}
         canManage={canManage}
-        canEdit={canManage || selectedTask?.assigneeId === viewer?.id}
+        canEdit={canManage
+          || selectedTask?.assigneeId === viewer?.id
+          || Boolean(selectedTask?.assistants?.some((assistant) => assistant.user.id === viewer?.id))}
       />
 
       {/* Member Manager Modal */}

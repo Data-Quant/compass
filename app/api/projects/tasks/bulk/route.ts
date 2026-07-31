@@ -48,6 +48,7 @@ export async function PATCH(request: NextRequest) {
         title: true,
         projectId: true,
         assigneeId: true,
+        assistants: { select: { userId: true } },
         priority: true,
         startDate: true,
         dueDate: true,
@@ -88,6 +89,7 @@ export async function PATCH(request: NextRequest) {
       tasks.some((task) => !canEditAssignedProjectTask({
         viewerId: user.id,
         assigneeId: task.assigneeId,
+        assistantIds: task.assistants.map((assistant) => assistant.userId),
         canManage: Boolean(capabilitiesByProject.get(task.projectId)?.canManage),
       }))
     ) {

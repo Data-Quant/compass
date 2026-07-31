@@ -244,6 +244,9 @@ export async function POST(
     if (assistantIds !== undefined && !cleanAssistantIds) {
       return NextResponse.json({ error: 'assistantIds must be an array of user IDs' }, { status: 400 })
     }
+    if (assistantIds !== undefined && !authorization.canManage) {
+      return NextResponse.json({ error: 'Only a project lead or HR can assign co-assignees' }, { status: 403 })
+    }
 
     const validAssistantIds = cleanAssistantIds
       ? await validateProjectMemberIds(projectId, cleanAssistantIds)
@@ -415,6 +418,7 @@ export async function PUT(
     if (!canEditAssignedProjectTask({
       viewerId: user.id,
       assigneeId: existingTask.assigneeId,
+      assistantIds: existingTask.assistants.map((assistant) => assistant.userId),
       canManage: authorization.canManage,
     })) {
       return NextResponse.json(
@@ -477,6 +481,9 @@ export async function PUT(
       : (typeof assigneeId === 'string' && assigneeId.trim() ? assigneeId.trim() : null)
     if (normalizedAssigneeId !== undefined && normalizedAssigneeId !== existingTask.assigneeId && !authorization.canManage) {
       return NextResponse.json({ error: 'Only a project lead or HR can reassign tasks' }, { status: 403 })
+    }
+    if (assistantIds !== undefined && !authorization.canManage) {
+      return NextResponse.json({ error: 'Only a project lead or HR can change co-assignees' }, { status: 403 })
     }
     if (normalizedAssigneeId) await validateProjectMemberIds(projectId, [normalizedAssigneeId])
 

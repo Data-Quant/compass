@@ -21,6 +21,12 @@ test('project progress can be scoped to one assignee', () => {
     { status: 'DONE', assigneeId: 'u1', section: { isBacklog: false } },
     { status: 'TODO', assigneeId: 'u1', section: { isBacklog: false } },
     { status: 'DONE', assigneeId: 'u2', section: { isBacklog: false } },
+    {
+      status: 'TODO',
+      assigneeId: 'u3',
+      assistants: [{ userId: 'u2', user: { id: 'u2' } }],
+      section: { isBacklog: false },
+    },
   ]
 
   assert.deepEqual(calculateProjectProgress(tasks, { assigneeId: 'u1' }), {
@@ -30,8 +36,8 @@ test('project progress can be scoped to one assignee', () => {
   })
   assert.deepEqual(calculateProjectProgress(tasks, { assigneeId: 'u2' }), {
     completed: 1,
-    total: 1,
-    percentage: 100,
+    total: 2,
+    percentage: 50,
   })
 })
 

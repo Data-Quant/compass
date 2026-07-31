@@ -177,7 +177,6 @@ export function ProjectsWorkspace() {
   const [view, setView] = useState<WorkspaceView>('table')
   const [sortKey, setSortKey] = useState<WorkspaceSortKey>('priority')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
-  const [collapsedProjectIds, setCollapsedProjectIds] = useState(new Set<string>())
   const [backlogCollapsed, setBacklogCollapsed] = useState(true)
   const [selectedIds, setSelectedIds] = useState(new Set<string>())
   const [pendingTaskIds, setPendingTaskIds] = useState(new Set<string>())
@@ -373,8 +372,10 @@ export function ProjectsWorkspace() {
     const project = current?.projects.find((candidate) => candidate.id === projectId)
     const previous = project?.tasks.find((candidate) => candidate.id === taskId)
     if (!current || !project || !previous) return false
-    if (!project.canManage && previous.assigneeId !== current.viewer.id) {
-      toast.error('Only the assignee, project lead, or HR admin can edit this task')
+    const viewerIsAssigned = previous.assigneeId === current.viewer.id
+      || Boolean(previous.assistants?.some((assistant) => assistant.user.id === current.viewer.id))
+    if (!project.canManage && !viewerIsAssigned) {
+      toast.error('Only an assigned person, project lead, or HR admin can edit this task')
       return false
     }
 
@@ -522,8 +523,12 @@ export function ProjectsWorkspace() {
   }
 
   const moveTask = (project: WorkspaceProject, task: WorkspaceTask, column: KanbanColumnId) => {
-    if (!workspace || (!project.canManage && task.assigneeId !== workspace.viewer.id)) {
-      toast.error('Only the assignee, project lead, or HR admin can move this task')
+    const viewerIsAssigned = workspace && (
+      task.assigneeId === workspace.viewer.id
+      || Boolean(task.assistants?.some((assistant) => assistant.user.id === workspace.viewer.id))
+    )
+    if (!workspace || (!project.canManage && !viewerIsAssigned)) {
+      toast.error('Only an assigned person, project lead, or HR admin can move this task')
       return
     }
     const section = sectionForColumn(project, column)
@@ -844,18 +849,11 @@ export function ProjectsWorkspace() {
             sortDirection={sortDirection}
             selectedIds={selectedIds}
             pendingTaskIds={pendingTaskIds}
-            collapsedProjectIds={collapsedProjectIds}
             backlogCollapsed={backlogCollapsed}
             quickAddProjects={quickAddProjects}
             quickAddProjectId={quickAddProjectId}
             quickAdding={quickAdding}
             onSort={toggleSort}
-            onToggleProject={(projectId) => setCollapsedProjectIds((current) => {
-              const next = new Set(current)
-              if (next.has(projectId)) next.delete(projectId)
-              else next.add(projectId)
-              return next
-            })}
             onToggleBacklog={() => setBacklogCollapsed((current) => !current)}
             onToggleSelected={(taskId, selected) => setSelectedIds((current) => {
               const next = new Set(current)
@@ -909,7 +907,9 @@ export function ProjectsWorkspace() {
           onTasksChange={() => loadWorkspace()}
           onOpenTask={(taskId) => setSelectedTaskKey({ projectId: selectedProject.id, taskId })}
           canManage={selectedProject.canManage}
-          canEdit={selectedProject.canManage || selectedTask?.assigneeId === workspace.viewer.id}
+          canEdit={selectedProject.canManage
+            || selectedTask?.assigneeId === workspace.viewer.id
+            || Boolean(selectedTask?.assistants?.some((assistant) => assistant.user.id === workspace.viewer.id))}
         />
       )}
 

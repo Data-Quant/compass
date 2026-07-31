@@ -12,6 +12,10 @@ const PROJECT_TASK_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {
 export type ProgressTask = {
   status: string
   assigneeId?: string | null
+  assistants?: Array<{
+    userId?: string | null
+    user?: { id: string } | null
+  }>
   section?: { isBacklog: boolean } | null
 }
 
@@ -36,6 +40,16 @@ export function isBacklogTask(task: { section?: { isBacklog: boolean } | null })
   return task.section?.isBacklog === true
 }
 
+export function isTaskAssignedTo(
+  task: Pick<ProgressTask, 'assigneeId' | 'assistants'>,
+  userId: string,
+) {
+  return task.assigneeId === userId
+    || Boolean(task.assistants?.some((assistant) => (
+      assistant.userId === userId || assistant.user?.id === userId
+    )))
+}
+
 export function calculateProjectProgress(
   tasks: ProgressTask[],
   options: { assigneeId?: string | null } = {}
@@ -43,7 +57,7 @@ export function calculateProjectProgress(
   const activeTasks = tasks.filter((task) => {
     if (isBacklogTask(task)) return false
     if (options.assigneeId !== undefined && options.assigneeId !== null) {
-      return task.assigneeId === options.assigneeId
+      return isTaskAssignedTo(task, options.assigneeId)
     }
     return true
   })
