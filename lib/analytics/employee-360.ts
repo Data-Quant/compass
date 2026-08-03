@@ -1,5 +1,6 @@
 import type { RelationshipType } from '@/types'
 import { calculateLeaveDuration } from '@/lib/leave-utils'
+import { isThreeEDepartment } from '@/lib/company-branding'
 import type {
   Availability,
   ClientConcentration,
@@ -345,6 +346,13 @@ export function resolveEmploymentStatus(
   isPayrollActive: boolean | null | undefined
 ): EmploymentStatus {
   return isPayrollActive === false ? 'ARCHIVED' : 'ACTIVE'
+}
+
+/** 3E employees are outside the Plutus Employee 360 population. */
+export function isEmployee360Eligible(
+  employee: { department?: string | null } | null | undefined
+): boolean {
+  return Boolean(employee) && !isThreeEDepartment(employee?.department)
 }
 
 export function sortEvaluationLenses<T extends Pick<EvaluationLens, 'relationshipType'>>(

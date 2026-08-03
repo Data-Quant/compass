@@ -16,6 +16,7 @@ import {
   computeClientConcentration,
   deriveAvailability,
   getScorablePeriods,
+  isEmployee360Eligible,
   resolveEmploymentStatus,
   selectScorablePeriod,
   selfVsOthersGap,
@@ -304,6 +305,13 @@ test('employees without a payroll profile remain active', () => {
   assert.equal(resolveEmploymentStatus(null), 'ACTIVE')
   assert.equal(resolveEmploymentStatus(true), 'ACTIVE')
   assert.equal(resolveEmploymentStatus(false), 'ARCHIVED')
+})
+
+test('Employee 360 excludes the 3E department regardless of casing or whitespace', () => {
+  assert.equal(isEmployee360Eligible({ department: 'Investments' }), true)
+  assert.equal(isEmployee360Eligible({ department: null }), true)
+  assert.equal(isEmployee360Eligible({ department: '3E' }), false)
+  assert.equal(isEmployee360Eligible({ department: ' 3e ' }), false)
 })
 
 test('salary observations collapse unchanged months into verified change events', () => {

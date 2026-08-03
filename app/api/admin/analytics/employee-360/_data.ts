@@ -11,6 +11,7 @@ import {
   FINALIZED_PAYROLL_PERIOD_STATUSES as FINALIZED_PAYROLL_PERIOD_STATUS_SET,
   USABLE_PAYROLL_RECEIPT_STATUSES as USABLE_PAYROLL_RECEIPT_STATUS_SET,
   getScorablePeriods as filterScorablePeriods,
+  isEmployee360Eligible,
   selectScorablePeriod,
   type ScorablePeriodCandidate,
 } from '@/lib/analytics/employee-360'
@@ -545,11 +546,14 @@ export async function loadDossierRows(employeeIds: readonly string[]) {
     }),
   ])
 
-  if (users.length !== uniqueIds.length) {
-    const found = new Set(users.map((user) => user.id))
-    const missing = uniqueIds.find((id) => !found.has(id))
+  const userById = new Map(users.map((user) => [user.id, user]))
+  const unavailable = uniqueIds.find((id) => {
+    const employee = userById.get(id)
+    return !employee || !isEmployee360Eligible(employee)
+  })
+  if (unavailable) {
     throw new Employee360RequestError(
-      missing === uniqueIds[0] ? 'Employee not found' : 'Comparison employee not found',
+      unavailable === uniqueIds[0] ? 'Employee not found' : 'Comparison employee not found',
       404
     )
   }
@@ -579,7 +583,7 @@ export async function loadEvidenceRows(params: {
     await Promise.all([
       prisma.user.findUnique({
         where: { id: params.employeeId },
-        select: { id: true, name: true },
+        select: { id: true, name: true, department: true },
       }),
       getResolvedEvaluationAssignments(params.periodId),
       prisma.evaluation.findMany({
@@ -646,7 +650,9 @@ export async function loadEvidenceRows(params: {
       }),
     ])
 
-  if (!employee) throw new Employee360RequestError('Employee not found', 404)
+  if (!employee || !isEmployee360Eligible(employee)) {
+    throw new Employee360RequestError('Employee not found', 404)
+  }
 
   return {
     employee,

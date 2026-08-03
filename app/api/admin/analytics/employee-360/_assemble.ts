@@ -4,6 +4,7 @@ import { toStartOfDay } from '@/lib/my-tasks/dates'
 import {
   buildCompensationTrajectory,
   computeClientConcentration,
+  isEmployee360Eligible,
   resolveEmploymentStatus,
   selfVsOthersGap,
   sortEvaluationLenses,
@@ -90,7 +91,7 @@ export function assembleDirectoryPayload(params: {
   const payload = {
     generatedAt: params.generatedAt.toISOString(),
     periods: params.periods.map(toPeriodRef),
-    employees: params.rows.map((row) => {
+    employees: params.rows.filter(isEmployee360Eligible).map((row) => {
       const evaluatedPeriods = params.evaluationCoverage.get(row.id)?.size ?? 0
       const evaluation: Availability =
         evaluatedPeriods === 0
