@@ -217,35 +217,27 @@ export function WorkspaceTaskTable({
               </TableHeader>
               <TableBody>
                 {orderedProjectViews.map((view) => (
-                  <Fragment key={view.project.id}>
-                    <ProjectMatrixRow
-                      view={view}
-                      viewerId={viewerId}
-                      progressScopeLabel={progressScopeLabel}
-                      sortKey={sortKey}
-                      sortDirection={sortDirection}
-                      selectedIds={selectedIds}
-                      pendingTaskIds={pendingTaskIds}
-                      open={openProjectId === view.project.id}
-                      creatingTask={creatingTaskProjectIds.has(view.project.id)}
-                      onOpenChange={(open) => setOpenProjectId(open ? view.project.id : null)}
-                      onToggleSelected={onToggleSelected}
-                      onToggleManySelected={onToggleManySelected}
-                      onPatchTask={onPatchTask}
-                      onOpenTask={onOpenTask}
-                      onFilterByAssignee={onFilterByAssignee}
-                      onRenameProject={onRenameProject}
-                      onArchiveProject={onArchiveProject}
-                      onCreateActiveTask={onCreateActiveTask}
-                    />
-                    {view.project.status !== 'ARCHIVED' && (
-                      <ProjectNewTaskRow
-                        project={view.project}
-                        creating={creatingTaskProjectIds.has(view.project.id)}
-                        onCreateActiveTask={onCreateActiveTask}
-                      />
-                    )}
-                  </Fragment>
+                  <ProjectMatrixRow
+                    key={view.project.id}
+                    view={view}
+                    viewerId={viewerId}
+                    progressScopeLabel={progressScopeLabel}
+                    sortKey={sortKey}
+                    sortDirection={sortDirection}
+                    selectedIds={selectedIds}
+                    pendingTaskIds={pendingTaskIds}
+                    open={openProjectId === view.project.id}
+                    creatingTask={creatingTaskProjectIds.has(view.project.id)}
+                    onOpenChange={(open) => setOpenProjectId(open ? view.project.id : null)}
+                    onToggleSelected={onToggleSelected}
+                    onToggleManySelected={onToggleManySelected}
+                    onPatchTask={onPatchTask}
+                    onOpenTask={onOpenTask}
+                    onFilterByAssignee={onFilterByAssignee}
+                    onRenameProject={onRenameProject}
+                    onArchiveProject={onArchiveProject}
+                    onCreateActiveTask={onCreateActiveTask}
+                  />
                 ))}
               </TableBody>
             </Table>
@@ -751,28 +743,6 @@ export function InlineTaskComposer({
         Cancel
       </Button>
     </form>
-  )
-}
-
-function ProjectNewTaskRow({
-  project,
-  creating,
-  onCreateActiveTask,
-}: {
-  project: WorkspaceProject
-  creating: boolean
-  onCreateActiveTask: (projectId: string, title: string) => Promise<boolean>
-}) {
-  return (
-    <TableRow data-row-kind="new-task" className="border-b border-border/60 hover:bg-muted/20">
-      <TableCell colSpan={5} className="py-1 pl-12">
-        <InlineTaskComposer
-          projectName={project.name}
-          creating={creating}
-          onCreate={(title) => onCreateActiveTask(project.id, title)}
-        />
-      </TableCell>
-    </TableRow>
   )
 }
 

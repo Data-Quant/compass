@@ -131,7 +131,7 @@ async function render(options: { groupMode?: 'project' | 'assignee'; assigneeFil
   }))
 }
 
-test('project matrix keeps task rows out of the page until its project popover opens', async () => {
+test('project matrix keeps task rows and the task composer out until its project popover opens', async () => {
   const html = await render()
 
   assert.match(html, /Harbor paperwork/)
@@ -143,7 +143,7 @@ test('project matrix keeps task rows out of the page until its project popover o
   assert.equal(html.match(/>Assignee</g)?.length, 1)
   assert.equal(html.match(/>Priority</g)?.length, 1)
   assert.match(html, /aria-expanded="false"/)
-  assert.match(html, /aria-label="Add a task to Harbor paperwork"/)
+  assert.doesNotMatch(html, /aria-label="Add a task to Harbor paperwork"/)
 })
 
 test('inline task composer exposes a Notion-style new task action', async () => {

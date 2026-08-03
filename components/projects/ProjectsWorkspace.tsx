@@ -808,9 +808,6 @@ export function ProjectsWorkspace() {
             Plan by project, work from one task list, and keep every deadline visible.
           </p>
         </div>
-        <Button onClick={() => setShowCreateProject(true)} className="gap-2 self-start xl:self-auto">
-          <Plus className="h-4 w-4" /> New project
-        </Button>
       </header>
 
       <section className="rounded-xl border border-border/60 bg-card/60 p-3 shadow-sm backdrop-blur-sm">
@@ -981,6 +978,17 @@ export function ProjectsWorkspace() {
           onQuickAddProjectChange={setQuickAddProjectId}
           onQuickAdd={quickAdd}
         />
+      )}
+
+      {workspace.projects.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowCreateProject(true)}
+          className="flex w-full items-center gap-2 rounded-xl border border-dashed border-border/70 bg-card/40 px-4 py-3 text-left text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Plus className="h-4 w-4" />
+          <span>New project</span>
+        </button>
       )}
 
       {selectedProject && (
