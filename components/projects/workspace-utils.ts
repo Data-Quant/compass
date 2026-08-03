@@ -3,6 +3,7 @@ import type {
   KanbanColumnId,
   ProjectStatusFilter,
   SortDirection,
+  WorkspaceAssigneeTaskGroup,
   WorkspacePerson,
   WorkspacePriority,
   WorkspaceProject,
@@ -10,6 +11,8 @@ import type {
   WorkspaceSection,
   WorkspaceSortKey,
   WorkspaceTask,
+  WorkspaceTaskItem,
+  WorkspaceTaskStatus,
 } from './workspace-types'
 import {
   PROJECT_TASK_TIME_ZONE,
@@ -45,6 +48,12 @@ export const PRIORITY_CLASS: Record<WorkspacePriority, string> = {
   LOW: 'border-slate-400/30 bg-slate-500/10 text-slate-600 dark:text-slate-300',
 }
 
+const TASK_STATUS_ORDER: Record<WorkspaceTaskStatus, number> = {
+  TODO: 0,
+  IN_PROGRESS: 1,
+  DONE: 2,
+}
+
 export function normalizeAssigneeFilter(
   value: string | null | undefined,
   viewerId: string,
@@ -65,6 +74,53 @@ export function taskMatchesAssignee(task: WorkspaceTask, filter: AssigneeFilter,
   return assigneeId === null
     || task.assigneeId === assigneeId
     || Boolean(task.assistants?.some((assistant) => assistant.user.id === assigneeId))
+}
+
+export function taskAssignedPeople(task: WorkspaceTask) {
+  const people = [task.assignee, ...(task.assistants || []).map((assistant) => assistant.user)]
+    .filter((person): person is WorkspacePerson => Boolean(person))
+  return people.filter((person, index) => (
+    people.findIndex((candidate) => candidate.id === person.id) === index
+  ))
+}
+
+export function groupWorkspaceTaskItemsByAssignee(
+  items: WorkspaceTaskItem[],
+  scopeAssigneeId: string | null,
+): WorkspaceAssigneeTaskGroup[] {
+  const groups = new Map<string, WorkspaceAssigneeTaskGroup & { itemIds: Set<string> }>()
+
+  const addToGroup = (person: WorkspacePerson | null, item: WorkspaceTaskItem) => {
+    const id = person?.id || '__UNASSIGNED__'
+    const group = groups.get(id) || { id, person, items: [], itemIds: new Set<string>() }
+    const itemId = `${item.project.id}:${item.task.id}`
+    if (!group.itemIds.has(itemId)) {
+      group.itemIds.add(itemId)
+      group.items.push(item)
+    }
+    groups.set(id, group)
+  }
+
+  for (const item of items) {
+    const assignedPeople = taskAssignedPeople(item.task)
+    if (scopeAssigneeId) {
+      const scopedPerson = assignedPeople.find((person) => person.id === scopeAssigneeId)
+      if (scopedPerson) addToGroup(scopedPerson, item)
+      continue
+    }
+    if (assignedPeople.length === 0) addToGroup(null, item)
+    else assignedPeople.forEach((person) => addToGroup(person, item))
+  }
+
+  return [...groups.values()]
+    .sort((left, right) => {
+      if (!left.person && !right.person) return 0
+      if (!left.person) return 1
+      if (!right.person) return -1
+      const nameResult = left.person.name.localeCompare(right.person.name, undefined, { sensitivity: 'base' })
+      return nameResult || left.person.id.localeCompare(right.person.id)
+    })
+    .map(({ itemIds: _itemIds, ...group }) => group)
 }
 
 export function taskMatchesSearch(task: WorkspaceTask, search: string) {
@@ -197,22 +253,39 @@ function compareNullableString(
   return direction === 'asc' ? result : -result
 }
 
-export function sortTasks(
-  project: WorkspaceProject,
-  tasks: WorkspaceTask[],
+export function sortWorkspaceTaskItems(
+  items: WorkspaceTaskItem[],
   key: WorkspaceSortKey,
   direction: SortDirection,
 ) {
   const multiplier = direction === 'asc' ? 1 : -1
-  return [...tasks].sort((left, right) => {
+  return [...items].sort((leftItem, rightItem) => {
+    const { project: leftProject, task: left } = leftItem
+    const { project: rightProject, task: right } = rightItem
     let result = 0
-    if (key === 'status') result = Number(isDoneTask(project, left)) - Number(isDoneTask(project, right))
+    if (key === 'status') {
+      const leftStatus = left.section?.canonicalStatus || left.status
+      const rightStatus = right.section?.canonicalStatus || right.status
+      result = TASK_STATUS_ORDER[leftStatus] - TASK_STATUS_ORDER[rightStatus]
+      if (result === 0) {
+        result = (left.section?.orderIndex ?? Number.MAX_SAFE_INTEGER)
+          - (right.section?.orderIndex ?? Number.MAX_SAFE_INTEGER)
+      }
+      if (result === 0) {
+        result = (left.section?.name || left.status).localeCompare(
+          right.section?.name || right.status,
+          undefined,
+          { sensitivity: 'base' },
+        )
+      }
+    }
     if (key === 'title') result = left.title.localeCompare(right.title, undefined, { sensitivity: 'base' })
+    if (key === 'project') result = leftProject.name.localeCompare(rightProject.name, undefined, { sensitivity: 'base' })
     if (key === 'priority') result = PRIORITY_ORDER[left.priority] - PRIORITY_ORDER[right.priority]
     if (key === 'dueDate') result = compareNullableString(dateInputValue(left.dueDate), dateInputValue(right.dueDate), direction)
     if (key === 'assignee') result = compareNullableString(left.assignee?.name, right.assignee?.name, direction)
     if (key === 'notes') result = compareNullableString(left.description, right.description, direction)
-    if (key === 'variance') result = Number(isTaskOverdue(project, right)) - Number(isTaskOverdue(project, left))
+    if (key === 'variance') result = Number(isTaskOverdue(rightProject, right)) - Number(isTaskOverdue(leftProject, left))
 
     if (result !== 0) {
       // Empty cells stay at the bottom in both directions; the nullable comparators
@@ -228,6 +301,19 @@ export function sortTasks(
     if (dueResult !== 0) return dueResult
     return left.title.localeCompare(right.title, undefined, { sensitivity: 'base' })
   })
+}
+
+export function sortTasks(
+  project: WorkspaceProject,
+  tasks: WorkspaceTask[],
+  key: WorkspaceSortKey,
+  direction: SortDirection,
+) {
+  return sortWorkspaceTaskItems(
+    tasks.map((task) => ({ project, task })),
+    key,
+    direction,
+  ).map(({ task }) => task)
 }
 
 export function sectionForColumn(project: WorkspaceProject, column: KanbanColumnId): WorkspaceSection | null {

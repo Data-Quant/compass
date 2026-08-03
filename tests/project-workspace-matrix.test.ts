@@ -81,6 +81,7 @@ const project: WorkspaceProject = {
   owner: { id: 'owner-1', name: 'Project owner' },
   members: [{ id: 'user-1', name: 'Areebah', role: 'EMPLOYEE' }],
   canManage: true,
+  canUseBacklog: true,
   sections: [todo, done],
   labels: [],
   tasks: [task, subtask, nestedSubtask],
@@ -94,7 +95,7 @@ const view: WorkspaceProjectView = {
   progress: { completed: 0, total: 3, percent: 0 },
 }
 
-async function render() {
+async function render(options: { groupMode?: 'project' | 'assignee'; assigneeFilter?: string } = {}) {
   // The repository's test runner preserves the classic JSX transform, while
   // Next supplies the JSX runtime during application builds.
   ;(globalThis as typeof globalThis & { React: typeof React }).React = React
@@ -104,6 +105,8 @@ async function render() {
     projectViews: [view],
     viewerId: 'user-1',
     progressScopeLabel: 'Your tasks',
+    assigneeFilter: options.assigneeFilter || 'ME',
+    groupMode: options.groupMode || 'project',
     sortKey: 'priority',
     sortDirection: 'asc',
     selectedIds: new Set<string>(),
@@ -160,4 +163,21 @@ test('task assignment summary includes a unique primary and every co-assignee', 
       { id: 'assistant-link-1', user: { id: 'user-2', name: 'Shoaib' } },
     ],
   }).map((person) => person.id), ['user-1', 'user-2'])
+})
+
+test('person grouping renders shared tasks under every assigned person', async () => {
+  const html = await render({ groupMode: 'assignee', assigneeFilter: 'ALL' })
+
+  assert.match(html, /data-group-mode="assignee"/)
+  assert.match(html, /data-assignee-group-id="user-1"/)
+  assert.match(html, /data-assignee-group-id="user-2"/)
+  assert.equal(html.match(/data-person-task-id="task-1"/g)?.length, 2)
+  assert.equal(html.match(/data-person-task-id="task-2"/g)?.length, 2)
+  assert.equal(html.match(/data-person-task-id="task-3"/g)?.length, 1)
+  assert.equal(html.match(/data-task-depth="0"/g)?.length, 2)
+  assert.equal(html.match(/data-task-depth="1"/g)?.length, 2)
+  assert.equal(html.match(/data-task-depth="2"/g)?.length, 1)
+  assert.match(html, /aria-label="Collapse tasks for Areebah"/)
+  assert.match(html, /aria-label="Collapse tasks for Shoaib"/)
+  assert.equal(html.match(/aria-label="Collapse subtasks for Draft the investment memo"/g)?.length, 2)
 })

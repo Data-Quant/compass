@@ -15,6 +15,7 @@ export type ProjectAuthorization = {
   exists: boolean
   canAccess: boolean
   canManage: boolean
+  isParticipant: boolean
   ownerId: string | null
   membershipRole: string | null
 }
@@ -29,13 +30,15 @@ export function resolveProjectCapabilities(input: {
   const membership = input.members.find((member) => member.userId === input.viewer.id) || null
   const isHr = input.viewer.role === 'HR'
   const isOwner = input.ownerId === input.viewer.id
+  const isParticipant = isOwner || Boolean(membership)
   const isMembershipManager = Boolean(
     membership && MANAGER_MEMBERSHIP_ROLES.has(membership.role.trim().toUpperCase())
   )
 
   return {
-    canAccess: isHr || isOwner || Boolean(membership),
+    canAccess: isHr || isParticipant,
     canManage: isHr || isOwner || isMembershipManager,
+    isParticipant,
     membershipRole: membership?.role || null,
   }
 }
@@ -79,6 +82,7 @@ export async function getProjectAuthorization(
       exists: false,
       canAccess: false,
       canManage: false,
+      isParticipant: false,
       ownerId: null,
       membershipRole: null,
     }

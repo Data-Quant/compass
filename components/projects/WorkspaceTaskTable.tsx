@@ -49,18 +49,24 @@ import {
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import { cn } from '@/lib/utils'
 import type {
+  AssigneeFilter,
   SortDirection,
   TaskOptimisticPatch,
   TaskPatchRequest,
+  WorkspaceAssigneeTaskGroup,
+  WorkspaceGroupMode,
   WorkspacePriority,
   WorkspaceProject,
   WorkspaceProjectView,
   WorkspaceSortKey,
   WorkspaceTask,
+  WorkspaceTaskItem,
 } from './workspace-types'
 import {
+  assigneeIdForFilter,
   dateInputValue,
   displayDueDate,
+  groupWorkspaceTaskItemsByAssignee,
   isDoneTask,
   isTaskOverdue,
   overdueDays,
@@ -70,13 +76,17 @@ import {
   progressBand,
   relativeDueDate,
   sectionForColumn,
+  sortWorkspaceTaskItems,
   sortTasks,
+  taskAssignedPeople,
 } from './workspace-utils'
 
 interface WorkspaceTaskTableProps {
   projectViews: WorkspaceProjectView[]
   viewerId: string
   progressScopeLabel: string
+  assigneeFilter: AssigneeFilter
+  groupMode: WorkspaceGroupMode
   sortKey: WorkspaceSortKey
   sortDirection: SortDirection
   selectedIds: Set<string>
@@ -122,6 +132,8 @@ export function WorkspaceTaskTable({
   projectViews,
   viewerId,
   progressScopeLabel,
+  assigneeFilter,
+  groupMode,
   sortKey,
   sortDirection,
   selectedIds,
@@ -143,17 +155,24 @@ export function WorkspaceTaskTable({
   onQuickAdd,
 }: WorkspaceTaskTableProps) {
   const [openProjectId, setOpenProjectId] = useState<string | null>(null)
-  const backlogItems = projectViews
-    .flatMap(({ project, visibleBacklogTasks }) => visibleBacklogTasks.map((task) => ({ project, task })))
-    .sort((left, right) => {
-      if (sortKey === 'project') {
-        const result = left.project.name.localeCompare(right.project.name, undefined, { sensitivity: 'base' })
-        if (result !== 0) return sortDirection === 'asc' ? result : -result
-      }
-      const taskSortKey = sortKey === 'project' ? 'priority' : sortKey
-      const ordered = sortTasks(left.project, [left.task, right.task], taskSortKey, sortDirection)
-      return ordered[0].id === left.task.id ? -1 : 1
-    })
+  const scopeAssigneeId = assigneeIdForFilter(assigneeFilter, viewerId)
+  const activeItems = sortWorkspaceTaskItems(
+    projectViews.flatMap(({ project, visibleActiveTasks }) => (
+      visibleActiveTasks.map((task) => ({ project, task }))
+    )),
+    sortKey,
+    sortDirection,
+  )
+  const backlogItems = sortWorkspaceTaskItems(
+    projectViews
+      .filter(({ project }) => project.canUseBacklog)
+      .flatMap(({ project, visibleBacklogTasks }) => (
+        visibleBacklogTasks.map((task) => ({ project, task }))
+      )),
+    sortKey,
+    sortDirection,
+  )
+  const assigneeGroups = groupWorkspaceTaskItemsByAssignee(activeItems, scopeAssigneeId)
 
   const orderedProjectViews = sortKey === 'project'
     ? [...projectViews].sort((left, right) => {
@@ -164,7 +183,22 @@ export function WorkspaceTaskTable({
 
   return (
     <div className="space-y-4">
-      {orderedProjectViews.length > 0 && (
+      {groupMode === 'assignee' ? (
+        <PersonTaskGroups
+          groups={assigneeGroups}
+          viewerId={viewerId}
+          sortKey={sortKey}
+          sortDirection={sortDirection}
+          selectedIds={selectedIds}
+          pendingTaskIds={pendingTaskIds}
+          onSort={onSort}
+          onToggleSelected={onToggleSelected}
+          onToggleManySelected={onToggleManySelected}
+          onPatchTask={onPatchTask}
+          onOpenTask={onOpenTask}
+          onFilterByAssignee={onFilterByAssignee}
+        />
+      ) : orderedProjectViews.length > 0 && (
         <Card className="overflow-hidden border-border/60 shadow-sm">
           <CardContent className="p-0">
             <Table className="min-w-[980px]">
@@ -211,6 +245,8 @@ export function WorkspaceTaskTable({
         collapsed={backlogCollapsed}
         sortKey={sortKey}
         sortDirection={sortDirection}
+        groupMode={groupMode}
+        scopeAssigneeId={scopeAssigneeId}
         quickAddProjects={quickAddProjects}
         quickAddProjectId={quickAddProjectId}
         quickAdding={quickAdding}
@@ -233,6 +269,11 @@ export function WorkspaceTaskTable({
 interface WorkspaceTaskNode {
   task: WorkspaceTask
   children: WorkspaceTaskNode[]
+}
+
+interface WorkspaceTaskItemNode {
+  item: WorkspaceTaskItem
+  children: WorkspaceTaskItemNode[]
 }
 
 export function buildWorkspaceTaskTree(tasks: WorkspaceTask[]): WorkspaceTaskNode[] {
@@ -261,10 +302,377 @@ export function buildWorkspaceTaskTree(tasks: WorkspaceTask[]): WorkspaceTaskNod
   return roots
 }
 
+export function buildWorkspaceTaskItemTree(items: WorkspaceTaskItem[]): WorkspaceTaskItemNode[] {
+  const itemKey = (item: WorkspaceTaskItem) => `${item.project.id}:${item.task.id}`
+  const nodes = new Map(items.map((item) => [itemKey(item), { item, children: [] as WorkspaceTaskItemNode[] }]))
+  const roots: WorkspaceTaskItemNode[] = []
+
+  const hasParentCycle = (item: WorkspaceTaskItem) => {
+    const seen = new Set([item.task.id])
+    let parentId = item.task.parentTaskId
+    while (parentId) {
+      if (seen.has(parentId)) return true
+      seen.add(parentId)
+      const parent = nodes.get(`${item.project.id}:${parentId}`)
+      if (!parent) return false
+      parentId = parent.item.task.parentTaskId
+    }
+    return false
+  }
+
+  for (const item of items) {
+    const node = nodes.get(itemKey(item))!
+    const parent = item.task.parentTaskId
+      ? nodes.get(`${item.project.id}:${item.task.parentTaskId}`)
+      : undefined
+    if (parent && item.task.parentTaskId !== item.task.id && !hasParentCycle(item)) parent.children.push(node)
+    else roots.push(node)
+  }
+
+  return roots
+}
+
 export function taskAssignees(task: WorkspaceTask) {
-  const people = [task.assignee, ...(task.assistants || []).map((assistant) => assistant.user)]
-    .filter((person): person is NonNullable<typeof person> => Boolean(person))
-  return people.filter((person, index) => people.findIndex((candidate) => candidate.id === person.id) === index)
+  return taskAssignedPeople(task)
+}
+
+function PersonTaskGroups({
+  groups,
+  viewerId,
+  sortKey,
+  sortDirection,
+  selectedIds,
+  pendingTaskIds,
+  onSort,
+  onToggleSelected,
+  onToggleManySelected,
+  onPatchTask,
+  onOpenTask,
+  onFilterByAssignee,
+}: {
+  groups: WorkspaceAssigneeTaskGroup[]
+  viewerId: string
+  sortKey: WorkspaceSortKey
+  sortDirection: SortDirection
+  selectedIds: Set<string>
+  pendingTaskIds: Set<string>
+  onSort: (key: WorkspaceSortKey) => void
+  onToggleSelected: (taskId: string, selected: boolean) => void
+  onToggleManySelected: (taskIds: string[], selected: boolean) => void
+  onPatchTask: WorkspaceTaskTableProps['onPatchTask']
+  onOpenTask: (projectId: string, taskId: string) => void
+  onFilterByAssignee: (assigneeId: string) => void
+}) {
+  const [collapsedGroupIds, setCollapsedGroupIds] = useState(new Set<string>())
+  const [collapsedTaskKeys, setCollapsedTaskKeys] = useState(new Set<string>())
+
+  const toggleGroup = (groupId: string) => setCollapsedGroupIds((current) => {
+    const next = new Set(current)
+    if (next.has(groupId)) next.delete(groupId)
+    else next.add(groupId)
+    return next
+  })
+
+  const toggleTask = (taskKey: string) => setCollapsedTaskKeys((current) => {
+    const next = new Set(current)
+    if (next.has(taskKey)) next.delete(taskKey)
+    else next.add(taskKey)
+    return next
+  })
+
+  if (groups.length === 0) return null
+
+  return (
+    <div className="space-y-4" data-group-mode="assignee">
+      {groups.map((group) => {
+        const collapsed = collapsedGroupIds.has(group.id)
+        const taskTree = buildWorkspaceTaskItemTree(group.items)
+        const selectableIds = group.items
+          .filter(({ project, task }) => canEditTask(project, task, viewerId))
+          .map(({ task }) => task.id)
+        const selectedCount = selectableIds.filter((id) => selectedIds.has(id)).length
+        const groupName = group.person?.name || 'Unassigned'
+
+        return (
+          <Card key={group.id} className="overflow-hidden border-border/60 shadow-sm" data-assignee-group-id={group.id}>
+            <div className="flex items-center gap-3 border-b border-border/50 bg-muted/20 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => toggleGroup(group.id)}
+                aria-expanded={!collapsed}
+                aria-label={`${collapsed ? 'Expand' : 'Collapse'} tasks for ${groupName}`}
+                className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <ChevronRight className={cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform', !collapsed && 'rotate-90')} />
+                <UserAvatar name={groupName} size="sm" />
+                <span className="truncate font-semibold">{groupName}</span>
+                <Badge variant="secondary">{group.items.length}</Badge>
+              </button>
+              <Checkbox
+                checked={selectableIds.length > 0 && selectedCount === selectableIds.length
+                  ? true
+                  : selectedCount > 0 ? 'indeterminate' : false}
+                onCheckedChange={(checked) => onToggleManySelected(selectableIds, checked === true)}
+                aria-label={`Select all tasks for ${groupName}`}
+                disabled={selectableIds.length === 0}
+              />
+            </div>
+
+            {!collapsed && (
+              <CardContent className="overflow-x-auto p-0">
+                <Table className="min-w-[1180px]">
+                  <TableHeader>
+                    <TableRow>
+                      <SortableHead label="Task" sortKey="title" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="min-w-[310px]" />
+                      <SortableHead label="Priority" sortKey="priority" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-36" />
+                      <SortableHead label="Status" sortKey="status" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-40" />
+                      <SortableHead label="Assignees" sortKey="assignee" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="min-w-[220px]" />
+                      <SortableHead label="Project" sortKey="project" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-48" />
+                      <SortableHead label="Due date" sortKey="dueDate" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-44" />
+                      <SortableHead label="Notes" sortKey="notes" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="min-w-[180px]" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {taskTree.map((node) => (
+                      <PersonTaskRows
+                        key={`${group.id}:${node.item.project.id}:${node.item.task.id}`}
+                        node={node}
+                        groupId={group.id}
+                        depth={0}
+                        viewerId={viewerId}
+                        selectedIds={selectedIds}
+                        pendingTaskIds={pendingTaskIds}
+                        collapsedTaskKeys={collapsedTaskKeys}
+                        onToggleTask={toggleTask}
+                        onToggleSelected={onToggleSelected}
+                        onPatchTask={onPatchTask}
+                        onOpenTask={onOpenTask}
+                        onFilterByAssignee={onFilterByAssignee}
+                      />
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            )}
+          </Card>
+        )
+      })}
+    </div>
+  )
+}
+
+function PersonTaskRows({
+  node,
+  groupId,
+  depth,
+  viewerId,
+  selectedIds,
+  pendingTaskIds,
+  collapsedTaskKeys,
+  onToggleTask,
+  onToggleSelected,
+  onPatchTask,
+  onOpenTask,
+  onFilterByAssignee,
+}: {
+  node: WorkspaceTaskItemNode
+  groupId: string
+  depth: number
+  viewerId: string
+  selectedIds: Set<string>
+  pendingTaskIds: Set<string>
+  collapsedTaskKeys: Set<string>
+  onToggleTask: (taskKey: string) => void
+  onToggleSelected: (taskId: string, selected: boolean) => void
+  onPatchTask: WorkspaceTaskTableProps['onPatchTask']
+  onOpenTask: (projectId: string, taskId: string) => void
+  onFilterByAssignee: (assigneeId: string) => void
+}) {
+  const taskKey = `${groupId}:${node.item.project.id}:${node.item.task.id}`
+  const expanded = !collapsedTaskKeys.has(taskKey)
+
+  return (
+    <Fragment>
+      <PersonTaskRow
+        item={node.item}
+        depth={depth}
+        hasChildren={node.children.length > 0}
+        expanded={expanded}
+        viewerId={viewerId}
+        selected={selectedIds.has(node.item.task.id)}
+        pending={pendingTaskIds.has(node.item.task.id)}
+        onToggleChildren={() => onToggleTask(taskKey)}
+        onToggleSelected={onToggleSelected}
+        onPatchTask={onPatchTask}
+        onOpenTask={onOpenTask}
+        onFilterByAssignee={onFilterByAssignee}
+      />
+      {expanded && node.children.map((child) => (
+        <PersonTaskRows
+          key={`${groupId}:${child.item.project.id}:${child.item.task.id}`}
+          node={child}
+          groupId={groupId}
+          depth={depth + 1}
+          viewerId={viewerId}
+          selectedIds={selectedIds}
+          pendingTaskIds={pendingTaskIds}
+          collapsedTaskKeys={collapsedTaskKeys}
+          onToggleTask={onToggleTask}
+          onToggleSelected={onToggleSelected}
+          onPatchTask={onPatchTask}
+          onOpenTask={onOpenTask}
+          onFilterByAssignee={onFilterByAssignee}
+        />
+      ))}
+    </Fragment>
+  )
+}
+
+function PersonTaskRow({
+  item,
+  depth,
+  hasChildren,
+  expanded,
+  viewerId,
+  selected,
+  pending,
+  onToggleChildren,
+  onToggleSelected,
+  onPatchTask,
+  onOpenTask,
+  onFilterByAssignee,
+}: {
+  item: WorkspaceTaskItem
+  depth: number
+  hasChildren: boolean
+  expanded: boolean
+  viewerId: string
+  selected: boolean
+  pending: boolean
+  onToggleChildren: () => void
+  onToggleSelected: (taskId: string, selected: boolean) => void
+  onPatchTask: WorkspaceTaskTableProps['onPatchTask']
+  onOpenTask: (projectId: string, taskId: string) => void
+  onFilterByAssignee: (assigneeId: string) => void
+}) {
+  const { project, task } = item
+  const canEdit = canEditTask(project, task, viewerId)
+  const done = isDoneTask(project, task)
+  const overdue = isTaskOverdue(project, task)
+
+  const toggleDone = async (checked: boolean) => {
+    const section = sectionForColumn(project, checked ? 'DONE' : 'TODO')
+    if (!section) {
+      toast.error(`No ${checked ? 'Done' : 'To Do'} status is configured for ${project.name}`)
+      return
+    }
+    await onPatchTask(project.id, task.id, { sectionId: section.id }, {
+      sectionId: section.id,
+      section,
+      status: section.canonicalStatus,
+      completedLate: checked && overdue ? true : task.completedLate,
+    })
+  }
+
+  return (
+    <TableRow
+      data-person-task-id={task.id}
+      data-task-depth={depth}
+      data-state={selected ? 'selected' : undefined}
+      className={cn(overdue && 'bg-red-500/[0.07] hover:bg-red-500/[0.11]', pending && 'opacity-65')}
+    >
+      <TableCell>
+        <div className="flex min-w-0 items-center gap-2" style={{ paddingLeft: `${depth * 20}px` }}>
+          <Checkbox
+            checked={selected}
+            onCheckedChange={(checked) => onToggleSelected(task.id, checked === true)}
+            aria-label={`Select ${task.title}`}
+            disabled={pending || !canEdit}
+          />
+          <Checkbox
+            checked={done}
+            onCheckedChange={(checked) => void toggleDone(checked === true)}
+            aria-label={`Mark ${task.title} ${done ? 'incomplete' : 'complete'}`}
+            disabled={pending || !canEdit}
+            className="h-5 w-5 rounded-full"
+          />
+          {hasChildren ? (
+            <button
+              type="button"
+              onClick={onToggleChildren}
+              aria-expanded={expanded}
+              aria-label={`${expanded ? 'Collapse' : 'Expand'} subtasks for ${task.title}`}
+              className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', expanded && 'rotate-90')} />
+            </button>
+          ) : <span className="w-[18px] shrink-0" aria-hidden="true" />}
+          {task.parentTaskId && <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Subtask" />}
+          <div className="flex min-w-0 flex-1 flex-col">
+            <InlineTitle project={project} task={task} pending={pending || !canEdit} onPatchTask={onPatchTask} />
+            {task.parentTaskId && depth === 0 && (
+              <span className="truncate px-2 text-[10px] text-muted-foreground">
+                Subtask of {task.parentTask?.title || 'another task'}
+              </span>
+            )}
+          </div>
+        </div>
+      </TableCell>
+      <TableCell>
+        <Select
+          value={task.priority}
+          onValueChange={(value) => void onPatchTask(project.id, task.id, { priority: value as WorkspacePriority }, { priority: value as WorkspacePriority })}
+          disabled={pending || !canEdit}
+        >
+          <SelectTrigger aria-label={`Priority for ${task.title}`} className={cn('h-8 border px-2 text-xs shadow-none', PRIORITY_CLASS[task.priority])}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>{PRIORITIES.map((priority) => <SelectItem key={priority} value={priority}>{PRIORITY_LABEL[priority]}</SelectItem>)}</SelectContent>
+        </Select>
+      </TableCell>
+      <TableCell>
+        <Badge variant="outline" className="max-w-36 gap-1.5 font-normal">
+          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: task.section?.color || '#94a3b8' }} />
+          <span className="truncate">{task.section?.name || task.status.replace('_', ' ')}</span>
+        </Badge>
+      </TableCell>
+      <TableCell>
+        <TaskAssignees project={project} task={task} pending={pending} onPatchTask={onPatchTask} onFilterByAssignee={onFilterByAssignee} />
+      </TableCell>
+      <TableCell>
+        <Link href={`/projects/${project.id}`} className="inline-flex max-w-44 items-center gap-2 text-xs font-medium hover:text-primary hover:underline">
+          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: project.color || '#94a3b8' }} />
+          <span className="truncate">{project.name}</span>
+        </Link>
+      </TableCell>
+      <TableCell>
+        <div className="space-y-0.5">
+          <Input
+            type="date"
+            value={dateInputValue(task.dueDate)}
+            onChange={(event) => void onPatchTask(project.id, task.id, { dueDate: event.target.value || null }, { dueDate: event.target.value || null })}
+            aria-label={`Due date for ${task.title}`}
+            disabled={pending || !canEdit}
+            className={cn('h-8 min-w-[142px] border-transparent bg-transparent px-2 text-xs shadow-none hover:border-border focus:border-border', overdue && 'font-semibold text-red-600 dark:text-red-300')}
+          />
+          <p className={cn('px-2 text-[10px] text-muted-foreground', overdue && 'font-semibold text-red-600 dark:text-red-300')}>
+            {relativeDueDate(task.dueDate)}
+          </p>
+        </div>
+      </TableCell>
+      <TableCell>
+        <button
+          type="button"
+          onClick={() => onOpenTask(project.id, task.id)}
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={`Open notes and details for ${task.title}`}
+        >
+          <FileText className="h-3.5 w-3.5 shrink-0" />
+          <span className="line-clamp-2">{plainTextPreview(task.description) || 'Add notes'}</span>
+        </button>
+      </TableCell>
+    </TableRow>
+  )
 }
 
 function ProjectMatrixRow({
@@ -408,9 +816,11 @@ function ProjectMatrixRow({
 
               {tasks.length === 0 ? (
                 <div className="px-5 py-10 text-center text-sm text-muted-foreground">
-                  {project.tasks.length === 0
+                  {project.tasks.length === 0 && project.canUseBacklog
                     ? 'No tasks yet. Use the Backlog quick-add below to capture the first task.'
-                    : 'No active tasks match this view. Try another teammate, status, or search filter.'}
+                    : project.tasks.length === 0
+                      ? 'No active tasks are available in this view.'
+                      : 'No active tasks match this view. Try another teammate, status, or search filter.'}
                 </div>
               ) : (
                 <div className="max-h-[70vh] overflow-auto">
@@ -948,6 +1358,8 @@ function BacklogGroup({
   collapsed,
   sortKey,
   sortDirection,
+  groupMode,
+  scopeAssigneeId,
   quickAddProjects,
   quickAddProjectId,
   quickAdding,
@@ -963,11 +1375,13 @@ function BacklogGroup({
   onQuickAddProjectChange,
   onQuickAdd,
 }: {
-  items: Array<{ project: WorkspaceProject; task: WorkspaceTask }>
+  items: WorkspaceTaskItem[]
   viewerId: string
   collapsed: boolean
   sortKey: WorkspaceSortKey
   sortDirection: SortDirection
+  groupMode: WorkspaceGroupMode
+  scopeAssigneeId: string | null
   quickAddProjects: WorkspaceProject[]
   quickAddProjectId: string
   quickAdding: boolean
@@ -984,10 +1398,29 @@ function BacklogGroup({
   onQuickAdd: (title: string) => Promise<boolean>
 }) {
   const [title, setTitle] = useState('')
+  const [collapsedGroupIds, setCollapsedGroupIds] = useState(new Set<string>())
+  const assigneeGroups = groupWorkspaceTaskItemsByAssignee(items, scopeAssigneeId)
   const ids = items
     .filter(({ project, task }) => canEditTask(project, task, viewerId))
     .map(({ task }) => task.id)
   const selectedCount = ids.filter((id) => selectedIds.has(id)).length
+
+  const toggleGroup = (groupId: string) => setCollapsedGroupIds((current) => {
+    const next = new Set(current)
+    if (next.has(groupId)) next.delete(groupId)
+    else next.add(groupId)
+    return next
+  })
+  const backlogRows = groupMode === 'assignee'
+    ? assigneeGroups.flatMap((group) => [
+      { type: 'group' as const, group },
+      ...(collapsedGroupIds.has(group.id) ? [] : group.items.map((item) => ({
+        type: 'task' as const,
+        groupId: group.id,
+        item,
+      }))),
+    ])
+    : items.map((item) => ({ type: 'task' as const, groupId: 'all', item }))
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -1065,8 +1498,32 @@ function BacklogGroup({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.map(({ project, task }) => (
-                  <TableRow key={task.id} data-state={selectedIds.has(task.id) ? 'selected' : undefined} className={pendingTaskIds.has(task.id) ? 'opacity-65' : undefined}>
+                {backlogRows.map((row) => {
+                  if (row.type === 'group') {
+                    const groupName = row.group.person?.name || 'Unassigned'
+                    const groupCollapsed = collapsedGroupIds.has(row.group.id)
+                    return (
+                      <TableRow key={`group:${row.group.id}`} className="bg-muted/30 hover:bg-muted/40" data-backlog-assignee-group-id={row.group.id}>
+                        <TableCell colSpan={7} className="py-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleGroup(row.group.id)}
+                            aria-expanded={!groupCollapsed}
+                            aria-label={`${groupCollapsed ? 'Expand' : 'Collapse'} backlog tasks for ${groupName}`}
+                            className="flex items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            <ChevronRight className={cn('h-4 w-4 text-muted-foreground transition-transform', !groupCollapsed && 'rotate-90')} />
+                            <UserAvatar name={groupName} size="xs" />
+                            <span className="font-semibold">{groupName}</span>
+                            <Badge variant="secondary">{row.group.items.length}</Badge>
+                          </button>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  }
+                  const { project, task } = row.item
+                  return (
+                  <TableRow key={`${row.groupId}:${project.id}:${task.id}`} data-state={selectedIds.has(task.id) ? 'selected' : undefined} className={pendingTaskIds.has(task.id) ? 'opacity-65' : undefined}>
                     <TableCell>
                       <Checkbox
                         checked={selectedIds.has(task.id)}
@@ -1144,7 +1601,8 @@ function BacklogGroup({
                       </button>
                     </TableCell>
                   </TableRow>
-                ))}
+                  )
+                })}
               </TableBody>
             </Table>
           )}

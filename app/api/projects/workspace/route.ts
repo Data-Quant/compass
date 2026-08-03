@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { accessibleProjectsWhere, resolveProjectCapabilities } from '@/lib/project-access'
+import {
+  accessibleProjectsWhere,
+  resolveProjectCapabilities,
+} from '@/lib/project-access'
 import { calculateProjectProgress, calculateTaskVariance, isTaskAssignedTo } from '@/lib/project-progress'
-import { PROJECT_TASK_INCLUDE } from '@/lib/project-task-data'
+import { filterTasksForBacklogAccess, PROJECT_TASK_INCLUDE } from '@/lib/project-task-data'
 
 export async function GET() {
   try {
@@ -63,15 +66,17 @@ export async function GET() {
         ownerId: project.ownerId,
         members: project.members,
       })
+      const canUseBacklog = capabilities.isParticipant
       const progress = calculateProjectProgress(project.tasks, { assigneeId: scopedAssigneeId })
       const overallProgress = calculateProjectProgress(project.tasks)
       const taskRows = project.tasks.map((task) => ({
         ...task,
         variance: calculateTaskVariance(task),
       }))
+      const workspaceTaskRows = filterTasksForBacklogAccess(taskRows, canUseBacklog)
       const visibleTasks = scopedAssigneeId
-        ? taskRows.filter((task) => isTaskAssignedTo(task, scopedAssigneeId))
-        : taskRows
+        ? workspaceTaskRows.filter((task) => isTaskAssignedTo(task, scopedAssigneeId))
+        : workspaceTaskRows
 
       return {
         id: project.id,
@@ -87,11 +92,12 @@ export async function GET() {
         })),
         sections: project.sections,
         labels: project.labels,
-        tasks: taskRows,
+        tasks: workspaceTaskRows,
         progress,
         overallProgress,
         hasVariance: visibleTasks.some((task) => task.variance.isOverdue),
         canManage: capabilities.canManage,
+        canUseBacklog,
         createdAt: project.createdAt,
         updatedAt: project.updatedAt,
       }

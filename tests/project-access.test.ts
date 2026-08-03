@@ -16,7 +16,7 @@ test('HR can access and manage every project', () => {
     viewer: { id: 'hr', role: 'HR' },
     ownerId: 'owner',
     members,
-  }), { canAccess: true, canManage: true, membershipRole: null })
+  }), { canAccess: true, canManage: true, isParticipant: false, membershipRole: null })
 })
 
 test('project owner and OWNER or LEAD memberships can manage', () => {
@@ -36,7 +36,7 @@ test('normal members can access but cannot manage', () => {
     viewer: { id: 'member', role: 'EMPLOYEE' },
     ownerId: 'owner',
     members,
-  }), { canAccess: true, canManage: false, membershipRole: 'MEMBER' })
+  }), { canAccess: true, canManage: false, isParticipant: true, membershipRole: 'MEMBER' })
 })
 
 test('unrelated users cannot access a project', () => {
@@ -44,7 +44,13 @@ test('unrelated users cannot access a project', () => {
     viewer: { id: 'outsider', role: 'EMPLOYEE' },
     ownerId: 'owner',
     members,
-  }), { canAccess: false, canManage: false, membershipRole: null })
+  }), { canAccess: false, canManage: false, isParticipant: false, membershipRole: null })
+})
+
+test('backlog participation is limited to the project owner and explicit members for every role', () => {
+  assert.equal(resolveProjectCapabilities({ viewer: { id: 'owner', role: 'EMPLOYEE' }, ownerId: 'owner', members }).isParticipant, true)
+  assert.equal(resolveProjectCapabilities({ viewer: { id: 'member', role: 'EMPLOYEE' }, ownerId: 'owner', members }).isParticipant, true)
+  assert.equal(resolveProjectCapabilities({ viewer: { id: 'hr-not-on-project', role: 'HR' }, ownerId: 'owner', members }).isParticipant, false)
 })
 
 test('members may edit only their assigned tasks while managers may edit any task', () => {

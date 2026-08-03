@@ -7,9 +7,11 @@ import type {
 } from '../components/projects/workspace-types'
 import {
   calculateProgress,
+  groupWorkspaceTaskItemsByAssignee,
   isTaskOverdue,
   progressBand,
   sortTasks,
+  sortWorkspaceTaskItems,
   taskMatchesAssignee,
   taskMatchesSearch,
 } from '../components/projects/workspace-utils'
@@ -66,7 +68,7 @@ function task(input: Partial<WorkspaceTask> & Pick<WorkspaceTask, 'id' | 'title'
   }
 }
 
-function project(tasks: WorkspaceTask[]): WorkspaceProject {
+function project(tasks: WorkspaceTask[], input: Partial<WorkspaceProject> = {}): WorkspaceProject {
   return {
     id: 'project',
     name: 'Compass upgrade',
@@ -76,8 +78,10 @@ function project(tasks: WorkspaceTask[]): WorkspaceProject {
     owner: { id: 'owner', name: 'Owner' },
     members: [],
     canManage: true,
+    canUseBacklog: true,
     sections: [backlog, todo, done],
     labels: [],
+    ...input,
     tasks,
   }
 }
@@ -130,6 +134,93 @@ test('assignee filtering includes primary and co-assigned people', () => {
   assert.equal(taskMatchesAssignee(candidate, 'u1', 'viewer'), true)
   assert.equal(taskMatchesAssignee(candidate, 'u2', 'viewer'), true)
   assert.equal(taskMatchesAssignee(candidate, 'u3', 'viewer'), false)
+})
+
+test('person grouping fans shared tasks out once per assigned person and keeps unassigned last', () => {
+  const shared = task({
+    id: 'shared',
+    title: 'Shared',
+    assistants: [
+      { id: 'assistant-u2', user: { id: 'u2', name: 'Raveeha' } },
+      { id: 'duplicate-primary', user: { id: 'u1', name: 'Areebah' } },
+    ],
+  })
+  const assistantOnly = task({
+    id: 'assistant-only',
+    title: 'Assistant only',
+    assigneeId: null,
+    assignee: null,
+    assistants: [{ id: 'assistant-u2-only', user: { id: 'u2', name: 'Raveeha' } }],
+  })
+  const sameName = task({
+    id: 'same-name',
+    title: 'Same name',
+    assigneeId: 'u3',
+    assignee: { id: 'u3', name: 'Raveeha' },
+    assistants: [],
+  })
+  const unassigned = task({
+    id: 'unassigned',
+    title: 'Unassigned',
+    assigneeId: null,
+    assignee: null,
+    assistants: [],
+  })
+  const value = project([shared, assistantOnly, sameName, unassigned])
+  const items = value.tasks.map((candidate) => ({ project: value, task: candidate }))
+  const groups = groupWorkspaceTaskItemsByAssignee(items, null)
+
+  assert.deepEqual(groups.map((group) => group.id), ['u1', 'u2', 'u3', '__UNASSIGNED__'])
+  assert.deepEqual(groups[0].items.map(({ task: candidate }) => candidate.id), ['shared'])
+  assert.deepEqual(groups[1].items.map(({ task: candidate }) => candidate.id), ['shared', 'assistant-only'])
+  assert.deepEqual(groups[2].items.map(({ task: candidate }) => candidate.id), ['same-name'])
+  assert.deepEqual(groups[3].items.map(({ task: candidate }) => candidate.id), ['unassigned'])
+
+  const scoped = groupWorkspaceTaskItemsByAssignee(items, 'u2')
+  assert.deepEqual(scoped.map((group) => group.id), ['u2'])
+  assert.deepEqual(scoped[0].items.map(({ task: candidate }) => candidate.id), ['shared', 'assistant-only'])
+})
+
+test('cross-project task sorting uses each item project and supports project order', () => {
+  const alphaTask = task({ id: 'alpha-task', title: 'Second title' })
+  const betaTask = task({ id: 'beta-task', title: 'First title' })
+  const alpha = project([alphaTask], { id: 'alpha', name: 'Alpha' })
+  const beta = project([betaTask], { id: 'beta', name: 'Beta' })
+  const items = [
+    { project: beta, task: betaTask },
+    { project: alpha, task: alphaTask },
+  ]
+
+  assert.deepEqual(
+    sortWorkspaceTaskItems(items, 'project', 'asc').map(({ project: candidate }) => candidate.id),
+    ['alpha', 'beta'],
+  )
+  assert.deepEqual(
+    sortWorkspaceTaskItems(items, 'title', 'asc').map(({ task: candidate }) => candidate.id),
+    ['beta-task', 'alpha-task'],
+  )
+})
+
+test('status sorting orders todo, in-progress, and done tasks instead of only separating done rows', () => {
+  const inProgressSection = {
+    ...todo,
+    id: 'in-progress',
+    name: 'In Progress',
+    canonicalStatus: 'IN_PROGRESS' as const,
+    orderIndex: 2,
+  }
+  const tasks = [
+    task({ id: 'done-status', title: 'Done', status: 'DONE', sectionId: done.id, section: done }),
+    task({ id: 'progress-status', title: 'In progress', status: 'IN_PROGRESS', sectionId: inProgressSection.id, section: inProgressSection }),
+    task({ id: 'todo-status', title: 'To do' }),
+  ]
+  const value = project(tasks, { sections: [backlog, todo, inProgressSection, done] })
+
+  assert.deepEqual(sortTasks(value, tasks, 'status', 'asc').map(({ id }) => id), [
+    'todo-status',
+    'progress-status',
+    'done-status',
+  ])
 })
 
 test('variance excludes backlog and completed tasks, and progress bands meet the specification', () => {

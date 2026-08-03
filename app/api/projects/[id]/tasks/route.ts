@@ -24,7 +24,11 @@ import {
   getProjectAuthorization,
   projectAuthorizationFailure,
 } from '@/lib/project-access'
-import { PROJECT_TASK_INCLUDE } from '@/lib/project-task-data'
+import {
+  filterTasksForBacklogAccess,
+  PROJECT_TASK_INCLUDE,
+  taskSubtreeContainsBacklog,
+} from '@/lib/project-task-data'
 import { shouldMarkTaskCompletedLate } from '@/lib/project-progress'
 
 const MAX_TASK_ORDER_INDEX = 1_000_000_000
@@ -232,12 +236,15 @@ export async function POST(
     const parentTask = parentTaskId
       ? await prisma.task.findFirst({
           where: { id: parentTaskId, projectId },
-          select: { id: true },
+          select: { id: true, section: { select: { isBacklog: true } } },
         })
       : null
 
     if (parentTaskId && !parentTask) {
       return NextResponse.json({ error: 'Invalid parent task for this project' }, { status: 400 })
+    }
+    if (parentTask?.section?.isBacklog && !authorization.isParticipant) {
+      return NextResponse.json({ error: 'Backlog access is limited to project members' }, { status: 403 })
     }
 
     const cleanAssistantIds = assistantIds === undefined ? undefined : uniqueStringArray(assistantIds)
@@ -255,6 +262,9 @@ export async function POST(
 
     if (!section) {
       return NextResponse.json({ error: 'No task status section is available for this project' }, { status: 400 })
+    }
+    if (section.isBacklog && !authorization.isParticipant) {
+      return NextResponse.json({ error: 'Backlog access is limited to project members' }, { status: 403 })
     }
 
     const taskStatus = getTaskStatusForSection(section)
@@ -456,6 +466,9 @@ export async function PUT(
     if ((sectionId !== undefined || status !== undefined) && !section) {
       return NextResponse.json({ error: 'Invalid status section for this project' }, { status: 400 })
     }
+    if (!authorization.isParticipant && (existingTask.section?.isBacklog || section?.isBacklog)) {
+      return NextResponse.json({ error: 'Backlog access is limited to project members' }, { status: 403 })
+    }
 
     if (parentTaskId !== undefined) {
       if (parentTaskId === taskId) {
@@ -465,10 +478,18 @@ export async function PUT(
       if (parentTaskId) {
         const projectTasks = await prisma.task.findMany({
           where: { projectId },
-          select: { id: true, parentTaskId: true },
+          select: {
+            id: true,
+            parentTaskId: true,
+            section: { select: { isBacklog: true } },
+          },
         })
-        if (!projectTasks.some((candidate) => candidate.id === parentTaskId)) {
+        const parentCandidate = projectTasks.find((candidate) => candidate.id === parentTaskId)
+        if (!parentCandidate) {
           return NextResponse.json({ error: 'Invalid parent task for this project' }, { status: 400 })
+        }
+        if (parentCandidate.section?.isBacklog && !authorization.isParticipant) {
+          return NextResponse.json({ error: 'Backlog access is limited to project members' }, { status: 403 })
         }
         if (wouldCreateTaskParentCycle(taskId, parentTaskId, projectTasks)) {
           return NextResponse.json({ error: 'A task cannot be nested beneath itself or one of its descendants' }, { status: 400 })
@@ -568,6 +589,13 @@ export async function PUT(
       }
     }
 
+    const responseVisibilityScope = authorization.isParticipant
+      ? null
+      : await prisma.task.findMany({
+          where: { projectId },
+          select: { id: true, section: { select: { isBacklog: true } } },
+        })
+
     const task = await prisma.task.update({
       where: { id: taskId },
       data: updateData,
@@ -643,7 +671,10 @@ export async function PUT(
       console.error('Failed to sync project completion status:', syncError)
     }
 
-    return NextResponse.json({ success: true, task, projectStatus })
+    const responseTask = responseVisibilityScope
+      ? filterTasksForBacklogAccess([task], false, responseVisibilityScope)[0]
+      : task
+    return NextResponse.json({ success: true, task: responseTask, projectStatus })
   } catch (error) {
     if (error instanceof ProjectTaskInputError) {
       return NextResponse.json({ error: error.message }, { status: 400 })
@@ -682,13 +713,21 @@ export async function DELETE(
       return NextResponse.json({ error: 'taskId is required' }, { status: 400 })
     }
 
-    const task = await prisma.task.findFirst({
-      where: { id: taskId, projectId },
-      select: { id: true },
+    const projectTasks = await prisma.task.findMany({
+      where: { projectId },
+      select: {
+        id: true,
+        parentTaskId: true,
+        section: { select: { isBacklog: true } },
+      },
     })
+    const task = projectTasks.find((candidate) => candidate.id === taskId)
 
     if (!task) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })
+    }
+    if (!authorization.isParticipant && taskSubtreeContainsBacklog(task.id, projectTasks)) {
+      return NextResponse.json({ error: 'Backlog access is limited to project members' }, { status: 403 })
     }
 
     await prisma.task.delete({ where: { id: taskId } })

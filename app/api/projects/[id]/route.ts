@@ -3,7 +3,7 @@ import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { ensureProjectStatusSections } from '@/lib/project-status-sections'
 import { getProjectAuthorization, projectAuthorizationFailure } from '@/lib/project-access'
-import { PROJECT_TASK_INCLUDE } from '@/lib/project-task-data'
+import { filterTasksForBacklogAccess, PROJECT_TASK_INCLUDE } from '@/lib/project-task-data'
 
 // GET - Get project detail with tasks
 export async function GET(
@@ -40,7 +40,18 @@ export async function GET(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ project: { ...project, canManage: authorization.canManage } })
+    const canUseBacklog = authorization.isParticipant
+    return NextResponse.json({
+      project: {
+        ...project,
+        sections: canUseBacklog
+          ? project.sections
+          : project.sections.filter((section) => !section.isBacklog),
+        tasks: filterTasksForBacklogAccess(project.tasks, canUseBacklog),
+        canManage: authorization.canManage,
+        canUseBacklog,
+      },
+    })
   } catch (error) {
     console.error('Failed to fetch project:', error)
     return NextResponse.json({ error: 'Failed to fetch project' }, { status: 500 })

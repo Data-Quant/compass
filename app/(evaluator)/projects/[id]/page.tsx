@@ -37,6 +37,7 @@ interface Project {
   labels: Label[]
   tasks: PanelTask[]
   canManage?: boolean
+  canUseBacklog?: boolean
 }
 
 const PRESET_COLORS = [
@@ -228,7 +229,11 @@ export default function ProjectDetailPage() {
     project.owner.id === viewer?.id ||
     members.some((member) => member.id === viewer?.id && ['OWNER', 'LEAD'].includes(member.role))
   )
-  const statusCounts = project.sections.map((section) => ({
+  const canUseBacklog = project.canUseBacklog !== false
+  const visibleSections = canUseBacklog
+    ? project.sections
+    : project.sections.filter((section) => !section.isBacklog)
+  const statusCounts = visibleSections.map((section) => ({
     section,
     count: project.tasks.filter((task) => task.sectionId === section.id).length,
   }))
@@ -544,7 +549,7 @@ export default function ProjectDetailPage() {
           <ListView
             projectId={id}
             tasks={project.tasks}
-            sections={project.sections}
+            sections={visibleSections}
             viewerId={viewer?.id || ''}
             canManage={canManage}
             onTaskClick={handleTaskClick}
@@ -554,7 +559,7 @@ export default function ProjectDetailPage() {
           <BoardView
             projectId={id}
             tasks={project.tasks}
-            sections={project.sections}
+            sections={visibleSections}
             viewerId={viewer?.id || ''}
             canManage={canManage}
             onTaskClick={handleTaskClick}
@@ -568,7 +573,7 @@ export default function ProjectDetailPage() {
         task={selectedTask}
         projectId={id}
         members={members}
-        sections={project.sections}
+        sections={visibleSections}
         labels={project.labels}
         open={panelOpen}
         onClose={() => { setPanelOpen(false); setSelectedTask(null) }}

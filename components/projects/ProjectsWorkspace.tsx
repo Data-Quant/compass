@@ -48,6 +48,7 @@ import type {
   TaskOptimisticPatch,
   TaskPatchRequest,
   WorkspaceBulkAction,
+  WorkspaceGroupMode,
   WorkspaceProject,
   WorkspaceProjectView,
   WorkspaceSortKey,
@@ -139,6 +140,7 @@ function normalizeProject(project: WorkspaceProject): WorkspaceProject {
     labels: project.labels || [],
     sections,
     canManage: Boolean(project.canManage),
+    canUseBacklog: Boolean(project.canUseBacklog),
   }
   return {
     ...base,
@@ -175,6 +177,7 @@ export function ProjectsWorkspace() {
   const [statusFilter, setStatusFilter] = useState<ProjectStatusFilter>('CURRENT')
   const [search, setSearch] = useState('')
   const [view, setView] = useState<WorkspaceView>('table')
+  const [groupMode, setGroupMode] = useState<WorkspaceGroupMode>('project')
   const [sortKey, setSortKey] = useState<WorkspaceSortKey>('priority')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [backlogCollapsed, setBacklogCollapsed] = useState(true)
@@ -242,13 +245,15 @@ export function ProjectsWorkspace() {
   useEffect(() => {
     const savedView = window.localStorage.getItem('compass-project-workspace-view')
     if (savedView === 'table' || savedView === 'kanban') setView(savedView)
+    const savedGroupMode = window.localStorage.getItem('compass-project-workspace-group-mode')
+    if (savedGroupMode === 'project' || savedGroupMode === 'assignee') setGroupMode(savedGroupMode)
     void loadWorkspace(true)
     // The workspace load is intentionally mount-only. Subsequent refreshes are explicit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const quickAddProjects = useMemo(
-    () => (workspace?.projects || []).filter((project) => project.status !== 'ARCHIVED'),
+    () => (workspace?.projects || []).filter((project) => project.canUseBacklog && project.status !== 'ARCHIVED'),
     [workspace],
   )
 
@@ -267,10 +272,13 @@ export function ProjectsWorkspace() {
     return workspace.projects.flatMap((project) => {
       if (!projectMatchesStatus(project, statusFilter)) return []
 
-      const scopedTasks = project.tasks.filter((task) => taskMatchesAssignee(task, assigneeFilter, workspace.viewer.id))
+      const workspaceTasks = project.canUseBacklog
+        ? project.tasks
+        : project.tasks.filter((task) => !isBacklogTask(project, task))
+      const scopedTasks = workspaceTasks.filter((task) => taskMatchesAssignee(task, assigneeFilter, workspace.viewer.id))
       const searchedTasks = scopedTasks.filter((task) => taskMatchesSearch(task, search))
       const hasSearch = Boolean(search.trim())
-      const canShowSetupProject = project.canManage && project.tasks.length === 0
+      const canShowSetupProject = project.canUseBacklog && project.canManage && project.tasks.length === 0
       const shouldShow = hasSearch
         ? searchedTasks.length > 0
         : assigneeFilter === 'ALL' || scopedTasks.length > 0 || canShowSetupProject
@@ -411,6 +419,10 @@ export function ProjectsWorkspace() {
   const quickAdd = async (title: string) => {
     const project = workspaceRef.current?.projects.find((candidate) => candidate.id === quickAddProjectId)
     if (!project) return false
+    if (!project.canUseBacklog) {
+      toast.error('Backlog access is limited to your own projects')
+      return false
+    }
     const backlogSection = sectionForColumn(project, 'BACKLOG')
     if (!backlogSection) {
       toast.error(`${project.name} does not have a Backlog section`)
@@ -699,6 +711,14 @@ export function ProjectsWorkspace() {
     window.localStorage.setItem('compass-project-workspace-view', next)
   }
 
+  const changeGroupMode = (next: WorkspaceGroupMode) => {
+    setGroupMode(next)
+    window.localStorage.setItem('compass-project-workspace-group-mode', next)
+    if (next === 'assignee' && assigneeFilter === 'ME') {
+      void changeAssigneeFilter('ALL')
+    }
+  }
+
   const toggleSort = (key: WorkspaceSortKey) => {
     if (key === sortKey) setSortDirection((current) => current === 'asc' ? 'desc' : 'asc')
     else {
@@ -788,6 +808,18 @@ export function ProjectsWorkspace() {
             </Select>
           </div>
 
+          {view === 'table' && (
+            <Select value={groupMode} onValueChange={(value) => changeGroupMode(value as WorkspaceGroupMode)}>
+              <SelectTrigger aria-label="Group tasks by" className="min-w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="project">Group by project</SelectItem>
+                <SelectItem value="assignee">Group by person</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+
           <div className="flex w-fit items-center rounded-lg border border-border/60 bg-muted/30 p-1" aria-label="Workspace view">
             <Button
               type="button"
@@ -845,6 +877,8 @@ export function ProjectsWorkspace() {
             projectViews={projectViews}
             viewerId={workspace.viewer.id}
             progressScopeLabel={progressScopeLabel}
+            assigneeFilter={assigneeFilter}
+            groupMode={groupMode}
             sortKey={sortKey}
             sortDirection={sortDirection}
             selectedIds={selectedIds}

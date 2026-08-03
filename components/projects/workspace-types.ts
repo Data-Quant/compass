@@ -4,6 +4,7 @@ export type WorkspacePriority = PanelTask['priority']
 export type WorkspaceTaskStatus = PanelTask['status']
 export type AssigneeFilter = 'ALL' | 'ME' | string
 export type WorkspaceView = 'table' | 'kanban'
+export type WorkspaceGroupMode = 'project' | 'assignee'
 export type ProjectStatusFilter = 'CURRENT' | 'ALL' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'ARCHIVED'
 export type SortDirection = 'asc' | 'desc'
 export type WorkspaceSortKey = 'status' | 'title' | 'project' | 'priority' | 'dueDate' | 'assignee' | 'notes' | 'variance'
@@ -42,9 +43,21 @@ export interface WorkspaceProject {
   owner: WorkspacePerson
   members: WorkspaceMember[]
   canManage: boolean
+  canUseBacklog: boolean
   sections: WorkspaceSection[]
   labels: WorkspaceLabel[]
   tasks: WorkspaceTask[]
+}
+
+export interface WorkspaceTaskItem {
+  project: WorkspaceProject
+  task: WorkspaceTask
+}
+
+export interface WorkspaceAssigneeTaskGroup {
+  id: string
+  person: WorkspacePerson | null
+  items: WorkspaceTaskItem[]
 }
 
 export interface ProjectsWorkspaceResponse {

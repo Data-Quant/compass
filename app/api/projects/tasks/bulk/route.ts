@@ -4,7 +4,7 @@ import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { canEditAssignedProjectTask, resolveProjectCapabilities } from '@/lib/project-access'
 import { syncProjectCompletion } from '@/lib/project-completion'
-import { PROJECT_TASK_INCLUDE } from '@/lib/project-task-data'
+import { filterTasksForBacklogAccess, PROJECT_TASK_INCLUDE } from '@/lib/project-task-data'
 import { recordTaskActivity } from '@/lib/project-task-activity'
 import { sendTaskAssignmentNotification } from '@/lib/project-task-notifications'
 import {
@@ -52,6 +52,7 @@ export async function PATCH(request: NextRequest) {
         priority: true,
         startDate: true,
         dueDate: true,
+        section: { select: { isBacklog: true } },
         project: {
           select: {
             ownerId: true,
@@ -82,6 +83,12 @@ export async function PATCH(request: NextRequest) {
 
     if (tasks.some((task) => !capabilitiesByProject.get(task.projectId)?.canAccess)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    if (tasks.some((task) => (
+      task.section?.isBacklog
+      && !capabilitiesByProject.get(task.projectId)?.isParticipant
+    ))) {
+      return NextResponse.json({ error: 'Backlog access is limited to project members' }, { status: 403 })
     }
 
     if (
@@ -177,6 +184,26 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
+    const restrictedProjectIds = [...capabilitiesByProject.entries()]
+      .filter(([, capability]) => !capability.isParticipant)
+      .map(([projectId]) => projectId)
+    const responseVisibilityRows = restrictedProjectIds.length > 0
+      ? await prisma.task.findMany({
+          where: { projectId: { in: restrictedProjectIds } },
+          select: {
+            id: true,
+            projectId: true,
+            section: { select: { isBacklog: true } },
+          },
+        })
+      : []
+    const visibilityByProject = new Map<string, typeof responseVisibilityRows>()
+    for (const row of responseVisibilityRows) {
+      const rows = visibilityByProject.get(row.projectId) || []
+      rows.push(row)
+      visibilityByProject.set(row.projectId, rows)
+    }
+
     const skippedTaskIds: string[] = []
     const updateOperations = tasks.flatMap((task) => {
       if (parsed.data.action === 'SHIFT_DUE_DATE' && !task.dueDate) {
@@ -245,13 +272,22 @@ export async function PATCH(request: NextRequest) {
       }
     }))
 
+    const responseTasks = updatedTasks.map((task) => {
+      if (capabilitiesByProject.get(task.projectId)?.isParticipant) return task
+      return filterTasksForBacklogAccess(
+        [task],
+        false,
+        visibilityByProject.get(task.projectId) || [],
+      )[0]
+    })
+
     return NextResponse.json({
       success: true,
       action: parsed.data.action,
       updatedCount: updatedTasks.length,
       skippedCount: skippedTaskIds.length,
       skippedTaskIds,
-      tasks: updatedTasks,
+      tasks: responseTasks,
     })
   } catch (error) {
     console.error('Failed to bulk update project tasks:', error)
