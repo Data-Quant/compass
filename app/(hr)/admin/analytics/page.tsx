@@ -18,6 +18,7 @@ import { TrendsTab } from '@/components/analytics/TrendsTab'
 import { CalibrationTab } from '@/components/analytics/CalibrationTab'
 import { BlindSpotsTab } from '@/components/analytics/BlindSpotsTab'
 import { TalentGridTab } from '@/components/analytics/TalentGridTab'
+import { HistoricalCompensationTab } from '@/components/analytics/HistoricalCompensationTab'
 import type { Analytics, InsightsPayload } from '@/components/analytics/types'
 
 export default function AnalyticsPage() {
@@ -123,12 +124,18 @@ export default function AnalyticsPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground font-display">Analytics Dashboard</h1>
           <p className="text-muted-foreground mt-1">
-            {analytics.period.name} • {new Date(analytics.period.startDate).toLocaleDateString()} -{' '}
-            {new Date(analytics.period.endDate).toLocaleDateString()}
+            {tab === 'compensation' ? (
+              'Finalized payroll history and recorded compensation events'
+            ) : (
+              <>
+                {analytics.period.name} • {new Date(analytics.period.startDate).toLocaleDateString()} -{' '}
+                {new Date(analytics.period.endDate).toLocaleDateString()}
+              </>
+            )}
           </p>
         </div>
 
-        {insights && insights.periods.length > 0 && (
+        {tab !== 'compensation' && insights && insights.periods.length > 0 && (
           <Select value={periodId} onValueChange={setPeriodId}>
             <SelectTrigger className="w-full sm:w-[220px]">
               <SelectValue placeholder="Select period" />
@@ -146,12 +153,13 @@ export default function AnalyticsPage() {
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="mb-6">
+        <TabsList className="mb-6 h-auto flex-wrap justify-start">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="trends">Trends</TabsTrigger>
           <TabsTrigger value="talent">Talent Grid</TabsTrigger>
           <TabsTrigger value="blindspots">Blind Spots</TabsTrigger>
           <TabsTrigger value="calibration">Calibration</TabsTrigger>
+          <TabsTrigger value="compensation">Compensation</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -193,6 +201,9 @@ export default function AnalyticsPage() {
           ) : (
             <div className="text-muted-foreground">No insight data available.</div>
           )}
+        </TabsContent>
+        <TabsContent value="compensation">
+          <HistoricalCompensationTab />
         </TabsContent>
       </Tabs>
     </div>
