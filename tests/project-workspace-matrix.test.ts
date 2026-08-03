@@ -128,6 +128,7 @@ async function render(options: { groupMode?: 'project' | 'assignee'; assigneeFil
     onQuickAddProjectChange: () => undefined,
     onQuickAdd: async () => true,
     onCreateActiveTask: async () => true,
+    onCreateProject: () => undefined,
   }))
 }
 
@@ -144,6 +145,7 @@ test('project matrix keeps task rows and the task composer out until its project
   assert.equal(html.match(/>Priority</g)?.length, 1)
   assert.match(html, /aria-expanded="false"/)
   assert.doesNotMatch(html, /aria-label="Add a task to Harbor paperwork"/)
+  assert.ok(html.indexOf('New project') < html.indexOf('Backlog'))
 })
 
 test('inline task composer exposes a Notion-style new task action', async () => {

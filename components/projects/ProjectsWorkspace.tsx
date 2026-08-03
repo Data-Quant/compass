@@ -963,6 +963,7 @@ export function ProjectsWorkspace() {
             onQuickAddProjectChange={setQuickAddProjectId}
             onQuickAdd={quickAdd}
             onCreateActiveTask={createActiveTask}
+            onCreateProject={() => setShowCreateProject(true)}
           />
         </div>
       ) : (
@@ -980,7 +981,7 @@ export function ProjectsWorkspace() {
         />
       )}
 
-      {workspace.projects.length > 0 && (
+      {workspace.projects.length > 0 && view === 'kanban' && (
         <button
           type="button"
           onClick={() => setShowCreateProject(true)}

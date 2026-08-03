@@ -113,6 +113,7 @@ interface WorkspaceTaskTableProps {
   onQuickAddProjectChange: (projectId: string) => void
   onQuickAdd: (title: string) => Promise<boolean>
   onCreateActiveTask: (projectId: string, title: string) => Promise<boolean>
+  onCreateProject: () => void
 }
 
 const PRIORITIES: WorkspacePriority[] = ['HIGH', 'MEDIUM', 'LOW']
@@ -157,6 +158,7 @@ export function WorkspaceTaskTable({
   onQuickAddProjectChange,
   onQuickAdd,
   onCreateActiveTask,
+  onCreateProject,
 }: WorkspaceTaskTableProps) {
   const [openProjectId, setOpenProjectId] = useState<string | null>(null)
   const scopeAssigneeId = assigneeIdForFilter(assigneeFilter, viewerId)
@@ -244,6 +246,15 @@ export function WorkspaceTaskTable({
           </CardContent>
         </Card>
       )}
+
+      <button
+        type="button"
+        onClick={onCreateProject}
+        className="flex w-full items-center gap-2 rounded-xl border border-dashed border-border/70 bg-card/40 px-4 py-3 text-left text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <Plus className="h-4 w-4" />
+        <span>New project</span>
+      </button>
 
       <BacklogGroup
         items={backlogItems}
