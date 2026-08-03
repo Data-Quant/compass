@@ -115,6 +115,7 @@ async function render(options: { groupMode?: 'project' | 'assignee'; assigneeFil
     quickAddProjects: [project],
     quickAddProjectId: project.id,
     quickAdding: false,
+    creatingTaskProjectIds: new Set<string>(),
     onSort: () => undefined,
     onToggleBacklog: () => undefined,
     onToggleSelected: () => undefined,
@@ -126,6 +127,7 @@ async function render(options: { groupMode?: 'project' | 'assignee'; assigneeFil
     onArchiveProject: () => undefined,
     onQuickAddProjectChange: () => undefined,
     onQuickAdd: async () => true,
+    onCreateActiveTask: async () => true,
   }))
 }
 
@@ -141,6 +143,19 @@ test('project matrix keeps task rows out of the page until its project popover o
   assert.equal(html.match(/>Assignee</g)?.length, 1)
   assert.equal(html.match(/>Priority</g)?.length, 1)
   assert.match(html, /aria-expanded="false"/)
+  assert.match(html, /aria-label="Add a task to Harbor paperwork"/)
+})
+
+test('inline task composer exposes a Notion-style new task action', async () => {
+  const { InlineTaskComposer } = await import('../components/projects/WorkspaceTaskTable')
+  const html = renderToStaticMarkup(React.createElement(InlineTaskComposer, {
+    projectName: 'Harbor paperwork',
+    creating: false,
+    onCreate: async () => true,
+  }))
+
+  assert.match(html, /aria-label="Add a task to Harbor paperwork"/)
+  assert.match(html, />New task</)
 })
 
 test('task tree preserves recursively nested subtasks from the flat workspace response', async () => {

@@ -185,6 +185,7 @@ export function ProjectsWorkspace() {
   const [pendingTaskIds, setPendingTaskIds] = useState(new Set<string>())
   const [quickAddProjectId, setQuickAddProjectId] = useState('')
   const [quickAdding, setQuickAdding] = useState(false)
+  const [creatingTaskProjectIds, setCreatingTaskProjectIds] = useState(new Set<string>())
   const [bulkApplying, setBulkApplying] = useState(false)
 
   const [selectedTaskKey, setSelectedTaskKey] = useState<{ projectId: string; taskId: string } | null>(null)
@@ -460,6 +461,59 @@ export function ProjectsWorkspace() {
       return false
     } finally {
       setQuickAdding(false)
+    }
+  }
+
+  const createActiveTask = async (projectId: string, title: string) => {
+    const currentWorkspace = workspaceRef.current
+    const project = currentWorkspace?.projects.find((candidate) => candidate.id === projectId)
+    if (!currentWorkspace || !project) return false
+    if (project.status === 'ARCHIVED') {
+      toast.error('Restore this project before adding tasks')
+      return false
+    }
+    const todoSection = sectionForColumn(project, 'TODO')
+    if (!todoSection) {
+      toast.error(`${project.name} does not have a To Do section`)
+      return false
+    }
+
+    const viewerIsParticipant = project.owner.id === currentWorkspace.viewer.id
+      || project.members.some((member) => member.id === currentWorkspace.viewer.id)
+    setCreatingTaskProjectIds((current) => new Set(current).add(projectId))
+    try {
+      const response = await fetch(`/api/projects/${project.id}/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          sectionId: todoSection.id,
+          priority: 'MEDIUM',
+          ...(viewerIsParticipant ? { assigneeId: currentWorkspace.viewer.id } : {}),
+        }),
+      })
+      const data = await responseJson(response)
+      if (!response.ok || data.success !== true) {
+        throw new Error(errorMessage(data, 'Failed to add the task'))
+      }
+      commitWorkspace((current) => ({
+        ...current,
+        projects: current.projects.map((candidate) => candidate.id !== project.id ? candidate : {
+          ...candidate,
+          ...(typeof data.projectStatus === 'string' ? { status: data.projectStatus } : {}),
+          tasks: [normalizeTask(candidate, data.task as Partial<WorkspaceTask>), ...candidate.tasks],
+        }),
+      }))
+      return true
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to add the task')
+      return false
+    } finally {
+      setCreatingTaskProjectIds((current) => {
+        const next = new Set(current)
+        next.delete(projectId)
+        return next
+      })
     }
   }
 
@@ -887,6 +941,7 @@ export function ProjectsWorkspace() {
             quickAddProjects={quickAddProjects}
             quickAddProjectId={quickAddProjectId}
             quickAdding={quickAdding}
+            creatingTaskProjectIds={creatingTaskProjectIds}
             onSort={toggleSort}
             onToggleBacklog={() => setBacklogCollapsed((current) => !current)}
             onToggleSelected={(taskId, selected) => setSelectedIds((current) => {
@@ -910,6 +965,7 @@ export function ProjectsWorkspace() {
             onArchiveProject={setArchiveProject}
             onQuickAddProjectChange={setQuickAddProjectId}
             onQuickAdd={quickAdd}
+            onCreateActiveTask={createActiveTask}
           />
         </div>
       ) : (

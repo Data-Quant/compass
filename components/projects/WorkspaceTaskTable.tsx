@@ -95,6 +95,7 @@ interface WorkspaceTaskTableProps {
   quickAddProjects: WorkspaceProject[]
   quickAddProjectId: string
   quickAdding: boolean
+  creatingTaskProjectIds: Set<string>
   onSort: (key: WorkspaceSortKey) => void
   onToggleBacklog: () => void
   onToggleSelected: (taskId: string, selected: boolean) => void
@@ -111,6 +112,7 @@ interface WorkspaceTaskTableProps {
   onArchiveProject: (project: WorkspaceProject) => void
   onQuickAddProjectChange: (projectId: string) => void
   onQuickAdd: (title: string) => Promise<boolean>
+  onCreateActiveTask: (projectId: string, title: string) => Promise<boolean>
 }
 
 const PRIORITIES: WorkspacePriority[] = ['HIGH', 'MEDIUM', 'LOW']
@@ -142,6 +144,7 @@ export function WorkspaceTaskTable({
   quickAddProjects,
   quickAddProjectId,
   quickAdding,
+  creatingTaskProjectIds,
   onSort,
   onToggleBacklog,
   onToggleSelected,
@@ -153,6 +156,7 @@ export function WorkspaceTaskTable({
   onArchiveProject,
   onQuickAddProjectChange,
   onQuickAdd,
+  onCreateActiveTask,
 }: WorkspaceTaskTableProps) {
   const [openProjectId, setOpenProjectId] = useState<string | null>(null)
   const scopeAssigneeId = assigneeIdForFilter(assigneeFilter, viewerId)
@@ -213,25 +217,35 @@ export function WorkspaceTaskTable({
               </TableHeader>
               <TableBody>
                 {orderedProjectViews.map((view) => (
-                  <ProjectMatrixRow
-                    key={view.project.id}
-                    view={view}
-                    viewerId={viewerId}
-                    progressScopeLabel={progressScopeLabel}
-                    sortKey={sortKey}
-                    sortDirection={sortDirection}
-                    selectedIds={selectedIds}
-                    pendingTaskIds={pendingTaskIds}
-                    open={openProjectId === view.project.id}
-                    onOpenChange={(open) => setOpenProjectId(open ? view.project.id : null)}
-                    onToggleSelected={onToggleSelected}
-                    onToggleManySelected={onToggleManySelected}
-                    onPatchTask={onPatchTask}
-                    onOpenTask={onOpenTask}
-                    onFilterByAssignee={onFilterByAssignee}
-                    onRenameProject={onRenameProject}
-                    onArchiveProject={onArchiveProject}
-                  />
+                  <Fragment key={view.project.id}>
+                    <ProjectMatrixRow
+                      view={view}
+                      viewerId={viewerId}
+                      progressScopeLabel={progressScopeLabel}
+                      sortKey={sortKey}
+                      sortDirection={sortDirection}
+                      selectedIds={selectedIds}
+                      pendingTaskIds={pendingTaskIds}
+                      open={openProjectId === view.project.id}
+                      creatingTask={creatingTaskProjectIds.has(view.project.id)}
+                      onOpenChange={(open) => setOpenProjectId(open ? view.project.id : null)}
+                      onToggleSelected={onToggleSelected}
+                      onToggleManySelected={onToggleManySelected}
+                      onPatchTask={onPatchTask}
+                      onOpenTask={onOpenTask}
+                      onFilterByAssignee={onFilterByAssignee}
+                      onRenameProject={onRenameProject}
+                      onArchiveProject={onArchiveProject}
+                      onCreateActiveTask={onCreateActiveTask}
+                    />
+                    {view.project.status !== 'ARCHIVED' && (
+                      <ProjectNewTaskRow
+                        project={view.project}
+                        creating={creatingTaskProjectIds.has(view.project.id)}
+                        onCreateActiveTask={onCreateActiveTask}
+                      />
+                    )}
+                  </Fragment>
                 ))}
               </TableBody>
             </Table>
@@ -675,6 +689,93 @@ function PersonTaskRow({
   )
 }
 
+export function InlineTaskComposer({
+  projectName,
+  creating,
+  onCreate,
+}: {
+  projectName: string
+  creating: boolean
+  onCreate: (title: string) => Promise<boolean>
+}) {
+  const [editing, setEditing] = useState(false)
+  const [title, setTitle] = useState('')
+
+  const close = () => {
+    if (creating) return
+    setTitle('')
+    setEditing(false)
+  }
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    const cleanTitle = title.trim()
+    if (!cleanTitle || creating) return
+    if (await onCreate(cleanTitle)) close()
+  }
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        disabled={creating}
+        aria-label={`Add a task to ${projectName}`}
+        className="inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait disabled:opacity-60"
+      >
+        <Plus className="h-4 w-4" />
+        <span>New task</span>
+      </button>
+    )
+  }
+
+  return (
+    <form onSubmit={submit} className="flex min-w-0 items-center gap-2">
+      <Plus className="h-4 w-4 shrink-0 text-muted-foreground" />
+      <Input
+        autoFocus
+        value={title}
+        onChange={(event) => setTitle(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') close()
+        }}
+        placeholder="Task name"
+        aria-label={`New task name for ${projectName}`}
+        disabled={creating}
+        className="h-8 min-w-0 flex-1 border-transparent bg-transparent shadow-none hover:border-border focus:border-border"
+      />
+      <Button type="submit" size="sm" className="h-8" disabled={creating || !title.trim()}>
+        {creating ? 'Adding...' : 'Add'}
+      </Button>
+      <Button type="button" variant="ghost" size="sm" className="h-8" onClick={close} disabled={creating}>
+        Cancel
+      </Button>
+    </form>
+  )
+}
+
+function ProjectNewTaskRow({
+  project,
+  creating,
+  onCreateActiveTask,
+}: {
+  project: WorkspaceProject
+  creating: boolean
+  onCreateActiveTask: (projectId: string, title: string) => Promise<boolean>
+}) {
+  return (
+    <TableRow data-row-kind="new-task" className="border-b border-border/60 hover:bg-muted/20">
+      <TableCell colSpan={5} className="py-1 pl-12">
+        <InlineTaskComposer
+          projectName={project.name}
+          creating={creating}
+          onCreate={(title) => onCreateActiveTask(project.id, title)}
+        />
+      </TableCell>
+    </TableRow>
+  )
+}
+
 function ProjectMatrixRow({
   view,
   viewerId,
@@ -684,6 +785,7 @@ function ProjectMatrixRow({
   selectedIds,
   pendingTaskIds,
   open,
+  creatingTask,
   onOpenChange,
   onToggleSelected,
   onToggleManySelected,
@@ -692,6 +794,7 @@ function ProjectMatrixRow({
   onFilterByAssignee,
   onRenameProject,
   onArchiveProject,
+  onCreateActiveTask,
 }: {
   view: WorkspaceProjectView
   viewerId: string
@@ -701,6 +804,7 @@ function ProjectMatrixRow({
   selectedIds: Set<string>
   pendingTaskIds: Set<string>
   open: boolean
+  creatingTask: boolean
   onOpenChange: (open: boolean) => void
   onToggleSelected: (taskId: string, selected: boolean) => void
   onToggleManySelected: (taskIds: string[], selected: boolean) => void
@@ -709,6 +813,7 @@ function ProjectMatrixRow({
   onFilterByAssignee: (assigneeId: string) => void
   onRenameProject: (project: WorkspaceProject) => void
   onArchiveProject: (project: WorkspaceProject) => void
+  onCreateActiveTask: (projectId: string, title: string) => Promise<boolean>
 }) {
   const { project, progress } = view
   const tasks = sortTasks(project, view.visibleActiveTasks, sortKey, sortDirection)
@@ -816,11 +921,9 @@ function ProjectMatrixRow({
 
               {tasks.length === 0 ? (
                 <div className="px-5 py-10 text-center text-sm text-muted-foreground">
-                  {project.tasks.length === 0 && project.canUseBacklog
-                    ? 'No tasks yet. Use the Backlog quick-add below to capture the first task.'
-                    : project.tasks.length === 0
-                      ? 'No active tasks are available in this view.'
-                      : 'No active tasks match this view. Try another teammate, status, or search filter.'}
+                  {project.tasks.length === 0
+                    ? 'No active tasks yet. Add the first task below.'
+                    : 'No active tasks match this view. Add one below or try another teammate, status, or search filter.'}
                 </div>
               ) : (
                 <div className="max-h-[70vh] overflow-auto">
@@ -853,6 +956,15 @@ function ProjectMatrixRow({
                       ))}
                     </TableBody>
                   </Table>
+                </div>
+              )}
+              {project.status !== 'ARCHIVED' && (
+                <div className="border-t border-border/60 px-4 py-2">
+                  <InlineTaskComposer
+                    projectName={project.name}
+                    creating={creatingTask}
+                    onCreate={(title) => onCreateActiveTask(project.id, title)}
+                  />
                 </div>
               )}
             </PopoverContent>
