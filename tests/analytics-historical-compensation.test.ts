@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  buildHistoricalCompensationEventMarkers,
   buildHistoricalCompensationSeries,
   classifyCompensationRevision,
 } from '../lib/analytics/historical-compensation'
@@ -105,4 +106,40 @@ test('ignores malformed receipts rather than inventing zero salary points', () =
 
   assert.deepEqual(result.points, [])
   assert.deepEqual(result.events, [])
+})
+
+test('event markers cover the full history and group overlapping events on the employee line', () => {
+  const january = '2024-01-01T00:00:00.000Z'
+  const december = '2024-12-01T00:00:00.000Z'
+  const event = (id: string, effectiveFrom: string, title: string, currency = 'PKR') => ({
+    id,
+    effectiveFrom,
+    type: 'PAY_INCREASE' as const,
+    title,
+    detail: null,
+    currency,
+    previousAmount: 100_000,
+    amount: 120_000,
+    delta: 20_000,
+    anchorAmount: 120_000,
+    source: 'PAYROLL' as const,
+  })
+
+  const markers = buildHistoricalCompensationEventMarkers([
+    {
+      id: 'employee-1',
+      name: 'Employee One',
+      events: [
+        event('first', january, 'First event'),
+        event('overlap', january, 'Overlapping event'),
+        event('last', december, 'Last event'),
+        event('other-currency', december, 'USD event', 'USD'),
+      ],
+    },
+  ], 'PKR')
+
+  assert.equal(markers.length, 2)
+  assert.deepEqual(markers[0].events.map((entry) => entry.id), ['first', 'overlap'])
+  assert.equal(markers[1].events[0].id, 'last')
+  assert.equal(markers[0].anchorAmount, 120_000)
 })

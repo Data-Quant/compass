@@ -79,6 +79,53 @@ export interface HistoricalCompensationPayload {
   employees: HistoricalCompensationEmployee[]
 }
 
+export interface HistoricalCompensationEventMarker {
+  employeeId: string
+  employeeName: string
+  timestamp: number
+  anchorAmount: number
+  events: HistoricalCompensationEvent[]
+}
+
+/**
+ * Groups every chartable event without truncating the employee's history.
+ * Events that share a payroll point become one marker with a multi-event
+ * tooltip so pay and bonus changes on the same date do not hide each other.
+ */
+export function buildHistoricalCompensationEventMarkers(
+  employees: ReadonlyArray<Pick<HistoricalCompensationEmployee, 'id' | 'name' | 'events'>>,
+  currency: string
+): HistoricalCompensationEventMarker[] {
+  const markers = new Map<string, HistoricalCompensationEventMarker>()
+
+  for (const employee of employees) {
+    for (const event of employee.events) {
+      if (event.currency && event.currency !== currency) continue
+      if (event.anchorAmount === null || !Number.isFinite(event.anchorAmount)) continue
+
+      const timestamp = new Date(event.effectiveFrom).getTime()
+      if (!Number.isFinite(timestamp)) continue
+
+      const key = `${employee.id}:${timestamp}:${event.anchorAmount}`
+      const marker = markers.get(key)
+      if (marker) marker.events.push(event)
+      else {
+        markers.set(key, {
+          employeeId: employee.id,
+          employeeName: employee.name,
+          timestamp,
+          anchorAmount: event.anchorAmount,
+          events: [event],
+        })
+      }
+    }
+  }
+
+  return [...markers.values()].sort(
+    (a, b) => a.timestamp - b.timestamp || a.employeeName.localeCompare(b.employeeName)
+  )
+}
+
 function finiteNumber(value: unknown): number | null {
   const number = Number(value)
   return Number.isFinite(number) && number >= 0 ? number : null

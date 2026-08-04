@@ -20,6 +20,8 @@ const querySchema = z.object({
   lockApproved: boolFromString.optional(),
   useEmployeeRosterNames: boolFromString.optional(),
   overwriteLocked: boolFromString.optional(),
+  overwriteExisting: boolFromString.optional(),
+  allowUnmapped: boolFromString.optional(),
   persistImportRows: boolFromString.optional(),
 })
 
@@ -42,6 +44,8 @@ export async function POST(request: NextRequest) {
       lockApproved: form.get('lockApproved')?.toString(),
       useEmployeeRosterNames: form.get('useEmployeeRosterNames')?.toString(),
       overwriteLocked: form.get('overwriteLocked')?.toString(),
+      overwriteExisting: form.get('overwriteExisting')?.toString(),
+      allowUnmapped: form.get('allowUnmapped')?.toString(),
       persistImportRows: form.get('persistImportRows')?.toString(),
     })
     if (!parsed.success) {
@@ -59,8 +63,10 @@ export async function POST(request: NextRequest) {
       months: parsed.data.months ?? 12,
       tolerance: parsed.data.tolerance ?? 1,
       lockApproved: parsed.data.lockApproved ?? true,
-      useEmployeeRosterNames: parsed.data.useEmployeeRosterNames ?? true,
+      useEmployeeRosterNames: parsed.data.useEmployeeRosterNames ?? false,
       overwriteLocked: parsed.data.overwriteLocked ?? false,
+      overwriteExisting: parsed.data.overwriteExisting ?? false,
+      allowUnmapped: parsed.data.allowUnmapped ?? false,
       persistImportRows: parsed.data.persistImportRows ?? false,
     })
 

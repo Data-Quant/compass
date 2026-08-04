@@ -16,12 +16,15 @@ export interface PayrollBackfillOptions {
   lockApproved?: boolean
   useEmployeeRosterNames?: boolean
   overwriteLocked?: boolean
+  overwriteExisting?: boolean
+  allowUnmapped?: boolean
   persistImportRows?: boolean
 }
 
 export interface PayrollBackfillSummary {
   selectedPeriodKeys: string[]
   skippedLockedPeriodKeys: string[]
+  skippedExistingPeriodKeys: string[]
   periodsCreated: number
   periodsProcessed: number
   periodsLocked: number
@@ -212,8 +215,10 @@ export async function runPayrollBackfill(options: PayrollBackfillOptions): Promi
   const months = Math.max(1, Math.min(120, options.months ?? 12))
   const tolerance = options.tolerance ?? 1
   const lockApproved = options.lockApproved ?? true
-  const useEmployeeRosterNames = options.useEmployeeRosterNames ?? true
+  const useEmployeeRosterNames = options.useEmployeeRosterNames ?? false
   const overwriteLocked = options.overwriteLocked ?? false
+  const overwriteExisting = options.overwriteExisting ?? false
+  const allowUnmapped = options.allowUnmapped ?? false
   const persistImportRows = options.persistImportRows ?? false
 
   const parsed = await parsePayrollWorkbook(options.buffer)
@@ -284,6 +289,7 @@ export async function runPayrollBackfill(options: PayrollBackfillOptions): Promi
 
   const periodByKey = new Map<string, { id: string; status: PayrollPeriodStatus }>()
   const skippedLockedPeriodKeys: string[] = []
+  const skippedExistingPeriodKeys: string[] = []
   const selectedPeriodKeysDesc: string[] = []
   let periodsCreated = 0
 
@@ -297,6 +303,11 @@ export async function runPayrollBackfill(options: PayrollBackfillOptions): Promi
       continue
     }
 
+    if (!resolved.created && !overwriteExisting) {
+      skippedExistingPeriodKeys.push(periodKey)
+      continue
+    }
+
     if (resolved.created) periodsCreated += 1
     selectedPeriodKeysDesc.push(periodKey)
     periodByKey.set(periodKey, { id: resolved.period.id, status: resolved.period.status })
@@ -304,7 +315,20 @@ export async function runPayrollBackfill(options: PayrollBackfillOptions): Promi
 
   const selectedPeriodKeys = [...selectedPeriodKeysDesc].reverse()
   if (selectedPeriodKeys.length === 0) {
-    throw new Error('No eligible payroll periods found. Unlock historical periods or enable overwrite.')
+    return {
+      selectedPeriodKeys: [],
+      skippedLockedPeriodKeys,
+      skippedExistingPeriodKeys,
+      periodsCreated: 0,
+      periodsProcessed: 0,
+      periodsLocked: 0,
+      periodsBlocked: 0,
+      blockedByPeriod: {},
+      importedRows: 0,
+      importedInputs: 0,
+      importedExpenses: 0,
+      mappingSummary,
+    }
   }
   const selectedPeriodKeySet = new Set(selectedPeriodKeys)
 
@@ -320,6 +344,8 @@ export async function runPayrollBackfill(options: PayrollBackfillOptions): Promi
         selectedPeriodKeys,
         useEmployeeRosterNames,
         persistImportRows,
+        overwriteExisting,
+        allowUnmapped,
       } as Prisma.InputJsonValue,
     },
     select: { id: true },
@@ -415,7 +441,7 @@ export async function runPayrollBackfill(options: PayrollBackfillOptions): Promi
           sourceSheet: input.sourceSheet || null,
           sourceCell: input.sourceCell || null,
           sourceMethod: 'WORKBOOK',
-          isOverride: false,
+          isOverride: true,
           provenanceJson: {
             batchId: batch.id,
             periodKey: input.periodKey,
@@ -508,7 +534,7 @@ export async function runPayrollBackfill(options: PayrollBackfillOptions): Promi
           .map((row) => row.payrollName)
       )]
 
-      if (blockedNames.length > 0) {
+      if (blockedNames.length > 0 && !allowUnmapped) {
         periodsBlocked += 1
         blockedByPeriod[periodKey] = blockedNames
         await prisma.payrollPeriod.update({
@@ -526,7 +552,7 @@ export async function runPayrollBackfill(options: PayrollBackfillOptions): Promi
         continue
       }
 
-      await recalculatePayrollPeriod(periodRef.id, tolerance)
+      await recalculatePayrollPeriod(periodRef.id, tolerance, { preserveSourceInputs: true })
       periodsProcessed += 1
 
       if (lockApproved) {
@@ -567,6 +593,7 @@ export async function runPayrollBackfill(options: PayrollBackfillOptions): Promi
     const summary: PayrollBackfillSummary = {
       selectedPeriodKeys,
       skippedLockedPeriodKeys,
+      skippedExistingPeriodKeys,
       periodsCreated,
       periodsProcessed,
       periodsLocked,

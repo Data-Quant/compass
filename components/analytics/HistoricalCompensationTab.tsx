@@ -25,10 +25,12 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import type {
   CompensationEventType,
+  HistoricalCompensationEventMarker,
   HistoricalCompensationEmployee,
   HistoricalCompensationEvent,
   HistoricalCompensationPayload,
 } from '@/lib/analytics/historical-compensation'
+import { buildHistoricalCompensationEventMarkers } from '@/lib/analytics/historical-compensation'
 
 const ALL_EMPLOYEES = 'all'
 const SERIES_COLORS = [
@@ -88,6 +90,31 @@ function CompensationTooltip({ active, payload, label, currency }: {
   currency: string
 }) {
   if (!active || !payload?.length) return null
+
+  const marker = payload.find(
+    (item) => Array.isArray(item.payload?.events)
+  )?.payload as HistoricalCompensationEventMarker | undefined
+  if (marker) {
+    return (
+      <div style={TOOLTIP_STYLE} className="max-w-sm p-3 text-sm shadow-lg">
+        <p className="font-semibold">{marker.employeeName}</p>
+        <p className="text-xs text-muted-foreground">{fullDateLabel(marker.timestamp)}</p>
+        <div className="mt-2 space-y-2 border-t pt-2">
+          {marker.events.map((event) => (
+            <div key={event.id}>
+              <p className="text-xs font-medium">{event.title}</p>
+              {event.delta !== null && event.currency ? (
+                <p className="text-xs text-muted-foreground">
+                  {event.delta > 0 ? '+' : ''}{money(event.delta, event.currency)}
+                </p>
+              ) : null}
+              {event.detail ? <p className="mt-0.5 text-xs text-muted-foreground">{event.detail}</p> : null}
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   const event = payload.find((item) => typeof item.payload?.type === 'string')?.payload
   if (event) {
@@ -205,14 +232,15 @@ export function HistoricalCompensationTab() {
     )
   }, [currency, visibleEmployees])
 
-  const markerData = selectedEmployee
-    ? visibleEvents
-        .filter((event) => event.anchorAmount !== null)
-        .map((event) => ({
-          ...event,
-          timestamp: new Date(event.effectiveFrom).getTime(),
-        }))
-    : []
+  const markerData = useMemo(
+    () => buildHistoricalCompensationEventMarkers(visibleEmployees, currency),
+    [currency, visibleEmployees]
+  )
+  const markerSeries = visibleEmployees.map((employee, index) => ({
+    employee,
+    color: SERIES_COLORS[index % SERIES_COLORS.length],
+    markers: markerData.filter((marker) => marker.employeeId === employee.id),
+  }))
 
   function changeEmployee(nextId: string) {
     setEmployeeId(nextId)
@@ -280,7 +308,7 @@ export function HistoricalCompensationTab() {
           <div>
             <CardTitle>Historical compensation</CardTitle>
             <CardDescription className="mt-2 max-w-2xl">
-              Base salary from finalized payroll. Select one person to see total cash and event markers on their line.
+              Base salary from finalized payroll. Every event in the selected history is marked directly on its employee line.
             </CardDescription>
           </div>
           <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
@@ -351,15 +379,18 @@ export function HistoricalCompensationTab() {
                       connectNulls
                     />
                   ) : null}
-                  {markerData.length > 0 ? (
+                  {markerSeries.map((series) => series.markers.length > 0 ? (
                     <Scatter
-                      name="Events"
-                      data={markerData}
+                      key={`${series.employee.id}:events`}
+                      name={`${series.employee.name} events`}
+                      data={series.markers}
                       dataKey="anchorAmount"
-                      fill="#f59e0b"
+                      fill={series.color}
+                      stroke="hsl(var(--background))"
+                      strokeWidth={2}
                       shape="diamond"
                     />
-                  ) : null}
+                  ) : null)}
                 </ComposedChart>
               </ResponsiveContainer>
               {!selectedEmployee && visibleEmployees.length > 0 ? (
@@ -394,7 +425,7 @@ export function HistoricalCompensationTab() {
         <CardContent>
           {visibleEvents.length > 0 ? (
             <div className="grid gap-3 lg:grid-cols-2">
-              {visibleEvents.slice(0, 12).map((event) => {
+              {visibleEvents.map((event) => {
                 const increasing = event.delta !== null && event.delta > 0
                 const ChangeIcon = increasing ? ArrowUpRight : ArrowDownRight
                 return (

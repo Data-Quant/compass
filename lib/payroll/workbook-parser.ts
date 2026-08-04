@@ -118,6 +118,56 @@ function detectDateColumns(worksheet: ExcelJS.Worksheet): Map<number, string> {
   return dateColumns
 }
 
+interface NameColumnLocation {
+  column: number
+  headerRow: number | null
+}
+
+const NAME_HEADERS = new Set([
+  'employee',
+  'employee name',
+  'employee names',
+  'payroll name',
+  'payroll names',
+])
+
+const SUMMARY_ROW_NAMES = new Set(['total', 'totals', 'grand total', 'monthly total'])
+
+function detectNameColumn(worksheet: ExcelJS.Worksheet, sheetName: string): NameColumnLocation {
+  const rowLimit = Math.min(8, Math.max(worksheet.rowCount, 1))
+  const colLimit = Math.min(12, Math.max(worksheet.columnCount, 1))
+
+  for (let rowNumber = 1; rowNumber <= rowLimit; rowNumber++) {
+    const row = worksheet.getRow(rowNumber)
+    for (let column = 1; column <= colLimit; column++) {
+      const header = normalizePayrollName(row.getCell(column).text || '')
+      if (NAME_HEADERS.has(header)) return { column, headerRow: rowNumber }
+    }
+  }
+
+  return {
+    column: sheetName === 'Reimbursements (Approved)' ? 4 : 2,
+    headerRow: null,
+  }
+}
+
+function payrollNameFromRow(
+  row: ExcelJS.Row,
+  rowNumber: number,
+  location: NameColumnLocation
+): string | undefined {
+  if (location.headerRow !== null && rowNumber <= location.headerRow) return undefined
+
+  const payrollName = row.getCell(location.column).text?.trim()
+  if (!payrollName) return undefined
+
+  const normalized = normalizePayrollName(payrollName)
+  if (!normalized || NAME_HEADERS.has(normalized) || SUMMARY_ROW_NAMES.has(normalized)) {
+    return undefined
+  }
+  return payrollName
+}
+
 function dedupeByPriority(values: ParsedInputValue[]): ParsedInputValue[] {
   const byKey = new Map<string, ParsedInputValue>()
   for (const value of values) {
@@ -128,6 +178,32 @@ function dedupeByPriority(values: ParsedInputValue[]): ParsedInputValue[] {
     }
   }
   return [...byKey.values()]
+}
+
+const ADDITIVE_BONUS_SHEETS = new Set(['Internal Bonus', 'Client Bonus'])
+
+function mergeInputValues(values: ParsedInputValue[]): ParsedInputValue[] {
+  const regular = values.filter((value) => !ADDITIVE_BONUS_SHEETS.has(value.sourceSheet))
+  const additive = values.filter((value) => ADDITIVE_BONUS_SHEETS.has(value.sourceSheet))
+  const additiveByKey = new Map<string, ParsedInputValue>()
+
+  for (const value of additive) {
+    const key = `${value.periodKey}::${value.normalizedPayrollName}::${value.componentKey}`
+    const existing = additiveByKey.get(key)
+    if (!existing) {
+      additiveByKey.set(key, { ...value })
+      continue
+    }
+
+    existing.amount += value.amount
+    if (!existing.sourceSheet.split(' + ').includes(value.sourceSheet)) {
+      existing.sourceSheet = `${existing.sourceSheet} + ${value.sourceSheet}`
+    }
+    existing.sourceCell = `${existing.sourceCell} + ${value.sourceCell}`
+    existing.sourcePriority = Math.max(existing.sourcePriority, value.sourcePriority)
+  }
+
+  return dedupeByPriority([...regular, ...additiveByKey.values()])
 }
 
 function maybeAddExpenseEntry(
@@ -182,6 +258,7 @@ export async function parsePayrollWorkbook(buffer: Buffer): Promise<WorkbookPars
     }
 
     const dateColumns = detectDateColumns(worksheet)
+    const nameColumn = detectNameColumn(worksheet, sheetName)
     const componentKey = SHEET_TO_COMPONENT_KEY[sheetName]
     const sourcePriority = SHEET_PRIORITY[sheetName] ?? 50
 
@@ -196,8 +273,7 @@ export async function parsePayrollWorkbook(buffer: Buffer): Promise<WorkbookPars
         rowValuesForDesc.push(String(cell.text || '').trim())
       })
 
-      const nameColumn = sheetName === 'Reimbursements (Approved)' ? 4 : 2
-      const payrollName = row.getCell(nameColumn).text?.trim() || undefined
+      const payrollName = payrollNameFromRow(row, rowNumber, nameColumn)
       const normalizedName = payrollName ? normalizePayrollName(payrollName) : undefined
 
       if (payrollName) payrollNames.add(payrollName)
@@ -294,7 +370,7 @@ export async function parsePayrollWorkbook(buffer: Buffer): Promise<WorkbookPars
 
   return {
     importRows,
-    inputValues: dedupeByPriority(inputValues),
+    inputValues: mergeInputValues(inputValues),
     expenseEntries,
     periodKeys: [...periodKeys].sort(),
     payrollNames: [...payrollNames].sort((a, b) => a.localeCompare(b)),

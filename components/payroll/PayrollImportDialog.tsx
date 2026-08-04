@@ -44,7 +44,6 @@ export function PayrollImportDialog({
   const [backfilling, setBackfilling] = useState(false)
   const [backfillFile, setBackfillFile] = useState<File | null>(null)
   const [backfillMonths, setBackfillMonths] = useState('12')
-  const [backfillUseRosterNames, setBackfillUseRosterNames] = useState(true)
   const [backfillLockApproved, setBackfillLockApproved] = useState(true)
   const [backfillOverwriteLocked, setBackfillOverwriteLocked] = useState(false)
   const [backfillPersistRows, setBackfillPersistRows] = useState(false)
@@ -102,8 +101,9 @@ export function PayrollImportDialog({
         formData.append('months', String(monthsPerRun))
         formData.append('tolerance', '1')
         formData.append('lockApproved', String(backfillLockApproved))
-        formData.append('useEmployeeRosterNames', String(backfillUseRosterNames))
+        formData.append('useEmployeeRosterNames', 'false')
         formData.append('overwriteLocked', String(backfillOverwriteLocked && run === 0))
+        formData.append('overwriteExisting', String(backfillOverwriteLocked && run === 0))
         formData.append('persistImportRows', String(backfillPersistRows))
 
         const res = await fetch('/api/payroll/backfill', { method: 'POST', body: formData })
@@ -198,13 +198,6 @@ export function PayrollImportDialog({
                 />
               </div>
               <div className="space-y-2">
-                <label className="inline-flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={backfillUseRosterNames}
-                    onCheckedChange={(c) => setBackfillUseRosterNames(c === true)}
-                  />
-                  <span>Use real employee names</span>
-                </label>
                 <label className="inline-flex items-center gap-2 text-sm">
                   <Checkbox
                     checked={backfillLockApproved}

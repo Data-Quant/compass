@@ -8,6 +8,7 @@ import {
   USABLE_PAYROLL_RECEIPT_STATUSES,
 } from '@/lib/analytics/employee-360'
 import { buildHistoricalCompensationSeries } from '@/lib/analytics/historical-compensation'
+import { normalizePayrollName } from '@/lib/payroll/normalizers'
 
 export async function GET() {
   try {
@@ -50,7 +51,6 @@ export async function GET() {
       }),
       prisma.payrollReceipt.findMany({
         where: {
-          userId: { not: null },
           status: {
             in: [...USABLE_PAYROLL_RECEIPT_STATUSES] as PayrollReceiptStatus[],
           },
@@ -63,6 +63,7 @@ export async function GET() {
         select: {
           id: true,
           userId: true,
+          payrollName: true,
           receiptJson: true,
           period: {
             select: {
@@ -78,11 +79,19 @@ export async function GET() {
     ])
 
     const receiptsByUserId = new Map<string, typeof receipts>()
+    const unmappedReceiptsByName = new Map<string, typeof receipts>()
     for (const receipt of receipts) {
-      if (!receipt.userId) continue
-      const employeeReceipts = receiptsByUserId.get(receipt.userId) ?? []
-      employeeReceipts.push(receipt)
-      receiptsByUserId.set(receipt.userId, employeeReceipts)
+      if (receipt.userId) {
+        const employeeReceipts = receiptsByUserId.get(receipt.userId) ?? []
+        employeeReceipts.push(receipt)
+        receiptsByUserId.set(receipt.userId, employeeReceipts)
+        continue
+      }
+
+      const normalizedName = normalizePayrollName(receipt.payrollName)
+      const historicalReceipts = unmappedReceiptsByName.get(normalizedName) ?? []
+      historicalReceipts.push(receipt)
+      unmappedReceiptsByName.set(normalizedName, historicalReceipts)
     }
 
     const employees = users.map((user) => {
@@ -116,6 +125,31 @@ export async function GET() {
         ...series,
       }
     })
+
+    // Former employees may have valid historical payroll without a current User
+    // record. Keep those series visible instead of dropping their receipts.
+    for (const [normalizedName, historicalReceipts] of unmappedReceiptsByName) {
+      const series = buildHistoricalCompensationSeries({
+        receipts: historicalReceipts.map((receipt) => ({
+          id: receipt.id,
+          periodId: receipt.period.id,
+          periodName: receipt.period.label,
+          effectiveFrom: receipt.period.periodStart.toISOString(),
+          currency: receipt.period.currency,
+          receiptJson: receipt.receiptJson,
+        })),
+      })
+      employees.push({
+        id: `historical-payroll:${normalizedName}`,
+        name: historicalReceipts[historicalReceipts.length - 1]?.payrollName ?? normalizedName,
+        department: null,
+        position: 'Historical payroll record',
+        isPayrollActive: false,
+        ...series,
+      })
+    }
+
+    employees.sort((a, b) => a.name.localeCompare(b.name))
 
     const currencies = [...new Set(employees.flatMap((employee) => employee.currencies))].sort()
     const employeesWithHistory = employees.filter((employee) => employee.points.length > 0)

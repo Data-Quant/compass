@@ -124,7 +124,21 @@ export interface RecalculateResult {
   appliedFixes: string[]
 }
 
-export async function recalculatePayrollPeriod(periodId: string, tolerance = 1): Promise<RecalculateResult> {
+export interface RecalculatePayrollPeriodOptions {
+  /**
+   * Treat imported workbook cells as a closed historical snapshot. Missing
+   * components remain zero instead of being inferred from today's employee
+   * profile, attendance, salary revisions, or tax configuration.
+   */
+  preserveSourceInputs?: boolean
+}
+
+export async function recalculatePayrollPeriod(
+  periodId: string,
+  tolerance = 1,
+  options: RecalculatePayrollPeriodOptions = {}
+): Promise<RecalculateResult> {
+  const preserveSourceInputs = options.preserveSourceInputs ?? false
   const period = await prisma.payrollPeriod.findUnique({
     where: { id: periodId },
     select: {
@@ -367,7 +381,7 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
     // rows are written with null rather than a dangling foreign key.
     const userId = resolveValidUserId(resolvedUserId, validUserIds)
 
-    if (userId) {
+    if (userId && !preserveSourceInputs) {
       const revision = latestRevisionByUserId.get(userId)
       if (revision) {
         for (const line of revision.lines) {
@@ -399,7 +413,7 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
     // was manually overridden. A salary-revision value is also replaced: the
     // 10% structure is uniform, and only grid overrides opt out of it.
     const medicalOverride = rows.some((r) => r.componentKey === 'MEDICAL_ALLOWANCE' && r.isOverride)
-    if (!medicalOverride && basicSalary > 0) {
+    if (!preserveSourceInputs && !medicalOverride && basicSalary > 0) {
       bucket.MEDICAL_ALLOWANCE = computeAutoMedicalAllowance(basicSalary)
       autoInputUpserts.push({
         periodId,
@@ -416,6 +430,8 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
     const medicalTaxExemption =
       bucket.MEDICAL_TAX_EXEMPTION !== undefined
         ? getNumber(bucket, 'MEDICAL_TAX_EXEMPTION')
+        : preserveSourceInputs
+          ? 0
         : -Math.min(medicalAllowance, basicSalary * 0.1)
     const bonus = getNumber(bucket, 'BONUS')
 
@@ -423,6 +439,7 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
     const totalTaxableSalary = basicSalary + medicalTaxExemption + additionalTaxableEarnings
     const incomeTax = (() => {
       if (bucket.INCOME_TAX !== undefined) return getNumber(bucket, 'INCOME_TAX')
+      if (preserveSourceInputs) return 0
       const monthlyTaxBase = Math.max(0, totalTaxableSalary)
       if (activeFinancialYear && activeFinancialYear.taxBrackets.length > 0) {
         const annual = calculateAnnualProgressiveTax(monthlyTaxBase * 12, activeFinancialYear.taxBrackets)
@@ -433,7 +450,7 @@ export async function recalculatePayrollPeriod(periodId: string, tolerance = 1):
 
     const travelOverride = rows.find((r) => r.componentKey === 'TRAVEL_REIMBURSEMENT' && r.isOverride)
     let travelReimbursement = getNumber(bucket, 'TRAVEL_REIMBURSEMENT')
-    if (!travelOverride) {
+    if (!preserveSourceInputs && !travelOverride) {
       const profile = userId ? profileByUserId.get(userId) : undefined
       if (!userId) {
         travelSkips.push({ payrollName, reason: 'UNMAPPED_EMPLOYEE' })

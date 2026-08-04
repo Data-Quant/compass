@@ -11,9 +11,19 @@ export interface MappingSyncSummary {
 
 export async function syncPayrollIdentityMappings(payrollNames: string[]): Promise<MappingSyncSummary> {
   const uniqueNames = [...new Set(payrollNames.filter((n) => n.trim().length > 0))]
-  const users = await prisma.user.findMany({
-    select: { id: true, name: true },
-  })
+  const normalizedNames = uniqueNames.map((name) => normalizePayrollName(name))
+  const [users, existingMappings] = await Promise.all([
+    prisma.user.findMany({
+      select: { id: true, name: true },
+    }),
+    prisma.payrollIdentityMapping.findMany({
+      where: { normalizedPayrollName: { in: normalizedNames } },
+      select: { normalizedPayrollName: true, userId: true, status: true },
+    }),
+  ])
+  const existingByNormalized = new Map(
+    existingMappings.map((mapping) => [mapping.normalizedPayrollName, mapping])
+  )
 
   const usersByNormalized = new Map<string, Array<{ id: string; name: string }>>()
   for (const user of users) {
@@ -29,6 +39,13 @@ export async function syncPayrollIdentityMappings(payrollNames: string[]): Promi
 
   for (const displayName of uniqueNames) {
     const normalizedPayrollName = normalizePayrollName(displayName)
+    const existing = existingByNormalized.get(normalizedPayrollName)
+    // A reviewed alias is authoritative. Re-importing the source workbook must
+    // never downgrade it to unresolved just because the names are not identical.
+    if (existing?.status === 'MANUAL_MATCHED' && existing.userId) {
+      autoMatched++
+      continue
+    }
     const matches = usersByNormalized.get(normalizedPayrollName) || []
 
     let status: PayrollIdentityStatus = 'UNRESOLVED'
