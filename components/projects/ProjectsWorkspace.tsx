@@ -848,8 +848,8 @@ export function ProjectsWorkspace() {
       </header>
 
       <section className="rounded-lg border border-border/60 bg-card/60 p-2 shadow-sm backdrop-blur-sm">
-        <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
-          <div className="relative min-w-0 flex-1 xl:max-w-lg">
+        <div className="flex flex-col gap-2 xl:flex-row xl:flex-nowrap xl:items-center">
+          <div className="relative min-w-0 flex-1 xl:w-64 xl:flex-none">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={search}
@@ -870,9 +870,9 @@ export function ProjectsWorkspace() {
             )}
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-2 xl:flex xl:items-center">
+          <div className="grid gap-2 sm:grid-cols-2 xl:flex xl:shrink-0 xl:items-center">
             <Select value={assigneeFilter} onValueChange={(value) => void changeAssigneeFilter(value)}>
-              <SelectTrigger aria-label="Filter tasks by assignee" className="h-8 min-w-40 text-xs">
+              <SelectTrigger aria-label="Filter tasks by assignee" className="h-8 w-full min-w-44 text-xs xl:w-44">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -885,7 +885,7 @@ export function ProjectsWorkspace() {
             </Select>
 
             <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as ProjectStatusFilter)}>
-              <SelectTrigger aria-label="Filter projects by status" className="h-8 min-w-40 text-xs">
+              <SelectTrigger aria-label="Filter projects by status" className="h-8 w-full min-w-44 text-xs xl:w-44">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -898,7 +898,7 @@ export function ProjectsWorkspace() {
 
           {view === 'table' && (
             <Select value={groupMode} onValueChange={(value) => changeGroupMode(value as WorkspaceGroupMode)}>
-              <SelectTrigger aria-label="Group tasks by" className="h-8 min-w-40 text-xs">
+              <SelectTrigger aria-label="Group tasks by" className="h-8 w-full min-w-44 text-xs xl:w-44 xl:shrink-0">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -908,7 +908,7 @@ export function ProjectsWorkspace() {
             </Select>
           )}
 
-          <div className="flex w-fit items-center rounded-md border border-border/60 bg-muted/30 p-0.5" aria-label="Workspace view">
+          <div className="flex w-fit shrink-0 items-center rounded-md border border-border/60 bg-muted/30 p-0.5" aria-label="Workspace view">
             <Button
               type="button"
               variant={view === 'table' ? 'secondary' : 'ghost'}

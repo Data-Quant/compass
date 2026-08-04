@@ -226,15 +226,15 @@ export function WorkspaceTaskTable({
         />
       ) : (
         <Card className="overflow-hidden rounded-lg border-border/60 shadow-none">
-          <CardContent className="p-0">
-            <Table className="min-w-[980px]">
+          <CardContent className="overflow-x-auto p-0">
+            <Table className="min-w-[980px] table-fixed">
               <TableHeader>
                 <TableRow>
-                  <SortableHead label="Project" sortKey="project" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-[30%] min-w-[290px]" />
-                  <SortableHead label="Tasks" sortKey="title" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-[28%] min-w-[280px]" />
-                  <SortableHead label="Deadline" sortKey="dueDate" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-[16%] min-w-[170px]" />
-                  <SortableHead label="Assignee" sortKey="assignee" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-[15%] min-w-[170px]" />
-                  <SortableHead label="Priority" sortKey="priority" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-[11%] min-w-[130px]" />
+                  <SortableHead label="Project" sortKey="project" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-[34%] min-w-[330px]" />
+                  <SortableHead label="Tasks" sortKey="title" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-[12%] min-w-[120px]" />
+                  <SortableHead label="Deadline" sortKey="dueDate" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-[18%] min-w-[170px]" />
+                  <SortableHead label="Assignee" sortKey="assignee" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-[21%] min-w-[190px]" />
+                  <SortableHead label="Priority" sortKey="priority" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-[15%] min-w-[130px]" />
                 </TableRow>
               </TableHeader>
               <TableBody>
