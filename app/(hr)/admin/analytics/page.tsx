@@ -119,7 +119,7 @@ export default function AnalyticsPage() {
   }
 
   return (
-    <div className="p-6 sm:p-8 max-w-7xl mx-auto">
+    <div className={`mx-auto p-6 sm:p-8 ${tab === 'compensation' ? 'max-w-[1600px]' : 'max-w-7xl'}`}>
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground font-display">Analytics Dashboard</h1>

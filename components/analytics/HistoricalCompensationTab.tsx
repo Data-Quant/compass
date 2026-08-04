@@ -33,19 +33,9 @@ import type {
 import { buildHistoricalCompensationEventMarkers } from '@/lib/analytics/historical-compensation'
 
 const ALL_EMPLOYEES = 'all'
-const SERIES_COLORS = [
-  '#7c3aed',
-  '#2563eb',
-  '#0891b2',
-  '#059669',
-  '#65a30d',
-  '#d97706',
-  '#dc2626',
-  '#db2777',
-  '#9333ea',
-  '#475569',
-]
-const AXIS_TICK = { fill: 'hsl(var(--muted-foreground))', fontSize: 12 }
+const SELECTED_SERIES_COLOR = '#8b5cf6'
+const DATE_AXIS_PADDING_MS = 31 * 24 * 60 * 60 * 1000
+const AXIS_TICK = { fill: 'hsl(var(--muted-foreground))', fontSize: 13 }
 const TOOLTIP_STYLE = {
   backgroundColor: 'hsl(var(--card))',
   border: '1px solid hsl(var(--border))',
@@ -74,6 +64,12 @@ function money(value: number, currency: string, compact = false): string {
     notation: compact ? 'compact' : 'standard',
     maximumFractionDigits: 0,
   }).format(value)
+}
+
+function seriesColor(index: number, total: number): string {
+  if (total <= 1) return SELECTED_SERIES_COLOR
+  const hue = Math.round((index * 317.5) % 360)
+  return `hsl(${hue} 72% 56%)`
 }
 
 function eventTone(type: CompensationEventType): string {
@@ -212,12 +208,11 @@ export function HistoricalCompensationTab() {
         const timestamp = new Date(point.effectiveFrom).getTime()
         const row = rows.get(timestamp) ?? { timestamp }
         row[employee.id] = point.baseSalary
-        if (selectedEmployee) row[`${employee.id}:total`] = point.totalCash
         rows.set(timestamp, row)
       }
     }
     return [...rows.values()].sort((a, b) => Number(a.timestamp) - Number(b.timestamp))
-  }, [currency, selectedEmployee, visibleEmployees])
+  }, [currency, visibleEmployees])
 
   const visibleEvents = useMemo(() => {
     const rows: Array<HistoricalCompensationEvent & { employee: HistoricalCompensationEmployee }> = []
@@ -236,11 +231,37 @@ export function HistoricalCompensationTab() {
     () => buildHistoricalCompensationEventMarkers(visibleEmployees, currency),
     [currency, visibleEmployees]
   )
-  const markerSeries = visibleEmployees.map((employee, index) => ({
-    employee,
-    color: SERIES_COLORS[index % SERIES_COLORS.length],
-    markers: markerData.filter((marker) => marker.employeeId === employee.id),
-  }))
+  const markerSeries = selectedEmployee
+    ? [{
+        employee: selectedEmployee,
+        color: SELECTED_SERIES_COLOR,
+        markers: markerData.filter((marker) => marker.employeeId === selectedEmployee.id),
+      }]
+    : []
+
+  const chartTimestamps = [
+    ...chartData.map((row) => Number(row.timestamp)),
+    ...(selectedEmployee ? markerData.map((marker) => marker.timestamp) : []),
+  ].filter(Number.isFinite)
+  const xDomain: [number | 'dataMin', number | 'dataMax'] = chartTimestamps.length > 0
+    ? [
+        Math.min(...chartTimestamps) - DATE_AXIS_PADDING_MS,
+        Math.max(...chartTimestamps) + DATE_AXIS_PADDING_MS,
+      ]
+    : ['dataMin', 'dataMax']
+
+  const visibleBaseSalaries = visibleEmployees.flatMap((employee) =>
+    employee.points
+      .filter((point) => point.currency === currency)
+      .map((point) => point.baseSalary)
+  )
+  const yDomain: [number | 'auto', number | 'auto'] = (() => {
+    if (!selectedEmployee || visibleBaseSalaries.length === 0) return [0, 'auto']
+    const minimum = Math.min(...visibleBaseSalaries)
+    const maximum = Math.max(...visibleBaseSalaries)
+    const spread = Math.max(maximum - minimum, maximum * 0.08, 1)
+    return [Math.max(0, Math.floor(minimum - spread * 0.45)), Math.ceil(maximum + spread * 0.45)]
+  })()
 
   function changeEmployee(nextId: string) {
     setEmployeeId(nextId)
@@ -303,17 +324,19 @@ export function HistoricalCompensationTab() {
         />
       </div>
 
-      <Card>
-        <CardHeader className="gap-4 lg:flex-row lg:items-start lg:justify-between lg:space-y-0">
+      <Card className="overflow-hidden border-border/70 shadow-sm">
+        <CardHeader className="gap-6 border-b border-border/60 bg-muted/10 px-6 py-6 lg:flex-row lg:items-center lg:justify-between lg:space-y-0 xl:px-8">
           <div>
-            <CardTitle>Historical compensation</CardTitle>
-            <CardDescription className="mt-2 max-w-2xl">
-              Base salary from finalized payroll. Every event in the selected history is marked directly on its employee line.
+            <CardTitle className="text-xl tracking-tight">Historical compensation</CardTitle>
+            <CardDescription className="mt-2 max-w-3xl text-sm leading-6">
+              {selectedEmployee
+                ? `Base salary history for ${selectedEmployee.name}. Diamonds mark compensation events on the salary line.`
+                : `Company-wide base salary history for ${visibleEmployees.length} people. Select a person to focus the chart and reveal event markers.`}
             </CardDescription>
           </div>
-          <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
+          <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
             <Select value={employeeId} onValueChange={changeEmployee}>
-              <SelectTrigger className="w-full sm:w-[260px]">
+              <SelectTrigger className="h-11 w-full rounded-xl bg-background sm:w-[300px]">
                 <SelectValue placeholder="Choose an employee" />
               </SelectTrigger>
               <SelectContent>
@@ -326,59 +349,82 @@ export function HistoricalCompensationTab() {
               </SelectContent>
             </Select>
             <Select value={currency} onValueChange={setCurrency}>
-              <SelectTrigger className="w-full sm:w-28"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-11 w-full rounded-xl bg-background sm:w-32"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {data.summary.currencies.map((entry) => <SelectItem key={entry} value={entry}>{entry}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-3 pb-5 pt-6 sm:px-5 xl:px-7 xl:pb-7">
           {chartData.length > 0 ? (
             <>
-              <ResponsiveContainer width="100%" height={390}>
-                <ComposedChart data={chartData} margin={{ top: 20, right: 24, bottom: 8, left: 12 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+              {selectedEmployee && latestPoint ? (
+                <div className="mb-5 flex flex-wrap items-center gap-x-8 gap-y-3 px-3 text-sm">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Current base</p>
+                    <p className="mt-1 text-lg font-semibold tabular-nums">{money(latestPoint.baseSalary, currency)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Latest bonus</p>
+                    <p className="mt-1 text-lg font-semibold tabular-nums">{money(latestPoint.bonus, currency)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Events</p>
+                    <p className="mt-1 text-lg font-semibold tabular-nums">{visibleEvents.length}</p>
+                  </div>
+                </div>
+              ) : null}
+              <div className="h-[470px] w-full rounded-2xl bg-muted/[0.025] sm:h-[520px] xl:h-[570px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={chartData} margin={{ top: 22, right: 32, bottom: 18, left: 16 }}>
+                  <CartesianGrid
+                    vertical={false}
+                    strokeDasharray="2 8"
+                    stroke="hsl(var(--border))"
+                    strokeOpacity={0.75}
+                  />
                   <XAxis
                     dataKey="timestamp"
                     type="number"
                     scale="time"
-                    domain={['dataMin', 'dataMax']}
+                    domain={xDomain}
                     tick={AXIS_TICK}
                     tickFormatter={dateLabel}
-                    minTickGap={36}
+                    minTickGap={48}
+                    axisLine={false}
+                    tickLine={false}
+                    tickMargin={14}
                   />
                   <YAxis
                     tick={AXIS_TICK}
                     tickFormatter={(value) => money(Number(value), currency, true)}
-                    width={82}
+                    width={92}
+                    domain={yDomain}
+                    axisLine={false}
+                    tickLine={false}
+                    tickMargin={12}
+                    tickCount={6}
                   />
-                  <Tooltip content={<CompensationTooltip currency={currency} />} />
+                  <Tooltip
+                    content={<CompensationTooltip currency={currency} />}
+                    cursor={{ stroke: 'hsl(var(--muted-foreground))', strokeOpacity: 0.2 }}
+                  />
                   {visibleEmployees.map((employee, index) => (
                     <Line
                       key={employee.id}
                       type="stepAfter"
                       dataKey={employee.id}
                       name={employee.name}
-                      stroke={SERIES_COLORS[index % SERIES_COLORS.length]}
-                      strokeWidth={selectedEmployee ? 3 : 2}
-                      dot={selectedEmployee ? { r: 4 } : false}
+                      stroke={seriesColor(index, visibleEmployees.length)}
+                      strokeWidth={selectedEmployee ? 4 : 1.75}
+                      strokeOpacity={selectedEmployee ? 1 : 0.72}
+                      dot={false}
+                      activeDot={{ r: selectedEmployee ? 6 : 4, strokeWidth: 2 }}
                       connectNulls
                       animationDuration={700}
                     />
                   ))}
-                  {selectedEmployee ? (
-                    <Line
-                      type="stepAfter"
-                      dataKey={`${selectedEmployee.id}:total`}
-                      name="Total cash"
-                      stroke="#f59e0b"
-                      strokeWidth={2}
-                      strokeDasharray="6 4"
-                      dot={{ r: 3 }}
-                      connectNulls
-                    />
-                  ) : null}
                   {markerSeries.map((series) => series.markers.length > 0 ? (
                     <Scatter
                       key={`${series.employee.id}:events`}
@@ -393,19 +439,11 @@ export function HistoricalCompensationTab() {
                   ) : null)}
                 </ComposedChart>
               </ResponsiveContainer>
+              </div>
               {!selectedEmployee && visibleEmployees.length > 0 ? (
-                <div className="mt-4 flex max-h-24 flex-wrap gap-x-4 gap-y-2 overflow-y-auto border-t pt-4">
-                  {visibleEmployees.map((employee, index) => (
-                    <button
-                      key={employee.id}
-                      type="button"
-                      onClick={() => changeEmployee(employee.id)}
-                      className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      <span className="h-2.5 w-2.5 rounded-full" style={{ background: SERIES_COLORS[index % SERIES_COLORS.length] }} />
-                      {employee.name}
-                    </button>
-                  ))}
+                <div className="mx-3 mt-4 flex items-center justify-between gap-4 border-t border-border/60 pt-4 text-xs text-muted-foreground">
+                  <span>{visibleEmployees.length} employee histories shown</span>
+                  <span>Use the employee selector to inspect one line and its events</span>
                 </div>
               ) : null}
             </>
@@ -424,7 +462,7 @@ export function HistoricalCompensationTab() {
         </CardHeader>
         <CardContent>
           {visibleEvents.length > 0 ? (
-            <div className="grid gap-3 lg:grid-cols-2">
+            <div className="grid max-h-[760px] gap-3 overflow-y-auto pr-2 lg:grid-cols-2">
               {visibleEvents.map((event) => {
                 const increasing = event.delta !== null && event.delta > 0
                 const ChangeIcon = increasing ? ArrowUpRight : ArrowDownRight
