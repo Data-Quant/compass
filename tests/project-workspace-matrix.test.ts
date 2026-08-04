@@ -104,6 +104,7 @@ async function render(options: { groupMode?: 'project' | 'assignee'; assigneeFil
   return renderToStaticMarkup(React.createElement(WorkspaceTaskTable, {
     projectViews: [view],
     viewerId: 'user-1',
+    people: [project.owner, ...project.members],
     progressScopeLabel: 'Your tasks',
     assigneeFilter: options.assigneeFilter || 'ME',
     groupMode: options.groupMode || 'project',
@@ -116,6 +117,7 @@ async function render(options: { groupMode?: 'project' | 'assignee'; assigneeFil
     quickAddProjectId: project.id,
     quickAdding: false,
     creatingTaskProjectIds: new Set<string>(),
+    creatingProject: false,
     onSort: () => undefined,
     onToggleBacklog: () => undefined,
     onToggleSelected: () => undefined,
@@ -128,7 +130,7 @@ async function render(options: { groupMode?: 'project' | 'assignee'; assigneeFil
     onQuickAddProjectChange: () => undefined,
     onQuickAdd: async () => true,
     onCreateActiveTask: async () => true,
-    onCreateProject: () => undefined,
+    onCreateProject: async () => true,
   }))
 }
 

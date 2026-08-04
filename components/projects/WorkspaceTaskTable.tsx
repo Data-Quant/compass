@@ -7,6 +7,7 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  Check,
   CheckCircle2,
   ChevronRight,
   FileText,
@@ -14,6 +15,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -50,6 +52,7 @@ import { UserAvatar } from '@/components/composed/UserAvatar'
 import { cn } from '@/lib/utils'
 import type {
   AssigneeFilter,
+  CreateProjectInput,
   SortDirection,
   TaskOptimisticPatch,
   TaskPatchRequest,
@@ -57,6 +60,7 @@ import type {
   WorkspaceGroupMode,
   WorkspacePriority,
   WorkspaceProject,
+  WorkspacePerson,
   WorkspaceProjectView,
   WorkspaceSortKey,
   WorkspaceTask,
@@ -84,6 +88,7 @@ import {
 interface WorkspaceTaskTableProps {
   projectViews: WorkspaceProjectView[]
   viewerId: string
+  people: WorkspacePerson[]
   progressScopeLabel: string
   assigneeFilter: AssigneeFilter
   groupMode: WorkspaceGroupMode
@@ -96,6 +101,7 @@ interface WorkspaceTaskTableProps {
   quickAddProjectId: string
   quickAdding: boolean
   creatingTaskProjectIds: Set<string>
+  creatingProject: boolean
   onSort: (key: WorkspaceSortKey) => void
   onToggleBacklog: () => void
   onToggleSelected: (taskId: string, selected: boolean) => void
@@ -113,10 +119,11 @@ interface WorkspaceTaskTableProps {
   onQuickAddProjectChange: (projectId: string) => void
   onQuickAdd: (title: string) => Promise<boolean>
   onCreateActiveTask: (projectId: string, title: string) => Promise<boolean>
-  onCreateProject: () => void
+  onCreateProject: (input: CreateProjectInput) => Promise<boolean>
 }
 
 const PRIORITIES: WorkspacePriority[] = ['HIGH', 'MEDIUM', 'LOW']
+const PROJECT_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f97316', '#eab308', '#22c55e', '#06b6d4']
 
 function canEditTask(project: WorkspaceProject, task: WorkspaceTask, viewerId: string) {
   return project.canManage
@@ -134,6 +141,7 @@ const STATUS_CLASS: Record<string, string> = {
 export function WorkspaceTaskTable({
   projectViews,
   viewerId,
+  people,
   progressScopeLabel,
   assigneeFilter,
   groupMode,
@@ -146,6 +154,7 @@ export function WorkspaceTaskTable({
   quickAddProjectId,
   quickAdding,
   creatingTaskProjectIds,
+  creatingProject,
   onSort,
   onToggleBacklog,
   onToggleSelected,
@@ -188,7 +197,7 @@ export function WorkspaceTaskTable({
     : projectViews
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {groupMode === 'assignee' ? (
         <PersonTaskGroups
           groups={assigneeGroups}
@@ -204,8 +213,8 @@ export function WorkspaceTaskTable({
           onOpenTask={onOpenTask}
           onFilterByAssignee={onFilterByAssignee}
         />
-      ) : orderedProjectViews.length > 0 && (
-        <Card className="overflow-hidden border-border/60 shadow-sm">
+      ) : (
+        <Card className="overflow-hidden rounded-lg border-border/60 shadow-none">
           <CardContent className="p-0">
             <Table className="min-w-[980px]">
               <TableHeader>
@@ -241,20 +250,17 @@ export function WorkspaceTaskTable({
                     onCreateActiveTask={onCreateActiveTask}
                   />
                 ))}
+                <InlineProjectRow
+                  people={people}
+                  viewerId={viewerId}
+                  creating={creatingProject}
+                  onCreate={onCreateProject}
+                />
               </TableBody>
             </Table>
           </CardContent>
         </Card>
       )}
-
-      <button
-        type="button"
-        onClick={onCreateProject}
-        className="flex w-full items-center gap-2 rounded-xl border border-dashed border-border/70 bg-card/40 px-4 py-3 text-left text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <Plus className="h-4 w-4" />
-        <span>New project</span>
-      </button>
 
       <BacklogGroup
         items={backlogItems}
@@ -757,6 +763,178 @@ export function InlineTaskComposer({
   )
 }
 
+function InlineProjectRow({
+  people,
+  viewerId,
+  creating,
+  onCreate,
+}: {
+  people: WorkspacePerson[]
+  viewerId: string
+  creating: boolean
+  onCreate: (input: CreateProjectInput) => Promise<boolean>
+}) {
+  const [editing, setEditing] = useState(false)
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [color, setColor] = useState<string | null>(null)
+  const [memberIds, setMemberIds] = useState<string[]>([])
+  const availablePeople = people.filter((person) => person.id !== viewerId)
+
+  const close = () => {
+    if (creating) return
+    setEditing(false)
+    setName('')
+    setDescription('')
+    setColor(null)
+    setMemberIds([])
+  }
+
+  const submit = async () => {
+    const cleanName = name.trim()
+    if (!cleanName || creating) return
+    const ok = await onCreate({
+      name: cleanName,
+      description: description.trim(),
+      color,
+      memberIds,
+    })
+    if (ok) close()
+  }
+
+  const toggleMember = (personId: string) => {
+    setMemberIds((current) => current.includes(personId)
+      ? current.filter((id) => id !== personId)
+      : [...current, personId])
+  }
+
+  if (!editing) {
+    return (
+      <TableRow data-row-kind="new-project" className="border-dashed hover:bg-muted/30">
+        <TableCell colSpan={5} className="p-0">
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>New project</span>
+          </button>
+        </TableCell>
+      </TableRow>
+    )
+  }
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') close()
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      void submit()
+    }
+  }
+
+  return (
+    <TableRow data-row-kind="new-project" className="border-dashed bg-muted/10 hover:bg-muted/20 [&>td]:px-2 [&>td]:py-1">
+      <TableCell>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                aria-label="Choose project color"
+                className="h-4 w-4 shrink-0 rounded-full border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                style={{ backgroundColor: color || '#94a3b8' }}
+              />
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-auto p-2">
+              <div className="flex items-center gap-1.5">
+                {PROJECT_COLORS.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setColor(preset)}
+                    aria-label={`Use project color ${preset}`}
+                    className="flex h-6 w-6 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    style={{ backgroundColor: preset }}
+                  >
+                    {color === preset ? <Check className="h-3.5 w-3.5 text-white" /> : null}
+                  </button>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+          <Input
+            autoFocus
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Project name"
+            aria-label="New project name"
+            disabled={creating}
+            className="h-7 min-w-0 border-transparent bg-transparent px-1.5 text-sm font-medium shadow-none hover:border-border focus:border-border"
+          />
+        </div>
+      </TableCell>
+      <TableCell>
+        <Input
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Description (optional)"
+          aria-label="New project description"
+          disabled={creating}
+          className="h-7 border-transparent bg-transparent px-1.5 text-xs shadow-none hover:border-border focus:border-border"
+        />
+      </TableCell>
+      <TableCell>
+        <span className="px-1.5 text-[11px] text-muted-foreground">Set on tasks</span>
+      </TableCell>
+      <TableCell>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button type="button" variant="ghost" size="sm" className="h-7 justify-start px-1.5 text-xs font-normal" disabled={creating}>
+              {memberIds.length > 0 ? `${memberIds.length + 1} people` : 'Just me'}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-60 p-1">
+            <p className="px-2 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Project members</p>
+            <div className="max-h-48 overflow-y-auto">
+              {availablePeople.map((person) => {
+                const selected = memberIds.includes(person.id)
+                return (
+                  <button
+                    key={person.id}
+                    type="button"
+                    onClick={() => toggleMember(person.id)}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <UserAvatar name={person.name} size="xs" />
+                    <span className="min-w-0 flex-1 truncate">{person.name}</span>
+                    {selected ? <Check className="h-3.5 w-3.5 text-primary" /> : null}
+                  </button>
+                )
+              })}
+              {availablePeople.length === 0 ? (
+                <p className="px-2 py-3 text-center text-xs text-muted-foreground">No teammates available.</p>
+              ) : null}
+            </div>
+          </PopoverContent>
+        </Popover>
+      </TableCell>
+      <TableCell>
+        <div className="flex items-center gap-1">
+          <Button type="button" size="sm" className="h-7 px-2 text-xs" onClick={() => void submit()} disabled={creating || !name.trim()}>
+            {creating ? 'Creating...' : 'Create'}
+          </Button>
+          <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={close} disabled={creating} aria-label="Cancel new project">
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  )
+}
+
 function ProjectMatrixRow({
   view,
   viewerId,
@@ -827,12 +1005,12 @@ function ProjectMatrixRow({
   })
 
   return (
-    <TableRow data-row-kind="project" className="bg-muted/20 hover:bg-muted/35">
+    <TableRow data-row-kind="project" className="bg-muted/10 hover:bg-muted/30 [&>td]:py-1">
       <TableCell
-        className="py-2"
+        className="py-1"
         style={{ borderLeftColor: project.color || 'transparent', borderLeftStyle: 'solid', borderLeftWidth: 3 }}
       >
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
           <Checkbox
             checked={selectableTaskIds.length > 0 && selectedCount === selectableTaskIds.length
               ? true
@@ -848,12 +1026,12 @@ function ProjectMatrixRow({
                 type="button"
                 aria-expanded={open}
                 aria-label={`${open ? 'Close' : 'Open'} tasks for ${project.name}`}
-                className="group min-w-0 flex-1 rounded-md px-1.5 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="group min-w-0 flex-1 rounded-md px-1 py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <div className="flex min-w-0 items-center gap-2">
+                <div className="flex min-w-0 items-center gap-1.5">
                   <ChevronRight className={cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-90')} />
                   <span className="truncate font-semibold text-foreground group-hover:text-primary">{project.name}</span>
-                  <Badge variant="outline" className={cn('shrink-0 text-[10px]', STATUS_CLASS[project.status])}>
+                  <Badge variant="outline" className={cn('shrink-0 px-1.5 py-0 text-[9px]', STATUS_CLASS[project.status])}>
                     {project.status.replace('_', ' ')}
                   </Badge>
                   {hasOverdue && (
@@ -865,9 +1043,9 @@ function ProjectMatrixRow({
                     />
                   )}
                 </div>
-                <div className="mt-1.5 flex max-w-sm items-center gap-2 pl-6">
+                <div className="mt-1 flex max-w-sm items-center gap-1.5 pl-5">
                   <div
-                    className={cn('h-1.5 min-w-0 flex-1 overflow-hidden rounded-full', band.track)}
+                    className={cn('h-1 min-w-0 flex-1 overflow-hidden rounded-full', band.track)}
                     role="progressbar"
                     aria-label={`${project.name} ${progressScopeLabel.toLocaleLowerCase()} progress`}
                     aria-valuemin={0}
@@ -954,7 +1132,7 @@ function ProjectMatrixRow({
           <ProjectActions project={project} onRenameProject={onRenameProject} onArchiveProject={onArchiveProject} />
         </div>
       </TableCell>
-      <TableCell><Badge variant="secondary" className="font-normal">{tasks.length} active</Badge></TableCell>
+      <TableCell><Badge variant="secondary" className="px-2 py-0 text-[10px] font-normal">{tasks.length} active</Badge></TableCell>
       <TableCell>
         {nearestDeadline ? (
           <div className="text-xs">
@@ -1361,11 +1539,11 @@ function SortableHead({
   const active = activeKey === sortKey
   const Icon = active ? (direction === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown
   return (
-    <TableHead className={className} aria-sort={active ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
+    <TableHead className={cn('h-8 px-2 text-xs', className)} aria-sort={active ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
       <button
         type="button"
         onClick={() => onSort(sortKey)}
-        className="inline-flex items-center gap-1.5 rounded px-1 py-1 text-left transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-left transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {label}
         <Icon className={cn('h-3.5 w-3.5', !active && 'opacity-45')} />
@@ -1524,8 +1702,8 @@ function BacklogGroup({
   }
 
   return (
-    <Card className="overflow-hidden border-dashed border-border/70 bg-muted/10">
-      <div className="flex flex-col gap-3 border-b border-border/50 px-4 py-3 lg:flex-row lg:items-center">
+    <Card className="overflow-hidden rounded-lg border-dashed border-border/70 bg-muted/10 shadow-none">
+      <div className="flex flex-col gap-2 border-b border-border/50 px-3 py-2 lg:flex-row lg:items-center">
         <button
           type="button"
           onClick={onToggle}

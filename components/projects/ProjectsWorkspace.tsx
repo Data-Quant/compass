@@ -7,7 +7,6 @@ import {
   LayoutList,
   Plus,
   Search,
-  SlidersHorizontal,
   X,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -41,6 +40,7 @@ import { WorkspaceKanban } from './WorkspaceKanban'
 import { WorkspaceTaskTable } from './WorkspaceTaskTable'
 import type {
   AssigneeFilter,
+  CreateProjectInput,
   KanbanColumnId,
   ProjectsWorkspaceResponse,
   ProjectStatusFilter,
@@ -83,13 +83,6 @@ interface PromotionState {
   column: KanbanColumnId
   assigneeId: string
   dueDate: string
-}
-
-interface CreateProjectInput {
-  name: string
-  description: string
-  color: string | null
-  memberIds: string[]
 }
 
 async function responseJson(response: Response): Promise<Record<string, unknown>> {
@@ -797,21 +790,18 @@ export function ProjectsWorkspace() {
   }
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-5 p-4 sm:p-6 lg:p-8">
-      <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+    <div className="mx-auto max-w-[1600px] space-y-3 p-3 sm:p-4 lg:p-5">
+      <header className="flex flex-col gap-2 xl:flex-row xl:items-end xl:justify-between">
         <div>
-          <div className="mb-1 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.16em] text-primary">
-            <SlidersHorizontal className="h-3.5 w-3.5" /> Project command center
-          </div>
-          <h1 className="font-display text-2xl font-light tracking-tight text-foreground sm:text-3xl">Projects & tasks</h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+          <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground">Projects & tasks</h1>
+          <p className="mt-0.5 max-w-2xl text-xs text-muted-foreground">
             Plan by project, work from one task list, and keep every deadline visible.
           </p>
         </div>
       </header>
 
-      <section className="rounded-xl border border-border/60 bg-card/60 p-3 shadow-sm backdrop-blur-sm">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+      <section className="rounded-lg border border-border/60 bg-card/60 p-2 shadow-sm backdrop-blur-sm">
+        <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
           <div className="relative min-w-0 flex-1 xl:max-w-lg">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -819,7 +809,7 @@ export function ProjectsWorkspace() {
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search task titles and notes..."
               aria-label="Search task titles and notes"
-              className="pl-9 pr-9"
+              className="h-8 pl-9 pr-9 text-xs"
             />
             {search && (
               <button
@@ -835,7 +825,7 @@ export function ProjectsWorkspace() {
 
           <div className="grid gap-2 sm:grid-cols-2 xl:flex xl:items-center">
             <Select value={assigneeFilter} onValueChange={(value) => void changeAssigneeFilter(value)}>
-              <SelectTrigger aria-label="Filter tasks by assignee" className="min-w-44">
+              <SelectTrigger aria-label="Filter tasks by assignee" className="h-8 min-w-40 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -848,7 +838,7 @@ export function ProjectsWorkspace() {
             </Select>
 
             <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as ProjectStatusFilter)}>
-              <SelectTrigger aria-label="Filter projects by status" className="min-w-44">
+              <SelectTrigger aria-label="Filter projects by status" className="h-8 min-w-40 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -861,7 +851,7 @@ export function ProjectsWorkspace() {
 
           {view === 'table' && (
             <Select value={groupMode} onValueChange={(value) => changeGroupMode(value as WorkspaceGroupMode)}>
-              <SelectTrigger aria-label="Group tasks by" className="min-w-44">
+              <SelectTrigger aria-label="Group tasks by" className="h-8 min-w-40 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -871,14 +861,14 @@ export function ProjectsWorkspace() {
             </Select>
           )}
 
-          <div className="flex w-fit items-center rounded-lg border border-border/60 bg-muted/30 p-1" aria-label="Workspace view">
+          <div className="flex w-fit items-center rounded-md border border-border/60 bg-muted/30 p-0.5" aria-label="Workspace view">
             <Button
               type="button"
               variant={view === 'table' ? 'secondary' : 'ghost'}
               size="sm"
               onClick={() => changeView('table')}
               aria-pressed={view === 'table'}
-              className="gap-1.5"
+              className="h-7 gap-1.5 px-2 text-xs"
             >
               <LayoutList className="h-4 w-4" /> Table
             </Button>
@@ -888,7 +878,7 @@ export function ProjectsWorkspace() {
               size="sm"
               onClick={() => changeView('kanban')}
               aria-pressed={view === 'kanban'}
-              className="gap-1.5"
+              className="h-7 gap-1.5 px-2 text-xs"
             >
               <Columns3 className="h-4 w-4" /> Kanban
             </Button>
@@ -910,23 +900,17 @@ export function ProjectsWorkspace() {
         onClear={() => setSelectedIds(new Set())}
       />
 
-      {workspace.projects.length === 0 ? (
-        <EmptyState
-          icon={<FolderKanban className="h-11 w-11" />}
-          title="No projects yet"
-          description="Create a project, then capture the first idea in its backlog."
-          action={<Button onClick={() => setShowCreateProject(true)}><Plus className="mr-2 h-4 w-4" />Create project</Button>}
-        />
-      ) : view === 'table' ? (
-        <div className="space-y-4">
-          {projectViews.length === 0 && (
-            <div className="rounded-lg border border-border/60 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-              No tasks match this view. You can still capture a new backlog item below, or change the teammate, status, or search filter.
+      {view === 'table' ? (
+        <div className="space-y-2">
+          {projectViews.length === 0 && workspace.projects.length > 0 && (
+            <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+              No tasks match this view. Change the teammate, status, or search filter to see more.
             </div>
           )}
           <WorkspaceTaskTable
             projectViews={projectViews}
             viewerId={workspace.viewer.id}
+            people={workspace.people}
             progressScopeLabel={progressScopeLabel}
             assigneeFilter={assigneeFilter}
             groupMode={groupMode}
@@ -939,6 +923,7 @@ export function ProjectsWorkspace() {
             quickAddProjectId={quickAddProjectId}
             quickAdding={quickAdding}
             creatingTaskProjectIds={creatingTaskProjectIds}
+            creatingProject={creatingProject}
             onSort={toggleSort}
             onToggleBacklog={() => setBacklogCollapsed((current) => !current)}
             onToggleSelected={(taskId, selected) => setSelectedIds((current) => {
@@ -963,9 +948,16 @@ export function ProjectsWorkspace() {
             onQuickAddProjectChange={setQuickAddProjectId}
             onQuickAdd={quickAdd}
             onCreateActiveTask={createActiveTask}
-            onCreateProject={() => setShowCreateProject(true)}
+            onCreateProject={createProject}
           />
         </div>
+      ) : workspace.projects.length === 0 ? (
+        <EmptyState
+          icon={<FolderKanban className="h-11 w-11" />}
+          title="No projects yet"
+          description="Switch to the table to create your first project inline."
+          action={<Button onClick={() => changeView('table')}><LayoutList className="mr-2 h-4 w-4" />Open table</Button>}
+        />
       ) : (
         <WorkspaceKanban
           projectViews={projectViews}

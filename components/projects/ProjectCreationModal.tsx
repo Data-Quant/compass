@@ -9,14 +9,7 @@ import { Modal } from '@/components/ui/modal'
 import { Textarea } from '@/components/ui/textarea'
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import { cn } from '@/lib/utils'
-import type { WorkspacePerson } from './workspace-types'
-
-interface CreateProjectInput {
-  name: string
-  description: string
-  color: string | null
-  memberIds: string[]
-}
+import type { CreateProjectInput, WorkspacePerson } from './workspace-types'
 
 interface ProjectCreationModalProps {
   open: boolean

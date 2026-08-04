@@ -15,6 +15,13 @@ export interface WorkspacePerson {
   name: string
 }
 
+export interface CreateProjectInput {
+  name: string
+  description: string
+  color: string | null
+  memberIds: string[]
+}
+
 export interface WorkspaceMember extends WorkspacePerson {
   role: string
 }
