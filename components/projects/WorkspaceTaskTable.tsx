@@ -53,6 +53,7 @@ import { cn } from '@/lib/utils'
 import type {
   AssigneeFilter,
   CreateProjectInput,
+  ProjectPatchRequest,
   SortDirection,
   TaskOptimisticPatch,
   TaskPatchRequest,
@@ -119,11 +120,19 @@ interface WorkspaceTaskTableProps {
   onQuickAddProjectChange: (projectId: string) => void
   onQuickAdd: (title: string) => Promise<boolean>
   onCreateActiveTask: (projectId: string, title: string) => Promise<boolean>
+  onCreateSubtask: (projectId: string, parentTaskId: string, title: string) => Promise<boolean>
   onCreateProject: (input: CreateProjectInput) => Promise<boolean>
+  onPatchProject: (projectId: string, request: ProjectPatchRequest) => Promise<boolean>
 }
 
 const PRIORITIES: WorkspacePriority[] = ['HIGH', 'MEDIUM', 'LOW']
 const PROJECT_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f97316', '#eab308', '#22c55e', '#06b6d4']
+const PROJECT_STATUSES: Array<{ value: NonNullable<ProjectPatchRequest['status']>; label: string }> = [
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'ON_HOLD', label: 'On hold' },
+  { value: 'COMPLETED', label: 'Completed' },
+  { value: 'ARCHIVED', label: 'Archived' },
+]
 
 function canEditTask(project: WorkspaceProject, task: WorkspaceTask, viewerId: string) {
   return project.canManage
@@ -167,7 +176,9 @@ export function WorkspaceTaskTable({
   onQuickAddProjectChange,
   onQuickAdd,
   onCreateActiveTask,
+  onCreateSubtask,
   onCreateProject,
+  onPatchProject,
 }: WorkspaceTaskTableProps) {
   const [openProjectId, setOpenProjectId] = useState<string | null>(null)
   const scopeAssigneeId = assigneeIdForFilter(assigneeFilter, viewerId)
@@ -248,6 +259,8 @@ export function WorkspaceTaskTable({
                     onRenameProject={onRenameProject}
                     onArchiveProject={onArchiveProject}
                     onCreateActiveTask={onCreateActiveTask}
+                    onCreateSubtask={onCreateSubtask}
+                    onPatchProject={onPatchProject}
                   />
                 ))}
                 <InlineProjectRow
@@ -763,6 +776,53 @@ export function InlineTaskComposer({
   )
 }
 
+function ProjectColorPicker({
+  value,
+  disabled = false,
+  label,
+  onChange,
+}: {
+  value: string | null
+  disabled?: boolean
+  label: string
+  onChange: (color: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          disabled={disabled}
+          className="h-4 w-4 shrink-0 rounded-full border border-border transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait disabled:opacity-60"
+          style={{ backgroundColor: value || '#94a3b8' }}
+        />
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-auto p-2">
+        <div className="flex items-center gap-1.5">
+          {PROJECT_COLORS.map((preset) => (
+            <button
+              key={preset}
+              type="button"
+              onClick={() => {
+                onChange(preset)
+                setOpen(false)
+              }}
+              aria-label={`Use project color ${preset}`}
+              className="flex h-6 w-6 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              style={{ backgroundColor: preset }}
+            >
+              {value === preset ? <Check className="h-3.5 w-3.5 text-white" /> : null}
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 function InlineProjectRow({
   people,
   viewerId,
@@ -837,32 +897,12 @@ function InlineProjectRow({
     <TableRow data-row-kind="new-project" className="border-dashed bg-muted/10 hover:bg-muted/20 [&>td]:px-2 [&>td]:py-1">
       <TableCell>
         <div className="flex min-w-0 items-center gap-1.5">
-          <Popover>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                aria-label="Choose project color"
-                className="h-4 w-4 shrink-0 rounded-full border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                style={{ backgroundColor: color || '#94a3b8' }}
-              />
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-auto p-2">
-              <div className="flex items-center gap-1.5">
-                {PROJECT_COLORS.map((preset) => (
-                  <button
-                    key={preset}
-                    type="button"
-                    onClick={() => setColor(preset)}
-                    aria-label={`Use project color ${preset}`}
-                    className="flex h-6 w-6 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    style={{ backgroundColor: preset }}
-                  >
-                    {color === preset ? <Check className="h-3.5 w-3.5 text-white" /> : null}
-                  </button>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
+          <ProjectColorPicker
+            value={color}
+            disabled={creating}
+            label="Choose project color"
+            onChange={setColor}
+          />
           <Input
             autoFocus
             value={name}
@@ -954,6 +994,8 @@ function ProjectMatrixRow({
   onRenameProject,
   onArchiveProject,
   onCreateActiveTask,
+  onCreateSubtask,
+  onPatchProject,
 }: {
   view: WorkspaceProjectView
   viewerId: string
@@ -973,11 +1015,17 @@ function ProjectMatrixRow({
   onRenameProject: (project: WorkspaceProject) => void
   onArchiveProject: (project: WorkspaceProject) => void
   onCreateActiveTask: (projectId: string, title: string) => Promise<boolean>
+  onCreateSubtask: WorkspaceTaskTableProps['onCreateSubtask']
+  onPatchProject: WorkspaceTaskTableProps['onPatchProject']
 }) {
   const { project, progress } = view
   const tasks = sortTasks(project, view.visibleActiveTasks, sortKey, sortDirection)
-  const taskTree = buildWorkspaceTaskTree(tasks)
-  const [expandedTaskIds, setExpandedTaskIds] = useState(new Set<string>())
+  const [nameDraft, setNameDraft] = useState(project.name)
+  const [colorDraft, setColorDraft] = useState(project.color)
+  const [statusDraft, setStatusDraft] = useState(project.status)
+  const [savingName, setSavingName] = useState(false)
+  const [savingColor, setSavingColor] = useState(false)
+  const [savingStatus, setSavingStatus] = useState(false)
   const selectableTaskIds = tasks.filter((task) => canEditTask(project, task, viewerId)).map((task) => task.id)
   const selectedCount = selectableTaskIds.filter((id) => selectedIds.has(id)).length
   const hasOverdue = tasks.some((task) => isTaskOverdue(project, task))
@@ -997,12 +1045,40 @@ function ProjectMatrixRow({
     .flatMap(taskAssignees)
     .filter((person, index, people) => people.findIndex((candidate) => candidate.id === person.id) === index)
 
-  const toggleTask = (taskId: string) => setExpandedTaskIds((current) => {
-    const next = new Set(current)
-    if (next.has(taskId)) next.delete(taskId)
-    else next.add(taskId)
-    return next
-  })
+  useEffect(() => setNameDraft(project.name), [project.name])
+  useEffect(() => setColorDraft(project.color), [project.color])
+  useEffect(() => setStatusDraft(project.status), [project.status])
+
+  const saveName = async () => {
+    const name = nameDraft.trim()
+    if (!project.canManage || savingName || name === project.name) return
+    if (!name) {
+      setNameDraft(project.name)
+      return
+    }
+    setSavingName(true)
+    const ok = await onPatchProject(project.id, { name })
+    if (!ok) setNameDraft(project.name)
+    setSavingName(false)
+  }
+
+  const saveColor = async (color: string) => {
+    if (!project.canManage || savingColor || color === project.color) return
+    setColorDraft(color)
+    setSavingColor(true)
+    const ok = await onPatchProject(project.id, { color })
+    if (!ok) setColorDraft(project.color)
+    setSavingColor(false)
+  }
+
+  const saveStatus = async (status: NonNullable<ProjectPatchRequest['status']>) => {
+    if (!project.canManage || savingStatus || status === project.status) return
+    setStatusDraft(status)
+    setSavingStatus(true)
+    const ok = await onPatchProject(project.id, { status })
+    if (!ok) setStatusDraft(project.status)
+    setSavingStatus(false)
+  }
 
   return (
     <TableRow data-row-kind="project" className="bg-muted/10 hover:bg-muted/30 [&>td]:py-1">
@@ -1026,38 +1102,9 @@ function ProjectMatrixRow({
                 type="button"
                 aria-expanded={open}
                 aria-label={`${open ? 'Close' : 'Open'} tasks for ${project.name}`}
-                className="group min-w-0 flex-1 rounded-md px-1 py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="group flex h-6 w-6 shrink-0 items-center justify-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <ChevronRight className={cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-90')} />
-                  <span className="truncate font-semibold text-foreground group-hover:text-primary">{project.name}</span>
-                  <Badge variant="outline" className={cn('shrink-0 px-1.5 py-0 text-[9px]', STATUS_CLASS[project.status])}>
-                    {project.status.replace('_', ' ')}
-                  </Badge>
-                  {hasOverdue && (
-                    <span
-                      className="h-2.5 w-2.5 shrink-0 rounded-full bg-red-500 shadow-[0_0_0_3px_rgba(239,68,68,0.14)]"
-                      title="This project has overdue tasks"
-                      role="img"
-                      aria-label="This project has overdue tasks"
-                    />
-                  )}
-                </div>
-                <div className="mt-1 flex max-w-sm items-center gap-1.5 pl-5">
-                  <div
-                    className={cn('h-1 min-w-0 flex-1 overflow-hidden rounded-full', band.track)}
-                    role="progressbar"
-                    aria-label={`${project.name} ${progressScopeLabel.toLocaleLowerCase()} progress`}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={progress.percent ?? 0}
-                    aria-valuetext={progressText}
-                  >
-                    <div className={cn('h-full rounded-full transition-[width] duration-300', band.fill)} style={{ width: `${progress.percent ?? 0}%` }} />
-                  </div>
-                  <span className={cn('whitespace-nowrap text-[10px] font-medium', band.text)}>{progressText}</span>
-                  {progress.percent === 100 && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" aria-label="Complete" />}
-                </div>
+                <ChevronRight className={cn('h-4 w-4 text-muted-foreground transition-transform group-hover:text-foreground', open && 'rotate-90')} />
               </button>
             </PopoverTrigger>
 
@@ -1078,61 +1125,129 @@ function ProjectMatrixRow({
                 <Badge variant="secondary" className="shrink-0">{selectedCount} selected</Badge>
               </div>
 
-              {tasks.length === 0 ? (
-                <div className="px-5 py-10 text-center text-sm text-muted-foreground">
-                  {project.tasks.length === 0
-                    ? 'No active tasks yet. Add the first task below.'
-                    : 'No active tasks match this view. Add one below or try another teammate, status, or search filter.'}
-                </div>
-              ) : (
-                <div className="max-h-[70vh] overflow-auto">
-                  <Table className="min-w-[920px]">
-                    <TableHeader className="sticky top-0 z-10 bg-popover">
-                      <TableRow>
-                        <TableHead className="min-w-[390px]">Task</TableHead>
-                        <TableHead className="w-44">Deadline</TableHead>
-                        <TableHead className="min-w-[230px]">Assignees</TableHead>
-                        <TableHead className="w-36">Priority</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {taskTree.map((node) => (
-                        <WorkspacePopupTaskRows
-                          key={node.task.id}
-                          node={node}
-                          depth={0}
-                          project={project}
-                          viewerId={viewerId}
-                          selectedIds={selectedIds}
-                          pendingTaskIds={pendingTaskIds}
-                          expandedTaskIds={expandedTaskIds}
-                          onToggleTask={toggleTask}
-                          onToggleSelected={onToggleSelected}
-                          onPatchTask={onPatchTask}
-                          onOpenTask={onOpenTask}
-                          onFilterByAssignee={onFilterByAssignee}
-                        />
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-              {project.status !== 'ARCHIVED' && (
-                <div className="border-t border-border/60 px-4 py-2">
-                  <InlineTaskComposer
-                    projectName={project.name}
-                    creating={creatingTask}
-                    onCreate={(title) => onCreateActiveTask(project.id, title)}
-                  />
-                </div>
-              )}
+              <OpenedProjectTaskTable
+                project={project}
+                tasks={tasks}
+                viewerId={viewerId}
+                selectedIds={selectedIds}
+                pendingTaskIds={pendingTaskIds}
+                creatingTask={creatingTask}
+                emptyMessage={project.tasks.length === 0
+                  ? 'No active tasks yet. Add the first task below.'
+                  : 'No active tasks match this view. Add one below or try another teammate, status, or search filter.'}
+                scrollClassName="max-h-[70vh]"
+                onToggleSelected={onToggleSelected}
+                onPatchTask={onPatchTask}
+                onOpenTask={onOpenTask}
+                onFilterByAssignee={onFilterByAssignee}
+                onCreateTask={(parentTaskId, title) => parentTaskId
+                  ? onCreateSubtask(project.id, parentTaskId, title)
+                  : onCreateActiveTask(project.id, title)}
+              />
             </PopoverContent>
           </Popover>
 
+          {project.canManage ? (
+            <ProjectColorPicker
+              value={colorDraft}
+              disabled={savingColor}
+              label={`Change color for ${project.name}`}
+              onChange={(color) => void saveColor(color)}
+            />
+          ) : (
+            <span
+              className="h-3.5 w-3.5 shrink-0 rounded-full border border-border"
+              style={{ backgroundColor: project.color || '#94a3b8' }}
+              aria-label={`${project.name} color`}
+              role="img"
+            />
+          )}
+
+          {project.canManage ? (
+            <Input
+              value={nameDraft}
+              onChange={(event) => setNameDraft(event.target.value)}
+              onBlur={() => void saveName()}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  event.currentTarget.blur()
+                }
+                if (event.key === 'Escape') {
+                  setNameDraft(project.name)
+                  event.currentTarget.blur()
+                }
+              }}
+              aria-label={`Project name for ${project.name}`}
+              disabled={savingName}
+              className="h-7 min-w-0 flex-1 border-transparent bg-transparent px-1.5 text-sm font-semibold shadow-none hover:border-border focus:border-border disabled:opacity-70"
+            />
+          ) : (
+            <span className="min-w-0 flex-1 truncate px-1 font-semibold text-foreground">{project.name}</span>
+          )}
+
+          {project.canManage ? (
+            <Select
+              value={statusDraft}
+              onValueChange={(status) => void saveStatus(status as NonNullable<ProjectPatchRequest['status']>)}
+              disabled={savingStatus}
+            >
+              <SelectTrigger
+                aria-label={`Project status for ${project.name}`}
+                className={cn('h-7 w-[104px] shrink-0 border px-2 text-[10px] font-medium uppercase shadow-none', STATUS_CLASS[statusDraft])}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PROJECT_STATUSES.map((status) => (
+                  <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Badge variant="outline" className={cn('shrink-0 px-1.5 py-0 text-[9px]', STATUS_CLASS[project.status])}>
+              {project.status.replace('_', ' ')}
+            </Badge>
+          )}
+
+          {hasOverdue && (
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-full bg-red-500 shadow-[0_0_0_3px_rgba(239,68,68,0.14)]"
+              title="This project has overdue tasks"
+              role="img"
+              aria-label="This project has overdue tasks"
+            />
+          )}
+
           <ProjectActions project={project} onRenameProject={onRenameProject} onArchiveProject={onArchiveProject} />
         </div>
+
+        <div className="mt-0.5 flex max-w-sm items-center gap-1.5 pl-[4.65rem]">
+          <div
+            className={cn('h-1 min-w-0 flex-1 overflow-hidden rounded-full', band.track)}
+            role="progressbar"
+            aria-label={`${project.name} ${progressScopeLabel.toLocaleLowerCase()} progress`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progress.percent ?? 0}
+            aria-valuetext={progressText}
+          >
+            <div className={cn('h-full rounded-full transition-[width] duration-300', band.fill)} style={{ width: `${progress.percent ?? 0}%` }} />
+          </div>
+          <span className={cn('whitespace-nowrap text-[10px] font-medium', band.text)}>{progressText}</span>
+          {progress.percent === 100 && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" aria-label="Complete" />}
+        </div>
       </TableCell>
-      <TableCell><Badge variant="secondary" className="px-2 py-0 text-[10px] font-normal">{tasks.length} active</Badge></TableCell>
+      <TableCell>
+        <button
+          type="button"
+          onClick={() => onOpenChange(true)}
+          aria-label={`Open tasks for ${project.name}`}
+          className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Badge variant="secondary" className="px-2 py-0 text-[10px] font-normal hover:bg-primary/15">{tasks.length} active</Badge>
+        </button>
+      </TableCell>
       <TableCell>
         {nearestDeadline ? (
           <div className="text-xs">
@@ -1194,6 +1309,104 @@ function ProjectActions({
   )
 }
 
+export function OpenedProjectTaskTable({
+  project,
+  tasks,
+  viewerId,
+  selectedIds = new Set<string>(),
+  pendingTaskIds = new Set<string>(),
+  creatingTask = false,
+  defaultExpandAll = false,
+  emptyMessage = 'No tasks yet. Add the first task below.',
+  scrollClassName,
+  onToggleSelected = () => undefined,
+  onPatchTask,
+  onOpenTask,
+  onFilterByAssignee = () => undefined,
+  onCreateTask,
+}: {
+  project: WorkspaceProject
+  tasks: WorkspaceTask[]
+  viewerId: string
+  selectedIds?: Set<string>
+  pendingTaskIds?: Set<string>
+  creatingTask?: boolean
+  defaultExpandAll?: boolean
+  emptyMessage?: string
+  scrollClassName?: string
+  onToggleSelected?: (taskId: string, selected: boolean) => void
+  onPatchTask: WorkspaceTaskTableProps['onPatchTask']
+  onOpenTask: (projectId: string, taskId: string) => void
+  onFilterByAssignee?: (assigneeId: string) => void
+  onCreateTask: (parentTaskId: string | null, title: string) => Promise<boolean>
+}) {
+  const taskTree = buildWorkspaceTaskTree(tasks)
+  const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(() => (
+    defaultExpandAll
+      ? new Set(tasks
+        .filter((task) => tasks.some((candidate) => candidate.parentTaskId === task.id))
+        .map((task) => task.id))
+      : new Set()
+  ))
+
+  const toggleTask = (taskId: string) => setExpandedTaskIds((current) => {
+    const next = new Set(current)
+    if (next.has(taskId)) next.delete(taskId)
+    else next.add(taskId)
+    return next
+  })
+
+  return (
+    <div className="min-w-0">
+      {tasks.length === 0 ? (
+        <div className="px-5 py-8 text-center text-sm text-muted-foreground">{emptyMessage}</div>
+      ) : (
+        <div className={cn('overflow-auto', scrollClassName)}>
+          <Table className="min-w-[920px]">
+            <TableHeader className="sticky top-0 z-10 bg-popover">
+              <TableRow>
+                <TableHead className="min-w-[390px]">Task</TableHead>
+                <TableHead className="w-44">Deadline</TableHead>
+                <TableHead className="min-w-[230px]">Assignees</TableHead>
+                <TableHead className="w-36">Priority</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {taskTree.map((node) => (
+                <WorkspacePopupTaskRows
+                  key={node.task.id}
+                  node={node}
+                  depth={0}
+                  project={project}
+                  viewerId={viewerId}
+                  selectedIds={selectedIds}
+                  pendingTaskIds={pendingTaskIds}
+                  expandedTaskIds={expandedTaskIds}
+                  onToggleTask={toggleTask}
+                  onToggleSelected={onToggleSelected}
+                  onPatchTask={onPatchTask}
+                  onOpenTask={onOpenTask}
+                  onFilterByAssignee={onFilterByAssignee}
+                  onCreateTask={onCreateTask}
+                />
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+      {project.status !== 'ARCHIVED' && (
+        <div className="border-t border-border/60 px-4 py-2">
+          <InlineTaskComposer
+            projectName={project.name}
+            creating={creatingTask}
+            onCreate={(title) => onCreateTask(null, title)}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
 function WorkspacePopupTaskRows({
   node,
   depth,
@@ -1207,6 +1420,7 @@ function WorkspacePopupTaskRows({
   onPatchTask,
   onOpenTask,
   onFilterByAssignee,
+  onCreateTask,
 }: {
   node: WorkspaceTaskNode
   depth: number
@@ -1220,6 +1434,7 @@ function WorkspacePopupTaskRows({
   onPatchTask: WorkspaceTaskTableProps['onPatchTask']
   onOpenTask: (projectId: string, taskId: string) => void
   onFilterByAssignee: (assigneeId: string) => void
+  onCreateTask: (parentTaskId: string | null, title: string) => Promise<boolean>
 }) {
   const { task, children } = node
   const expanded = children.length > 0 && expandedTaskIds.has(task.id)
@@ -1240,6 +1455,17 @@ function WorkspacePopupTaskRows({
         onOpenTask={onOpenTask}
         onFilterByAssignee={onFilterByAssignee}
       />
+      {project.status !== 'ARCHIVED' && canEditTask(project, task, viewerId) && (
+        <InlineSubtaskComposerRow
+          parentTask={task}
+          depth={depth + 1}
+          onCreate={async (title) => {
+            const ok = await onCreateTask(task.id, title)
+            if (ok && !expanded) onToggleTask(task.id)
+            return ok
+          }}
+        />
+      )}
       {expanded && children.map((child) => (
         <WorkspacePopupTaskRows
           key={child.task.id}
@@ -1255,9 +1481,88 @@ function WorkspacePopupTaskRows({
           onPatchTask={onPatchTask}
           onOpenTask={onOpenTask}
           onFilterByAssignee={onFilterByAssignee}
+          onCreateTask={onCreateTask}
         />
       ))}
     </Fragment>
+  )
+}
+
+export function InlineSubtaskComposerRow({
+  parentTask,
+  depth,
+  onCreate,
+}: {
+  parentTask: Pick<WorkspaceTask, 'id' | 'title'>
+  depth: number
+  onCreate: (title: string) => Promise<boolean>
+}) {
+  const [editing, setEditing] = useState(false)
+  const [title, setTitle] = useState('')
+  const [creating, setCreating] = useState(false)
+
+  const close = () => {
+    if (creating) return
+    setEditing(false)
+    setTitle('')
+  }
+
+  const submit = async () => {
+    const cleanTitle = title.trim()
+    if (!cleanTitle || creating) return
+    setCreating(true)
+    const ok = await onCreate(cleanTitle)
+    setCreating(false)
+    if (ok) close()
+  }
+
+  return (
+    <TableRow
+      data-row-kind="new-subtask"
+      data-parent-task-id={parentTask.id}
+      data-task-depth={depth}
+      className="border-0 bg-popover hover:bg-muted/20"
+    >
+      <TableCell colSpan={4} className="h-7 py-0" style={{ paddingLeft: `${24 + depth * 24}px` }}>
+        {editing ? (
+          <div className="flex min-w-0 items-center gap-1.5 py-1">
+            <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <Input
+              autoFocus
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  void submit()
+                }
+                if (event.key === 'Escape') close()
+              }}
+              placeholder="Subtask name"
+              aria-label={`New subtask under ${parentTask.title}`}
+              disabled={creating}
+              className="h-7 min-w-0 flex-1 border-transparent bg-transparent px-1.5 text-xs shadow-none hover:border-border focus:border-border"
+            />
+            <Button type="button" size="sm" className="h-7 px-2 text-xs" onClick={() => void submit()} disabled={creating || !title.trim()}>
+              {creating ? 'Adding...' : 'Add'}
+            </Button>
+            <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={close} disabled={creating} aria-label={`Cancel subtask under ${parentTask.title}`}>
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            aria-label={`Add subtask under ${parentTask.title}`}
+            className="flex h-7 w-full items-center gap-1.5 rounded px-1.5 text-left text-[11px] text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          >
+            <Plus className="h-3 w-3" />
+            <span>New subtask</span>
+          </button>
+        )}
+      </TableCell>
+    </TableRow>
   )
 }
 

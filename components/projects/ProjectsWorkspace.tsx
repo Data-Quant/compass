@@ -42,6 +42,7 @@ import type {
   AssigneeFilter,
   CreateProjectInput,
   KanbanColumnId,
+  ProjectPatchRequest,
   ProjectsWorkspaceResponse,
   ProjectStatusFilter,
   SortDirection,
@@ -457,7 +458,7 @@ export function ProjectsWorkspace() {
     }
   }
 
-  const createActiveTask = async (projectId: string, title: string) => {
+  const createActiveTask = async (projectId: string, title: string, parentTaskId?: string) => {
     const currentWorkspace = workspaceRef.current
     const project = currentWorkspace?.projects.find((candidate) => candidate.id === projectId)
     if (!currentWorkspace || !project) return false
@@ -465,9 +466,12 @@ export function ProjectsWorkspace() {
       toast.error('Restore this project before adding tasks')
       return false
     }
-    const todoSection = sectionForColumn(project, 'TODO')
-    if (!todoSection) {
-      toast.error(`${project.name} does not have a To Do section`)
+    const parentTask = parentTaskId
+      ? project.tasks.find((task) => task.id === parentTaskId)
+      : null
+    const targetSection = parentTask?.section || sectionForColumn(project, 'TODO')
+    if (!targetSection) {
+      toast.error(`${project.name} does not have a compatible status section`)
       return false
     }
 
@@ -480,9 +484,12 @@ export function ProjectsWorkspace() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title,
-          sectionId: todoSection.id,
+          sectionId: targetSection.id,
           priority: 'MEDIUM',
-          ...(viewerIsParticipant ? { assigneeId: currentWorkspace.viewer.id } : {}),
+          ...(parentTaskId ? { parentTaskId } : {}),
+          ...(parentTaskId
+            ? (!project.canManage ? { assigneeId: currentWorkspace.viewer.id } : {})
+            : (viewerIsParticipant ? { assigneeId: currentWorkspace.viewer.id } : {})),
         }),
       })
       const data = await responseJson(response)
@@ -665,6 +672,46 @@ export function ProjectsWorkspace() {
       return false
     } finally {
       setCreatingProject(false)
+    }
+  }
+
+  const patchProject = async (projectId: string, request: ProjectPatchRequest) => {
+    const project = workspaceRef.current?.projects.find((candidate) => candidate.id === projectId)
+    if (!project?.canManage) {
+      toast.error('You do not have permission to edit this project')
+      return false
+    }
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      })
+      const data = await responseJson(response)
+      if (!response.ok || data.success !== true) {
+        throw new Error(errorMessage(data, 'Failed to update the project'))
+      }
+
+      const saved = data.project && typeof data.project === 'object'
+        ? data.project as Partial<WorkspaceProject>
+        : request
+      commitWorkspace((current) => ({
+        ...current,
+        projects: current.projects.map((candidate) => candidate.id === projectId
+          ? {
+            ...candidate,
+            ...(request.name !== undefined ? { name: saved.name !== undefined ? saved.name : request.name.trim() } : {}),
+            ...(request.description !== undefined ? { description: saved.description !== undefined ? saved.description : request.description } : {}),
+            ...(request.color !== undefined ? { color: saved.color !== undefined ? saved.color : request.color } : {}),
+            ...(request.status !== undefined ? { status: saved.status !== undefined ? saved.status : request.status } : {}),
+          }
+          : candidate),
+      }))
+      return true
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update the project')
+      return false
     }
   }
 
@@ -948,7 +995,9 @@ export function ProjectsWorkspace() {
             onQuickAddProjectChange={setQuickAddProjectId}
             onQuickAdd={quickAdd}
             onCreateActiveTask={createActiveTask}
+            onCreateSubtask={(projectId, parentTaskId, title) => createActiveTask(projectId, title, parentTaskId)}
             onCreateProject={createProject}
+            onPatchProject={patchProject}
           />
         </div>
       ) : workspace.projects.length === 0 ? (

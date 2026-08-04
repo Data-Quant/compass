@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/composed/EmptyState'
 import { ListView } from '@/components/projects/ListView'
 import { BoardView } from '@/components/projects/BoardView'
 import { TaskDetailPanel, type PanelTask, type ProjectStatusSection } from '@/components/projects/TaskDetailPanel'
+import type { WorkspaceProject } from '@/components/projects/workspace-types'
 import { MemberManager } from '@/components/projects/MemberManager'
 import {
   List, LayoutGrid, UserPlus, Settings, ListTodo,
@@ -233,6 +234,29 @@ export default function ProjectDetailPage() {
   const visibleSections = canUseBacklog
     ? project.sections
     : project.sections.filter((section) => !section.isBacklog)
+  const workspaceSections = visibleSections.map((section) => ({
+    ...section,
+    isBacklog: Boolean(section.isBacklog),
+  }))
+  const workspaceProject: WorkspaceProject = {
+    id: project.id,
+    name: project.name,
+    description: project.description,
+    color: project.color,
+    status: project.status,
+    owner: project.owner,
+    members,
+    canManage,
+    canUseBacklog,
+    sections: workspaceSections,
+    labels: project.labels,
+    tasks: project.tasks.map((task) => ({
+      ...task,
+      completedLate: Boolean(task.completedLate),
+      parentTaskId: task.parentTaskId || null,
+      section: workspaceSections.find((section) => section.id === task.sectionId) || null,
+    })),
+  }
   const statusCounts = visibleSections.map((section) => ({
     section,
     count: project.tasks.filter((task) => task.sectionId === section.id).length,
@@ -547,11 +571,8 @@ export default function ProjectDetailPage() {
       >
         {view === 'list' ? (
           <ListView
-            projectId={id}
-            tasks={project.tasks}
-            sections={visibleSections}
+            project={workspaceProject}
             viewerId={viewer?.id || ''}
-            canManage={canManage}
             onTaskClick={handleTaskClick}
             onTasksChange={loadProject}
           />

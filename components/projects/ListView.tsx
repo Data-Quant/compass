@@ -1,339 +1,135 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import {
-  DndContext,
-  DragEndEvent,
-  DragOverlay,
-  DragOverEvent,
-  DragStartEvent,
-  KeyboardSensor,
-  PointerSensor,
-  closestCorners,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core'
-import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { Plus } from 'lucide-react'
+import { useState } from 'react'
 import { toast } from 'sonner'
-import { isTaskAssignedTo } from '@/lib/project-progress'
-import { SectionGroup } from './SectionGroup'
-import type { PanelTask, ProjectStatusSection } from './TaskDetailPanel'
-import { TaskRow } from './TaskRow'
+import { OpenedProjectTaskTable } from './WorkspaceTaskTable'
+import type { PanelTask } from './TaskDetailPanel'
+import type {
+  TaskOptimisticPatch,
+  TaskPatchRequest,
+  WorkspaceProject,
+} from './workspace-types'
 
 interface ListViewProps {
-  projectId: string
-  tasks: PanelTask[]
-  sections: ProjectStatusSection[]
+  project: WorkspaceProject
   viewerId: string
-  canManage: boolean
   onTaskClick: (task: PanelTask) => void
-  onTasksChange: () => void
+  onTasksChange: () => Promise<void> | void
 }
 
-const UNSECTIONED_CONTAINER_ID = 'section:unsectioned'
-
-function getSectionContainerId(sectionId: string | null) {
-  return sectionId ? `section:${sectionId}` : UNSECTIONED_CONTAINER_ID
-}
-
-function parseSectionContainerId(containerId: string) {
-  if (!containerId.startsWith('section:')) return undefined
-  const value = containerId.slice('section:'.length)
-  return value === 'unsectioned' ? null : value
-}
-
-export function ListView({ projectId, tasks, sections, viewerId, canManage, onTaskClick, onTasksChange }: ListViewProps) {
-  const [addingSectionName, setAddingSectionName] = useState('')
-  const [showSectionInput, setShowSectionInput] = useState(false)
-  const [localTasks, setLocalTasks] = useState<PanelTask[]>(tasks)
-  const [activeId, setActiveId] = useState<string | null>(null)
-
-  useEffect(() => {
-    setLocalTasks(tasks)
-  }, [tasks])
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  )
-
-  const sectionStatusById = useMemo(() => {
-    const map = new Map<string, PanelTask['status']>()
-    for (const section of sections) {
-      map.set(section.id, section.canonicalStatus)
-    }
-    return map
-  }, [sections])
-
-  const activeTask = activeId ? localTasks.find((task) => task.id === activeId) : null
-  const canEditTask = (task: PanelTask) => canManage || isTaskAssignedTo(task, viewerId)
-
-  const getTargetSectionId = (overId: string, sourceTasks = localTasks) => {
-    const containerSectionId = parseSectionContainerId(overId)
-    if (containerSectionId !== undefined) return containerSectionId
-
-    const overTask = sourceTasks.find((task) => task.id === overId)
-    return overTask ? overTask.sectionId : undefined
+async function responseJson(response: Response): Promise<Record<string, unknown>> {
+  try {
+    return await response.json() as Record<string, unknown>
+  } catch {
+    return {}
   }
+}
 
-  // Group tasks by section
-  const unsectionedTasks = localTasks.filter((t) => !t.sectionId)
-  const orderedSections = [...sections].sort((a, b) => {
-    if (Boolean(a.isBacklog) !== Boolean(b.isBacklog)) return a.isBacklog ? 1 : -1
-    return a.orderIndex - b.orderIndex
-  })
-  const sectionedTasks = orderedSections.map((s) => ({
-    ...s,
-    tasks: localTasks.filter((t) => t.sectionId === s.id),
-  }))
+function responseError(data: Record<string, unknown>, fallback: string) {
+  return typeof data.error === 'string' && data.error ? data.error : fallback
+}
 
-  const handleDragStart = (event: DragStartEvent) => {
-    const task = localTasks.find((candidate) => candidate.id === String(event.active.id))
-    if (!task || !canEditTask(task)) return
-    setActiveId(task.id)
-  }
+export function ListView({ project, viewerId, onTaskClick, onTasksChange }: ListViewProps) {
+  const [selectedIds, setSelectedIds] = useState(new Set<string>())
+  const [pendingTaskIds, setPendingTaskIds] = useState(new Set<string>())
+  const [creatingTask, setCreatingTask] = useState(false)
 
-  const handleDragOver = (event: DragOverEvent) => {
-    const { active, over } = event
-    if (!over) return
-
-    const activeTaskId = String(active.id)
-    const activeTask = localTasks.find((task) => task.id === activeTaskId)
-    if (!activeTask || !canEditTask(activeTask)) return
-    const targetSectionId = getTargetSectionId(String(over.id))
-    if (targetSectionId === undefined) return
-
-    setLocalTasks((prev) => {
-      const task = prev.find((item) => item.id === activeTaskId)
-      if (!task) return prev
-
-      const targetSection = targetSectionId
-        ? sections.find((section) => section.id === targetSectionId) || null
-        : null
-      const targetStatus = targetSectionId
-        ? targetSection?.canonicalStatus || sectionStatusById.get(targetSectionId) || task.status
-        : task.status
-
-      if (task.sectionId === targetSectionId && task.status === targetStatus) {
-        return prev
-      }
-
-      return prev.map((item) =>
-        item.id === activeTaskId
-          ? { ...item, sectionId: targetSectionId, section: targetSection, status: targetStatus }
-          : item
-      )
+  const setTaskPending = (taskId: string, pending: boolean) => {
+    setPendingTaskIds((current) => {
+      const next = new Set(current)
+      if (pending) next.add(taskId)
+      else next.delete(taskId)
+      return next
     })
   }
 
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event
-    const activeTaskId = String(active.id)
-    setActiveId(null)
-
-    if (!over) {
-      setLocalTasks(tasks)
-      return
-    }
-
-    const task = localTasks.find((item) => item.id === activeTaskId)
-    const original = tasks.find((item) => item.id === activeTaskId)
-    if (!task || !original) return
-    if (!canEditTask(original)) {
-      setLocalTasks(tasks)
-      return
-    }
-
-    const sectionChanged = task.sectionId !== original.sectionId
-    const statusChanged = task.status !== original.status
-    if (!sectionChanged && !statusChanged) return
-
-    if (
-      original.section?.isBacklog &&
-      !task.section?.isBacklog &&
-      (!original.assigneeId || !original.dueDate)
-    ) {
-      setLocalTasks(tasks)
-      toast.error('Add an assignee and due date before moving this task out of Backlog')
-      onTaskClick(original)
-      return
-    }
-
-    const targetSectionTasks = tasks.filter((item) => item.id !== task.id && item.sectionId === task.sectionId)
-    const maxOrderIndex = Math.max(0, ...targetSectionTasks.map((item) => Number(item.orderIndex) || 0))
-
+  const patchTask = async (
+    projectId: string,
+    taskId: string,
+    request: TaskPatchRequest,
+    _optimistic: TaskOptimisticPatch,
+  ) => {
+    setTaskPending(taskId, true)
     try {
-      const res = await fetch(`/api/projects/${projectId}/tasks`, {
+      const response = await fetch(`/api/projects/${projectId}/tasks`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          taskId: task.id,
-          sectionId: task.sectionId,
-          status: task.status,
-          ...(sectionChanged ? { orderIndex: maxOrderIndex + 1 } : {}),
-        }),
+        body: JSON.stringify({ taskId, ...request }),
       })
-      const data = await res.json()
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to update task')
+      const data = await responseJson(response)
+      if (!response.ok || data.success !== true) {
+        throw new Error(responseError(data, 'Failed to update the task'))
       }
-      onTasksChange()
+      await onTasksChange()
+      return true
     } catch (error) {
-      setLocalTasks(tasks)
-      toast.error(error instanceof Error ? error.message : 'Failed to move task')
+      toast.error(error instanceof Error ? error.message : 'Failed to update the task')
+      return false
+    } finally {
+      setTaskPending(taskId, false)
     }
   }
 
-  const handleAddTask = async (title: string, sectionId: string | null) => {
+  const createTask = async (parentTaskId: string | null, title: string) => {
+    const parentTask = parentTaskId
+      ? project.tasks.find((task) => task.id === parentTaskId)
+      : null
+    const todoSection = project.sections.find((section) => !section.isBacklog && section.canonicalStatus === 'TODO')
+      || project.sections.find((section) => !section.isBacklog)
+      || project.sections[0]
+
+    if (!parentTaskId) setCreatingTask(true)
     try {
-      const res = await fetch(`/api/projects/${projectId}/tasks`, {
+      const response = await fetch(`/api/projects/${project.id}/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title,
-          sectionId,
-          ...(!canManage ? { assigneeId: viewerId } : {}),
+          sectionId: parentTask?.sectionId || todoSection?.id || null,
+          priority: 'MEDIUM',
+          ...(parentTaskId ? { parentTaskId } : {}),
+          ...(!project.canManage ? { assigneeId: viewerId } : {}),
         }),
       })
-      const data = await res.json()
-      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to create task')
-      onTasksChange()
+      const data = await responseJson(response)
+      if (!response.ok || data.success !== true) {
+        throw new Error(responseError(data, parentTaskId ? 'Failed to create the subtask' : 'Failed to create the task'))
+      }
+      await onTasksChange()
+      return true
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to create task')
-    }
-  }
-
-  const handleAddSection = async () => {
-    if (!canManage) return
-    if (!addingSectionName.trim()) {
-      setShowSectionInput(false)
-      return
-    }
-    try {
-      const res = await fetch(`/api/projects/${projectId}/sections`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: addingSectionName.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to create section')
-      onTasksChange()
-      setAddingSectionName('')
-      setShowSectionInput(false)
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to create section')
-    }
-  }
-
-  const handleDeleteSection = async (sectionId: string) => {
-    if (!canManage) return
-    try {
-      const res = await fetch(`/api/projects/${projectId}/sections?sectionId=${sectionId}`, { method: 'DELETE' })
-      const data = await res.json()
-      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to delete section')
-      onTasksChange()
-      toast.success('Section deleted')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to delete section')
-    }
-  }
-
-  const handleRenameSection = async (sectionId: string, name: string) => {
-    if (!canManage) return
-    try {
-      const res = await fetch(`/api/projects/${projectId}/sections`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sectionId, name }),
-      })
-      const data = await res.json()
-      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to rename section')
-      onTasksChange()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to rename section')
+      toast.error(error instanceof Error
+        ? error.message
+        : parentTaskId ? 'Failed to create the subtask' : 'Failed to create the task')
+      return false
+    } finally {
+      if (!parentTaskId) setCreatingTask(false)
     }
   }
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCorners}
-      onDragStart={handleDragStart}
-      onDragOver={handleDragOver}
-      onDragEnd={handleDragEnd}
-    >
-      <div className="space-y-1">
-      {/* Unsectioned tasks */}
-      {(unsectionedTasks.length > 0 || sections.length === 0) && (
-        <SortableContext items={unsectionedTasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
-          <SectionGroup
-            sectionId={null}
-            sectionName="Tasks"
-            tasks={unsectionedTasks}
-            onTaskClick={onTaskClick}
-            onAddTask={handleAddTask}
-            collapsible={sections.length > 0}
-            containerId={getSectionContainerId(null)}
-            viewerId={viewerId}
-            canManage={canManage}
-          />
-        </SortableContext>
-      )}
-
-      {/* Sections */}
-      {sectionedTasks.map((section) => (
-        <SortableContext key={section.id} items={section.tasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
-          <SectionGroup
-            sectionId={section.id}
-            sectionName={section.name}
-            tasks={section.tasks}
-            onTaskClick={onTaskClick}
-            onAddTask={handleAddTask}
-            onDeleteSection={canManage && !section.isDefault ? handleDeleteSection : undefined}
-            onRenameSection={canManage && !section.isDefault ? handleRenameSection : undefined}
-            defaultCollapsed={Boolean(section.isBacklog)}
-            containerId={getSectionContainerId(section.id)}
-            viewerId={viewerId}
-            canManage={canManage}
-          />
-        </SortableContext>
-      ))}
-
-      {/* Add section */}
-      {canManage && (showSectionInput ? (
-        <div className="flex items-center gap-2 px-4 py-2">
-          <input
-            autoFocus
-            value={addingSectionName}
-            onChange={(e) => setAddingSectionName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleAddSection()
-              if (e.key === 'Escape') { setShowSectionInput(false); setAddingSectionName('') }
-            }}
-            onBlur={handleAddSection}
-            placeholder="Status name"
-            className="flex-1 bg-transparent border-b border-primary/40 outline-none text-sm font-semibold py-1 placeholder:text-muted-foreground/40"
-          />
-        </div>
-      ) : (
-        <button
-          onClick={() => setShowSectionInput(true)}
-          className="flex items-center gap-2 px-4 py-2.5 text-sm text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/20 rounded-lg transition-colors w-full"
-        >
-          <Plus className="w-4 h-4" />
-          Add status
-        </button>
-      ))}
-      </div>
-
-      <DragOverlay>
-        {activeTask ? (
-          <div className="rounded-lg border border-border/50 bg-card shadow-xl">
-            <TaskRow task={activeTask} onClick={() => undefined} />
-          </div>
-        ) : null}
-      </DragOverlay>
-    </DndContext>
+    <div className="overflow-hidden rounded-lg border border-border/60 bg-card shadow-none">
+      <OpenedProjectTaskTable
+        project={project}
+        tasks={project.tasks}
+        viewerId={viewerId}
+        selectedIds={selectedIds}
+        pendingTaskIds={pendingTaskIds}
+        creatingTask={creatingTask}
+        defaultExpandAll
+        onToggleSelected={(taskId, selected) => setSelectedIds((current) => {
+          const next = new Set(current)
+          if (selected) next.add(taskId)
+          else next.delete(taskId)
+          return next
+        })}
+        onPatchTask={patchTask}
+        onOpenTask={(_projectId, taskId) => {
+          const task = project.tasks.find((candidate) => candidate.id === taskId)
+          if (task) onTaskClick(task)
+        }}
+        onCreateTask={createTask}
+      />
+    </div>
   )
 }

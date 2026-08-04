@@ -2,6 +2,7 @@ import type { PanelTask, ProjectStatusSection } from './TaskDetailPanel'
 
 export type WorkspacePriority = PanelTask['priority']
 export type WorkspaceTaskStatus = PanelTask['status']
+export type WorkspaceProjectStatus = 'ACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'ARCHIVED'
 export type AssigneeFilter = 'ALL' | 'ME' | string
 export type WorkspaceView = 'table' | 'kanban'
 export type WorkspaceGroupMode = 'project' | 'assignee'
@@ -20,6 +21,13 @@ export interface CreateProjectInput {
   description: string
   color: string | null
   memberIds: string[]
+}
+
+export interface ProjectPatchRequest {
+  name?: string
+  description?: string | null
+  color?: string | null
+  status?: WorkspaceProjectStatus
 }
 
 export interface WorkspaceMember extends WorkspacePerson {

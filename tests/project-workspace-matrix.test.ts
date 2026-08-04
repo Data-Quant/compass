@@ -130,7 +130,9 @@ async function render(options: { groupMode?: 'project' | 'assignee'; assigneeFil
     onQuickAddProjectChange: () => undefined,
     onQuickAdd: async () => true,
     onCreateActiveTask: async () => true,
+    onCreateSubtask: async () => true,
     onCreateProject: async () => true,
+    onPatchProject: async () => true,
   }))
 }
 
@@ -146,6 +148,10 @@ test('project matrix keeps task rows and the task composer out until its project
   assert.equal(html.match(/>Assignee</g)?.length, 1)
   assert.equal(html.match(/>Priority</g)?.length, 1)
   assert.match(html, /aria-expanded="false"/)
+  assert.match(html, /aria-label="Project name for Harbor paperwork"/)
+  assert.match(html, /aria-label="Change color for Harbor paperwork"/)
+  assert.match(html, /aria-label="Project status for Harbor paperwork"/)
+  assert.match(html, /aria-label="Open tasks for Harbor paperwork"/)
   assert.doesNotMatch(html, /aria-label="Add a task to Harbor paperwork"/)
   assert.ok(html.indexOf('New project') < html.indexOf('Backlog'))
 })
@@ -160,6 +166,27 @@ test('inline task composer exposes a Notion-style new task action', async () => 
 
   assert.match(html, /aria-label="Add a task to Harbor paperwork"/)
   assert.match(html, />New task</)
+})
+
+test('opened project table exposes a nested subtask action under every visible task', async () => {
+  const { OpenedProjectTaskTable } = await import('../components/projects/WorkspaceTaskTable')
+  const html = renderToStaticMarkup(React.createElement(OpenedProjectTaskTable, {
+    project,
+    tasks: project.tasks,
+    viewerId: 'user-1',
+    defaultExpandAll: true,
+    onPatchTask: async () => true,
+    onOpenTask: () => undefined,
+    onCreateTask: async () => true,
+  }))
+
+  assert.match(html, /aria-label="Add subtask under Draft the investment memo"/)
+  assert.match(html, /aria-label="Add subtask under Confirm the legal clauses"/)
+  assert.match(html, /aria-label="Add subtask under Attach the signed schedule"/)
+  assert.equal(html.match(/data-row-kind="new-subtask"/g)?.length, 3)
+  assert.equal(html.match(/>New subtask</g)?.length, 3)
+  assert.match(html, /aria-label="Due date for Draft the investment memo"/)
+  assert.match(html, /aria-label="Priority for Draft the investment memo"/)
 })
 
 test('task tree preserves recursively nested subtasks from the flat workspace response', async () => {
