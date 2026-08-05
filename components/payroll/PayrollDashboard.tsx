@@ -208,7 +208,7 @@ export function PayrollDashboard({
   const pendingApprovals = dashboard.statusCounts.CALCULATED || 0
   const totalPeriods = periods.length
   const latestPeriods = useMemo(() => periods.slice(0, 10), [periods])
-  const canEditMaster = appBasePath === '/admin'
+  const canEditMaster = appBasePath === '/admin' || appBasePath === '/oa'
 
   // Compute total net from the most recent period
   const latestPeriod = periods[0]

@@ -27,9 +27,9 @@ test('payroll management follows admin-role matrix', () => {
   assert.equal(canManagePayroll('EMPLOYEE'), false)
 })
 
-test('payroll master editing is HR-only', () => {
+test('payroll master editing allows HR and O&A', () => {
   assert.equal(canEditPayrollMaster('HR'), true)
-  assert.equal(canEditPayrollMaster('OA'), false)
+  assert.equal(canEditPayrollMaster('OA'), true)
   assert.equal(canEditPayrollMaster('SECURITY'), false)
   assert.equal(canEditPayrollMaster('EMPLOYEE'), false)
 })

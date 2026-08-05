@@ -11,8 +11,8 @@ export function canManagePayroll(role: string | null | undefined): boolean {
 }
 
 export function canEditPayrollMaster(role: string | null | undefined): boolean {
-  // Master data (rates/slabs/profile edits) remains HR-only.
-  return role === 'HR'
+  // Payroll master data is jointly maintained by HR and O&A.
+  return role === 'HR' || role === 'OA'
 }
 
 export function canManageSupport(role: string | null | undefined): boolean {

@@ -461,7 +461,7 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
         <CardContent className="p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold font-display">Master Lists</h3>
-            {!canEdit && <p className="text-xs text-muted-foreground">Read-only for O&A</p>}
+            {!canEdit && <p className="text-xs text-muted-foreground">Read-only access</p>}
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="rounded-lg border border-border p-4 space-y-3">
@@ -548,7 +548,7 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
         <CardContent className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold font-display">Travel Allowance Tiers</h3>
-            {!canEdit && <p className="text-xs text-muted-foreground">Read-only for O&A</p>}
+            {!canEdit && <p className="text-xs text-muted-foreground">Read-only access</p>}
           </div>
           <div className="overflow-x-auto">
             <Table>
@@ -632,7 +632,7 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
         <CardContent className="p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold font-display">Public Holidays</h3>
-            {!canEdit && <p className="text-xs text-muted-foreground">O&A can manage holidays in the Attendance tab</p>}
+            {!canEdit && <p className="text-xs text-muted-foreground">Read-only access</p>}
           </div>
 
           {canEdit && (
@@ -783,7 +783,7 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
         <CardContent className="p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold font-display">Financial Years & Tax Brackets</h3>
-            {!canEdit && <p className="text-xs text-muted-foreground">Read-only for O&A</p>}
+            {!canEdit && <p className="text-xs text-muted-foreground">Read-only access</p>}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
