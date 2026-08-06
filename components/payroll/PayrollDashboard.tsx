@@ -216,7 +216,20 @@ export function PayrollDashboard({
   if (loading) return <LoadingScreen message="Loading payroll..." />
 
   return (
-    <div className="p-6 sm:p-8 max-w-7xl mx-auto space-y-6">
+    <div
+      className={
+        activeTab === 'settings'
+          ? 'mx-auto max-w-7xl space-y-6 p-6 sm:p-8 lg:flex lg:h-full lg:flex-col lg:space-y-0 lg:overflow-hidden'
+          : 'mx-auto max-w-7xl space-y-6 p-6 sm:p-8'
+      }
+    >
+      <div
+        className={
+          activeTab === 'settings'
+            ? 'space-y-6 lg:shrink-0'
+            : 'space-y-6'
+        }
+      >
         {/* Hero Section */}
         <motion.section
           initial={{ opacity: 0, y: 8 }}
@@ -306,6 +319,7 @@ export function PayrollDashboard({
             </TabsList>
           </Tabs>
         </motion.section>
+      </div>
 
         {activeTab === 'runs' && showCreateForm && (
           <motion.section
@@ -468,7 +482,11 @@ export function PayrollDashboard({
 
         {activeTab === 'attendance' && <PayrollAttendancePanel periods={periods} />}
         {activeTab === 'employees' && <PayrollEmployeesPanel />}
-        {activeTab === 'settings' && <PayrollSettingsPanel canEdit={canEditMaster} />}
+        {activeTab === 'settings' && (
+          <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pb-6 lg:pt-6">
+            <PayrollSettingsPanel canEdit={canEditMaster} />
+          </div>
+        )}
 
       {/* Import Dialog */}
       <PayrollImportDialog
