@@ -136,6 +136,7 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
     taxRate: '',
     orderIndex: '',
   })
+  const [editingBracketId, setEditingBracketId] = useState<string | null>(null)
 
   useEffect(() => {
     loadData()
@@ -252,22 +253,28 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
   const submitTaxBracket = async (e: FormEvent) => {
     e.preventDefault()
     try {
-      const payload = {
-        financialYearId: bracketForm.financialYearId,
+      const bracketValues = {
         incomeFrom: Number(bracketForm.incomeFrom),
         incomeTo: bracketForm.incomeTo ? Number(bracketForm.incomeTo) : null,
         fixedTax: Number(bracketForm.fixedTax),
         taxRate: Number(bracketForm.taxRate),
         orderIndex: Number(bracketForm.orderIndex),
       }
+      const isEditing = editingBracketId !== null
+      const payload = isEditing
+        ? { id: editingBracketId, ...bracketValues }
+        : { financialYearId: bracketForm.financialYearId, ...bracketValues }
       const res = await fetch('/api/payroll/tax-brackets', {
-        method: 'POST',
+        method: isEditing ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to create tax bracket')
-      toast.success('Tax bracket added')
+      if (!res.ok) {
+        throw new Error(data.error || `Failed to ${isEditing ? 'update' : 'create'} tax bracket`)
+      }
+      toast.success(isEditing ? 'Tax bracket updated' : 'Tax bracket added')
+      setEditingBracketId(null)
       setBracketForm((prev) => ({
         ...prev,
         incomeFrom: '',
@@ -278,8 +285,33 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
       }))
       loadData()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to create tax bracket')
+      toast.error(error instanceof Error ? error.message : 'Failed to save tax bracket')
     }
+  }
+
+  const editTaxBracket = (bracket: TaxBracket) => {
+    if (!activeYear) return
+    setEditingBracketId(bracket.id)
+    setBracketForm({
+      financialYearId: activeYear.id,
+      incomeFrom: String(bracket.incomeFrom),
+      incomeTo: bracket.incomeTo == null ? '' : String(bracket.incomeTo),
+      fixedTax: String(bracket.fixedTax),
+      taxRate: String(bracket.taxRate),
+      orderIndex: String(bracket.orderIndex),
+    })
+  }
+
+  const cancelTaxBracketEdit = () => {
+    setEditingBracketId(null)
+    setBracketForm((prev) => ({
+      ...prev,
+      incomeFrom: '',
+      incomeTo: '',
+      fixedTax: '',
+      taxRate: '',
+      orderIndex: '',
+    }))
   }
 
   const submitDepartment = async (e: FormEvent) => {
@@ -843,6 +875,7 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
                       <TableHead>To</TableHead>
                       <TableHead>Fixed</TableHead>
                       <TableHead>Rate</TableHead>
+                      {canEdit && <TableHead className="text-right">Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -853,11 +886,23 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
                         <TableCell>{bracket.incomeTo != null ? bracket.incomeTo.toLocaleString() : '∞'}</TableCell>
                         <TableCell>{bracket.fixedTax.toLocaleString()}</TableCell>
                         <TableCell>{(bracket.taxRate * 100).toFixed(2)}%</TableCell>
+                        {canEdit && (
+                          <TableCell className="text-right">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => editTaxBracket(bracket)}
+                            >
+                              Edit
+                            </Button>
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                     {!activeYear?.taxBrackets?.length && (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center text-muted-foreground">
+                        <TableCell colSpan={canEdit ? 6 : 5} className="text-center text-muted-foreground">
                           No tax brackets configured
                         </TableCell>
                       </TableRow>
@@ -870,7 +915,11 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
                 <form onSubmit={submitTaxBracket} className="grid grid-cols-3 gap-2 items-end">
                   <div className="space-y-1.5 col-span-3">
                     <Label>Financial Year</Label>
-                    <Select value={bracketForm.financialYearId} onValueChange={(v) => setBracketForm({ ...bracketForm, financialYearId: v })}>
+                    <Select
+                      value={bracketForm.financialYearId}
+                      onValueChange={(v) => setBracketForm({ ...bracketForm, financialYearId: v })}
+                      disabled={editingBracketId !== null}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select year" />
                       </SelectTrigger>
@@ -903,8 +952,15 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
                     <Label>Order</Label>
                     <Input value={bracketForm.orderIndex} onChange={(e) => setBracketForm({ ...bracketForm, orderIndex: e.target.value })} type="number" required />
                   </div>
-                  <div className="col-span-3 flex justify-end">
-                    <Button type="submit">Add Bracket</Button>
+                  <div className="col-span-3 flex justify-end gap-2">
+                    {editingBracketId && (
+                      <Button type="button" variant="outline" onClick={cancelTaxBracketEdit}>
+                        Cancel
+                      </Button>
+                    )}
+                    <Button type="submit">
+                      {editingBracketId ? 'Save Changes' : 'Add Bracket'}
+                    </Button>
                   </div>
                 </form>
               )}
