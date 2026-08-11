@@ -1,13 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
+import { z } from 'zod'
 import { getSession } from '@/lib/auth'
 import { isAdminRole } from '@/lib/permissions'
-import {
-  sendTransitionPlanReminderNotification,
-  sendTransitionPlanEscalation,
-} from '@/lib/email'
-import { classifyTransitionReminder } from '@/lib/leave-transition-plan'
-import { z } from 'zod'
+import { runTransitionPlanReminders } from '@/lib/leave-transition-plan-job'
+
+/**
+ * Daily job behind the transition-plan ladders. Runs from the Vercel cron in
+ * vercel.json; admins can also trigger it by hand, which is how a dry run gets
+ * checked against real data.
+ *
+ * The work itself lives in lib/leave-transition-plan-job.ts -- this only handles
+ * authorisation and query parsing.
+ *
+ * `daysBeforeStart` tunes the *short-leave* reminder window only (default 5). The
+ * deadline ladder for long leaves is fixed at seven days' notice and a two-day
+ * response window, because those dates are what people are told in writing.
+ */
 
 const reminderBodySchema = z.object({
   daysBeforeStart: z.coerce.number().int().min(0).max(30).optional(),
@@ -32,90 +40,6 @@ function isReminderJobAuthorized(request: NextRequest) {
 
   const token = authHeader.slice(7).trim()
   return token.length > 0 && token === secret
-}
-
-// `daysBeforeStart` is the reminder window (default 5): leaves starting within this many
-// days with an unsubmitted plan get a daily reminder. The hard deadline (3 days before
-// start) and HR escalation are handled by classifyTransitionReminder.
-async function runTransitionPlanReminders(reminderWindow = 5, dryRun = false) {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const cutoff = new Date(today)
-  cutoff.setDate(cutoff.getDate() + reminderWindow)
-
-  const candidates = await prisma.leaveRequest.findMany({
-    where: {
-      status: { in: ['PENDING', 'LEAD_APPROVED', 'HR_APPROVED', 'APPROVED'] },
-      transitionPlanSubmittedAt: null,
-      startDate: { gte: today, lte: cutoff },
-    },
-    select: { id: true, startDate: true },
-    orderBy: { startDate: 'asc' },
-  })
-
-  // Which candidates have already had a *successful* HR escalation (so we don't email HR daily).
-  // Only SUCCESS counts as done — a failed/skipped attempt must be retried next run, otherwise a
-  // transient SMTP error or an empty HR list would silence the escalation permanently.
-  const escalatedRows = await prisma.leaveAuditEvent.findMany({
-    where: {
-      eventType: 'TRANSITION_PLAN_ESCALATION',
-      status: 'SUCCESS',
-      leaveRequestId: { in: candidates.map((c) => c.id) },
-    },
-    select: { leaveRequestId: true },
-  })
-  const escalatedIds = new Set(escalatedRows.map((e) => e.leaveRequestId))
-
-  const decisions = candidates.map((c) => ({
-    id: c.id,
-    ...classifyTransitionReminder({
-      startDate: new Date(c.startDate),
-      submitted: false,
-      alreadyEscalated: escalatedIds.has(c.id),
-      now: today,
-      reminderWindow,
-    }),
-  }))
-
-  const toRemind = decisions.filter((d) => d.remind).map((d) => d.id)
-  const toEscalate = decisions.filter((d) => d.escalate).map((d) => d.id)
-
-  if (dryRun) {
-    return {
-      success: true,
-      dryRun: true,
-      reminderWindow,
-      candidates: candidates.length,
-      remind: toRemind.length,
-      escalate: toEscalate.length,
-      requestIds: { remind: toRemind, escalate: toEscalate },
-    }
-  }
-
-  const results = { reminded: 0, escalated: 0, failed: 0, errors: [] as string[] }
-
-  for (const requestId of toRemind) {
-    const result = await sendTransitionPlanReminderNotification(requestId)
-    if (result.success) {
-      results.reminded += 1
-    } else if ('error' in result && result.error) {
-      // Real send failure (guard skips return `message`, not `error`).
-      results.failed += 1
-      results.errors.push(`${requestId} (reminder): ${result.error}`)
-    }
-    // otherwise a guard skip (not active / already submitted) — a no-op, not a failure
-  }
-
-  for (const requestId of toEscalate) {
-    const result = await sendTransitionPlanEscalation(requestId)
-    if (result.success) results.escalated += 1
-    else if ('message' in result && result.message) {
-      results.failed += 1
-      results.errors.push(`${requestId}: ${result.message}`)
-    }
-  }
-
-  return { success: true, dryRun: false, reminderWindow, candidates: candidates.length, ...results }
 }
 
 async function validateReminderAuth(request: NextRequest) {

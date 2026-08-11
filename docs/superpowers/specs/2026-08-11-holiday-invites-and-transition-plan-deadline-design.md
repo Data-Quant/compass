@@ -68,6 +68,7 @@ Mirrors the shape of the leave module so the two read alike.
 - `description`: the holiday name and the observing teams, using `TEAM_LABELS` from `lib/handbook/teams.ts`.
 - `extendedProperties.private.holidayId` — the idempotency key.
 - `guestsCanSeeOtherGuests: false` and `guestsCanInviteOthers: false`, so a 60-person invite does not expose a guest list or invite RSVP chatter.
+- `transparency: 'opaque'`, so the day blocks scheduling. Google renders all-day events as free by default, which would let colleagues book straight over a public holiday.
 
 **`syncHolidayCalendarEvent(holidayId)`** — resolve attendees, look up existing events by `privateExtendedProperty=holidayId={id}`, PATCH the first or POST a new one with `sendUpdates: 'all'`, delete any duplicates. Same self-healing structure as `syncLeaveCalendarEvent`.
 
@@ -88,7 +89,7 @@ Deduplicated and lowercased, matching how `collectLeaveAttendeeEmails` builds it
 **On save** — `app/api/payroll/public-holidays/route.ts`:
 
 - POST → `syncHolidayCalendarEvent` after create
-- PATCH → `syncHolidayCalendarEvent` after update (a changed date moves the event; changed `teamTags` re-computes attendees, and removed attendees get a cancellation from Google)
+- PATCH → `syncHolidayCalendarEvent` after update. The endpoint only supports retagging, so in practice this re-computes the attendee list: people added receive the invite, people removed get a cancellation from Google. The sync reads whatever is on the row, so it would move the event too if the endpoint ever allowed the date to change
 - DELETE → `removeHolidayCalendarEvent` **before** the row is deleted. Removal only needs the `holidayId`, so ordering is not a correctness requirement — but removing first means a Google failure leaves the holiday row intact and the next sweep can still reconcile it, whereas deleting first would strand the event with nothing left to find it by
 
 Each wrapped in catch-and-log, exactly as the leave routes treat calendar failures. **A Google outage must never fail HR's save.**
@@ -167,7 +168,9 @@ Pure decision logic joins `classifyTransitionReminder` in **`lib/leave-transitio
 - `transitionPlanDeadline({ noticeDate, startDate })` → `Date | null` (null when the window is zero or negative)
 - `classifyTransitionPlanAction({ startDate, submitted, noticeSentAt, finalWarningSentAt, now })` → `{ action: 'none' | 'notice' | 'final_warning' | 'cancel', deadline: Date | null }`
 
-`app/api/leave/transition-plan-reminders/route.ts` branches on duration: qualifying leaves run the new ladder, the rest run the existing `classifyTransitionReminder` path. The cron entry and its `0 4 * * *` schedule are unchanged. `dryRun` is extended to report which requests **would** be cancelled — this is the verification tool for the live rollout.
+The job body moves out of the route into **`lib/leave-transition-plan-job.ts`**, which fetches state and dispatches; the route keeps only auth and query parsing. It branches on duration: qualifying leaves run the new ladder, the rest run the existing `classifyTransitionReminder` path, and a long leave with no viable window rejoins the short ladder so it is still chased. The cron entry and its `0 4 * * *` schedule are unchanged. `dryRun` reports which requests **would** be cancelled — this is the verification tool for the live rollout.
+
+The cancellation itself lives in **`lib/leave-auto-cancel.ts`**, which re-checks every guard inside the transaction against a fresh read rather than trusting the list the cron built minutes earlier — a plan submitted in that gap has to win.
 
 Two new emails in `lib/email.ts`: `sendTransitionPlanDeadlineNotice(requestId, deadline)` and `sendTransitionPlanFinalWarning(requestId, deadline)`, both following the structure of `sendTransitionPlanReminderNotification` (guard on active status and unsubmitted plan, `safeRecordLeaveAuditEvent` on success and failure).
 

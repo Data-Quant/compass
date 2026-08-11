@@ -1034,6 +1034,197 @@ export async function sendTransitionPlanReminderNotification(requestId: string) 
   }
 }
 
+/**
+ * The two mails on the transition-plan deadline ladder for long leaves.
+ *
+ * Both say the same facts and differ only in urgency and audience, so they share a
+ * body: divergent wording between a warning and the notice it follows up is how
+ * people end up unsure which deadline actually applies.
+ *
+ * The notice goes to the applicant alone, matching the existing reminder. The final
+ * warning copies their lead and HR, because it is the last point at which a human can
+ * intervene before the request is cancelled.
+ */
+async function sendTransitionPlanDeadlineMail(
+  requestId: string,
+  deadline: Date,
+  kind: 'notice' | 'final_warning'
+) {
+  const leaveRequest = await prisma.leaveRequest.findUnique({
+    where: { id: requestId },
+    include: { employee: true },
+  })
+
+  if (!leaveRequest) {
+    return { success: false, message: 'Leave request not found' }
+  }
+
+  if (!['PENDING', 'LEAD_APPROVED', 'HR_APPROVED', 'APPROVED'].includes(leaveRequest.status)) {
+    return { success: false, message: 'Leave request is not active' }
+  }
+
+  if (leaveRequest.transitionPlanSubmittedAt) {
+    return { success: false, message: 'Transition plan already submitted' }
+  }
+
+  const eventType = kind === 'notice' ? 'TRANSITION_PLAN_NOTICE' : 'TRANSITION_PLAN_FINAL_WARNING'
+
+  if (!leaveRequest.employee.email) {
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId: requestId,
+      channel: 'EMAIL',
+      eventType,
+      status: 'SKIPPED',
+      recipients: [],
+      subject: null,
+      metadata: { reason: 'Employee email not found' },
+    })
+    return { success: false, message: 'Employee email not found' }
+  }
+
+  const employee = leaveRequest.employee
+  const employeeEmail = employee.email as string
+  const startDateValue = new Date(leaveRequest.startDate)
+  const endDateValue = new Date(leaveRequest.endDate)
+  const startDate = startDateValue.toLocaleDateString()
+  const endDate = endDateValue.toLocaleDateString()
+  const daysCount = calculateLeaveDuration(startDateValue, endDateValue, leaveRequest.isHalfDay)
+  const durationLabel = getLeaveDurationLabel(daysCount)
+
+  // Spelled out with the weekday in UTC: a bare numeric date is the wrong thing to be
+  // ambiguous about when missing it cancels the leave.
+  const deadlineLabel = new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(deadline)
+
+  const leavePageUrl = getLeavePageUrl()
+  const isWarning = kind === 'final_warning'
+
+  const subject = isWarning
+    ? `Action required: leave will be cancelled tomorrow without a transition plan (${startDate} to ${endDate})`
+    : `Transition plan required by ${deadlineLabel} for your leave (${startDate} to ${endDate})`
+
+  const accent = isWarning ? '#B91C1C' : '#D97706'
+  const panelBackground = isWarning ? '#FEE2E2' : '#FEF3C7'
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: ${accent};">
+        ${isWarning ? 'Final Notice — Transition Plan' : 'Transition Plan Required'}
+      </h2>
+
+      <p>Hi ${escapeHtml(employee.name)},</p>
+
+      <div style="background: ${panelBackground}; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p style="font-size: 16px; color: ${accent}; margin: 0;">
+          ${
+            isWarning
+              ? `Your leave request will be <strong>automatically cancelled</strong> if a transition plan is not attached by <strong>${escapeHtml(deadlineLabel)}</strong>.`
+              : `Please attach a transition plan by <strong>${escapeHtml(deadlineLabel)}</strong>. If nothing is attached by then, this leave request will be <strong>automatically cancelled</strong>.`
+          }
+        </p>
+      </div>
+
+      <p>
+        This applies because the leave is longer than two working days, so your team
+        needs handover details before you go.
+      </p>
+
+      <div style="background: #F8FAFC; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>Leave Type:</strong> ${escapeHtml(leaveRequest.leaveType)}</p>
+        <p><strong>Start Date (first day off):</strong> ${startDate}</p>
+        <p><strong>End Date (last day off):</strong> ${endDate}</p>
+        <p><strong>Duration (working days):</strong> ${durationLabel}</p>
+        <p><strong>Transition plan due:</strong> ${escapeHtml(deadlineLabel)}</p>
+        <p><strong>Reason:</strong> ${escapeHtml(leaveRequest.reason)}</p>
+      </div>
+
+      ${
+        leavePageUrl
+          ? `<p><a href="${leavePageUrl}" style="display:inline-block;background:#4F46E5;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;">Add Transition Plan</a></p>`
+          : ''
+      }
+
+      <p style="color: #64748B; font-size: 14px;">
+        If the leave is cancelled, the days go back to your balance and you are free to
+        apply again with a plan attached.
+      </p>
+    </div>
+  `
+
+  // Only the final warning widens beyond the applicant, and a failure to resolve those
+  // extras must not stop the applicant's own copy going out.
+  let ccEmails: string[] = []
+  if (isWarning) {
+    try {
+      const [hrEmails, leadMappings] = await Promise.all([
+        getHrRecipientEmails(),
+        prisma.evaluatorMapping.findMany({
+          where: { evaluateeId: employee.id, relationshipType: 'TEAM_LEAD' },
+          include: { evaluator: true },
+        }),
+      ])
+      ccEmails = mergeRecipientEmails(hrEmails, leadMappings.map((m) => m.evaluator.email))
+        .filter((email) => email.toLowerCase() !== employeeEmail.toLowerCase())
+    } catch (error) {
+      console.error('Failed to resolve transition plan warning CC list:', error)
+    }
+  }
+
+  try {
+    const info = await transporter.sendMail({
+      from: `P21 Compass <${FROM_EMAIL}>`,
+      to: employeeEmail,
+      cc: ccEmails.length > 0 ? ccEmails.join(', ') : undefined,
+      subject,
+      html: htmlContent,
+    })
+
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId: requestId,
+      channel: 'EMAIL',
+      eventType,
+      status: 'SUCCESS',
+      recipients: [employeeEmail, ...ccEmails],
+      subject,
+      providerMessageId: info.messageId || null,
+      metadata: { deadline: deadline.toISOString() },
+    })
+
+    return { success: true, data: { messageId: info.messageId } }
+  } catch (error: any) {
+    console.error(`Failed to send transition plan ${kind}:`, error)
+    await safeRecordLeaveAuditEvent({
+      leaveRequestId: requestId,
+      channel: 'EMAIL',
+      eventType,
+      status: 'FAILED',
+      recipients: [employeeEmail, ...ccEmails],
+      subject,
+      metadata: { deadline: deadline.toISOString() },
+      error,
+    })
+    return { success: false, error: error.message }
+  }
+}
+
+/**
+ * Opens the response window. Its audit row is what the deadline is computed from, so
+ * this must succeed before any cancellation becomes possible.
+ */
+export async function sendTransitionPlanDeadlineNotice(requestId: string, deadline: Date) {
+  return sendTransitionPlanDeadlineMail(requestId, deadline, 'notice')
+}
+
+/** Last call before the request is cancelled, copied to the lead and HR. */
+export async function sendTransitionPlanFinalWarning(requestId: string, deadline: Date) {
+  return sendTransitionPlanDeadlineMail(requestId, deadline, 'final_warning')
+}
+
 // Device Management Email Functions
 async function getSupportRecipientEmails() {
   const supportUsers = await prisma.user.findMany({

@@ -3,15 +3,22 @@ import { z } from 'zod'
 import { getSession } from '@/lib/auth'
 import { canManagePayroll } from '@/lib/permissions'
 import { sendMonthlyPublicHolidayDigest } from '@/lib/email'
+import { sweepHolidayCalendarEvents } from '@/lib/holiday-calendar'
 
 /**
- * Monthly job that emails each team its public holidays for the month ahead.
+ * Monthly job that reconciles holiday calendar invites and emails each team its
+ * public holidays for the month ahead.
  *
  * Runs on the 1st from the Vercel cron in vercel.json. Authorised either by the
  * cron secret or by a signed-in payroll manager, so HR can trigger it manually.
  *
  * `month` (YYYY-MM) targets a specific month, which is how HR can preview or
  * resend one without waiting for the next cycle.
+ *
+ * The invite sweep runs first and covers a rolling twelve months, not just the month
+ * being mailed: invites are created when HR saves a holiday, and this is what repairs
+ * any that failed at the time. It is skipped when a specific `month` is requested,
+ * since that mode exists to resend one digest rather than to reconcile calendars.
  */
 
 const querySchema = z.object({
@@ -66,10 +73,22 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid month' }, { status: 400 })
     }
 
-    const result = await sendMonthlyPublicHolidayDigest(reference, {
-      dryRun: parsed.data.dryRun ?? false,
-    })
-    return NextResponse.json(result)
+    const dryRun = parsed.data.dryRun ?? false
+
+    // A calendar failure must not cost the digest: the email is the fallback for
+    // anyone whose invite did not land, so it is the last thing that should be
+    // skipped when Google is unavailable.
+    let calendarSweep: Awaited<ReturnType<typeof sweepHolidayCalendarEvents>> | null = null
+    if (!parsed.data.month) {
+      try {
+        calendarSweep = await sweepHolidayCalendarEvents({ dryRun })
+      } catch (error) {
+        console.error('Holiday calendar sweep failed:', error)
+      }
+    }
+
+    const result = await sendMonthlyPublicHolidayDigest(reference, { dryRun })
+    return NextResponse.json({ ...result, calendarSweep })
   } catch (error) {
     console.error('Failed to send public holiday digest:', error)
     return NextResponse.json({ error: 'Failed to send public holiday digest' }, { status: 500 })

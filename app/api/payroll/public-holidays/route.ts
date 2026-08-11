@@ -4,7 +4,27 @@ import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { canManagePayroll } from '@/lib/permissions'
 import { ALL_TEAMS } from '@/lib/handbook/teams'
+import { syncHolidayCalendarEvent, removeHolidayCalendarEvent } from '@/lib/holiday-calendar'
 import type { TeamTag } from '@prisma/client'
+
+/**
+ * Calendar work never fails an HR save.
+ *
+ * The holiday row is the record that matters -- it drives working days, and through
+ * them travel allowance. A Google outage must not stop HR recording a holiday, so
+ * failures are logged and left for the monthly sweep in the reminders route to repair.
+ */
+async function syncHolidayCalendarQuietly(holidayId: string, operation: 'sync' | 'remove') {
+  try {
+    if (operation === 'remove') {
+      await removeHolidayCalendarEvent(holidayId)
+    } else {
+      await syncHolidayCalendarEvent(holidayId)
+    }
+  } catch (error) {
+    console.error(`Failed to ${operation} holiday calendar event for ${holidayId}:`, error)
+  }
+}
 
 // At least one team is required. An empty list means "applies to everyone" for
 // holidays created before tagging existed, so allowing it here would let a
@@ -98,6 +118,10 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    // Invites go out as soon as the holiday is recorded, for any future date -- not
+    // only for holidays in the current month, which is all the digest ever covered.
+    await syncHolidayCalendarQuietly(holiday.id, 'sync')
+
     return NextResponse.json({ success: true, holiday })
   } catch (error) {
     if (error instanceof Error && 'code' in error && (error as { code?: string }).code === 'P2002') {
@@ -132,6 +156,10 @@ export async function PATCH(request: NextRequest) {
       data: { teamTags: parsed.data.teamTags },
     })
 
+    // Retagging changes who observes the holiday, so the invite's attendee list has to
+    // follow: people added receive it, people removed get a cancellation from Google.
+    await syncHolidayCalendarQuietly(holiday.id, 'sync')
+
     return NextResponse.json({ success: true, holiday })
   } catch (error) {
     console.error('Failed to update payroll public holiday:', error)
@@ -149,6 +177,11 @@ export async function DELETE(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+
+    // Cancelled before the row goes, so that a Google failure leaves the holiday still
+    // recorded and the sweep able to find it. Deleting first would strand the invite
+    // on everyone's calendar with nothing left pointing at it.
+    await syncHolidayCalendarQuietly(id, 'remove')
 
     await prisma.payrollPublicHoliday.delete({ where: { id } })
     return NextResponse.json({ success: true })

@@ -137,6 +137,9 @@ enum HalfDaySession {
 enum LeaveAuditChannel {
   EMAIL
   CALENDAR
+  // A state change the portal made on its own, with no message sent -- currently
+  // only the automatic cancellation of a leave with no transition plan.
+  SYSTEM
 }
 
 enum LeaveAuditEventType {
@@ -146,6 +149,12 @@ enum LeaveAuditEventType {
   TRANSITION_PLAN_SUBMITTED
   TRANSITION_PLAN_DISAPPROVED
   TRANSITION_PLAN_ESCALATION
+  // The deadline ladder for leaves longer than two working days. NOTICE is not
+  // just a log line: its createdAt is what the cancellation deadline is computed
+  // from, so no successful notice means no deadline and no cancellation.
+  TRANSITION_PLAN_NOTICE
+  TRANSITION_PLAN_FINAL_WARNING
+  TRANSITION_PLAN_AUTO_CANCELLED
   CALENDAR_SYNC
   CALENDAR_REMOVE
 }
