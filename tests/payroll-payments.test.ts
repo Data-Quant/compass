@@ -5,6 +5,7 @@ import {
   computePaidTotal,
   computePaidRatio,
   computeNetPaid,
+  distributeNetPaidAcrossCategories,
   paymentStatus,
   buildPaymentCategories,
   isSendableReceipt,
@@ -234,4 +235,49 @@ test('labels match the Input & Review earnings table wording', () => {
   assert.equal(PAYABLE_EARNING_LABELS.MOBILE_REIMBURSEMENT, 'Mobile')
   assert.equal(PAYABLE_EARNING_LABELS.EXPENSE_REIMBURSEMENT, 'Reimbursements')
   assert.equal(PAYABLE_EARNING_LABELS.ADVANCE_LOAN, 'Advance Loan')
+})
+
+// --- A single net Paid figure, stored per category ---
+//
+// The grid now takes one editable Paid amount in net (take-home) terms, but
+// PayrollPayment is keyed per earning category and the engine reads it that way.
+// Spreading the net figure across the categories in proportion keeps one storage
+// model, so the engine, the payslip and the grid cannot disagree.
+
+test('distributing a net amount round-trips back through computeNetPaid', () => {
+  // Categories sum to more than net: the medical carve-out is offset by a tax
+  // exemption and tax is withheld, so 297,000 of line items is 246,610 take-home.
+  const categories = [cat(250_000, 0), cat(27_000, 0), cat(20_000, 0)]
+  const net = 246_610
+
+  for (const paidNet of [0, 100_000, 246_610]) {
+    const spread = distributeNetPaidAcrossCategories(categories, net, paidNet)
+    assert.equal(
+      Math.round(computeNetPaid(spread, net)),
+      paidNet,
+      `paying ${paidNet} should read back as ${paidNet}`,
+    )
+  }
+})
+
+test('paying in full marks every category at its computed amount', () => {
+  const categories = [cat(250_000, 0), cat(27_000, 0)]
+  const spread = distributeNetPaidAcrossCategories(categories, 246_610, 246_610)
+  assert.deepEqual(spread.map((c) => Math.round(c.paid)), [250_000, 27_000])
+})
+
+test('paying nothing leaves every category at zero', () => {
+  const spread = distributeNetPaidAcrossCategories([cat(250_000, 0), cat(27_000, 0)], 246_610, 0)
+  assert.deepEqual(spread.map((c) => c.paid), [0, 0])
+})
+
+test('a zero net salary cannot be divided by, and pays nothing', () => {
+  const spread = distributeNetPaidAcrossCategories([cat(0, 0)], 0, 5_000)
+  assert.deepEqual(spread.map((c) => c.paid), [0])
+})
+
+test('a part payment splits in proportion to what each category is worth', () => {
+  // Half the take-home paid means half of each line item recorded.
+  const spread = distributeNetPaidAcrossCategories([cat(200_000, 0), cat(100_000, 0)], 250_000, 125_000)
+  assert.deepEqual(spread.map((c) => Math.round(c.paid)), [100_000, 50_000])
 })

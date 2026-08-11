@@ -103,6 +103,32 @@ export function computePaidTotal(categories: PaymentCategory[]): number {
   return categories.reduce((sum, c) => sum + c.paid, 0)
 }
 
+/**
+ * Spread one net (take-home) payment across the earning categories in proportion.
+ *
+ * The grid takes a single Paid figure, but PayrollPayment is keyed per category and
+ * the engine, the payslip and the reconciliation all read it that way. Rather than
+ * introduce a second storage shape for the same fact, the net figure is distributed
+ * over the categories by their share of the computed total.
+ *
+ * The split is the exact inverse of computeNetPaid, so a figure entered here reads
+ * back unchanged: paying the full net marks every category at its computed amount,
+ * and paying half marks half of each.
+ *
+ * A consequence worth knowing: because the split is proportional, this cannot express
+ * "paid the salary but held the bonus". Holding one line item independently needs
+ * per-category entry, which this grid no longer offers.
+ */
+export function distributeNetPaidAcrossCategories(
+  categories: PaymentCategory[],
+  netSalary: number,
+  paidNet: number
+): PaymentCategory[] {
+  // Nothing to divide by, so nothing can be attributed.
+  const ratio = netSalary > 0 ? paidNet / netSalary : 0
+  return categories.map((c) => ({ computed: c.computed, paid: c.computed * ratio }))
+}
+
 export function paymentStatus(categories: PaymentCategory[]): PaymentStatus {
   const totalComputed = categories.reduce((s, c) => s + c.computed, 0)
   const totalPaid = categories.reduce((s, c) => s + c.paid, 0)

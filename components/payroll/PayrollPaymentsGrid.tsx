@@ -10,7 +10,7 @@ import { Loader2, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   PAYABLE_EARNING_LABELS,
-  computeNetPaid,
+  distributeNetPaidAcrossCategories,
   filterPaymentRows,
   paymentStatus,
 } from '@/lib/payroll/payments'
@@ -61,7 +61,8 @@ export function PayrollPaymentsGrid({
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  // paid overrides keyed by `${payrollName}|${componentKey}`
+  // One net Paid override per employee, keyed by payrollName. The earning columns
+  // are read-only, so there is a single editable number per row.
   const [edits, setEdits] = useState<Record<string, number>>({})
   const [query, setQuery] = useState('')
 
@@ -79,61 +80,50 @@ export function PayrollPaymentsGrid({
 
   const keys = rows[0]?.categories.map((c) => c.componentKey) ?? []
 
-  const paidFor = (row: Row, key: string) => {
-    const k = `${row.payrollName}|${key}`
-    if (k in edits) return edits[k]
-    return row.categories.find((c) => c.componentKey === key)?.paid ?? 0
-  }
+  /** The net amount paid: the live edit if there is one, else what is recorded. */
+  const paidNetFor = (row: Row) =>
+    row.payrollName in edits ? edits[row.payrollName] : row.paidTotal
 
-  // Live-derived paid/balance so HR sees the effect as they type.
-  // Live-derived so HR sees the effect as they type. Everything withheld — the
-  // medical tax exemption and the deductions — scales with the fraction of the
-  // earning line items actually paid, so Paid lands on the payslip's Net Salary
-  // when nothing is held back, and on 0 when a salary is held.
+  // Live-derived so HR sees the effect as they type.
   const derived = useMemo(() => {
-    const out: Record<string, { netPaid: number; balance: number; status: Row['status'] }> = {}
+    const out: Record<string, { paidNet: number; balance: number; status: Row['status'] }> = {}
     for (const row of rows) {
-      // Every category counts, including the ones hidden from the table.
-      const liveCategories = row.categories.map((c) => {
-        const k = `${row.payrollName}|${c.componentKey}`
-        return { computed: c.computed, paid: k in edits ? edits[k] : c.paid }
-      })
-      const netPaid = computeNetPaid(liveCategories, row.netSalary)
+      const paidNet = row.payrollName in edits ? edits[row.payrollName] : row.paidTotal
       out[row.payrollName] = {
-        netPaid,
-        balance: row.previousBalance + row.netSalary - netPaid,
-        // The shared helper, not a local rule. Deriving status from the balance
-        // reported PAID for anyone whose balance was already <= 0 -- someone
-        // carrying a credit from a previous period reads as settled without a
-        // rupee being paid this period.
-        status: paymentStatus(liveCategories),
+        paidNet,
+        // Carries what earlier periods left owed, so the tab agrees with the
+        // balance the engine stores and the payslip prints.
+        balance: row.previousBalance + row.netSalary - paidNet,
+        // The same shared rule as everywhere else, applied in net terms: what is
+        // owed for this period against what was actually disbursed.
+        //
+        // Compared at whole rupees, the precision the grid displays. Net salary
+        // carries fractions, so typing the figure shown -- 709,807 against a true
+        // 709,807.43 -- would otherwise read as PARTIAL against a balance rendered
+        // as 0, which looks broken to the person who just paid in full.
+        status: paymentStatus([
+          { computed: Math.round(row.netSalary), paid: Math.round(paidNet) },
+        ]),
       }
     }
     return out
   }, [rows, edits])
 
-  const setCell = (payrollName: string, key: string, value: string) => {
+  const setPaid = (payrollName: string, value: string) => {
     const n = Number(value)
-    setEdits((prev) => ({ ...prev, [`${payrollName}|${key}`]: Number.isFinite(n) ? n : 0 }))
+    setEdits((prev) => ({ ...prev, [payrollName]: Number.isFinite(n) ? n : 0 }))
   }
 
   /**
-   * Fill every cell with its computed amount, for the common case where everyone
-   * was paid in full.
+   * Set Paid to the full net amount for everyone currently listed.
    *
-   * The grid used to arrive pre-filled this way, which is why a period nobody had
-   * paid displayed as settled. The convenience was worth keeping; doing it silently
-   * was not. It stages edits like any other, so nothing is recorded until Save, and
-   * only rows matching the current search are touched.
+   * Staged like any other edit, so nothing is recorded until Save, and only rows
+   * matching the current search are touched.
    */
-  const fillAllWithComputed = () => {
+  const markAllPaidInFull = () => {
     setEdits((prev) => {
       const next = { ...prev }
-      for (const row of visibleRows) {
-        for (const c of row.categories) {
-          next[`${row.payrollName}|${c.componentKey}`] = c.computed
-        }
-      }
+      for (const row of visibleRows) next[row.payrollName] = row.netSalary
       return next
     })
   }
@@ -141,13 +131,23 @@ export function PayrollPaymentsGrid({
   const save = async () => {
     setSaving(true)
     try {
-      const marks = rows.map((row) => ({
-        payrollName: row.payrollName,
-        userId: row.userId,
-        amounts: Object.fromEntries(
-          row.categories.map((c) => [c.componentKey, paidFor(row, c.componentKey)])
-        ),
-      }))
+      // The grid captures one net figure, but PayrollPayment is keyed per category
+      // and the engine reads it that way, so the amount is spread proportionally.
+      // computeNetPaid inverts the split exactly, so what is typed is what reloads.
+      const marks = rows.map((row) => {
+        const spread = distributeNetPaidAcrossCategories(
+          row.categories,
+          row.netSalary,
+          paidNetFor(row)
+        )
+        return {
+          payrollName: row.payrollName,
+          userId: row.userId,
+          amounts: Object.fromEntries(
+            row.categories.map((c, i) => [c.componentKey, spread[i].paid])
+          ),
+        }
+      })
       const res = await fetch(`/api/payroll/periods/${periodId}/payments`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -192,7 +192,7 @@ export function PayrollPaymentsGrid({
           />
         </div>
         {editable && (
-          <Button variant="outline" size="sm" onClick={fillAllWithComputed}>
+          <Button variant="outline" size="sm" onClick={markAllPaidInFull}>
             Mark all paid in full
           </Button>
         )}
@@ -208,6 +208,8 @@ export function PayrollPaymentsGrid({
                   {PAYABLE_EARNING_LABELS[k as keyof typeof PAYABLE_EARNING_LABELS] ?? k}
                 </TableHead>
               ))}
+              <TableHead className="text-right whitespace-nowrap">Net Amount</TableHead>
+              <TableHead className="text-right whitespace-nowrap">Prev. Balance</TableHead>
               <TableHead className="text-right">Paid</TableHead>
               <TableHead className="text-right">Balance</TableHead>
               <TableHead>Status</TableHead>
@@ -216,7 +218,7 @@ export function PayrollPaymentsGrid({
           <TableBody>
             {visibleRows.length === 0 && query.trim() !== '' && (
               <TableRow>
-                <TableCell colSpan={keys.length + 4} className="text-center text-sm text-muted-foreground py-8">
+                <TableCell colSpan={keys.length + 6} className="text-center text-sm text-muted-foreground py-8">
                   No employee matches “{query.trim()}”.
                 </TableCell>
               </TableRow>
@@ -229,20 +231,34 @@ export function PayrollPaymentsGrid({
                   <TableCell className="font-medium text-sm sticky left-0 bg-background">
                     {row.payrollName}
                   </TableCell>
-                  {row.categories
-                    .map((c) => (
-                      <TableCell key={c.componentKey} className="text-right p-1">
-                        <Input
-                          type="number"
-                          value={paidFor(row, c.componentKey)}
-                          disabled={!editable}
-                          onChange={(e) => setCell(row.payrollName, c.componentKey, e.target.value)}
-                          className="h-8 w-24 text-right tabular-nums ml-auto"
-                        />
-                      </TableCell>
-                    ))}
-                  <TableCell className="text-right tabular-nums text-sm">
-                    {money(d.netPaid)}
+                  {/*
+                    The earnings breakdown is what payroll computed, so it is shown
+                    rather than edited. These sum to more than Net Amount: the medical
+                    carve-out is offset by a tax exemption and income tax is withheld.
+                  */}
+                  {row.categories.map((c) => (
+                    <TableCell
+                      key={c.componentKey}
+                      className="text-right tabular-nums text-sm text-muted-foreground"
+                    >
+                      {money(c.computed)}
+                    </TableCell>
+                  ))}
+                  <TableCell className="text-right tabular-nums text-sm font-medium">
+                    {money(row.netSalary)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
+                    {money(row.previousBalance)}
+                  </TableCell>
+                  <TableCell className="text-right p-1">
+                    <Input
+                      type="number"
+                      value={paidNetFor(row)}
+                      disabled={!editable}
+                      onChange={(e) => setPaid(row.payrollName, e.target.value)}
+                      aria-label={`Net amount paid to ${row.payrollName}`}
+                      className="h-8 w-28 text-right tabular-nums ml-auto"
+                    />
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-sm font-semibold">
                     {money(d.balance)}
