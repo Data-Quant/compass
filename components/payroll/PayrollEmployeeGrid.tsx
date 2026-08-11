@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { PAYABLE_EARNING_LABELS } from '@/lib/payroll/payments'
 import {
   ArrowDown,
   ArrowUp,
@@ -97,14 +98,16 @@ const SUMMARY_COLUMNS: Array<{ key: SortKey; label: string; editable: false }> =
   { key: 'netPay', label: 'Net Pay', editable: false },
 ]
 
+// Headings come from PAYABLE_EARNING_LABELS so this table and the Payments grid
+// cannot describe the same earning differently.
 const EARNINGS_COLUMNS: Array<{ key: SortKey; label: string; componentKey?: string; editable: boolean }> = [
-  { key: 'basicSalary', label: 'Basic Salary', componentKey: 'BASIC_SALARY', editable: true },
-  { key: 'medicalAllowance', label: 'Medical', componentKey: 'MEDICAL_ALLOWANCE', editable: true },
-  { key: 'bonus', label: 'Bonus', componentKey: 'BONUS', editable: true },
-  { key: 'travelReimbursement', label: 'Travel', componentKey: 'TRAVEL_REIMBURSEMENT', editable: true },
-  { key: 'mobileReimbursement', label: 'Mobile', componentKey: 'MOBILE_REIMBURSEMENT', editable: true },
-  { key: 'expenseReimbursement', label: 'Reimbursements', componentKey: 'EXPENSE_REIMBURSEMENT', editable: true },
-  { key: 'advanceLoan', label: 'Advance Loan', componentKey: 'ADVANCE_LOAN', editable: true },
+  { key: 'basicSalary', label: PAYABLE_EARNING_LABELS.BASIC_SALARY, componentKey: 'BASIC_SALARY', editable: true },
+  { key: 'medicalAllowance', label: PAYABLE_EARNING_LABELS.MEDICAL_ALLOWANCE, componentKey: 'MEDICAL_ALLOWANCE', editable: true },
+  { key: 'bonus', label: PAYABLE_EARNING_LABELS.BONUS, componentKey: 'BONUS', editable: true },
+  { key: 'travelReimbursement', label: PAYABLE_EARNING_LABELS.TRAVEL_REIMBURSEMENT, componentKey: 'TRAVEL_REIMBURSEMENT', editable: true },
+  { key: 'mobileReimbursement', label: PAYABLE_EARNING_LABELS.MOBILE_REIMBURSEMENT, componentKey: 'MOBILE_REIMBURSEMENT', editable: true },
+  { key: 'expenseReimbursement', label: PAYABLE_EARNING_LABELS.EXPENSE_REIMBURSEMENT, componentKey: 'EXPENSE_REIMBURSEMENT', editable: true },
+  { key: 'advanceLoan', label: PAYABLE_EARNING_LABELS.ADVANCE_LOAN, componentKey: 'ADVANCE_LOAN', editable: true },
 ]
 
 const DEDUCTION_COLUMNS: Array<{ key: SortKey; label: string; componentKey?: string; editable: boolean }> = [

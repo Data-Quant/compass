@@ -8,24 +8,24 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Loader2, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { computeNetPaid, filterPaymentRows, paymentStatus } from '@/lib/payroll/payments'
+import {
+  PAYABLE_EARNING_LABELS,
+  computeNetPaid,
+  filterPaymentRows,
+  paymentStatus,
+} from '@/lib/payroll/payments'
 
 /**
- * Categories hidden from the grid to keep it narrow. Display-only: hidden
- * categories still count toward Paid and are still saved at their existing
- * values, so no amount is lost -- it simply is not shown or separately editable.
+ * Every payable earning is shown, so this grid reconciles with the Input & Review
+ * earnings table column for column.
+ *
+ * Reimbursements used to be hidden here to keep the grid narrow, on the reasoning
+ * that hidden categories were still saved at their existing values. That stopped
+ * being true once an unrecorded category correctly defaulted to zero rather than to
+ * its computed amount: saving then wrote zero for a column nobody could see, and
+ * July alone carries 4.8m of reimbursements. A column holding real money has to be
+ * visible on the tab where it is marked as paid.
  */
-const HIDDEN_CATEGORY_KEYS = new Set(['EXPENSE_REIMBURSEMENT'])
-
-const CATEGORY_LABELS: Record<string, string> = {
-  BASIC_SALARY: 'Basic',
-  MEDICAL_ALLOWANCE: 'Medical',
-  BONUS: 'Bonus',
-  TRAVEL_REIMBURSEMENT: 'Travel',
-  MOBILE_REIMBURSEMENT: 'Mobile',
-  EXPENSE_REIMBURSEMENT: 'Reimb.',
-  ADVANCE_LOAN: 'Advance',
-}
 
 type Category = { componentKey: string; computed: number; paid: number }
 type Row = {
@@ -77,10 +77,7 @@ export function PayrollPaymentsGrid({
       .finally(() => setLoading(false))
   }, [periodId])
 
-  // Display-only. Saving and the Paid/Balance maths still walk every category.
-  const keys = (rows[0]?.categories.map((c) => c.componentKey) ?? []).filter(
-    (k) => !HIDDEN_CATEGORY_KEYS.has(k)
-  )
+  const keys = rows[0]?.categories.map((c) => c.componentKey) ?? []
 
   const paidFor = (row: Row, key: string) => {
     const k = `${row.payrollName}|${key}`
@@ -208,7 +205,7 @@ export function PayrollPaymentsGrid({
               <TableHead className="sticky left-0 bg-muted/50">Employee</TableHead>
               {keys.map((k) => (
                 <TableHead key={k} className="text-right whitespace-nowrap">
-                  {CATEGORY_LABELS[k] ?? k}
+                  {PAYABLE_EARNING_LABELS[k as keyof typeof PAYABLE_EARNING_LABELS] ?? k}
                 </TableHead>
               ))}
               <TableHead className="text-right">Paid</TableHead>
@@ -233,7 +230,6 @@ export function PayrollPaymentsGrid({
                     {row.payrollName}
                   </TableCell>
                   {row.categories
-                    .filter((c) => !HIDDEN_CATEGORY_KEYS.has(c.componentKey))
                     .map((c) => (
                       <TableCell key={c.componentKey} className="text-right p-1">
                         <Input

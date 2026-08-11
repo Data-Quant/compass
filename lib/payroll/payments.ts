@@ -17,6 +17,25 @@ export const PAYABLE_EARNING_KEYS = [
   'ADVANCE_LOAN',
 ] as const
 
+/**
+ * Column headings for the payable earnings, shared by the Payments grid and the
+ * Input & Review earnings table.
+ *
+ * One definition because the two tabs describe the same seven line items and must
+ * reconcile. They previously kept separate lists and drifted: Payments abbreviated
+ * the headings and hid Reimbursements altogether, so a month with 4.8m of
+ * reimbursements showed no sign of them on the tab where they are marked as paid.
+ */
+export const PAYABLE_EARNING_LABELS: Record<(typeof PAYABLE_EARNING_KEYS)[number], string> = {
+  BASIC_SALARY: 'Basic Salary',
+  MEDICAL_ALLOWANCE: 'Medical',
+  BONUS: 'Bonus',
+  TRAVEL_REIMBURSEMENT: 'Travel',
+  MOBILE_REIMBURSEMENT: 'Mobile',
+  EXPENSE_REIMBURSEMENT: 'Reimbursements',
+  ADVANCE_LOAN: 'Advance Loan',
+}
+
 export type PaymentCategory = { computed: number; paid: number }
 export type PaymentStatus = 'PAID' | 'PARTIAL' | 'PENDING'
 

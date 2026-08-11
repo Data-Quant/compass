@@ -10,6 +10,7 @@ import {
   isSendableReceipt,
   filterPaymentRows,
   PAYABLE_EARNING_KEYS,
+  PAYABLE_EARNING_LABELS,
   type PaymentCategory,
 } from '../lib/payroll/payments'
 
@@ -207,4 +208,30 @@ test('every payable key is present even when the payslip omits it', () => {
     categories.map((c) => c.componentKey),
     [...PAYABLE_EARNING_KEYS],
   )
+})
+
+// --- The Payments grid must show the same earnings as Input & Review ---
+//
+// The two tabs describe the same seven earning line items and their amounts
+// already agree exactly. They drifted apart in presentation: Payments hid
+// EXPENSE_REIMBURSEMENT entirely and abbreviated the rest, so July's 4.8m of
+// reimbursements was invisible on the tab where it gets marked as paid.
+
+test('every payable category has a label', () => {
+  assert.deepEqual(
+    [...PAYABLE_EARNING_KEYS].sort(),
+    Object.keys(PAYABLE_EARNING_LABELS).sort(),
+  )
+})
+
+test('labels match the Input & Review earnings table wording', () => {
+  // These strings are EARNINGS_COLUMNS in PayrollEmployeeGrid. Both grids read
+  // them from here, so the two tabs cannot describe the same column differently.
+  assert.equal(PAYABLE_EARNING_LABELS.BASIC_SALARY, 'Basic Salary')
+  assert.equal(PAYABLE_EARNING_LABELS.MEDICAL_ALLOWANCE, 'Medical')
+  assert.equal(PAYABLE_EARNING_LABELS.BONUS, 'Bonus')
+  assert.equal(PAYABLE_EARNING_LABELS.TRAVEL_REIMBURSEMENT, 'Travel')
+  assert.equal(PAYABLE_EARNING_LABELS.MOBILE_REIMBURSEMENT, 'Mobile')
+  assert.equal(PAYABLE_EARNING_LABELS.EXPENSE_REIMBURSEMENT, 'Reimbursements')
+  assert.equal(PAYABLE_EARNING_LABELS.ADVANCE_LOAN, 'Advance Loan')
 })
