@@ -3,7 +3,8 @@ import { prisma } from '@/lib/db'
 import { formatReportAsHTML, generateDetailedReport } from './reports'
 import { escapeHtml } from '@/lib/sanitize'
 import { ALL_TEAMS, TEAM_LABELS } from '@/lib/handbook/teams'
-import { groupHolidaysByTeam, monthRangeUtc } from '@/lib/holidays'
+import { groupHolidaysByTeam, holidayIdsFullyDelivered, monthRangeUtc } from '@/lib/holidays'
+import type { TeamTag } from '@prisma/client'
 import { calculateLeaveDuration, getExpectedReturnDate } from '@/lib/leave-utils'
 import { safeRecordLeaveAuditEvent } from '@/lib/leave-audit'
 import { calculateWfhDays } from '@/lib/wfh-utils'
@@ -1832,56 +1833,81 @@ async function getHolidayCcEmails() {
   return mergeRecipientEmails(hr, partners, execution)
 }
 
+type HolidayForEmail = {
+  id: string
+  name: string
+  holidayDate: Date
+  teamTags: TeamTag[]
+}
+
+type HolidayPlanEntry = { team: string; teamLabel: string; recipients: number; holidays: string[] }
+
+export type HolidayMailResult = {
+  success: true
+  dryRun: boolean
+  scope: 'monthly' | 'new'
+  label: string
+  month?: string
+  holidays: number
+  sent: number
+  announced: number
+  ccCount: number
+  plan: HolidayPlanEntry[]
+  skipped: string[]
+}
+
 /**
- * The month's public holidays, sent to each team at the start of the month.
+ * Mail a set of holidays to the teams that observe them, one email per team.
  *
- * One digest per team rather than one mail per holiday, so people get a single
- * planning view of the month instead of scattered nudges. Only the teams tagged on
- * a holiday hear about it -- telling the Colombia team about Eid is the noise that
- * tagging exists to remove. A user carries one team tag, so nobody is mailed twice.
+ * One mail per team rather than per holiday, so people get a single view instead of
+ * scattered nudges. Only teams tagged on a holiday hear about it -- telling the
+ * Colombia team about Eid is the noise that tagging exists to remove. A user carries
+ * one team tag, so nobody is mailed twice.
  *
  * People with no team tag are not notified: there is no way to tell which holidays
  * apply to them.
+ *
+ * Holidays that reached every team observing them are stamped `notifiedAt`, which is
+ * what lets a later ad-hoc send skip them instead of re-announcing the whole month.
  */
-export async function sendMonthlyPublicHolidayDigest(
-  reference: Date = new Date(),
-  options: { dryRun?: boolean } = {}
-) {
-  const { dryRun = false } = options
-  const { start, end } = monthRangeUtc(reference)
-
-  const holidays = await prisma.payrollPublicHoliday.findMany({
-    where: { holidayDate: { gte: start, lte: end } },
-    orderBy: { holidayDate: 'asc' },
-  })
-
-  const monthLabel = new Intl.DateTimeFormat('en-US', {
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'UTC',
-  }).format(start)
-
-  type DigestPlanEntry = { team: string; teamLabel: string; recipients: number; holidays: string[] }
-
-  if (holidays.length === 0) {
-    // A month with no holidays sends nothing at all, rather than telling everyone
-    // there is nothing to tell them.
-    return {
-      success: true,
-      dryRun,
-      month: monthLabel,
-      holidays: 0,
-      sent: 0,
-      ccCount: 0,
-      plan: [] as DigestPlanEntry[],
-      skipped: [] as string[],
-    }
+async function deliverHolidayEmails({
+  holidays,
+  scope,
+  label,
+  dryRun,
+}: {
+  holidays: HolidayForEmail[]
+  scope: 'monthly' | 'new'
+  label: string
+  dryRun: boolean
+}): Promise<Omit<HolidayMailResult, 'month'>> {
+  const empty: Omit<HolidayMailResult, 'month'> = {
+    success: true,
+    dryRun,
+    scope,
+    label,
+    holidays: 0,
+    sent: 0,
+    announced: 0,
+    ccCount: 0,
+    plan: [],
+    skipped: [],
   }
 
+  // Nothing to say sends nothing at all, rather than telling everyone there is
+  // nothing to tell them.
+  if (holidays.length === 0) {
+    return empty
+  }
+
+  const isNew = scope === 'new'
   const byTeam = groupHolidaysByTeam(holidays, ALL_TEAMS)
   const ccEmails = await getHolidayCcEmails()
   const skipped: string[] = []
-  const plan: DigestPlanEntry[] = []
+  const plan: HolidayPlanEntry[] = []
+  // Teams whose email actually failed. A team with nobody tagged is not in here --
+  // see holidayIdsFullyDelivered for why that distinction matters.
+  const failedTeams = new Set<TeamTag>()
   let sent = 0
 
   const formatDay = (date: Date) =>
@@ -1889,6 +1915,9 @@ export async function sendMonthlyPublicHolidayDigest(
       weekday: 'long',
       day: 'numeric',
       month: 'long',
+      // A new-holiday announcement can span months, so it carries the year; the
+      // monthly digest already names its month in the heading.
+      ...(isNew ? { year: 'numeric' as const } : {}),
       timeZone: 'UTC',
     }).format(date)
 
@@ -1930,19 +1959,31 @@ export async function sendMonthlyPublicHolidayDigest(
       .join('')
 
     const count = teamHolidays.length
-    const subject = `Public Holidays in ${monthLabel} — ${TEAM_LABELS[team]}`
+    const heading = isNew
+      ? count === 1
+        ? 'New Public Holiday'
+        : 'New Public Holidays'
+      : `Public Holidays in ${label}`
+    const subject = isNew
+      ? `${heading} — ${TEAM_LABELS[team]}`
+      : `Public Holidays in ${label} — ${TEAM_LABELS[team]}`
+    const intro = isNew
+      ? `${count === 1 ? 'A new public holiday has' : `${count} new public holidays have`} been added to the calendar for the ${escapeHtml(TEAM_LABELS[team])}.`
+      : `${count === 1 ? 'There is 1 public holiday' : `There are ${count} public holidays`} for the ${escapeHtml(TEAM_LABELS[team])} this month.`
+
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px;">
-        <h2 style="color: #1E293B;">Public Holidays in ${escapeHtml(monthLabel)}</h2>
-        <p style="font-size: 16px; color: #334155;">
-          ${count === 1 ? 'There is 1 public holiday' : `There are ${count} public holidays`}
-          for the ${escapeHtml(TEAM_LABELS[team])} this month.
-        </p>
+        <h2 style="color: #1E293B;">${escapeHtml(heading)}</h2>
+        <p style="font-size: 16px; color: #334155;">${intro}</p>
         <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
           <tbody>${rows}</tbody>
         </table>
         <p style="color: #64748B; font-size: 14px;">
-          Please plan any deadlines or handovers around these dates.
+          ${
+            isNew
+              ? 'A calendar invite has been sent separately. Please plan any deadlines or handovers around these dates.'
+              : 'Please plan any deadlines or handovers around these dates.'
+          }
         </p>
       </div>
     `
@@ -1957,21 +1998,133 @@ export async function sendMonthlyPublicHolidayDigest(
       })
       sent++
     } catch (error) {
-      console.error(`Failed to send holiday digest to ${TEAM_LABELS[team]}:`, error)
+      console.error(`Failed to send holiday email to ${TEAM_LABELS[team]}:`, error)
       skipped.push(`${TEAM_LABELS[team]}: send failed`)
+      failedTeams.add(team)
+    }
+  }
+
+  let announced = 0
+  if (!dryRun) {
+    const deliveredIds = holidayIdsFullyDelivered(holidays, failedTeams, ALL_TEAMS)
+    if (deliveredIds.length > 0) {
+      // `notifiedAt: null` keeps the first announcement's timestamp rather than
+      // overwriting it every time the monthly digest re-lists the same holiday.
+      const marked = await prisma.payrollPublicHoliday.updateMany({
+        where: { id: { in: deliveredIds }, notifiedAt: null },
+        data: { notifiedAt: new Date() },
+      })
+      announced = marked.count
     }
   }
 
   return {
     success: true,
     dryRun,
-    month: monthLabel,
+    scope,
+    label,
     holidays: holidays.length,
     sent,
+    announced,
     ccCount: ccEmails.length,
     plan,
     skipped,
   }
+}
+
+/**
+ * The month's public holidays, sent to each team at the start of the month.
+ *
+ * Always the whole month, announced or not: this is a planning view, so a holiday
+ * already announced ad hoc last month still belongs in it.
+ */
+export async function sendMonthlyPublicHolidayDigest(
+  reference: Date = new Date(),
+  options: { dryRun?: boolean } = {}
+): Promise<HolidayMailResult> {
+  const { dryRun = false } = options
+  const { start, end } = monthRangeUtc(reference)
+
+  const holidays = await prisma.payrollPublicHoliday.findMany({
+    where: { holidayDate: { gte: start, lte: end } },
+    orderBy: { holidayDate: 'asc' },
+  })
+
+  const monthLabel = new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(start)
+
+  const result = await deliverHolidayEmails({
+    holidays,
+    scope: 'monthly',
+    label: monthLabel,
+    dryRun,
+  })
+
+  return { ...result, month: monthLabel }
+}
+
+/**
+ * Only the holidays nobody has been told about yet.
+ *
+ * This is what HR presses after adding a holiday mid-month. Scoped by announcement
+ * rather than by month, so a holiday added for a future month is picked up too, and a
+ * month that has already gone out is not mailed a second time.
+ *
+ * Holidays already past are excluded: announcing a day off that has been and gone
+ * helps nobody, and the monthly digest covered it at the time.
+ */
+export async function sendNewPublicHolidayAnnouncement(
+  options: { dryRun?: boolean; now?: Date } = {}
+): Promise<HolidayMailResult> {
+  const { dryRun = false, now = new Date() } = options
+
+  const today = new Date(now)
+  today.setUTCHours(0, 0, 0, 0)
+
+  const holidays = await prisma.payrollPublicHoliday.findMany({
+    where: { notifiedAt: null, holidayDate: { gte: today } },
+    orderBy: { holidayDate: 'asc' },
+  })
+
+  return deliverHolidayEmails({
+    holidays,
+    scope: 'new',
+    label: 'newly added holidays',
+    dryRun,
+  })
+}
+
+/**
+ * Announce specific holidays, whether or not they have been announced before.
+ *
+ * The precise counterpart to the bulk send: HR names the holiday and only the teams
+ * observing it are mailed. This is what covers a holiday whose announced state is
+ * wrong or unknown -- including everything that predates `notifiedAt`, all of which
+ * the backfill marked announced rather than guessing.
+ */
+export async function sendPublicHolidayAnnouncementFor(
+  holidayIds: string[],
+  options: { dryRun?: boolean } = {}
+): Promise<HolidayMailResult> {
+  const { dryRun = false } = options
+
+  const holidays =
+    holidayIds.length > 0
+      ? await prisma.payrollPublicHoliday.findMany({
+          where: { id: { in: holidayIds } },
+          orderBy: { holidayDate: 'asc' },
+        })
+      : []
+
+  return deliverHolidayEmails({
+    holidays,
+    scope: 'new',
+    label: 'selected holidays',
+    dryRun,
+  })
 }
 
 /**

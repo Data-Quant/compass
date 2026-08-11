@@ -74,6 +74,32 @@ export function teamsObserving(
 }
 
 /**
+ * Which holidays can be recorded as announced after a send.
+ *
+ * A holiday can span teams -- Eid reaches both Pakistan entities -- and each team is a
+ * separate email. If one of those fails, the holiday is not done: marking it announced
+ * would drop it out of every future send and leave that team permanently untold. So a
+ * holiday counts as delivered only when no team observing it failed.
+ *
+ * A team with nobody tagged is not a failure. There is no one to email, so the holiday
+ * is vacuously delivered for that team; the gap is reported separately rather than
+ * blocking every other team's holiday from ever being marked.
+ */
+export function holidayIdsFullyDelivered<T extends { id: string; teamTags: TeamTag[] }>(
+  holidays: readonly T[],
+  failedTeams: ReadonlySet<TeamTag>,
+  allTeams: readonly TeamTag[]
+): string[] {
+  if (failedTeams.size === 0) {
+    return holidays.map((holiday) => holiday.id)
+  }
+
+  return holidays
+    .filter((holiday) => !teamsObserving(holiday, allTeams).some((team) => failedTeams.has(team)))
+    .map((holiday) => holiday.id)
+}
+
+/**
  * Bounds of the month containing `reference`, in UTC.
  *
  * UTC throughout, to match how holiday dates are stored and so the monthly digest

@@ -71,6 +71,8 @@ interface PublicHoliday {
   holidayDate: string
   name: string
   teamTags: TeamTag[]
+  /** Null until the observing teams have actually been emailed about it. */
+  notifiedAt: string | null
 }
 
 // Country groupings, so a national holiday can be applied to both entities in that
@@ -404,23 +406,34 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
   }
 
   /**
-   * Send the month's holiday digest now, rather than waiting for the 1st.
+   * Send holiday mail now, rather than waiting for the 1st.
    *
-   * Mail to the whole company cannot be recalled, so this previews first and asks
-   * for confirmation using the real recipient counts. The preview runs the same
-   * code path as the send, so what is confirmed is what goes out.
+   * `scope: 'new'` mails only holidays nobody has been told about yet -- the normal
+   * case after adding one mid-month. `scope: 'monthly'` re-sends the whole month,
+   * kept for when a digest needs repeating.
+   *
+   * Mail to the whole company cannot be recalled, so this previews first and asks for
+   * confirmation using the real recipient counts. The preview runs the same code path
+   * as the send, so what is confirmed is what goes out.
    */
-  const sendHolidayDigest = async () => {
+  const sendHolidayMail = async (scope: 'new' | 'monthly') => {
+    const isNew = scope === 'new'
+    const query = isNew ? 'scope=new' : `month=${digestMonth}`
+
     setSendingDigest(true)
     try {
       const previewRes = await fetch(
-        `/api/payroll/public-holidays/reminders?month=${digestMonth}&dryRun=true`
+        `/api/payroll/public-holidays/reminders?${query}&dryRun=true`
       )
       const preview = await previewRes.json()
-      if (!previewRes.ok) throw new Error(preview.error || 'Failed to preview digest')
+      if (!previewRes.ok) throw new Error(preview.error || 'Failed to preview')
 
       if (!preview.plan?.length) {
-        toast.info(`No holidays are tagged for ${preview.month}, so there is nothing to send.`)
+        toast.info(
+          isNew
+            ? 'Every upcoming holiday has already been announced, so there is nothing new to send.'
+            : `No holidays are tagged for ${preview.month}, so there is nothing to send.`
+        )
         return
       }
 
@@ -432,23 +445,84 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
         .join('\n')
 
       const confirmed = window.confirm(
-        `Send the ${preview.month} public holiday digest now?\n\n${teamLines}\n\n` +
+        (isNew
+          ? `Announce these newly added holidays now?\n\n${teamLines}\n\n`
+          : `Re-send the full ${preview.month} digest to every team below?\n\n${teamLines}\n\n` +
+            'This includes holidays already announced.\n\n') +
           `CC: ${preview.ccCount} (HR, Partners, Execution)\n\nThis sends real email immediately.`
       )
       if (!confirmed) return
 
-      const res = await fetch(`/api/payroll/public-holidays/reminders?month=${digestMonth}`, {
+      const res = await fetch(`/api/payroll/public-holidays/reminders?${query}`, {
         method: 'POST',
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to send digest')
+      if (!res.ok) throw new Error(data.error || 'Failed to send')
 
-      toast.success(`Sent ${data.sent} team digest${data.sent === 1 ? '' : 's'} for ${data.month}`)
+      toast.success(
+        isNew
+          ? `Announced ${data.announced} new holiday${data.announced === 1 ? '' : 's'} to ${data.sent} team${data.sent === 1 ? '' : 's'}`
+          : `Sent ${data.sent} team digest${data.sent === 1 ? '' : 's'} for ${data.month}`
+      )
       if (data.skipped?.length) {
         toast.warning(`Skipped: ${data.skipped.join('; ')}`)
       }
+      loadData()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to send digest')
+      toast.error(error instanceof Error ? error.message : 'Failed to send')
+    } finally {
+      setSendingDigest(false)
+    }
+  }
+
+  /**
+   * Announce one specific holiday to the teams that observe it.
+   *
+   * Exact by construction: HR names the holiday, so nothing depends on whether its
+   * announced state was recorded correctly. This is how a holiday that predates
+   * announcement tracking gets sent, and how one is deliberately re-sent.
+   */
+  const announceHoliday = async (holiday: PublicHoliday) => {
+    setSendingDigest(true)
+    try {
+      const query = `holidayId=${encodeURIComponent(holiday.id)}`
+      const previewRes = await fetch(`/api/payroll/public-holidays/reminders?${query}&dryRun=true`)
+      const preview = await previewRes.json()
+      if (!previewRes.ok) throw new Error(preview.error || 'Failed to preview')
+
+      if (!preview.plan?.length) {
+        toast.info(
+          `Nobody is tagged for the teams that observe ${holiday.name}, so there is nobody to email.`
+        )
+        return
+      }
+
+      const teamLines = preview.plan
+        .map(
+          (entry: { teamLabel: string; recipients: number }) =>
+            `• ${entry.teamLabel}: ${entry.recipients} people`
+        )
+        .join('\n')
+
+      const confirmed = window.confirm(
+        `${holiday.notifiedAt ? 'Re-announce' : 'Announce'} "${holiday.name}" now?\n\n${teamLines}\n\n` +
+          `CC: ${preview.ccCount} (HR, Partners, Execution)\n\nThis sends real email immediately.`
+      )
+      if (!confirmed) return
+
+      const res = await fetch(`/api/payroll/public-holidays/reminders?${query}`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to send')
+
+      toast.success(
+        `Announced ${holiday.name} to ${data.sent} team${data.sent === 1 ? '' : 's'}`
+      )
+      if (data.skipped?.length) {
+        toast.warning(`Skipped: ${data.skipped.join('; ')}`)
+      }
+      loadData()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to send')
     } finally {
       setSendingDigest(false)
     }
@@ -670,10 +744,28 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
           {canEdit && (
             <div className="flex flex-wrap items-end justify-between gap-3 rounded-lg border border-border bg-muted/20 p-3">
               <div className="space-y-1">
-                <p className="text-sm font-medium">Send monthly digest</p>
+                <p className="text-sm font-medium">Announce holidays</p>
                 <p className="text-xs text-muted-foreground">
-                  Each team is emailed its holidays automatically on the 1st. Use this to send
-                  now, after adding a month&apos;s holidays late.
+                  Each team is emailed its holidays automatically on the 1st. After adding a
+                  holiday mid-month, announce it — only teams that observe it are emailed, and
+                  only holidays nobody has been told about yet are included.
+                </p>
+              </div>
+              <div className="flex items-end gap-2">
+                <Button onClick={() => sendHolidayMail('new')} disabled={sendingDigest}>
+                  {sendingDigest ? 'Checking...' : 'Announce New Holidays'}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {canEdit && (
+            <div className="flex flex-wrap items-end justify-between gap-3 rounded-lg border border-border bg-muted/20 p-3">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Re-send a full month</p>
+                <p className="text-xs text-muted-foreground">
+                  Sends every holiday in the chosen month again, including ones already
+                  announced. For repeating a digest, not for new holidays.
                 </p>
               </div>
               <div className="flex items-end gap-2">
@@ -687,8 +779,8 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
                     className="w-[150px]"
                   />
                 </div>
-                <Button variant="outline" onClick={sendHolidayDigest} disabled={sendingDigest}>
-                  {sendingDigest ? 'Checking...' : 'Send Digest'}
+                <Button variant="outline" onClick={() => sendHolidayMail('monthly')} disabled={sendingDigest}>
+                  {sendingDigest ? 'Checking...' : 'Re-send Month'}
                 </Button>
               </div>
             </div>
@@ -705,6 +797,15 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
                         ? holiday.teamTags.map((t) => TEAM_LABELS[t]).join(', ')
                         : 'All teams (untagged)'}
                     </p>
+                    <p className="text-xs mt-0.5">
+                      {holiday.notifiedAt ? (
+                        <span className="text-muted-foreground">
+                          Announced {new Date(holiday.notifiedAt).toLocaleDateString()}
+                        </span>
+                      ) : (
+                        <span className="text-amber-600 font-medium">Not announced yet</span>
+                      )}
+                    </p>
                   </div>
                   {canEdit && (
                     <div className="flex items-center gap-1 shrink-0">
@@ -717,6 +818,14 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
                         }}
                       >
                         {editingHolidayId === holiday.id ? 'Cancel' : 'Edit Teams'}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => announceHoliday(holiday)}
+                        disabled={sendingDigest}
+                      >
+                        {holiday.notifiedAt ? 'Re-announce' : 'Announce'}
                       </Button>
                       <Button variant="ghost" size="sm" onClick={() => deleteHoliday(holiday.id)}>
                         Remove

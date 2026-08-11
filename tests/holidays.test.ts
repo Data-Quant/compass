@@ -10,6 +10,7 @@ import {
   teamsObserving,
   monthRangeUtc,
   groupHolidaysByTeam,
+  holidayIdsFullyDelivered,
 } from '../lib/holidays'
 
 const eid = { holidayDate: new Date('2026-05-27'), teamTags: ['PAKISTAN', 'THREE_E_PAKISTAN'] as TeamTag[] }
@@ -144,4 +145,41 @@ test('a team observing several holidays gets them all in one group', () => {
 
   assert.equal(grouped.get('PAKISTAN')?.length, 2)
   assert.equal(grouped.get('THREE_E_PAKISTAN')?.length, 1)
+})
+
+test('a holiday is marked announced only when no observing team failed', () => {
+  const holidays = [
+    { id: 'eid', teamTags: ['PAKISTAN', 'THREE_E_PAKISTAN'] as TeamTag[] },
+    { id: 'throne', teamTags: ['MOROCCO'] as TeamTag[] },
+  ]
+
+  // Nothing failed: both are done.
+  assert.deepEqual(
+    holidayIdsFullyDelivered(holidays, new Set<TeamTag>(), ALL_TEAMS),
+    ['eid', 'throne'],
+  )
+
+  // Eid reaches two teams. If only one of them failed, Eid is NOT done -- marking it
+  // announced would leave the other entity permanently untold.
+  assert.deepEqual(
+    holidayIdsFullyDelivered(holidays, new Set<TeamTag>(['THREE_E_PAKISTAN']), ALL_TEAMS),
+    ['throne'],
+  )
+
+  // A failure on an unrelated team does not hold anything back.
+  assert.deepEqual(
+    holidayIdsFullyDelivered(holidays, new Set<TeamTag>(['COLOMBIA']), ALL_TEAMS),
+    ['eid', 'throne'],
+  )
+})
+
+test('an untagged holiday needs every team to succeed', () => {
+  // Empty tags mean company-wide, so any team failing leaves someone untold.
+  const companyWide = [{ id: 'newyear', teamTags: [] as TeamTag[] }]
+
+  assert.deepEqual(holidayIdsFullyDelivered(companyWide, new Set<TeamTag>(), ALL_TEAMS), ['newyear'])
+  assert.deepEqual(
+    holidayIdsFullyDelivered(companyWide, new Set<TeamTag>(['NOBLE']), ALL_TEAMS),
+    [],
+  )
 })

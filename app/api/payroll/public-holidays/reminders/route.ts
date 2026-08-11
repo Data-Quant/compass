@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getSession } from '@/lib/auth'
 import { canManagePayroll } from '@/lib/permissions'
-import { sendMonthlyPublicHolidayDigest } from '@/lib/email'
+import {
+  sendMonthlyPublicHolidayDigest,
+  sendNewPublicHolidayAnnouncement,
+  sendPublicHolidayAnnouncementFor,
+} from '@/lib/email'
 import { sweepHolidayCalendarEvents } from '@/lib/holiday-calendar'
 
 /**
@@ -29,6 +33,14 @@ const querySchema = z.object({
   // Reports what would be sent without sending it, so HR can confirm against real
   // numbers before mailing the company.
   dryRun: z.coerce.boolean().optional(),
+  // 'monthly' (the default, and what the cron runs) mails the whole month. 'new'
+  // mails only holidays nobody has been told about yet, which is what HR presses
+  // after adding one mid-month -- without it, adding a single holiday re-announces
+  // every holiday in that month.
+  scope: z.enum(['monthly', 'new']).optional(),
+  // Announce one specific holiday, regardless of whether it has been announced
+  // before. Takes precedence over `scope`.
+  holidayId: z.string().trim().min(1).optional(),
 })
 
 function isCronAuthorized(request: NextRequest) {
@@ -59,6 +71,8 @@ export async function GET(request: NextRequest) {
     const parsed = querySchema.safeParse({
       month: searchParams.get('month') ?? undefined,
       dryRun: searchParams.get('dryRun') ?? undefined,
+      scope: searchParams.get('scope') ?? undefined,
+      holidayId: searchParams.get('holidayId') ?? undefined,
     })
     if (!parsed.success) {
       return NextResponse.json({ error: 'Invalid query', details: parsed.error.errors }, { status: 400 })
@@ -74,12 +88,14 @@ export async function GET(request: NextRequest) {
     }
 
     const dryRun = parsed.data.dryRun ?? false
+    const scope = parsed.data.scope ?? 'monthly'
 
-    // A calendar failure must not cost the digest: the email is the fallback for
-    // anyone whose invite did not land, so it is the last thing that should be
-    // skipped when Google is unavailable.
+    // A calendar failure must not cost the email: it is the fallback for anyone whose
+    // invite did not land, so it is the last thing that should be skipped when Google
+    // is unavailable. Only the unscoped cron run reconciles; a targeted month or a
+    // new-holiday send is about mail, not calendars.
     let calendarSweep: Awaited<ReturnType<typeof sweepHolidayCalendarEvents>> | null = null
-    if (!parsed.data.month) {
+    if (!parsed.data.month && !parsed.data.holidayId && scope === 'monthly') {
       try {
         calendarSweep = await sweepHolidayCalendarEvents({ dryRun })
       } catch (error) {
@@ -87,7 +103,12 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const result = await sendMonthlyPublicHolidayDigest(reference, { dryRun })
+    const result = parsed.data.holidayId
+      ? await sendPublicHolidayAnnouncementFor([parsed.data.holidayId], { dryRun })
+      : scope === 'new'
+        ? await sendNewPublicHolidayAnnouncement({ dryRun })
+        : await sendMonthlyPublicHolidayDigest(reference, { dryRun })
+
     return NextResponse.json({ ...result, calendarSweep })
   } catch (error) {
     console.error('Failed to send public holiday digest:', error)

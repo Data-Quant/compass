@@ -1254,6 +1254,11 @@ model PayrollPublicHoliday {
   // Which teams observe this holiday. Empty means every team, so holidays
   // created before tagging existed keep applying company-wide.
   teamTags         TeamTag[]
+  // When this holiday was actually announced by email. Null means never announced,
+  // which is what lets an ad-hoc send target only newly added holidays instead of
+  // re-mailing a month that has already gone out. The monthly digest on the 1st
+  // ignores this and always sends the whole month -- it is a planning view.
+  notifiedAt       DateTime?
   financialYearId  String?
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
