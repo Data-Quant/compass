@@ -6,6 +6,7 @@ import {
   computePaidRatio,
   computeNetPaid,
   paymentStatus,
+  buildPaymentCategories,
   isSendableReceipt,
   filterPaymentRows,
   PAYABLE_EARNING_KEYS,
@@ -158,4 +159,52 @@ test('filterPaymentRows: preserves input order and does not mutate', () => {
   const out = filterPaymentRows(nameRows, 'a')
   assert.deepEqual(out.map((r) => r.payrollName), ['Alpha Example', 'beta sample', 'Gamma Alpha'])
   assert.deepEqual(nameRows.map((r) => r.payrollName), before)
+})
+
+// --- Categories are built from recorded payments, never assumed ---
+//
+// Regression: the Payments grid defaulted each paid cell to its computed amount
+// when an employee had no PayrollPayment rows. That was meant to pre-fill the
+// inputs, but it fed the derived Paid/Balance/Status, so July 2026 -- 39
+// employees, zero payment records, period still CALCULATED -- displayed every
+// row as PAID with a zero balance. The whole point of the Payments step was to
+// replace the old Auto-Paid assumption with recorded disbursements.
+
+test('an employee with no recorded payments is owed everything, not paid', () => {
+  const computed = { BASIC_SALARY: 250_000, MEDICAL_ALLOWANCE: 27_000, BONUS: 20_000 }
+  const categories = buildPaymentCategories(computed, undefined)
+
+  assert.deepEqual(
+    categories.filter((c) => c.computed > 0).map((c) => [c.componentKey, c.paid]),
+    [['BASIC_SALARY', 0], ['MEDICAL_ALLOWANCE', 0], ['BONUS', 0]],
+  )
+  assert.equal(paymentStatus(categories), 'PENDING')
+  assert.equal(computePaidTotal(categories), 0)
+})
+
+test('recorded payments are used exactly as recorded', () => {
+  const computed = { BASIC_SALARY: 250_000, BONUS: 20_000 }
+  const recorded = new Map([['BASIC_SALARY', 250_000], ['BONUS', 0]])
+  const categories = buildPaymentCategories(computed, recorded)
+
+  assert.equal(categories.find((c) => c.componentKey === 'BASIC_SALARY')?.paid, 250_000)
+  assert.equal(categories.find((c) => c.componentKey === 'BONUS')?.paid, 0)
+  assert.equal(paymentStatus(categories), 'PARTIAL')
+})
+
+test('a recorded zero stays zero rather than falling back to computed', () => {
+  // A deliberately held salary: the row exists and says nothing was paid.
+  const categories = buildPaymentCategories({ BASIC_SALARY: 250_000 }, new Map([['BASIC_SALARY', 0]]))
+  assert.equal(paymentStatus(categories), 'PENDING')
+  assert.equal(computePaidTotal(categories), 0)
+})
+
+test('every payable key is present even when the payslip omits it', () => {
+  // The grid renders a column per payable key, so a missing earning must appear
+  // as a zero row rather than vanishing and shifting the columns.
+  const categories = buildPaymentCategories({ BASIC_SALARY: 100 }, undefined)
+  assert.deepEqual(
+    categories.map((c) => c.componentKey),
+    [...PAYABLE_EARNING_KEYS],
+  )
 })

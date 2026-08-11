@@ -21,6 +21,32 @@ export type PaymentCategory = { computed: number; paid: number }
 export type PaymentStatus = 'PAID' | 'PARTIAL' | 'PENDING'
 
 /**
+ * One employee's categories, from computed earnings and recorded payments.
+ *
+ * `paid` comes only from what has actually been recorded. An employee with no
+ * PayrollPayment rows is owed everything, not paid everything -- replacing the old
+ * Auto-Paid assumption with real disbursements is the entire reason this step exists.
+ *
+ * This previously defaulted `paid` to `computed` so the grid inputs opened pre-filled.
+ * That default reached the derived Paid, Balance and Status as well, so a period
+ * nobody had paid displayed as fully settled. Pre-filling is a UI affordance and
+ * belongs in the UI, behind an explicit action -- never in the numbers.
+ *
+ * Every payable key is returned even when the payslip omits it, so the grid renders a
+ * stable set of columns.
+ */
+export function buildPaymentCategories(
+  computedByKey: Record<string, number>,
+  recordedPaidByKey: ReadonlyMap<string, number> | undefined
+): Array<{ componentKey: string; computed: number; paid: number }> {
+  return PAYABLE_EARNING_KEYS.map((key) => {
+    const raw = computedByKey[key]
+    const computed = Number.isFinite(raw) ? Number(raw) : 0
+    return { componentKey: key, computed, paid: recordedPaidByKey?.get(key) ?? 0 }
+  })
+}
+
+/**
  * The fraction of the computed earning line items actually paid.
  *
  * Everything withheld -- income tax and the medical tax exemption -- scales by

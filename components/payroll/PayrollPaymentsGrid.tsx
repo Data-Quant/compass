@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Loader2, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { filterPaymentRows } from '@/lib/payroll/payments'
+import { computeNetPaid, filterPaymentRows, paymentStatus } from '@/lib/payroll/payments'
 
 /**
  * Categories hidden from the grid to keep it narrow. Display-only: hidden
@@ -94,21 +94,22 @@ export function PayrollPaymentsGrid({
   // earning line items actually paid, so Paid lands on the payslip's Net Salary
   // when nothing is held back, and on 0 when a salary is held.
   const derived = useMemo(() => {
-    const out: Record<string, { netPaid: number; balance: number }> = {}
+    const out: Record<string, { netPaid: number; balance: number; status: Row['status'] }> = {}
     for (const row of rows) {
       // Every category counts, including the ones hidden from the table.
-      let totalComputed = 0
-      let totalPaid = 0
-      for (const c of row.categories) {
+      const liveCategories = row.categories.map((c) => {
         const k = `${row.payrollName}|${c.componentKey}`
-        totalComputed += c.computed
-        totalPaid += k in edits ? edits[k] : c.paid
-      }
-      const ratio = totalComputed > 0 ? totalPaid / totalComputed : 0
-      const netPaid = ratio * row.netSalary
+        return { computed: c.computed, paid: k in edits ? edits[k] : c.paid }
+      })
+      const netPaid = computeNetPaid(liveCategories, row.netSalary)
       out[row.payrollName] = {
         netPaid,
         balance: row.previousBalance + row.netSalary - netPaid,
+        // The shared helper, not a local rule. Deriving status from the balance
+        // reported PAID for anyone whose balance was already <= 0 -- someone
+        // carrying a credit from a previous period reads as settled without a
+        // rupee being paid this period.
+        status: paymentStatus(liveCategories),
       }
     }
     return out
@@ -117,6 +118,27 @@ export function PayrollPaymentsGrid({
   const setCell = (payrollName: string, key: string, value: string) => {
     const n = Number(value)
     setEdits((prev) => ({ ...prev, [`${payrollName}|${key}`]: Number.isFinite(n) ? n : 0 }))
+  }
+
+  /**
+   * Fill every cell with its computed amount, for the common case where everyone
+   * was paid in full.
+   *
+   * The grid used to arrive pre-filled this way, which is why a period nobody had
+   * paid displayed as settled. The convenience was worth keeping; doing it silently
+   * was not. It stages edits like any other, so nothing is recorded until Save, and
+   * only rows matching the current search are touched.
+   */
+  const fillAllWithComputed = () => {
+    setEdits((prev) => {
+      const next = { ...prev }
+      for (const row of visibleRows) {
+        for (const c of row.categories) {
+          next[`${row.payrollName}|${c.componentKey}`] = c.computed
+        }
+      }
+      return next
+    })
   }
 
   const save = async () => {
@@ -161,15 +183,22 @@ export function PayrollPaymentsGrid({
 
   return (
     <div className="space-y-4">
-      <div className="relative max-w-xs">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search employee…"
-          aria-label="Search employees"
-          className="h-9 pl-9"
-        />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative max-w-xs flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search employee…"
+            aria-label="Search employees"
+            className="h-9 pl-9"
+          />
+        </div>
+        {editable && (
+          <Button variant="outline" size="sm" onClick={fillAllWithComputed}>
+            Mark all paid in full
+          </Button>
+        )}
       </div>
 
       <div className="overflow-x-auto rounded-card border border-border">
@@ -197,8 +226,7 @@ export function PayrollPaymentsGrid({
             )}
             {visibleRows.map((row) => {
               const d = derived[row.payrollName]
-              const status: Row['status'] =
-                d.balance <= 0 ? 'PAID' : d.netPaid <= 0 ? 'PENDING' : 'PARTIAL'
+              const status = d.status
               return (
                 <TableRow key={row.payrollName}>
                   <TableCell className="font-medium text-sm sticky left-0 bg-background">

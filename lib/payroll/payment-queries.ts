@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db'
 import {
   PAYABLE_EARNING_KEYS,
+  buildPaymentCategories,
   computeCarriedBalance,
   computeNetPaid,
   paymentStatus,
@@ -87,8 +88,6 @@ export async function getPaymentGrid(periodId: string): Promise<PaymentGridRow[]
     inner.set(p.componentKey, p.paidAmount)
     paidByPayroll.set(p.payrollName, inner)
   }
-  const hasRecords = new Set(payments.map((p) => p.payrollName))
-
   return receipts.map((r) => {
     const json = (r.receiptJson ?? {}) as {
       earnings?: Record<string, number>
@@ -103,12 +102,10 @@ export async function getPaymentGrid(periodId: string): Promise<PaymentGridRow[]
     const totalDeductions = Number(json.deductions?.totalDeductions ?? 0)
     const previousBalance = prevBalances.get(r.payrollName) ?? 0
     const recorded = paidByPayroll.get(r.payrollName)
-    // Default each cell to the computed amount when nothing is recorded yet.
-    const categories = PAYABLE_EARNING_KEYS.map((key) => {
-      const computed = computedForKey(earnings, key)
-      const paid = hasRecords.has(r.payrollName) ? recorded?.get(key) ?? 0 : computed
-      return { componentKey: key, computed, paid }
-    })
+    const computedByKey = Object.fromEntries(
+      PAYABLE_EARNING_KEYS.map((key) => [key, computedForKey(earnings, key)])
+    )
+    const categories = buildPaymentCategories(computedByKey, recorded)
     const netPaid = computeNetPaid(categories, netSalary)
     return {
       payrollName: r.payrollName,
