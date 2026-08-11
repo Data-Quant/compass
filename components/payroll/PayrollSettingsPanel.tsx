@@ -562,7 +562,17 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
   }
 
   return (
-    <div className="space-y-4">
+    // On large screens the panel is a fixed-height column: Master Lists is pinned and
+    // only the sections beneath it scroll. Below `lg` it falls back to ordinary stacked
+    // flow, because pinning a card on a short screen would leave nothing to scroll.
+    <div className="space-y-4 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:space-y-0 lg:overflow-hidden">
+      {/*
+        Pinned. The max-height is a safety net rather than a design choice: with 0
+        departments, 4 employment types and 3 salary heads it never engages, but these
+        lists grow as HR adds to them, and a pinned card with no ceiling would keep
+        taking room from the scrolling sections until there was none left.
+      */}
+      <div className="lg:max-h-[45vh] lg:shrink-0 lg:overflow-y-auto lg:pb-4">
       <Card>
         <CardContent className="p-6 space-y-4">
           <div className="flex items-center justify-between">
@@ -649,7 +659,10 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
           </div>
         </CardContent>
       </Card>
+      </div>
 
+      {/* Everything below the pinned card scrolls. */}
+      <div className="space-y-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pb-6">
       <Card>
         <CardContent className="p-6">
           <div className="flex items-center justify-between mb-4">
@@ -1077,6 +1090,7 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
           </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   )
 }

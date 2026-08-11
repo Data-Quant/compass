@@ -483,7 +483,10 @@ export function PayrollDashboard({
         {activeTab === 'attendance' && <PayrollAttendancePanel periods={periods} />}
         {activeTab === 'employees' && <PayrollEmployeesPanel />}
         {activeTab === 'settings' && (
-          <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pb-6 lg:pt-6">
+          // The panel owns its own scrolling: Master Lists is pinned inside it and only
+          // the sections below it scroll. This wrapper must therefore not scroll as
+          // well, or the pinned card would scroll away with the outer content.
+          <div className="lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden lg:pt-6">
             <PayrollSettingsPanel canEdit={canEditMaster} />
           </div>
         )}
