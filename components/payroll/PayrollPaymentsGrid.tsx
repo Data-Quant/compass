@@ -2,7 +2,15 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -12,6 +20,7 @@ import {
   PAYABLE_EARNING_LABELS,
   distributeNetPaidAcrossCategories,
   filterPaymentRows,
+  sumPaymentTotals,
   paymentStatus,
 } from '@/lib/payroll/payments'
 
@@ -108,6 +117,26 @@ export function PayrollPaymentsGrid({
     }
     return out
   }, [rows, edits])
+
+  /**
+   * Footer totals over the rows actually listed.
+   *
+   * Scoped to the search results rather than the whole period: a footer reporting
+   * company-wide figures under a filtered table would be read as the total of what
+   * is on screen. The label says so when a search is active.
+   */
+  const totals = useMemo(
+    () =>
+      sumPaymentTotals(
+        visibleRows.map((row) => ({
+          netSalary: row.netSalary,
+          previousBalance: row.previousBalance,
+          paidNet: derived[row.payrollName]?.paidNet ?? 0,
+          balance: derived[row.payrollName]?.balance ?? 0,
+        }))
+      ),
+    [visibleRows, derived]
+  )
 
   const setPaid = (payrollName: string, value: string) => {
     const n = Number(value)
@@ -272,6 +301,33 @@ export function PayrollPaymentsGrid({
               )
             })}
           </TableBody>
+          {visibleRows.length > 0 && (
+            <TableFooter>
+              <TableRow className="bg-muted/50 hover:bg-muted/50">
+                <TableCell className="sticky left-0 bg-muted/50 font-semibold text-sm">
+                  {query.trim() ? `Total (${visibleRows.length} shown)` : 'Total'}
+                </TableCell>
+                {/* The earnings breakdown is not totalled: those columns sum to more
+                    than Net Amount, so a total under them invites the wrong subtraction. */}
+                {keys.map((k) => (
+                  <TableCell key={k} />
+                ))}
+                <TableCell className="text-right tabular-nums text-sm font-semibold">
+                  {money(totals.netSalary)}
+                </TableCell>
+                <TableCell className="text-right tabular-nums text-sm font-semibold">
+                  {money(totals.previousBalance)}
+                </TableCell>
+                <TableCell className="text-right tabular-nums text-sm font-semibold pr-4">
+                  {money(totals.paidNet)}
+                </TableCell>
+                <TableCell className="text-right tabular-nums text-sm font-semibold">
+                  {money(totals.balance)}
+                </TableCell>
+                <TableCell />
+              </TableRow>
+            </TableFooter>
+          )}
         </Table>
       </div>
 

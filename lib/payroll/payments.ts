@@ -138,6 +138,35 @@ export function paymentStatus(categories: PaymentCategory[]): PaymentStatus {
   return 'PARTIAL'
 }
 
+export type PaymentRowTotals = {
+  netSalary: number
+  previousBalance: number
+  paidNet: number
+  balance: number
+}
+
+/**
+ * Column totals for the Payments footer.
+ *
+ * Previous Balance is totalled alongside the three headline columns even though it
+ * is the quieter one: without it the footer shows a Balance that does not equal Net
+ * Amount minus Paid, and reads as an arithmetic error to anyone who checks it.
+ *
+ * Summed from the live per-row values rather than recomputed from the total, so the
+ * footer always agrees with the rows above it.
+ */
+export function sumPaymentTotals(rows: readonly PaymentRowTotals[]): PaymentRowTotals {
+  return rows.reduce<PaymentRowTotals>(
+    (acc, row) => ({
+      netSalary: acc.netSalary + row.netSalary,
+      previousBalance: acc.previousBalance + row.previousBalance,
+      paidNet: acc.paidNet + row.paidNet,
+      balance: acc.balance + row.balance,
+    }),
+    { netSalary: 0, previousBalance: 0, paidNet: 0, balance: 0 }
+  )
+}
+
 /**
  * Whether a receipt should be dispatched at Send. Only receipts that are not
  * already sent (READY or FAILED) go out, and only for an employee who has been

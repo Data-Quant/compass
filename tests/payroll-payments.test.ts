@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   computeCarriedBalance,
   computePaidTotal,
+  sumPaymentTotals,
   computePaidRatio,
   computeNetPaid,
   distributeNetPaidAcrossCategories,
@@ -280,4 +281,36 @@ test('a part payment splits in proportion to what each category is worth', () =>
   // Half the take-home paid means half of each line item recorded.
   const spread = distributeNetPaidAcrossCategories([cat(200_000, 0), cat(100_000, 0)], 250_000, 125_000)
   assert.deepEqual(spread.map((c) => Math.round(c.paid)), [100_000, 50_000])
+})
+
+// --- Column totals for the Payments footer ---
+
+test('totals sum each column across the rows given', () => {
+  const totals = sumPaymentTotals([
+    { netSalary: 100, previousBalance: 10, paidNet: 40, balance: 70 },
+    { netSalary: 200, previousBalance: 0, paidNet: 200, balance: 0 },
+  ])
+  assert.deepEqual(totals, { netSalary: 300, previousBalance: 10, paidNet: 240, balance: 70 })
+})
+
+test('the totals row satisfies the same identity as every row', () => {
+  // Balance = previous balance + net - paid must hold on the footer too, or the
+  // totals row reads as an arithmetic error to anyone who checks it.
+  const rows = [
+    { netSalary: 248_400, previousBalance: 709_807, paidNet: 0, balance: 958_207 },
+    { netSalary: 50_000, previousBalance: 50_000, paidNet: 25_000, balance: 75_000 },
+    { netSalary: 124_620, previousBalance: 254_713, paidNet: 124_620, balance: 254_713 },
+  ]
+  const t = sumPaymentTotals(rows)
+  assert.equal(t.balance, t.previousBalance + t.netSalary - t.paidNet)
+})
+
+test('totals of nothing are zero, not NaN', () => {
+  // The footer renders even when a search matches no one.
+  assert.deepEqual(sumPaymentTotals([]), {
+    netSalary: 0,
+    previousBalance: 0,
+    paidNet: 0,
+    balance: 0,
+  })
 })
