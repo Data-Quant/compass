@@ -65,6 +65,9 @@ export default function ProjectDetailPage() {
   const [panelOpen, setPanelOpen] = useState(false)
   const [memberModalOpen, setMemberModalOpen] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
+  const [descriptionDraft, setDescriptionDraft] = useState('')
+  const [editingDescription, setEditingDescription] = useState(false)
+  const [savingDescription, setSavingDescription] = useState(false)
 
   // Label management
   const [showLabelInput, setShowLabelInput] = useState(false)
@@ -106,6 +109,10 @@ export default function ProjectDetailPage() {
   }, [id])
 
   useEffect(() => { loadProject() }, [loadProject])
+
+  useEffect(() => {
+    if (!editingDescription) setDescriptionDraft(project?.description || '')
+  }, [editingDescription, project?.description])
 
   const handleTaskClick = (task: PanelTask) => {
     setSelectedTask(task)
@@ -188,6 +195,40 @@ export default function ProjectDetailPage() {
       toast.success(nextStatus === 'ON_HOLD' ? 'Project put on hold' : 'Project resumed')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to update project')
+    }
+  }
+
+  const startDescriptionEdit = () => {
+    setDescriptionDraft(project?.description || '')
+    setEditingDescription(true)
+  }
+
+  const cancelDescriptionEdit = () => {
+    setDescriptionDraft(project?.description || '')
+    setEditingDescription(false)
+  }
+
+  const saveDescription = async () => {
+    if (!project || savingDescription) return
+    setSavingDescription(true)
+    try {
+      const description = descriptionDraft.trim()
+      const res = await fetch(`/api/projects/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to update project description')
+      const savedDescription = data.project?.description ?? (description || null)
+      setProject((current) => current ? { ...current, description: savedDescription } : current)
+      setDescriptionDraft(savedDescription || '')
+      setEditingDescription(false)
+      toast.success('Project description updated')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update project description')
+    } finally {
+      setSavingDescription(false)
     }
   }
 
@@ -293,11 +334,11 @@ export default function ProjectDetailPage() {
       {/* Project Header */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
         <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-start gap-3">
             {project.color && (
               <span className="w-3 h-10 rounded-full shrink-0" style={{ backgroundColor: project.color }} />
             )}
-            <div>
+            <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl sm:text-3xl font-display font-light tracking-tight text-foreground">
                   {project.name}
@@ -321,9 +362,64 @@ export default function ProjectDetailPage() {
                   </span>
                 )}
               </div>
-              {project.description && (
-                <p className="text-sm text-muted-foreground mt-0.5">{project.description}</p>
-              )}
+              {editingDescription && canManage ? (
+                <div className="mt-2 max-w-2xl space-y-2">
+                  <textarea
+                    autoFocus
+                    value={descriptionDraft}
+                    onChange={(event) => setDescriptionDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                        event.preventDefault()
+                        void saveDescription()
+                      }
+                      if (event.key === 'Escape') cancelDescriptionEdit()
+                    }}
+                    maxLength={2000}
+                    rows={3}
+                    aria-label="Project description"
+                    placeholder="Describe the project’s purpose, scope, or outcome…"
+                    disabled={savingDescription}
+                    className="w-full resize-y rounded-lg border border-border bg-card px-3 py-2 text-sm leading-6 text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
+                  />
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[11px] text-muted-foreground">Ctrl/⌘ + Enter to save</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={cancelDescriptionEdit}
+                        disabled={savingDescription}
+                        className="rounded-md px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void saveDescription()}
+                        disabled={savingDescription}
+                        className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                      >
+                        {savingDescription ? 'Saving…' : 'Save description'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : canManage ? (
+                <button
+                  type="button"
+                  onClick={startDescriptionEdit}
+                  className="group/description mt-1 flex max-w-2xl items-start gap-1.5 rounded-md text-left text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <span className="whitespace-pre-wrap break-words">
+                    {project.description || 'Add a project description'}
+                  </span>
+                  <Pencil className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-0 transition-opacity group-hover/description:opacity-70 group-focus-visible/description:opacity-70" />
+                </button>
+              ) : project.description ? (
+                <p className="mt-1 max-w-2xl whitespace-pre-wrap break-words text-sm text-muted-foreground">
+                  {project.description}
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -408,6 +504,13 @@ export default function ProjectDetailPage() {
                           </button>
                         </>
                       )}
+                      <button
+                        onClick={startDescriptionEdit}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors"
+                      >
+                        <Pencil className="w-4 h-4" />
+                        Edit description
+                      </button>
                       <button
                         onClick={handleArchiveProject}
                         className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors"

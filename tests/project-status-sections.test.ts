@@ -4,6 +4,7 @@ import {
   DEFAULT_STATUS_SECTIONS,
   findExistingDefaultStatusSection,
   getStatusSectionDefaults,
+  selectSectionDeletionTarget,
   selectPreferredStatusSection,
 } from '../lib/project-status-sections'
 
@@ -77,4 +78,39 @@ test('TODO status defaults never resolve to Backlog', () => {
 
   assert.equal(defaults.canonicalStatus, 'TODO')
   assert.equal(defaults.isBacklog, false)
+})
+
+test('section deletion prefers a compatible remaining status, including for defaults', () => {
+  const sections = DEFAULT_STATUS_SECTIONS.map((definition, index) => ({
+    id: definition.name.toLowerCase().replaceAll(' ', '-'),
+    name: definition.name,
+    color: definition.color,
+    canonicalStatus: definition.canonicalStatus,
+    isDefault: true,
+    isDone: definition.isDone,
+    isBacklog: definition.isBacklog,
+    orderIndex: index,
+  }))
+
+  const todo = sections.find((section) => section.name === 'To Do')!
+  const backlog = sections.find((section) => section.name === 'Backlog')!
+  const done = sections.find((section) => section.name === 'Done')!
+
+  assert.equal(selectSectionDeletionTarget(sections, backlog.id)?.id, todo.id)
+  assert.equal(selectSectionDeletionTarget(sections, done.id)?.id, todo.id)
+})
+
+test('the last remaining section cannot be deleted', () => {
+  const section = {
+    id: 'only',
+    name: 'My workflow',
+    color: '#6366f1',
+    canonicalStatus: 'IN_PROGRESS' as const,
+    isDefault: false,
+    isDone: false,
+    isBacklog: false,
+    orderIndex: 0,
+  }
+
+  assert.equal(selectSectionDeletionTarget([section], section.id), null)
 })

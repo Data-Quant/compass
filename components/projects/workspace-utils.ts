@@ -130,6 +130,16 @@ export function taskMatchesSearch(task: WorkspaceTask, search: string) {
     || (task.description || '').toLocaleLowerCase().includes(query)
 }
 
+export function projectMatchesSearch(
+  project: Pick<WorkspaceProject, 'name' | 'description'>,
+  search: string,
+) {
+  const query = search.trim().toLocaleLowerCase()
+  if (!query) return true
+  return project.name.toLocaleLowerCase().includes(query)
+    || (project.description || '').toLocaleLowerCase().includes(query)
+}
+
 export function projectMatchesStatus(project: WorkspaceProject, filter: ProjectStatusFilter) {
   if (filter === 'ALL') return true
   if (filter === 'CURRENT') return project.status !== 'ARCHIVED'

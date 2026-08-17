@@ -9,6 +9,7 @@ import {
   calculateProgress,
   groupWorkspaceTaskItemsByAssignee,
   isTaskOverdue,
+  projectMatchesSearch,
   progressBand,
   sortTasks,
   sortWorkspaceTaskItems,
@@ -122,6 +123,17 @@ test('search includes rich notes as well as task titles', () => {
   assert.equal(taskMatchesSearch(candidate, 'materials'), true)
   assert.equal(taskMatchesSearch(candidate, 'investment committee'), true)
   assert.equal(taskMatchesSearch(candidate, 'payroll'), false)
+})
+
+test('project search includes project names and descriptions', () => {
+  const candidate = project([], {
+    name: 'ERPNext rollout',
+    description: 'Migrate the finance workflow',
+  })
+
+  assert.equal(projectMatchesSearch(candidate, 'erpnext'), true)
+  assert.equal(projectMatchesSearch(candidate, 'finance workflow'), true)
+  assert.equal(projectMatchesSearch(candidate, 'website revamp'), false)
 })
 
 test('assignee filtering includes primary and co-assigned people', () => {

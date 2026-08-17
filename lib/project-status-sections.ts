@@ -126,6 +126,27 @@ export function selectPreferredStatusSection(
   )
 }
 
+export function selectSectionDeletionTarget(
+  sections: StatusSectionFields[],
+  deletedSectionId: string,
+) {
+  const deleted = sections.find((section) => section.id === deletedSectionId)
+  const remaining = sections.filter((section) => section.id !== deletedSectionId)
+  if (remaining.length === 0) return null
+
+  return (
+    (deleted && remaining.find((section) => (
+      !section.isBacklog &&
+      section.canonicalStatus === deleted.canonicalStatus &&
+      section.isDone === deleted.isDone
+    ))) ||
+    remaining.find((section) => section.isDefault && !section.isBacklog && section.canonicalStatus === 'TODO') ||
+    remaining.find((section) => !section.isBacklog && !section.isDone) ||
+    remaining.find((section) => !section.isBacklog) ||
+    remaining[0]
+  )
+}
+
 export function findExistingDefaultStatusSection(
   sections: StatusSectionFields[],
   definition: DefaultStatusDefinition,
@@ -151,78 +172,39 @@ export function findExistingDefaultStatusSection(
 }
 
 export async function ensureProjectStatusSections(projectId: string): Promise<StatusSectionFields[]> {
-  const existingSections = await prisma.taskSection.findMany({
+  let sections = await prisma.taskSection.findMany({
     where: { projectId },
     orderBy: { orderIndex: 'asc' },
   })
 
-  const claimedDefaultIds = new Set<string>()
-  let changed = false
-
-  for (const definition of DEFAULT_STATUS_SECTIONS) {
-    const existing = findExistingDefaultStatusSection(existingSections, definition, claimedDefaultIds)
-
-    if (!existing) {
-      const created = await prisma.taskSection.create({
-        data: {
-          projectId,
-          name: definition.name,
-          color: definition.color,
-          canonicalStatus: definition.canonicalStatus,
-          isDefault: true,
-          isDone: definition.isDone,
-          isBacklog: definition.isBacklog,
-          orderIndex: definition.orderIndex,
-        },
-      })
-      claimedDefaultIds.add(created.id)
-      changed = true
-      continue
-    }
-
-    claimedDefaultIds.add(existing.id)
-
-    if (
-      existing.name !== definition.name ||
-      existing.canonicalStatus !== definition.canonicalStatus ||
-      existing.isDefault !== true ||
-      existing.isDone !== definition.isDone ||
-      existing.isBacklog !== definition.isBacklog ||
-      !existing.color
-    ) {
-      await prisma.taskSection.update({
-        where: { id: existing.id },
-        data: {
-          name: definition.name,
-          color: existing.color || definition.color,
-          canonicalStatus: definition.canonicalStatus,
-          isDefault: true,
-          isDone: definition.isDone,
-          isBacklog: definition.isBacklog,
-        },
-      })
-      changed = true
-    }
-  }
-
-  const redundantDefaultIds = existingSections
-    .filter((section) => section.isDefault && !claimedDefaultIds.has(section.id))
-    .map((section) => section.id)
-  if (redundantDefaultIds.length > 0) {
-    await prisma.taskSection.updateMany({
-      where: { id: { in: redundantDefaultIds }, projectId },
-      data: { isDefault: false, isBacklog: false },
+  // New and legacy projects with no sections receive the starter workflow once.
+  // Once a project has any sections, its board is user-owned: deliberately
+  // removed defaults must not be recreated on the next read or task mutation.
+  if (sections.length === 0) {
+    await prisma.taskSection.createMany({
+      data: DEFAULT_STATUS_SECTIONS.map((definition) => ({
+        projectId,
+        name: definition.name,
+        color: definition.color,
+        canonicalStatus: definition.canonicalStatus,
+        isDefault: true,
+        isDone: definition.isDone,
+        isBacklog: definition.isBacklog,
+        orderIndex: definition.orderIndex,
+      })),
     })
-    changed = true
+    sections = await prisma.taskSection.findMany({
+      where: { projectId },
+      orderBy: { orderIndex: 'asc' },
+    })
   }
-
-  const sections = changed
-    ? await prisma.taskSection.findMany({ where: { projectId }, orderBy: { orderIndex: 'asc' } })
-    : existingSections
 
   const defaultSectionByStatus = new Map<TaskStatus, StatusSectionFields>()
   for (const status of ['TODO', 'IN_PROGRESS', 'DONE'] as TaskStatus[]) {
     const preferred = selectPreferredStatusSection(sections, status)
+      || sections.find((section) => !section.isBacklog && !section.isDone)
+      || sections.find((section) => !section.isBacklog)
+      || sections[0]
     if (preferred) defaultSectionByStatus.set(status, preferred)
   }
 

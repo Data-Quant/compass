@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   Columns3,
   FolderKanban,
@@ -63,6 +64,7 @@ import {
   isTaskOverdue,
   normalizeAssigneeFilter,
   projectMatchesStatus,
+  projectMatchesSearch,
   sectionForColumn,
   shiftDate,
   taskMatchesAssignee,
@@ -160,6 +162,7 @@ function updateProjectTask(
 }
 
 export function ProjectsWorkspace() {
+  const router = useRouter()
   const [workspace, setWorkspace] = useState<ProjectsWorkspaceResponse | null>(null)
   const workspaceRef = useRef<ProjectsWorkspaceResponse | null>(null)
   const filterInitializedRef = useRef(false)
@@ -170,6 +173,7 @@ export function ProjectsWorkspace() {
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>('ME')
   const [statusFilter, setStatusFilter] = useState<ProjectStatusFilter>('CURRENT')
   const [search, setSearch] = useState('')
+  const [searchFocused, setSearchFocused] = useState(false)
   const [view, setView] = useState<WorkspaceView>('table')
   const [groupMode, setGroupMode] = useState<WorkspaceGroupMode>('project')
   const [sortKey, setSortKey] = useState<WorkspaceSortKey>('priority')
@@ -262,6 +266,14 @@ export function ProjectsWorkspace() {
     }
   }, [quickAddProjectId, quickAddProjects])
 
+  const matchingProjects = useMemo(() => {
+    if (!workspace || !search.trim()) return []
+    return workspace.projects
+      .filter((project) => projectMatchesSearch(project, search))
+      .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }))
+      .slice(0, 6)
+  }, [search, workspace])
+
   const projectViews = useMemo<WorkspaceProjectView[]>(() => {
     if (!workspace) return []
     return workspace.projects.flatMap((project) => {
@@ -271,11 +283,14 @@ export function ProjectsWorkspace() {
         ? project.tasks
         : project.tasks.filter((task) => !isBacklogTask(project, task))
       const scopedTasks = workspaceTasks.filter((task) => taskMatchesAssignee(task, assigneeFilter, workspace.viewer.id))
-      const searchedTasks = scopedTasks.filter((task) => taskMatchesSearch(task, search))
       const hasSearch = Boolean(search.trim())
+      const projectNameMatches = hasSearch && projectMatchesSearch(project, search)
+      const searchedTasks = projectNameMatches
+        ? scopedTasks
+        : scopedTasks.filter((task) => taskMatchesSearch(task, search))
       const canShowSetupProject = project.canUseBacklog && project.canManage && project.tasks.length === 0
       const shouldShow = hasSearch
-        ? searchedTasks.length > 0
+        ? projectNameMatches || searchedTasks.length > 0
         : assigneeFilter === 'ALL' || scopedTasks.length > 0 || canShowSetupProject
       if (!shouldShow) return []
 
@@ -849,13 +864,29 @@ export function ProjectsWorkspace() {
 
       <section className="rounded-lg border border-border/60 bg-card/60 p-2 shadow-sm backdrop-blur-sm">
         <div className="flex flex-col gap-2 xl:flex-row xl:flex-nowrap xl:items-center">
-          <div className="relative min-w-0 flex-1 xl:w-64 xl:flex-none">
+          <div className="relative min-w-0 flex-1 xl:w-72 xl:flex-none">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search task titles and notes..."
-              aria-label="Search task titles and notes"
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && matchingProjects[0]) {
+                  event.preventDefault()
+                  router.push(`/projects/${matchingProjects[0].id}`)
+                }
+                if (event.key === 'Escape') {
+                  setSearch('')
+                  setSearchFocused(false)
+                  event.currentTarget.blur()
+                }
+              }}
+              placeholder="Search projects, tasks, or notes..."
+              aria-label="Search projects, tasks, or notes"
+              role="combobox"
+              aria-expanded={searchFocused && matchingProjects.length > 0}
+              aria-controls="project-search-results"
               className="h-8 pl-9 pr-9 text-xs"
             />
             {search && (
@@ -867,6 +898,39 @@ export function ProjectsWorkspace() {
               >
                 <X className="h-3.5 w-3.5" />
               </button>
+            )}
+            {searchFocused && matchingProjects.length > 0 && (
+              <div
+                id="project-search-results"
+                role="listbox"
+                aria-label="Matching projects"
+                className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-lg border border-border bg-popover p-1 shadow-lg"
+              >
+                <p className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Projects
+                </p>
+                {matchingProjects.map((project) => (
+                  <button
+                    key={project.id}
+                    type="button"
+                    role="option"
+                    aria-selected="false"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => router.push(`/projects/${project.id}`)}
+                    className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full border border-border"
+                      style={{ backgroundColor: project.color || '#94a3b8' }}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{project.name}</span>
+                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                      {project.status.replace('_', ' ').toLocaleLowerCase()}
+                    </span>
+                  </button>
+                ))}
+                <p className="px-2 py-1 text-[10px] text-muted-foreground">Press Enter to open the first match</p>
+              </div>
             )}
           </div>
 
@@ -951,7 +1015,7 @@ export function ProjectsWorkspace() {
         <div className="space-y-2">
           {projectViews.length === 0 && workspace.projects.length > 0 && (
             <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-              No tasks match this view. Change the teammate, status, or search filter to see more.
+              No projects or tasks match this view. Change the teammate, status, or search filter to see more.
             </div>
           )}
           <WorkspaceTaskTable

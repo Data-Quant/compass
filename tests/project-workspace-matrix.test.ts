@@ -189,6 +189,28 @@ test('opened project table exposes a nested subtask action under every visible t
   assert.match(html, /aria-label="Priority for Draft the investment memo"/)
 })
 
+test('opened project list renders labels assigned to tasks', async () => {
+  const { OpenedProjectTaskTable } = await import('../components/projects/WorkspaceTaskTable')
+  const labeledTask: WorkspaceTask = {
+    ...task,
+    labelAssignments: [{
+      label: { id: 'label-1', name: 'Phase 1', color: '#6366f1' },
+    }],
+  }
+  const labeledProject = { ...project, tasks: [labeledTask] }
+  const html = renderToStaticMarkup(React.createElement(OpenedProjectTaskTable, {
+    project: labeledProject,
+    tasks: labeledProject.tasks,
+    viewerId: 'user-1',
+    onPatchTask: async () => true,
+    onOpenTask: () => undefined,
+    onCreateTask: async () => true,
+  }))
+
+  assert.match(html, /aria-label="Labels for Draft the investment memo"/)
+  assert.match(html, />Phase 1</)
+})
+
 test('task tree preserves recursively nested subtasks from the flat workspace response', async () => {
   const { buildWorkspaceTaskTree } = await import('../components/projects/WorkspaceTaskTable')
   const tree = buildWorkspaceTaskTree([task, subtask, nestedSubtask])

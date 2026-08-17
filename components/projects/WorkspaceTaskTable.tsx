@@ -140,6 +140,28 @@ function canEditTask(project: WorkspaceProject, task: WorkspaceTask, viewerId: s
     || Boolean(task.assistants?.some((assistant) => assistant.user.id === viewerId))
 }
 
+function TaskLabelBadges({ task, className }: { task: WorkspaceTask; className?: string }) {
+  if (task.labelAssignments.length === 0) return null
+
+  return (
+    <div className={cn('flex min-w-0 flex-wrap gap-1', className)} aria-label={`Labels for ${task.title}`}>
+      {task.labelAssignments.map((assignment) => (
+        <span
+          key={assignment.label.id}
+          title={assignment.label.name}
+          className="max-w-32 truncate rounded px-1.5 py-0.5 text-[10px] font-medium leading-none"
+          style={{
+            backgroundColor: `${assignment.label.color}20`,
+            color: assignment.label.color,
+          }}
+        >
+          {assignment.label.name}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 const STATUS_CLASS: Record<string, string> = {
   ACTIVE: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
   ON_HOLD: 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300',
@@ -646,6 +668,7 @@ function PersonTaskRow({
           {task.parentTaskId && <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Subtask" />}
           <div className="flex min-w-0 flex-1 flex-col">
             <InlineTitle project={project} task={task} pending={pending || !canEdit} onPatchTask={onPatchTask} />
+            <TaskLabelBadges task={task} className="px-2 pt-0.5" />
             {task.parentTaskId && depth === 0 && (
               <span className="truncate px-2 text-[10px] text-muted-foreground">
                 Subtask of {task.parentTask?.title || 'another task'}
@@ -1644,7 +1667,10 @@ function WorkspacePopupTaskRow({
             className="h-5 w-5 rounded-full"
           />
           {depth > 0 && <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Subtask" />}
-          <InlineTitle project={project} task={task} pending={pending || !canEdit} onPatchTask={onPatchTask} />
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <InlineTitle project={project} task={task} pending={pending || !canEdit} onPatchTask={onPatchTask} />
+            <TaskLabelBadges task={task} className="px-2" />
+          </div>
           {childCount > 0 && <Badge variant="secondary" className="shrink-0 px-1.5 text-[9px]">{childCount}</Badge>}
           {task.completedLate && (
             <Badge variant="outline" className="shrink-0 border-orange-500/20 bg-orange-500/10 text-[10px] text-orange-600 dark:text-orange-300">Completed late</Badge>

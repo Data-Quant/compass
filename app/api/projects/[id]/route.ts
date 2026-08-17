@@ -81,6 +81,12 @@ export async function PUT(
     if (name !== undefined && (typeof name !== 'string' || !name.trim())) {
       return NextResponse.json({ error: 'Project name cannot be empty' }, { status: 400 })
     }
+    if (description !== undefined && description !== null && typeof description !== 'string') {
+      return NextResponse.json({ error: 'Project description must be text' }, { status: 400 })
+    }
+    if (typeof description === 'string' && description.length > 2000) {
+      return NextResponse.json({ error: 'Project description cannot exceed 2,000 characters' }, { status: 400 })
+    }
 
     const project = await prisma.project.update({
       where: { id },

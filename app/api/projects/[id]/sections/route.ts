@@ -3,9 +3,10 @@ import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import {
   ensureProjectStatusSections,
-  getDefaultProjectStatusSection,
+  getTaskStatusForSection,
   getStatusSectionDefaults,
   normalizeStatusName,
+  selectSectionDeletionTarget,
 } from '@/lib/project-status-sections'
 import { getProjectAuthorization, projectAuthorizationFailure } from '@/lib/project-access'
 import { syncProjectCompletion } from '@/lib/project-completion'
@@ -168,28 +169,33 @@ export async function DELETE(
 
     if (!sectionId) return NextResponse.json({ error: 'sectionId required' }, { status: 400 })
 
-    const section = await prisma.taskSection.findUnique({
-      where: { id: sectionId },
-      select: { id: true, projectId: true, isDefault: true },
+    const sections = await prisma.taskSection.findMany({
+      where: { projectId },
+      orderBy: [{ orderIndex: 'asc' }, { createdAt: 'asc' }],
     })
+    const section = sections.find((candidate) => candidate.id === sectionId)
     if (!section || section.projectId !== projectId) {
       return NextResponse.json({ error: 'Section not found' }, { status: 404 })
     }
-    if (section.isDefault) {
-      return NextResponse.json({ error: 'Default statuses cannot be deleted' }, { status: 400 })
+    const targetSection = selectSectionDeletionTarget(sections, section.id)
+    if (!targetSection) {
+      return NextResponse.json(
+        { error: 'Add another section before deleting the last section' },
+        { status: 400 },
+      )
     }
 
-    const todoSection = await getDefaultProjectStatusSection(section.projectId, 'TODO')
-    if (!todoSection) {
-      return NextResponse.json({ error: 'To Do status is missing for this project' }, { status: 400 })
-    }
-
-    // Move tasks and remove the custom status atomically so a failed delete
+    // Move tasks and remove the status atomically so a failed delete
     // cannot leave a partially migrated project.
-    await prisma.$transaction([
+    const [movedTasks] = await prisma.$transaction([
       prisma.task.updateMany({
         where: { sectionId },
-        data: { sectionId: todoSection.id, status: 'TODO', completedAt: null },
+        data: {
+          sectionId: targetSection.id,
+          status: getTaskStatusForSection(targetSection),
+          completedAt: targetSection.isDone ? new Date() : null,
+          completedLate: false,
+        },
       }),
       prisma.taskSection.delete({ where: { id: sectionId } }),
     ])
@@ -199,7 +205,11 @@ export async function DELETE(
       console.error('Failed to sync project completion after deleting section:', syncError)
     }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({
+      success: true,
+      movedTaskCount: movedTasks.count,
+      targetSection: { id: targetSection.id, name: targetSection.name },
+    })
   } catch (error) {
     console.error('Failed to delete section:', error)
     return NextResponse.json({ error: 'Failed to delete section' }, { status: 500 })

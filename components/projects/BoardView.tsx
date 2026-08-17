@@ -16,7 +16,7 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Calendar, Flag, MessageSquare, Plus } from 'lucide-react'
+import { Calendar, Flag, MessageSquare, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import { cn } from '@/lib/utils'
@@ -51,6 +51,7 @@ export function BoardView({ projectId, tasks, sections, viewerId, canManage, onT
   const [localTasks, setLocalTasks] = useState<PanelTask[]>(tasks)
   const [addingStatus, setAddingStatus] = useState(false)
   const [newStatusName, setNewStatusName] = useState('')
+  const [deletingSectionId, setDeletingSectionId] = useState<string | null>(null)
 
   useEffect(() => {
     setLocalTasks(tasks)
@@ -190,6 +191,40 @@ export function BoardView({ projectId, tasks, sections, viewerId, canManage, onT
     }
   }
 
+  const handleDeleteStatus = async (section: ProjectStatusSection) => {
+    if (!canManage || deletingSectionId) return
+    const taskCount = localTasks.filter((task) => task.sectionId === section.id).length
+    const confirmed = window.confirm(
+      taskCount > 0
+        ? `Remove “${section.name}”? Its ${taskCount} task${taskCount === 1 ? '' : 's'} will move to another remaining section.`
+        : `Remove “${section.name}” from this board?`,
+    )
+    if (!confirmed) return
+
+    setDeletingSectionId(section.id)
+    try {
+      const res = await fetch(`/api/projects/${projectId}/sections?sectionId=${encodeURIComponent(section.id)}`, {
+        method: 'DELETE',
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to remove section')
+      }
+      const movedCount = typeof data.movedTaskCount === 'number' ? data.movedTaskCount : 0
+      const targetName = typeof data.targetSection?.name === 'string' ? data.targetSection.name : ''
+      toast.success(
+        movedCount > 0 && targetName
+          ? `Removed ${section.name}; moved ${movedCount} task${movedCount === 1 ? '' : 's'} to ${targetName}`
+          : `Removed ${section.name}`,
+      )
+      onTasksChange()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to remove section')
+    } finally {
+      setDeletingSectionId(null)
+    }
+  }
+
   return (
     <DndContext
       sensors={sensors}
@@ -206,8 +241,11 @@ export function BoardView({ projectId, tasks, sections, viewerId, canManage, onT
             tasks={localTasks.filter((task) => task.sectionId === section.id)}
             viewerId={viewerId}
             canManage={canManage}
+            canDelete={canManage && sections.length > 1}
+            deleting={deletingSectionId === section.id}
             onTaskClick={onTaskClick}
             onAddTask={handleAddTask}
+            onDelete={() => void handleDeleteStatus(section)}
           />
         ))}
 
@@ -251,15 +289,21 @@ function BoardColumn({
   tasks,
   viewerId,
   canManage,
+  canDelete,
+  deleting,
   onTaskClick,
   onAddTask,
+  onDelete,
 }: {
   section: ProjectStatusSection
   tasks: PanelTask[]
   viewerId: string
   canManage: boolean
+  canDelete: boolean
+  deleting: boolean
   onTaskClick: (task: PanelTask) => void
   onAddTask: (title: string, sectionId: string) => void
+  onDelete: () => void
 }) {
   const [adding, setAdding] = useState(false)
   const [newTitle, setNewTitle] = useState('')
@@ -275,10 +319,22 @@ function BoardColumn({
 
   return (
     <div className="flex-shrink-0 w-72">
-      <div className="flex items-center gap-2 px-2 py-2 mb-2">
+      <div className="group flex items-center gap-2 px-2 py-2 mb-2">
         <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: section.color }} />
         <span className="text-sm font-semibold">{section.name}</span>
         <span className="text-xs text-muted-foreground ml-auto">{tasks.length}</span>
+        {canManage && (
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={!canDelete || deleting}
+            aria-label={`Remove ${section.name} section`}
+            title={canDelete ? `Remove ${section.name}` : 'Add another section before removing this one'}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground/60 opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-30 group-hover:opacity-100"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
 
       <div
