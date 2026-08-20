@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import type { TeamTag } from '@prisma/client'
 import { ALL_TEAMS, TEAM_LABELS } from '@/lib/handbook/teams'
-import { holidayAppliesTo, teamsObserving } from '@/lib/holidays'
+import { expandHolidayTeamTags, holidayAppliesTo, teamsObserving } from '@/lib/holidays'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -47,6 +47,18 @@ interface HolidayLite {
 }
 
 const WEEKEND_DAYS = new Set<number>([0, 6]) // Sun + Sat
+
+/**
+ * Shortcuts for common selections.
+ *
+ * No "All Morocco": 3E Morocco observes US public holidays, not Moroccan ones, so
+ * pairing them would be wrong. Their holidays are tagged to 3E Morocco directly.
+ */
+const COUNTRY_PRESETS: Array<{ label: string; teams: TeamTag[] }> = [
+  { label: 'All Pakistan', teams: ['PAKISTAN', 'THREE_E_PAKISTAN'] },
+  { label: 'US (3E Morocco)', teams: ['THREE_E_MOROCCO'] },
+  { label: 'Everyone', teams: [...ALL_TEAMS] },
+]
 
 type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'PUBLIC_HOLIDAY'
 type AttendanceCellStatus = AttendanceStatus | null
@@ -96,7 +108,11 @@ export function PayrollAttendancePanel({ periods }: Props) {
   const [effectiveFrom, setEffectiveFrom] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [dirtyMap, setDirtyMap] = useState<Record<string, AttendanceCellStatus>>({})
-  const [holidayForm, setHolidayForm] = useState({ holidayDate: '', name: '' })
+  const [holidayForm, setHolidayForm] = useState<{
+    holidayDate: string
+    name: string
+    teamTags: TeamTag[]
+  }>({ holidayDate: '', name: '', teamTags: [] })
   const [savingHoliday, setSavingHoliday] = useState(false)
 
   useEffect(() => {
@@ -265,6 +281,13 @@ export function PayrollAttendancePanel({ periods }: Props) {
 
   const submitHoliday = async (e: FormEvent) => {
     e.preventDefault()
+    if (holidayForm.teamTags.length === 0) {
+      // The API rejects an empty selection, because an untagged holiday means
+      // company-wide and would shorten every team's month. Caught here so the
+      // message names the actual problem.
+      toast.error('Select which teams observe this holiday')
+      return
+    }
     if (!holidayForm.holidayDate || !holidayForm.name.trim()) {
       toast.error('Enter a date and a name for the holiday')
       return
@@ -274,12 +297,16 @@ export function PayrollAttendancePanel({ periods }: Props) {
       const res = await fetch('/api/payroll/public-holidays', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ holidayDate: holidayForm.holidayDate, name: holidayForm.name.trim() }),
+        body: JSON.stringify({
+          holidayDate: holidayForm.holidayDate,
+          name: holidayForm.name.trim(),
+          teamTags: holidayForm.teamTags,
+        }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to add holiday')
       toast.success('Public holiday added')
-      setHolidayForm({ holidayDate: '', name: '' })
+      setHolidayForm({ holidayDate: '', name: '', teamTags: [] })
       if (periodId) await loadData(periodId)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to add holiday')
@@ -495,7 +522,8 @@ export function PayrollAttendancePanel({ periods }: Props) {
             )}
           </div>
 
-          <form onSubmit={submitHoliday} className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+          <form onSubmit={submitHoliday} className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
             <div className="space-y-1.5">
               <Label>Date</Label>
               <Input
@@ -514,6 +542,62 @@ export function PayrollAttendancePanel({ periods }: Props) {
                 placeholder="e.g. Eid Holiday"
               />
             </div>
+            </div>
+
+            {/*
+              Required. A holiday saved with no teams counts against everyone's
+              working days, and working days are the denominator for travel
+              allowance -- so an untagged national holiday quietly changes pay.
+              Picking one country selects its 3E entity too, since both are the
+              same country.
+            */}
+            <div className="space-y-1.5">
+              <Label>Observed by</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {COUNTRY_PRESETS.map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() =>
+                      setHolidayForm((prev) => ({ ...prev, teamTags: [...preset.teams] }))
+                    }
+                    className="rounded-md border border-dashed border-border px-2 py-1 text-xs text-muted-foreground hover:border-indigo-500 hover:text-foreground"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {ALL_TEAMS.map((team) => {
+                  const selected = holidayForm.teamTags.includes(team)
+                  return (
+                    <button
+                      key={team}
+                      type="button"
+                      onClick={() =>
+                        setHolidayForm((prev) => ({
+                          ...prev,
+                          teamTags: expandHolidayTeamTags(
+                            prev.teamTags.includes(team)
+                              ? prev.teamTags.filter((t) => t !== team)
+                              : [...prev.teamTags, team]
+                          ),
+                        }))
+                      }
+                      className={cn(
+                        'rounded-md border px-2 py-1 text-xs transition-colors',
+                        selected
+                          ? 'border-indigo-600 bg-indigo-600 text-white'
+                          : 'border-border hover:bg-muted'
+                      )}
+                    >
+                      {TEAM_LABELS[team]}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
             <Button type="submit" disabled={savingHoliday}>
               {savingHoliday ? 'Adding...' : 'Add Holiday'}
             </Button>

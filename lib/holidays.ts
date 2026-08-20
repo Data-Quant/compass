@@ -1,4 +1,5 @@
 import type { TeamTag } from '@prisma/client'
+import { ALL_TEAMS, COUNTRY_TEAM_GROUPS } from '@/lib/handbook/teams'
 
 /**
  * Which public holidays apply to whom.
@@ -13,6 +14,40 @@ import type { TeamTag } from '@prisma/client'
  * person's pay, so the same resolution rule has to drive both the calendar and
  * the payroll engine -- hence one module rather than a filter at each call site.
  */
+
+/**
+ * Widen a holiday's teams to whole countries.
+ *
+ * PAKISTAN and THREE_E_PAKISTAN are one country split by employing entity, and a
+ * Pakistani national holiday applies to everyone there, so selecting either tag
+ * selects both.
+ *
+ * Morocco is not paired: 3E Morocco observes US public holidays rather than Moroccan
+ * ones, so a Moroccan holiday stays with the Morocco team alone.
+ *
+ * Applied when a holiday is saved rather than when it is read, so the stored tags
+ * match what HR sees in the admin UI and every reader -- the payroll engine, the
+ * attendance grid, calendar invites, the digest email -- agrees without each having
+ * to remember the rule. Left to hand-tagging it had already drifted: 14 August 2026
+ * (Independence Day) was tagged PAKISTAN alone, so 3E Pakistan was shown a full
+ * 21-day month and expected to work a national holiday.
+ *
+ * An empty list is returned unchanged. Empty means "predates tagging, applies to
+ * everyone", and the API relies on that to reject a mis-saved empty selection.
+ */
+export function expandHolidayTeamTags(teamTags: readonly TeamTag[]): TeamTag[] {
+  if (teamTags.length === 0) return []
+
+  const selected = new Set<TeamTag>(teamTags)
+  for (const group of COUNTRY_TEAM_GROUPS) {
+    if (group.some((team) => selected.has(team))) {
+      for (const team of group) selected.add(team)
+    }
+  }
+
+  // ALL_TEAMS order, so stored tags read consistently wherever they are displayed.
+  return ALL_TEAMS.filter((team) => selected.has(team))
+}
 
 export type HolidayLike = {
   holidayDate: Date

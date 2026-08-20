@@ -4,6 +4,7 @@ import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { canManagePayroll } from '@/lib/permissions'
 import { ALL_TEAMS } from '@/lib/handbook/teams'
+import { expandHolidayTeamTags } from '@/lib/holidays'
 import { syncHolidayCalendarEvent, removeHolidayCalendarEvent } from '@/lib/holiday-calendar'
 import type { TeamTag } from '@prisma/client'
 
@@ -113,7 +114,10 @@ export async function POST(request: NextRequest) {
       data: {
         holidayDate,
         name: parsed.data.name,
-        teamTags: parsed.data.teamTags,
+        // Widened to whole countries: a Pakistani holiday reaches 3E Pakistan too.
+        // Enforced here so stored tags match what every reader expects, rather than
+        // depending on whoever filled the form remembering to tick both.
+        teamTags: expandHolidayTeamTags(parsed.data.teamTags),
         financialYearId: parsed.data.financialYearId || null,
       },
     })
@@ -153,7 +157,7 @@ export async function PATCH(request: NextRequest) {
 
     const holiday = await prisma.payrollPublicHoliday.update({
       where: { id: parsed.data.id },
-      data: { teamTags: parsed.data.teamTags },
+      data: { teamTags: expandHolidayTeamTags(parsed.data.teamTags) },
     })
 
     // Retagging changes who observes the holiday, so the invite's attendee list has to

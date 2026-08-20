@@ -11,6 +11,7 @@ import {
   monthRangeUtc,
   groupHolidaysByTeam,
   holidayIdsFullyDelivered,
+  expandHolidayTeamTags,
 } from '../lib/holidays'
 
 const eid = { holidayDate: new Date('2026-05-27'), teamTags: ['PAKISTAN', 'THREE_E_PAKISTAN'] as TeamTag[] }
@@ -182,4 +183,58 @@ test('an untagged holiday needs every team to succeed', () => {
     holidayIdsFullyDelivered(companyWide, new Set<TeamTag>(['NOBLE']), ALL_TEAMS),
     [],
   )
+})
+
+// --- Pakistani holidays reach both Pakistan entities ---
+//
+// PAKISTAN and THREE_E_PAKISTAN are the same country split by employing entity, and
+// a Pakistani national holiday applies to everyone there. Hand-tagging drifted: 14
+// Aug 2026 Independence Day was tagged PAKISTAN alone, so 3E Pakistan was shown a
+// full 21-day month and expected to work a national holiday.
+//
+// Morocco is deliberately not paired. 3E Morocco observes US public holidays, not
+// Moroccan ones, so widening a Moroccan holiday to them would wrongly shorten their
+// month and inflate their travel allowance.
+
+test('tagging Pakistan includes 3E Pakistan', () => {
+  assert.deepEqual(expandHolidayTeamTags(['PAKISTAN']), ['PAKISTAN', 'THREE_E_PAKISTAN'])
+})
+
+test('the Pakistan pairing is symmetric, since it is one country either way', () => {
+  assert.deepEqual(expandHolidayTeamTags(['THREE_E_PAKISTAN']), ['PAKISTAN', 'THREE_E_PAKISTAN'])
+})
+
+test('a Moroccan holiday does NOT reach 3E Morocco', () => {
+  // 3E Morocco follows the US calendar. Pairing them by geography would take three
+  // Moroccan national holidays off 24 people who actually work them.
+  assert.deepEqual(expandHolidayTeamTags(['MOROCCO']), ['MOROCCO'])
+  assert.deepEqual(expandHolidayTeamTags(['THREE_E_MOROCCO']), ['THREE_E_MOROCCO'])
+})
+
+test('teams with no pairing are left alone', () => {
+  assert.deepEqual(expandHolidayTeamTags(['COLOMBIA']), ['COLOMBIA'])
+  assert.deepEqual(expandHolidayTeamTags(['INDONESIA']), ['INDONESIA'])
+  assert.deepEqual(expandHolidayTeamTags(['NOBLE']), ['NOBLE'])
+})
+
+test('expansion dedupes and returns display order', () => {
+  assert.deepEqual(
+    expandHolidayTeamTags(['THREE_E_PAKISTAN', 'PAKISTAN', 'PAKISTAN']),
+    ['PAKISTAN', 'THREE_E_PAKISTAN'],
+  )
+  // ALL_TEAMS order, not the order they were passed in.
+  assert.deepEqual(expandHolidayTeamTags(['THREE_E_MOROCCO', 'COLOMBIA']), [
+    'COLOMBIA',
+    'THREE_E_MOROCCO',
+  ])
+})
+
+test('an empty tag list stays empty and keeps meaning company-wide', () => {
+  // Expanding [] to every team would look identical but lose the distinction the
+  // API relies on to reject a mis-saved empty selection.
+  assert.deepEqual(expandHolidayTeamTags([]), [])
+})
+
+test('a fully tagged holiday is unchanged', () => {
+  assert.deepEqual(expandHolidayTeamTags([...ALL_TEAMS]), [...ALL_TEAMS])
 })
