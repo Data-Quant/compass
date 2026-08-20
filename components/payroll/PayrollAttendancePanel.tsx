@@ -1,6 +1,10 @@
 'use client'
 
 import { FormEvent, useEffect, useMemo, useState } from 'react'
+import type { TeamTag } from '@prisma/client'
+import { ALL_TEAMS, TEAM_LABELS } from '@/lib/handbook/teams'
+import { holidayAppliesTo, teamsObserving } from '@/lib/holidays'
+import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -38,6 +42,8 @@ interface HolidayLite {
   id: string
   holidayDate: string
   name: string
+  /** Empty means company-wide. Decides who actually takes the day off. */
+  teamTags: TeamTag[]
 }
 
 const WEEKEND_DAYS = new Set<number>([0, 6]) // Sun + Sat
@@ -80,7 +86,9 @@ export function PayrollAttendancePanel({ periods }: Props) {
   const [employees, setEmployees] = useState<EmployeeRow[]>([])
   const [entries, setEntries] = useState<AttendanceEntry[]>([])
   const [holidays, setHolidays] = useState<HolidayLite[]>([])
-  const [workingDays, setWorkingDays] = useState(0)
+  const [workingDaysByTeam, setWorkingDaysByTeam] = useState<Record<string, number>>({})
+  const [closedDates, setClosedDates] = useState<string[]>([])
+  const [teamTagByUserId, setTeamTagByUserId] = useState<Record<string, TeamTag | null>>({})
   const [saving, setSaving] = useState(false)
   const [importing, setImporting] = useState(false)
   const [file, setFile] = useState<File | null>(null)
@@ -107,17 +115,60 @@ export function PayrollAttendancePanel({ periods }: Props) {
     [periods, periodId]
   )
 
+  /**
+   * Grid columns: every weekday except those nobody works.
+   *
+   * Only company-wide holidays are removed outright. A holiday belonging to one
+   * country stays as a column and is disabled for the teams that observe it, because
+   * removing it left Pakistani staff with nowhere to be marked present on Moroccan,
+   * Colombian and Indonesian holidays they worked through -- which understated their
+   * present days and cut their travel allowance.
+   */
   const days = useMemo(() => {
     if (!selectedPeriod) return []
-    const holidaySet = new Set(
-      holidays.map((h) => new Date(h.holidayDate).toISOString().slice(0, 10))
-    )
+    const closedSet = new Set(closedDates.map((iso) => iso.slice(0, 10)))
     return daysBetween(selectedPeriod.periodStart, selectedPeriod.periodEnd).filter((day) => {
       if (WEEKEND_DAYS.has(day.getUTCDay())) return false
-      if (holidaySet.has(toDateKey(day))) return false
+      if (closedSet.has(toDateKey(day))) return false
       return true
     })
-  }, [selectedPeriod, holidays])
+  }, [selectedPeriod, closedDates])
+
+  /** Dates each team takes off, so a cell can be disabled for the right people. */
+  const holidayDatesByTeam = useMemo(() => {
+    const map = new Map<string, Set<string>>()
+    for (const holiday of holidays) {
+      const key = new Date(holiday.holidayDate).toISOString().slice(0, 10)
+      for (const team of teamsObserving(holiday, ALL_TEAMS)) {
+        const set = map.get(team) ?? new Set<string>()
+        set.add(key)
+        map.set(team, set)
+      }
+    }
+    return map
+  }, [holidays])
+
+  const holidayNameFor = (teamTag: TeamTag | null, dateKey: string) => {
+    if (!teamTag) return null
+    if (!holidayDatesByTeam.get(teamTag)?.has(dateKey)) return null
+    return (
+      holidays.find(
+        (h) =>
+          new Date(h.holidayDate).toISOString().slice(0, 10) === dateKey &&
+          holidayAppliesTo(h, teamTag)
+      )?.name ?? 'Public holiday'
+    )
+  }
+
+  /** Teams that actually have someone in them, with their own working-day count. */
+  const teamsWithWorkingDays = useMemo(() => {
+    const present = new Set(
+      Object.values(teamTagByUserId).filter((t): t is TeamTag => Boolean(t))
+    )
+    return ALL_TEAMS.filter((team) => present.has(team)).map(
+      (team) => [team, workingDaysByTeam[team] ?? 0] as const
+    )
+  }, [teamTagByUserId, workingDaysByTeam])
 
   const statusMap = useMemo(() => {
     const map = new Map<string, AttendanceCellStatus>()
@@ -158,7 +209,9 @@ export function PayrollAttendancePanel({ periods }: Props) {
       })))
       setEntries(attendanceJson.entries || [])
       setHolidays(attendanceJson.holidays || [])
-      setWorkingDays(attendanceJson.workingDays || 0)
+      setWorkingDaysByTeam(attendanceJson.workingDaysByTeam || {})
+      setClosedDates(attendanceJson.closedDates || [])
+      setTeamTagByUserId(attendanceJson.teamTagByUserId || {})
       setDirtyMap({})
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to load attendance')
@@ -298,8 +351,20 @@ export function PayrollAttendancePanel({ periods }: Props) {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Working Days (auto)</Label>
-              <Input value={String(workingDays)} readOnly />
+              <Label>Working Days (auto, per team)</Label>
+              {/* One number cannot describe a month whose holidays differ by
+                  country, so each team's own figure is shown. */}
+              <div className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border border-border px-2 py-1.5">
+                {teamsWithWorkingDays.length === 0 ? (
+                  <span className="text-xs text-muted-foreground">—</span>
+                ) : (
+                  teamsWithWorkingDays.map(([team, count]) => (
+                    <span key={team} className="text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">{TEAM_LABELS[team]}</span> {count}
+                    </span>
+                  ))
+                )}
+              </div>
             </div>
             <div className="space-y-1.5 min-w-[260px]">
               <Label>Search Employees</Label>
@@ -341,17 +406,30 @@ export function PayrollAttendancePanel({ periods }: Props) {
                       </div>
                     </TableCell>
                     {days.map((day) => {
-                      const key = `${employee.id}:${toDateKey(day)}`
+                      const dateKey = toDateKey(day)
+                      const key = `${employee.id}:${dateKey}`
                       const status = statusMap.get(key)
+                      // A holiday for this person's team only. Colleagues elsewhere
+                      // still get an editable cell on the same date.
+                      const holidayName = holidayNameFor(
+                        teamTagByUserId[employee.id] ?? null,
+                        dateKey
+                      )
                       return (
                         <TableCell key={key} className="p-0.5 text-center">
                           <button
                             type="button"
+                            disabled={Boolean(holidayName)}
                             onClick={() => cycleStatus(employee.id, day)}
-                            className="w-7 h-7 rounded border border-border hover:bg-muted text-[11px] font-semibold"
-                            title="Click to cycle P/A/H/-"
+                            className={cn(
+                              'w-7 h-7 rounded border border-border text-[11px] font-semibold',
+                              holidayName
+                                ? 'bg-muted/60 text-muted-foreground cursor-not-allowed'
+                                : 'hover:bg-muted'
+                            )}
+                            title={holidayName || 'Click to cycle P/A/H/-'}
                           >
-                            {status ? STATUS_LABEL[status] : '-'}
+                            {holidayName ? 'H' : status ? STATUS_LABEL[status] : '-'}
                           </button>
                         </TableCell>
                       )
@@ -382,12 +460,18 @@ export function PayrollAttendancePanel({ periods }: Props) {
             <div>
               <h3 className="text-lg font-semibold font-display">Public Holidays</h3>
               <p className="text-sm text-muted-foreground">
-                Mark public holidays for this period. Holidays on weekdays reduce the working days used for attendance and travel proration.
+                Mark public holidays for this period. A holiday only reduces working days
+                and travel proration for the teams tagged on it.
               </p>
             </div>
-            {selectedPeriod && (
-              <span className="text-sm text-muted-foreground">
-                Working days: <span className="font-medium text-foreground">{workingDays}</span>
+            {selectedPeriod && teamsWithWorkingDays.length > 0 && (
+              <span className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                {teamsWithWorkingDays.map(([team, count]) => (
+                  <span key={team}>
+                    {TEAM_LABELS[team]}:{' '}
+                    <span className="font-medium text-foreground">{count}</span>
+                  </span>
+                ))}
               </span>
             )}
           </div>

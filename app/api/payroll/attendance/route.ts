@@ -3,7 +3,8 @@ import { z } from 'zod'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { canManagePayroll } from '@/lib/permissions'
-import { calculateWorkingDays } from '@/lib/payroll/settings'
+import { companyWideHolidayDates, workingDaysByTeam } from '@/lib/payroll/attendance-calendar'
+import { ALL_TEAMS } from '@/lib/handbook/teams'
 
 const updateItemSchema = z.object({
   userId: z.string().trim().min(1),
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Payroll period not found' }, { status: 404 })
     }
 
-    const [entries, holidays] = await Promise.all([
+    const [entries, holidays, users] = await Promise.all([
       prisma.payrollAttendanceEntry.findMany({
         where: { periodId },
         orderBy: [{ attendanceDate: 'asc' }, { userId: 'asc' }],
@@ -64,20 +65,32 @@ export async function GET(request: NextRequest) {
             lte: period.periodEnd,
           },
         },
-        select: { id: true, holidayDate: true, name: true },
+        // teamTags decides who observes the holiday. Selecting them is what lets the
+        // grid disable a day for the teams that take it, rather than removing the
+        // column for everyone.
+        select: { id: true, holidayDate: true, name: true, teamTags: true },
         orderBy: { holidayDate: 'asc' },
       }),
+      prisma.user.findMany({ select: { id: true, teamTag: true } }),
     ])
 
-    const workingDays = calculateWorkingDays({
+    // Per team, never company-wide: a Moroccan holiday must not shorten the Pakistani
+    // month, which is the denominator for their travel allowance.
+    const workingDays = workingDaysByTeam({
       periodStart: period.periodStart,
       periodEnd: period.periodEnd,
-      holidays: holidays.map((h) => h.holidayDate),
+      holidays,
+      teams: ALL_TEAMS,
     })
+
+    // Days nobody works, so the grid can drop the column outright.
+    const closedDates = companyWideHolidayDates(holidays).map((d) => d.toISOString())
 
     return NextResponse.json({
       period,
-      workingDays,
+      workingDaysByTeam: workingDays,
+      closedDates,
+      teamTagByUserId: Object.fromEntries(users.map((u) => [u.id, u.teamTag])),
       holidays,
       entries,
     })
