@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import {
@@ -50,6 +51,7 @@ import { calculateLeaveDuration, getNextBusinessDay } from '@/lib/leave-utils'
 import { detectBrowserLeaveTimeZone } from '@/lib/leave-timezone'
 import { isThreeEDepartment } from '@/lib/company-branding'
 import { calculateWfhDays, hasWfhEnded } from '@/lib/wfh-utils'
+import { resolveLeaveRequestDeepLinkTarget } from '@/lib/leave-deep-links'
 
 interface LeaveBalance {
   casualDays: number
@@ -230,6 +232,9 @@ const isLeaveNotStarted = (startDate: string) => {
 
 export default function LeavePage() {
   const layoutUser = useLayoutUser()
+  const searchParams = useSearchParams()
+  const deepLinkedRequestId = searchParams.get('requestId')?.trim() || ''
+  const handledDeepLinkRef = useRef('')
   const [user, setUser] = useState<any>(null)
   const [balance, setBalance] = useState<LeaveBalance | null>(null)
   const [requests, setRequests] = useState<LeaveRequest[]>([])
@@ -254,6 +259,7 @@ export default function LeavePage() {
   const [selectedDayEvents, setSelectedDayEvents] = useState<CalendarEvent[]>([])
   const [departmentFilter, setDepartmentFilter] = useState<string>('ALL')
   const [reminderNoticeShown, setReminderNoticeShown] = useState(false)
+  const [highlightedApprovalRequestId, setHighlightedApprovalRequestId] = useState('')
 
   // Calendar state
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth())
@@ -679,6 +685,43 @@ export default function LeavePage() {
     setDetailTasks(coerceTasks(request.transitionPlanTasks))
     setIsDetailsModalOpen(true)
   }
+
+  useEffect(() => {
+    if (loading || !deepLinkedRequestId || handledDeepLinkRef.current === deepLinkedRequestId) return
+
+    handledDeepLinkRef.current = deepLinkedRequestId
+    setHighlightedApprovalRequestId('')
+    const target = resolveLeaveRequestDeepLinkTarget(
+      deepLinkedRequestId,
+      approvalQueue.map((request) => request.id),
+      requests.map((request) => request.id),
+    )
+
+    if (target === 'approval') {
+      setHighlightedApprovalRequestId(deepLinkedRequestId)
+      return
+    }
+
+    if (target === 'own') {
+      const request = requests.find((candidate) => candidate.id === deepLinkedRequestId)
+      if (request) openRequestDetails(request)
+      return
+    }
+
+    toast.info('This leave request is no longer waiting for your action, or you do not have access to it.')
+  }, [approvalQueue, deepLinkedRequestId, loading, requests])
+
+  useEffect(() => {
+    if (!highlightedApprovalRequestId) return
+
+    const frame = window.requestAnimationFrame(() => {
+      const requestCard = document.getElementById(`leave-approval-${highlightedApprovalRequestId}`)
+      requestCard?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      requestCard?.focus({ preventScroll: true })
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [highlightedApprovalRequestId])
 
   const savePlanDraft = async () => {
     if (!selectedRequest) return
@@ -1345,12 +1388,25 @@ export default function LeavePage() {
                         const processing = approvalProcessingId === request.id
 
                         return (
-                          <div key={request.id} className="p-3">
+                          <div
+                            key={request.id}
+                            id={`leave-approval-${request.id}`}
+                            tabIndex={-1}
+                            aria-current={highlightedApprovalRequestId === request.id ? 'true' : undefined}
+                            className={`scroll-mt-24 p-3 outline-none transition-colors ${
+                              highlightedApprovalRequestId === request.id
+                                ? 'bg-primary/5 ring-2 ring-inset ring-primary/60'
+                                : ''
+                            }`}
+                          >
                             <div className="flex items-start gap-3">
                               <div className={`w-8 h-8 rounded-lg ${typeConfig.bgLight} flex items-center justify-center flex-shrink-0`}>
                                 <TypeIcon className={`w-4 h-4 ${typeConfig.color}`} />
                               </div>
                               <div className="flex-1 min-w-0">
+                                {highlightedApprovalRequestId === request.id && (
+                                  <p className="mb-1 text-[11px] font-medium text-primary">Opened from email</p>
+                                )}
                                 <div className="flex items-center gap-2 mb-0.5">
                                   <span className="text-sm font-medium text-foreground">{request.employee.name}</span>
                                   <Badge variant="secondary" className={`${statusConfig.bg} ${statusConfig.color} border-0`}>
@@ -2490,6 +2546,4 @@ export default function LeavePage() {
     </div>
   )
 }
-
-
 

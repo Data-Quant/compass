@@ -11,6 +11,7 @@ import { calculateWfhDays } from '@/lib/wfh-utils'
 import { normalizeCoverPersonIds } from '@/lib/leave-cover'
 import { shouldReceiveReportForPeriod } from '@/lib/evaluation-profile-rules'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
+import { renderLeaveRequestEmailAction } from '@/lib/leave-deep-links'
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -441,6 +442,7 @@ export async function sendLeaveRequestNotification(requestId: string) {
   }
 
   const transitionPlan = (leaveRequest.transitionPlan || '').trim()
+  const leaveRequestActionHtml = renderLeaveRequestEmailAction(requestId)
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -471,9 +473,7 @@ export async function sendLeaveRequestNotification(requestId: string) {
         </div>
       `}
 
-      <p style="color: #64748B; font-size: 14px;">
-        Please review this request and take action in the HR Portal.
-      </p>
+      ${leaveRequestActionHtml}
     </div>
   `
 
