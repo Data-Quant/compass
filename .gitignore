@@ -56,5 +56,12 @@ dev.db-journal
 # Superpowers brainstorming visual companion
 .superpowers/
 
+# Isolated AI pilot development artifacts
+.worktrees/
+.pilot-*
+.npm-cache/
+test-results/
+playwright-report/
+
 # Handbook seed carries policy content - never commit (public repo)
 /scripts/seed-handbook.ts

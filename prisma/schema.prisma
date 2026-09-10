@@ -5,6 +5,140 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// AI pilot tables are deliberately separate from authoritative evaluations.
+model AiEvaluationCycle {
+  id String @id @default(cuid())
+  name String
+  startDate DateTime
+  status String @default("DRAFT")
+  config Json
+  revision Int @default(1)
+  createdById String
+  activatedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  checkIns AiEvaluationCheckIn[]
+  jobs AiEvaluationJob[]
+  observations AiEvaluationObservation[]
+  artifacts AiEvaluationArtifact[]
+  reviews AiEvaluationReview[]
+  themes AiEvaluationTheme[]
+  @@index([status, startDate])
+}
+
+model AiEvaluationCheckIn {
+  id String @id @default(cuid())
+  cycleId String
+  cycle AiEvaluationCycle @relation(fields: [cycleId], references: [id])
+  evaluatorId String
+  evaluateeId String
+  relationship String
+  competencyId String
+  week Int
+  status String @default("GENERATING")
+  question String?
+  answer String @default("")
+  clarification String?
+  clarificationAnswer String @default("")
+  noInteraction Boolean @default(false)
+  revision Int @default(0)
+  history Json @default("[]")
+  submittedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  observations AiEvaluationObservation[]
+  @@unique([cycleId, evaluatorId, evaluateeId, relationship, week])
+  @@index([evaluatorId, status])
+}
+
+model AiEvaluationObservation {
+  id String @id @default(cuid())
+  cycleId String
+  cycle AiEvaluationCycle @relation(fields: [cycleId], references: [id])
+  checkInId String
+  checkIn AiEvaluationCheckIn @relation(fields: [checkInId], references: [id])
+  evaluateeId String
+  evaluatorId String
+  relationship String
+  competencyId String
+  week Int
+  incidentKey String
+  concrete Boolean
+  text String
+  sourceQuote String
+  createdAt DateTime @default(now())
+  @@unique([checkInId, sourceQuote])
+  @@index([cycleId, evaluateeId])
+}
+
+model AiEvaluationJob {
+  id String @id @default(cuid())
+  cycleId String
+  cycle AiEvaluationCycle @relation(fields: [cycleId], references: [id])
+  key String @unique
+  operation String
+  payload Json
+  status String @default("PENDING")
+  attempts Int @default(0)
+  runAfter DateTime @default(now())
+  leaseUntil DateTime?
+  leaseToken String?
+  error String?
+  model String?
+  promptVersion String @default("1")
+  rubricVersion Int
+  inputReferences Json @default("[]")
+  usage Json?
+  result Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([status, runAfter])
+}
+
+model AiEvaluationArtifact {
+  id String @id @default(cuid())
+  cycleId String
+  cycle AiEvaluationCycle @relation(fields: [cycleId], references: [id])
+  evaluateeId String
+  kind String
+  status String @default("DRAFT")
+  content Json
+  jobId String @unique
+  createdAt DateTime @default(now())
+  reviews AiEvaluationReview[]
+  @@index([cycleId, evaluateeId, kind])
+}
+
+model AiEvaluationReview {
+  id String @id @default(cuid())
+  cycleId String
+  cycle AiEvaluationCycle @relation(fields: [cycleId], references: [id])
+  artifactId String
+  artifact AiEvaluationArtifact @relation(fields: [artifactId], references: [id])
+  reviewerId String
+  action String
+  reason String
+  ratings Json?
+  createdAt DateTime @default(now())
+}
+
+model AiEvaluationTheme {
+  id String @id @default(cuid())
+  cycleId String
+  cycle AiEvaluationCycle @relation(fields: [cycleId], references: [id])
+  evaluateeId String
+  text String
+  sourceIds Json
+  status String @default("DRAFT")
+  createdById String
+  releasedAt DateTime?
+  corrections Json @default("[]")
+  history Json @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([evaluateeId, status])
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -295,9 +295,16 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({ config, collapsed, onToggle, userRole, className }: AppSidebarProps) {
+  const [pilot, setPilot] = useState<{ enabled: boolean; pending?: number }>({ enabled: false })
+  useEffect(() => {
+    let active = true
+    fetch('/api/ai-evaluations/status').then(r => r.ok ? r.json() : { enabled: false }).then(value => { if (active) setPilot(value) }).catch(() => {})
+    return () => { active = false }
+  }, [])
   const pathname = usePathname()
   const { branding } = useCompanyBranding()
   const topLevelItems = [...config.items]
+  if (pilot.enabled) topLevelItems.push({ label: userRole === 'HR' ? 'AI evaluation pilot' : 'Weekly observations', href: userRole === 'HR' ? '/admin/ai-evaluations' : '/ai-evaluations', icon: ClipboardCheck, badge: pilot.pending || undefined })
 
   if (userRole === 'EXECUTION' && !topLevelItems.some((item) => item.href === '/execution/subscriptions')) {
     const executionItem: NavItem = {

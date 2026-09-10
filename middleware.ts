@@ -14,6 +14,9 @@ const PUBLIC_PATHS = [
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
+  // This one endpoint authenticates a constant-time scheduler secret itself.
+  if (pathname === '/api/ai-evaluations/cron') return NextResponse.next()
+
   // Allow public paths
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
     return NextResponse.next()
