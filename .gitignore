@@ -65,3 +65,4 @@ playwright-report/
 
 # Handbook seed carries policy content - never commit (public repo)
 /scripts/seed-handbook.ts
+.env*

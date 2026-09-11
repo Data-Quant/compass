@@ -5,18 +5,28 @@ import { cycleStart } from "../lib/ai-evaluations/domain";
 
 async function main() {
   const url = new URL(process.env.DATABASE_URL || "");
-  if (
-    !["127.0.0.1", "localhost"].includes(url.hostname) ||
-    url.pathname !== "/compass_ai_pilot"
-  )
+  const localPilot =
+    ["127.0.0.1", "localhost"].includes(url.hostname) &&
+    url.pathname === "/compass_ai_pilot";
+  const hostedPilot =
+    process.argv.includes("--hosted-synthetic") &&
+    url.hostname === process.env.PILOT_SEED_ALLOWED_HOST &&
+    url.hostname.endsWith(".neon.tech") &&
+    url.pathname === "/neondb";
+  if (!localPilot && !hostedPilot)
     throw new Error(
-      "Synthetic seed requires localhost database compass_ai_pilot",
+      "Synthetic seed requires the local pilot database or an explicitly allowlisted hosted test endpoint",
     );
   const password = process.env.PILOT_FIXTURE_PASSWORD;
   if (!password || password.length < 12)
     throw new Error("Set PILOT_FIXTURE_PASSWORD (at least 12 characters)");
   const db = new PrismaClient();
   try {
+    if (hostedPilot && (await db.user.count({
+      where: { id: { notIn: ["pilot-hr", "pilot-peer", "pilot-subject", "pilot-outsider"] } },
+    })) > 0) {
+      throw new Error("Hosted synthetic seed refuses a database containing other users");
+    }
     const passwordHash = await bcrypt.hash(password, 10);
     for (const [id, name, role] of [
       ["pilot-hr", "Pilot HR (synthetic)", "HR"],
