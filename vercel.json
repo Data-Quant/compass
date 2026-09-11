@@ -1,5 +1,4 @@
 {
-  "git": { "deploymentEnabled": { "codex/ai-evaluations": false } },
   "crons": [
     {
       "path": "/api/leave/transition-plan-reminders",

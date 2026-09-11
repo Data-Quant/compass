@@ -1,5 +1,13 @@
 # Compass AI evaluation pilot
 
+## Hosted test environment
+
+The `codex/ai-evaluations` GitHub branch uses the existing Compass Vercel project's protected Preview environment. Its branch-specific `DATABASE_URL` targets PE Portal's Neon branch `ai-evaluations-preview`, a full copy of `production` created on September 11, 2026. The pilot migration is applied to that copy only. Existing login accounts are copied; no synthetic fixture seed is run against this database. Pilot cycles still require HR configuration and activation.
+
+Fireworks uses `accounts/fireworks/models/gpt-oss-120b`. Database, session, worker, and inference secrets are configured only for this preview branch. Outbound email, calendar, blob write, office, and LiveKit credentials are blanked for this branch to avoid production integration effects. Keep Vercel Authentication enabled because the database copy contains employee records. No pilot scheduler is activated; use HR's Run due work action while testing.
+
+Pushes to this branch automatically build the preview. Before connecting any other branch, configure its isolated database override first: the repository build command runs migrations. The unused schema-only Neon branch `ai-evaluations-test` and undeployed Vercel project `compass-ai-evaluations` were created during setup but are not used by this preview.
+
 The pilot is separate from authoritative evaluations. Employees submit observations without ratings. Fireworks proposes rubric-based ratings; HR reviews assessments and releases development themes. Nothing publishes to legacy reports, payroll, email, or compensation workflows.
 
 ## Local setup
