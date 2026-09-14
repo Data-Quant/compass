@@ -54,7 +54,10 @@ interface LeaveBalance {
 }
 
 interface ProjectSummary {
-  id: string; name: string; taskCount: number; completedTasks: number; status: string
+  id: string
+  name: string
+  status: string
+  myProgress: { completed: number; total: number; percentage: number | null }
 }
 
 interface LeaveRequest {
@@ -748,7 +751,7 @@ export default function DashboardPage() {
               ) : (
                 <div className="space-y-3">
                   {projects.map((p) => {
-                    const pct = p.taskCount > 0 ? Math.round((p.completedTasks / p.taskCount) * 100) : 0
+                    const pct = p.myProgress.percentage ?? 0
                     return (
                       <Link
                         key={p.id}
@@ -757,11 +760,15 @@ export default function DashboardPage() {
                       >
                         <div className="flex items-center justify-between mb-1">
                           <p className="text-sm font-medium text-foreground">{p.name}</p>
-                          <span className="text-xs text-muted-foreground">{pct}%</span>
+                          <span className="text-xs text-muted-foreground">
+                            {p.myProgress.total > 0 ? `${pct}%` : '—'}
+                          </span>
                         </div>
-                        <Progress value={pct} className="h-1.5" />
+                        <Progress value={pct} className="h-1.5" aria-label={`Your task progress in ${p.name}`} />
                         <p className="text-xs text-muted-foreground mt-1">
-                          {p.completedTasks}/{p.taskCount} tasks
+                          {p.myProgress.total > 0
+                            ? `Your tasks: ${p.myProgress.completed}/${p.myProgress.total}`
+                            : 'No tasks assigned to you'}
                         </p>
                       </Link>
                     )

@@ -58,7 +58,7 @@ import type {
   WorkspaceView,
 } from './workspace-types'
 import {
-  calculateProgress,
+  calculateOverallProgress,
   dateInputValue,
   isBacklogTask,
   isTaskOverdue,
@@ -299,7 +299,7 @@ export function ProjectsWorkspace() {
         scopedTasks,
         visibleActiveTasks: searchedTasks.filter((task) => !isBacklogTask(project, task)),
         visibleBacklogTasks: searchedTasks.filter((task) => isBacklogTask(project, task)),
-        progress: calculateProgress(project, scopedTasks),
+        progress: calculateOverallProgress(project),
       }]
     })
   }, [assigneeFilter, search, statusFilter, workspace])
@@ -342,13 +342,6 @@ export function ProjectsWorkspace() {
     ? [promotionProject.owner, ...promotionProject.members]
       .filter((person, index, list) => list.findIndex((candidate) => candidate.id === person.id) === index)
     : []
-
-  const progressScopeLabel = useMemo(() => {
-    if (!workspace || assigneeFilter === 'ALL') return 'Overall'
-    if (assigneeFilter === 'ME') return 'Your tasks'
-    const person = workspace.people.find((candidate) => candidate.id === assigneeFilter)
-    return person ? `${person.name}'s tasks` : 'Your tasks'
-  }, [assigneeFilter, workspace])
 
   const changeAssigneeFilter = async (next: string) => {
     if (!workspace) return
@@ -1022,7 +1015,7 @@ export function ProjectsWorkspace() {
             projectViews={projectViews}
             viewerId={workspace.viewer.id}
             people={workspace.people}
-            progressScopeLabel={progressScopeLabel}
+            progressScopeLabel="Overall"
             assigneeFilter={assigneeFilter}
             groupMode={groupMode}
             sortKey={sortKey}

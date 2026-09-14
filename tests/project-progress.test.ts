@@ -41,6 +41,30 @@ test('project progress can be scoped to one assignee', () => {
   })
 })
 
+test('dashboard progress is personal while project progress remains overall', () => {
+  const tasks = [
+    { status: 'DONE', assigneeId: 'viewer', section: { isBacklog: false } },
+    { status: 'DONE', assigneeId: 'viewer', section: { isBacklog: false } },
+    { status: 'DONE', assigneeId: 'other', assistants: [{ userId: 'viewer' }], section: { isBacklog: false } },
+    { status: 'TODO', assigneeId: 'other', section: { isBacklog: false } },
+    { status: 'TODO', assigneeId: null, section: { isBacklog: false } },
+    { status: 'TODO', assigneeId: 'third', section: { isBacklog: false } },
+    { status: 'TODO', assigneeId: 'fourth', section: { isBacklog: false } },
+    { status: 'DONE', assigneeId: 'viewer', section: { isBacklog: true } },
+  ]
+
+  assert.deepEqual(calculateProjectProgress(tasks, { assigneeId: 'viewer' }), {
+    completed: 3,
+    total: 3,
+    percentage: 100,
+  })
+  assert.deepEqual(calculateProjectProgress(tasks), {
+    completed: 3,
+    total: 7,
+    percentage: 43,
+  })
+})
+
 test('project progress uses null percentage when no active tasks exist', () => {
   assert.deepEqual(
     calculateProjectProgress([{ status: 'TODO', section: { isBacklog: true } }]),

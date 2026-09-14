@@ -7,6 +7,7 @@ import type {
 } from '../components/projects/workspace-types'
 import {
   calculateProgress,
+  calculateOverallProgress,
   groupWorkspaceTaskItemsByAssignee,
   isTaskOverdue,
   projectMatchesSearch,
@@ -99,6 +100,21 @@ test('workspace progress excludes backlog and uses the done section', () => {
     total: 2,
     percent: 50,
   })
+})
+
+test('project-row progress ignores the assignee view and counts every non-backlog task', () => {
+  const tasks = [
+    task({ id: 'mine', title: 'Mine', status: 'DONE', sectionId: done.id, section: done }),
+    task({ id: 'shared', title: 'Shared', status: 'DONE', sectionId: done.id, section: done,
+      assigneeId: 'u2', assistants: [{ id: 'assistant-u1', user: { id: 'u1', name: 'Areebah' } }] }),
+    task({ id: 'other', title: 'Other', status: 'TODO', assigneeId: 'u2' }),
+    task({ id: 'idea', title: 'Idea', sectionId: backlog.id, section: backlog }),
+  ]
+  const value = project(tasks)
+  const myTasks = tasks.filter((candidate) => taskMatchesAssignee(candidate, 'ME', 'u1'))
+
+  assert.deepEqual(calculateProgress(value, myTasks), { completed: 2, total: 2, percent: 100 })
+  assert.deepEqual(calculateOverallProgress(value), { completed: 2, total: 3, percent: 67 })
 })
 
 test('due-date sorting keeps undated tasks last in both directions', () => {

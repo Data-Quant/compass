@@ -166,6 +166,10 @@ export function calculateProgress(project: WorkspaceProject, scopedTasks: Worksp
   }
 }
 
+export function calculateOverallProgress(project: WorkspaceProject): WorkspaceProgress {
+  return calculateProgress(project, project.tasks)
+}
+
 export function progressBand(percent: number | null) {
   if (percent === null) {
     return { fill: 'bg-muted-foreground/30', track: 'bg-muted/60', text: 'text-muted-foreground' }

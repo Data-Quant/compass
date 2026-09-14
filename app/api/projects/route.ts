@@ -22,6 +22,7 @@ export async function GET() {
           select: {
             status: true,
             assigneeId: true,
+            assistants: { select: { userId: true } },
             section: { select: { isBacklog: true } },
           },
         },
@@ -49,6 +50,7 @@ export async function GET() {
 
     const result = projects.map((p) => {
       const progress = calculateProjectProgress(p.tasks)
+      const myProgress = calculateProjectProgress(p.tasks, { assigneeId: user.id })
       const capabilities = resolveProjectCapabilities({
         viewer: user,
         ownerId: p.ownerId,
@@ -66,6 +68,7 @@ export async function GET() {
         taskCount: progress.total,
         completedTasks: progress.completed,
         progress,
+        myProgress,
         createdAt: p.createdAt,
         updatedAt: p.updatedAt,
       }
