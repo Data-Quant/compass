@@ -24,20 +24,31 @@ test(
       for (const userId of ["pilot-peer", "pilot-subject", "pilot-hr"])
         await prisma.user.upsert({
           where: { id: userId },
-          create: { id: userId, name: "Synthetic fixture" },
-          update: {},
+          create: { id: userId, name: "Synthetic fixture", department: userId === "pilot-subject" ? "Finance" : "Operations" },
+          update: { department: userId === "pilot-subject" ? "Finance" : "Operations" },
         });
+      await prisma.evaluatorMapping.deleteMany({ where: { evaluateeId: "pilot-subject" } });
+      await prisma.evaluatorMapping.create({ data: {
+        evaluatorId: "pilot-peer", evaluateeId: "pilot-subject", relationshipType: "PEER",
+      } });
       const cycle = await saveCycle(
         {
           name: id,
           startDate: new Date(Date.now() + 5 * 3600000)
             .toISOString()
             .slice(0, 10),
-          config: syntheticConfig,
+          config: { ...syntheticConfig, assignments: [] },
         },
         "pilot-hr",
       );
+      assert.deepEqual((cycle.config as unknown as typeof syntheticConfig).assignments, syntheticConfig.assignments);
+      const added = await prisma.evaluatorMapping.create({ data: {
+        evaluatorId: "pilot-hr", evaluateeId: "pilot-subject", relationshipType: "PEER",
+      } });
+      await assert.rejects(activate(cycle.id, cycle.revision), /mappings changed/);
+      await prisma.evaluatorMapping.delete({ where: { id: added.id } });
       await activate(cycle.id, cycle.revision);
+      await prisma.evaluatorMapping.deleteMany({ where: { evaluateeId: "pilot-subject" } });
       await assert.rejects(
         saveCycle(
           {

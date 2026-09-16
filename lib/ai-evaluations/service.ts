@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { derivePilotAssignments, sameAssignments } from "./mappings";
 import {
   configSchema,
   draftConfigSchema,
@@ -68,6 +69,8 @@ export async function saveCycle(
     throw new PilotError("Enter a valid start date");
   }
   const draft = draftConfigSchema.parse(input.config);
+  const derived = await mappedAssignments(prisma, draft.members.map(m => m.employeeId));
+  draft.assignments = derived.assignments;
   if (input.id) {
     if (input.revision === undefined)
       throw new PilotError("A cycle revision is required");
@@ -96,8 +99,23 @@ export async function saveCycle(
     },
   });
 }
+async function mappedAssignments(db: Prisma.TransactionClient, ids: string[]) {
+  const [mappings, people] = await Promise.all([
+    db.evaluatorMapping.findMany({ where: { evaluateeId: { in: ids } },
+      select: { evaluatorId: true, evaluateeId: true, relationshipType: true } }),
+    db.user.findMany({ select: { id: true, department: true } }),
+  ]);
+  return derivePilotAssignments(ids, mappings, people);
+}
 export async function activate(id: string, revision: number) {
-  const cycle = await getCycle(id);
+ return prisma.$transaction(async db => {
+  const cycle = await db.aiEvaluationCycle.findUnique({ where: { id } });
+  if (!cycle) throw new PilotError("Cycle not found", 404);
+  const draft = draftConfigSchema.parse(cycle.config);
+  const derived = await mappedAssignments(db, draft.members.map(m => m.employeeId));
+  if (derived.issues.length) throw new PilotError(derived.issues.join(" "));
+  if (!sameAssignments(draft.assignments, derived.assignments))
+    throw new PilotError("Employee mappings changed. Refresh and save the draft to review the new assignments before activation.", 409);
   const config = configSchema.parse(cycle.config);
   const userIds = [
     ...new Set([
@@ -105,17 +123,18 @@ export async function activate(id: string, revision: number) {
       ...config.assignments.map((a) => a.evaluatorId),
     ]),
   ];
-  const count = await prisma.user.count({ where: { id: { in: userIds } } });
+  const count = await db.user.count({ where: { id: { in: userIds } } });
   if (count !== userIds.length)
     throw new PilotError("An enrolled employee or evaluator no longer exists");
   if (new Date().getTime() >= cycle.startDate.getTime() + 12 * WEEK_MS)
     throw new PilotError("Choose a cycle that has not ended");
-  const result = await prisma.aiEvaluationCycle.updateMany({
+  const result = await db.aiEvaluationCycle.updateMany({
     where: { id, status: "DRAFT", revision },
     data: { status: "ACTIVE", config: json(config), activatedAt: new Date() },
   });
   if (!result.count)
     throw new PilotError("Cycle changed; reload before activating", 409);
+ }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 export async function scheduleDue(now = new Date()) {
   const cycles = await prisma.aiEvaluationCycle.findMany({

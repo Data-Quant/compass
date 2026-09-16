@@ -10,8 +10,9 @@ import {
   type Rubric,
 } from "@/lib/ai-evaluations/domain";
 import { Action, api, fieldClass, Status } from "./shared";
+import { derivePilotAssignments } from "@/lib/ai-evaluations/mappings";
 
-type Person = { id: string; name: string; position: string | null };
+type Person = { id: string; name: string; position: string | null; department: string | null };
 type Cycle = {
   id: string;
   name: string;
@@ -476,10 +477,12 @@ function CycleEditor({
             .slice(0, 10)
         : "",
     );
-  const [config, setConfig] = useState<PilotConfig>(
+  const [storedConfig, setConfig] = useState<PilotConfig>(
     cycle?.config ?? emptyConfig,
   );
   const locked = cycle?.status === "ACTIVE";
+  const derived = derivePilotAssignments(storedConfig.members.map(m => m.employeeId), data.mappings, data.people);
+  const config = locked ? storedConfig : { ...storedConfig, assignments: derived.assignments };
   const updateMember = (
     i: number,
     values: Partial<PilotConfig["members"][number]>,
@@ -549,126 +552,28 @@ function CycleEditor({
           </div>
         </div>
         <div className="space-y-4">
-          <h3 className="font-semibold">Working relationships</h3>
+          <h3 className="font-semibold">Mapped interdepartment relationships</h3>
           <p className="text-sm text-muted-foreground">
-            Evaluator roles describe their relationship to the evaluatee.
-            Include only people who can observe the work.
+            {locked ? "These assignments were frozen at activation. Later mapping changes do not alter this cycle."
+              : "Assignments come automatically from Compass mappings for the cohort. Edit employee mappings to change assignments. Save and review the draft before activation."}
           </p>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() =>
-              setConfig((c) => {
-                const assignments = data.mappings
-                  .filter((m) =>
-                    c.members.some((p) => p.employeeId === m.evaluateeId),
-                  )
-                  .map((m) => ({
-                    evaluatorId: m.evaluatorId,
-                    evaluateeId: m.evaluateeId,
-                    relationship: m.relationshipType,
-                  }));
-                return { ...c, assignments };
-              })
-            }
-          >
-            Import current mappings for cohort
-          </Button>
-          {config.assignments.map((a, i) => (
-            <div
-              key={i}
-              className="grid items-end gap-3 rounded-lg border p-3 sm:grid-cols-4"
-            >
-              {(["evaluatorId", "evaluateeId"] as const).map((key) => (
-                <label key={key} className="space-y-1 text-sm">
-                  <span>
-                    {key === "evaluatorId" ? "Evaluator" : "Evaluatee"}
-                  </span>
-                  <select
-                    className={fieldClass}
-                    value={a[key]}
-                    onChange={(e) =>
-                      setConfig((c) => ({
-                        ...c,
-                        assignments: c.assignments.map((v, n) =>
-                          n === i ? { ...v, [key]: e.target.value } : v,
-                        ),
-                      }))
-                    }
-                  >
-                    <option value="">Choose person</option>
-                    {data.people
-                      .filter(
-                        (p) =>
-                          key === "evaluatorId" ||
-                          config.members.some((m) => m.employeeId === p.id),
-                      )
-                      .map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-              ))}
-              <label className="space-y-1 text-sm">
-                <span>Relationship</span>
-                <select
-                  className={fieldClass}
-                  value={a.relationship}
-                  onChange={(e) =>
-                    setConfig((c) => ({
-                      ...c,
-                      assignments: c.assignments.map((v, n) =>
-                        n === i
-                          ? {
-                              ...v,
-                              relationship: e.target
-                                .value as typeof a.relationship,
-                            }
-                          : v,
-                      ),
-                    }))
-                  }
-                >
-                  {relationships.map((r) => (
-                    <option key={r}>{r}</option>
-                  ))}
-                </select>
-              </label>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() =>
-                  setConfig((c) => ({
-                    ...c,
-                    assignments: c.assignments.filter((_, n) => n !== i),
-                  }))
-                }
-              >
-                Remove assignment
-              </Button>
+          {!locked && derived.issues.length > 0 && (
+            <div role="status" className="rounded-lg border p-3 text-sm">
+              <p className="font-medium">Resolve mapping issues before activation</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5">
+                {derived.issues.map(issue => <li key={issue}>{data.people.reduce((text, p) => text.replaceAll(p.id, p.name), issue)}</li>)}
+              </ul>
             </div>
-          ))}
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() =>
-              setConfig((c) => ({
-                ...c,
-                assignments: [
-                  ...c.assignments,
-                  {
-                    evaluatorId: "",
-                    evaluateeId: c.members[0]?.employeeId ?? "",
-                    relationship: "PEER",
-                  },
-                ],
-              }))
-            }
-          >
-            Add relationship
-          </Button>
+          )}
+          {config.assignments.length === 0 && <p className="text-sm text-muted-foreground">No eligible interdepartment assignments for this cohort.</p>}
+          <ul className="divide-y rounded-lg border">
+            {config.assignments.map(a => (
+              <li key={a.evaluatorId + ':' + a.evaluateeId + ':' + a.relationship} className="flex flex-wrap gap-x-3 gap-y-1 p-3 text-sm">
+                <span>{data.people.find(p => p.id === a.evaluatorId)?.name ?? "Employee"} evaluates {data.people.find(p => p.id === a.evaluateeId)?.name ?? "Employee"}</span>
+                <span className="text-muted-foreground">{lensName(a.relationship)}</span>
+              </li>
+            ))}
+          </ul>
         </div>
         <div className="space-y-5">
           <h3 className="font-semibold">Expectations and weights</h3>
@@ -696,13 +601,13 @@ function CycleEditor({
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                 {[
                   ...new Set(
-                    config.assignments
+                    [...Object.keys(m.weights), ...config.assignments
                       .filter((a) => a.evaluateeId === m.employeeId)
-                      .map((a) => a.relationship),
+                      .map((a) => a.relationship)],
                   ),
                 ].map((r) => (
                   <label key={r} className="space-y-1 text-sm">
-                    <span>{lensName(r)} (%)</span>
+                    <span>{lensName(r)} (%) {!config.assignments.some(a => a.evaluateeId === m.employeeId && a.relationship === r) && "— no mapped evaluator; set to 0"}</span>
                     <input
                       type="number"
                       min={0}
@@ -741,7 +646,7 @@ function CycleEditor({
                   ...c.rubric,
                   ...data.rubricDrafts.filter(
                     (r) =>
-                      c.assignments.some(
+                      config.assignments.some(
                         (a) => a.relationship === r.relationship,
                       ) && !c.rubric.some((existing) => existing.id === r.id),
                   ),
@@ -911,7 +816,7 @@ function CycleEditor({
             Activation validates and freezes the saved cohort, rubric,
             expectations, and weights. Save any edits first.
           </p>
-          <Action onClick={activate}>Activate saved cycle</Action>
+          <Action onClick={activate} disabled={derived.issues.length > 0}>Activate saved cycle</Action>
         </div>
       )}
     </section>

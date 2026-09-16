@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     const [cycles, people, questions, mappings] = await Promise.all([
       prisma.aiEvaluationCycle.findMany({ orderBy: { createdAt: "desc" } }),
       prisma.user.findMany({
-        select: { id: true, name: true, position: true },
+        select: { id: true, name: true, position: true, department: true },
         orderBy: { name: "asc" },
       }),
       prisma.evaluationQuestion.findMany({

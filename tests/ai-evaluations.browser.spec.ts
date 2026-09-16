@@ -2,6 +2,29 @@ import { test, expect, type Page } from "@playwright/test";
 const base = process.env.PILOT_TEST_URL || "http://127.0.0.1:3219";
 test.use({ baseURL: base });
 test.setTimeout(60000);
+test("mapped assignments are automatic and read-only on desktop and mobile", async ({ page }) => {
+  await login(page, "hr");
+  await page.route("**/api/admin/ai-evaluations", route => route.fulfill({ json: {
+    cycles: [], people: [
+      { id: "subject", name: "Finance employee", position: "Analyst", department: "Finance" },
+      { id: "peer", name: "Engineering colleague", position: "Engineer", department: "Engineering" },
+    ], mappings: [{ evaluatorId: "peer", evaluateeId: "subject", relationshipType: "PEER" }],
+    rubricDrafts: [], observations: [], artifacts: [], jobs: [], themes: [], checkIns: [], inferenceConfigured: true,
+  } }));
+  await page.goto("/admin/ai-evaluations");
+  await page.getByRole("checkbox", { name: "Finance employee" }).check();
+  await expect(page.getByText("Engineering colleague evaluates Finance employee", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add relationship", exact: true })).toHaveCount(0);
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(page.getByRole("heading", { name: "Mapped interdepartment relationships" })).toBeVisible();
+    await page.getByRole("heading", { name: "Mapped interdepartment relationships" }).scrollIntoViewIfNeeded();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: `.pilot-screens/mappings-${width}.png`, fullPage: true });
+  }
+  await page.getByRole("checkbox", { name: "Engineering colleague" }).check();
+  await expect(page.getByText("Employee Engineering colleague has no eligible interdepartment evaluator mapping.", { exact: true })).toBeVisible();
+});
 test.skip(
   process.env.PILOT_BROWSER_TEST !== "true",
   "Explicit isolated pilot browser run only",
