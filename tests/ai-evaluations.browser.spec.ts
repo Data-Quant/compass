@@ -13,17 +13,19 @@ test("mapped assignments are automatic and read-only on desktop and mobile", asy
   } }));
   await page.goto("/admin/ai-evaluations");
   await page.getByRole("checkbox", { name: "Finance employee" }).check();
+  await expect(page.getByLabel("Responsibilities and expected outcomes")).toHaveValue("");
+  await expect(page.getByText("Role: Analyst · Department: Finance", { exact: true })).toBeVisible();
   await expect(page.getByText("Engineering colleague evaluates Finance employee", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Add relationship", exact: true })).toHaveCount(0);
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 });
-    await expect(page.getByRole("heading", { name: "Mapped interdepartment relationships" })).toBeVisible();
-    await page.getByRole("heading", { name: "Mapped interdepartment relationships" }).scrollIntoViewIfNeeded();
+    await expect(page.getByRole("heading", { name: "Mapped individual relationships" })).toBeVisible();
+    await page.getByRole("heading", { name: "Mapped individual relationships" }).scrollIntoViewIfNeeded();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `.pilot-screens/mappings-${width}.png`, fullPage: true });
   }
   await page.getByRole("checkbox", { name: "Engineering colleague" }).check();
-  await expect(page.getByText("Employee Engineering colleague has no eligible interdepartment evaluator mapping.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Employee Engineering colleague has no eligible individual evaluator mapping.", { exact: true })).toBeVisible();
 });
 test.skip(
   process.env.PILOT_BROWSER_TEST !== "true",

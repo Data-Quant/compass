@@ -29,16 +29,17 @@ const assessmentOutput = z
   .object({ ratings: z.array(ratingSchema).max(200) })
   .strict();
 
-export async function runOneJob() {
+export async function runOneJob(cycleId?: string) {
   const now = new Date(),
     token = newToken();
   // Recover crashed workers, with a hard attempt limit and an expiring lease.
   await prisma.aiEvaluationJob.updateMany({
-    where: { status: "RUNNING", leaseUntil: { lt: now }, attempts: { gte: 3 } },
+    where: { ...(cycleId ? { cycleId } : {}), status: "RUNNING", leaseUntil: { lt: now }, attempts: { gte: 3 } },
     data: { status: "FAILED", error: "WORKER_LEASE_EXPIRED", leaseToken: null },
   });
   const candidate = await prisma.aiEvaluationJob.findFirst({
     where: {
+      ...(cycleId ? { cycleId } : {}),
       attempts: { lt: 3 },
       runAfter: { lte: now },
       OR: [
@@ -133,12 +134,14 @@ export async function runOneJob() {
       });
       response = await infer(
         "question",
-        "Ask the evaluator one neutral, concrete question about the evaluated colleague's work in a recent interaction and its outcome, relevant to the competency. Address the respondent as the observer, never as the person whose performance is being evaluated. Explicitly refer to the evaluated person as 'this colleague'. The expectations describe this colleague, not the respondent. Use this evaluator's previous questions and submitted observations to select a useful new angle or seek a new event; do not repeat a previous question verbatim. A previous problem is a report, not an established recurring weakness. Do not assume an interaction occurred. No numerical scoring language. No leading premise or reference to other feedback. Do not include names. The rubric anchors are not needed for asking.",
+        "Ask the evaluator one neutral, concrete question about the evaluated colleague's work in a recent interaction and its outcome, strictly focused on the supplied competency. The broad role expectations are context only: never switch to another competency to avoid repetition. Repeating the competency with a fresh event or outcome is preferable to changing topic. The relationship names describe the respondent relative to the evaluated colleague: TEAM_LEAD means their lead, PEER their peer, DIRECT_REPORT their reporting member. Address the respondent as the observer, never as the person whose performance is being evaluated. Explicitly refer to the evaluated person as 'this colleague'. The expectations describe this colleague, not the respondent. Use this evaluator's previous questions and submitted observations to select a useful new angle or seek a new event; do not repeat a previous question verbatim. A previous problem is a report, not an established recurring weakness. Do not assume an interaction occurred. No numerical scoring language. No leading premise or reference to other feedback. Do not include names. Use only behaviors within competencyBehaviors to choose the topic; these descriptions define scope, not a rating to ask the respondent for. Do not mention levels or anchors.",
         {
           competency: criterion.name,
+          competencyBehaviors: criterion.anchors,
           relationship: row.relationship,
           week: row.week,
           expectations: member.expectations,
+          role: member.baseline?.position ?? null,
           previousCheckIns: previous.map(p => ({ week: p.week, question: p.question,
             submittedObservation: p.submittedAt && !p.noInteraction ? p.answer : null,
             noInteraction: p.noInteraction })),
@@ -202,7 +205,7 @@ export async function runOneJob() {
       response = await infer(
         "profile",
         "Summarize relationship-specific strengths, concerns, contradictions and gaps. Every non-gap claim needs valid source IDs for that relationship. Gaps describe missing evidence, not poor performance. Distinguish reports from established facts. Do not score.",
-        { rubric, evidence: anonymousEvidence },
+        { rubric, expectations: member.expectations, role: member.baseline?.position ?? null, evidence: anonymousEvidence },
         profileOutput,
         outputSchemas.profile,
       );
@@ -237,6 +240,7 @@ export async function runOneJob() {
         {
           rubric,
           expectations: member.expectations,
+          role: member.baseline?.position ?? null,
           minimumDistinctIncidents: config.minObservations,
           minimumWeeks: config.minWeeks,
           evidence: anonymousEvidence,

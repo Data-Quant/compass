@@ -11,6 +11,11 @@ export const relationships = [
   "SELF",
 ] as const;
 export const lensSchema = z.enum(relationships);
+const baselineSchema = z.object({
+  position: z.string().nullable(),
+  department: z.string().nullable(),
+  source: z.literal("COMPASS_EMPLOYEE_RECORD"),
+}).strict();
 export const rubricSchema = z
   .object({
     id: z.string().min(1).max(120),
@@ -31,6 +36,7 @@ export const configSchema = z
         z
           .object({
             employeeId: z.string().min(1),
+            baseline: baselineSchema.optional(),
             expectations: z.string().trim().min(1).max(4000),
             weights: z.record(z.number().min(0).max(1)),
           })
@@ -114,6 +120,7 @@ export const draftConfigSchema = z
         z
           .object({
             employeeId: z.string(),
+            baseline: baselineSchema.optional(),
             expectations: z.string().max(4000),
             weights: z.record(z.number().min(0).max(1)),
           })

@@ -1,0 +1,52 @@
+{
+  "label": "Synthetic developer: accelerated 12-week test",
+  "department": "Engineering",
+  "weightsAreIllustrative": true,
+  "scenarios": [
+    {
+      "relationship": "TEAM_LEAD",
+      "competency": "Delivery and ownership",
+      "weight": 0.4,
+      "anchors": [
+        "Repeatedly misses agreed commitments without communicating risks, causing material disruption.",
+        "Meets commitments inconsistently and needs recurring intervention or late escalation.",
+        "Reliably delivers agreed work, tests it, and communicates risks with expected independence.",
+        "Sustains exceptional delivery impact beyond role expectations while improving team delivery practices."
+      ],
+      "answers": [
+        "In week 2 the developer missed the agreed API integration deadline by two days, did not flag the blocker until I asked, and QA had to move the release test window.",
+        "In week 7 the developer again missed the agreed pagination delivery date by a day and needed my intervention to agree a smaller scope with product. They completed the reduced scope after that discussion."
+      ]
+    },
+    {
+      "relationship": "PEER",
+      "competency": "Technical collaboration",
+      "weight": 0.3,
+      "anchors": [
+        "Repeatedly obstructs shared engineering work or leaves material issues unresolved.",
+        "Collaboration is inconsistent and regularly needs intervention.",
+        "Provides timely, useful reviews and works constructively with peers on shared problems.",
+        "Consistently improves engineering effectiveness beyond normal peer expectations with demonstrable broader impact."
+      ],
+      "answers": [
+        "In week 3 the developer reviewed my retry-handler pull request within our agreed review window, identified a duplicate-request bug, and supplied a reproducible test. I fixed it before release.",
+        "In week 8 the developer paired with me on a failing integration test, helped isolate a serialization mismatch, and documented the correction so the other service owner could apply it. We completed the agreed integration that day."
+      ]
+    },
+    {
+      "relationship": "DIRECT_REPORT",
+      "competency": "Coaching and delegation",
+      "weight": 0.3,
+      "anchors": [
+        "Repeatedly withholds necessary direction or support, preventing the reporting member from doing their work.",
+        "Provides inconsistent guidance or delegates without sufficient clarity and follow-through.",
+        "Sets clear expectations, gives useful feedback, and supports the reporting member in working independently.",
+        "Sustains development beyond ordinary supervision, with concrete growth in independent capability and wider reusable benefits."
+      ],
+      "answers": [
+        "In week 4 the developer delegated a cache invalidation task to me with acceptance criteria, reviewed my design instead of taking over the implementation, and gave targeted feedback. I completed the task and explained the design tradeoffs independently in review.",
+        "In week 9 the developer helped me turn my troubleshooting notes into a guide used by two new engineers. I then resolved a similar production-like staging incident independently using the debugging approach they had taught me."
+      ]
+    }
+  ]
+}

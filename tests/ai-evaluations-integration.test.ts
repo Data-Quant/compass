@@ -42,12 +42,22 @@ test(
         "pilot-hr",
       );
       assert.deepEqual((cycle.config as unknown as typeof syntheticConfig).assignments, syntheticConfig.assignments);
+      const initial = (cycle.config as unknown as typeof syntheticConfig).members[0].baseline;
+      assert.equal(initial?.source, "COMPASS_EMPLOYEE_RECORD");
+      assert.equal(initial?.department, "Finance");
+      await prisma.user.update({ where: { id: "pilot-subject" }, data: { position: "Changed role" } });
+      await assert.rejects(activate(cycle.id, cycle.revision), /role context changed/);
+      await prisma.user.update({ where: { id: "pilot-subject" }, data: { position: initial?.position ?? null } });
       const added = await prisma.evaluatorMapping.create({ data: {
         evaluatorId: "pilot-hr", evaluateeId: "pilot-subject", relationshipType: "PEER",
       } });
       await assert.rejects(activate(cycle.id, cycle.revision), /mappings changed/);
       await prisma.evaluatorMapping.delete({ where: { id: added.id } });
       await activate(cycle.id, cycle.revision);
+      await prisma.user.update({ where: { id: "pilot-subject" }, data: { position: "Later role change" } });
+      const frozen = await prisma.aiEvaluationCycle.findUniqueOrThrow({ where: { id: cycle.id } });
+      assert.deepEqual((frozen.config as unknown as typeof syntheticConfig).members[0].baseline, initial);
+      await prisma.user.update({ where: { id: "pilot-subject" }, data: { position: initial?.position ?? null } });
       await prisma.evaluatorMapping.deleteMany({ where: { evaluateeId: "pilot-subject" } });
       await assert.rejects(
         saveCycle(
@@ -63,6 +73,8 @@ test(
         /already active/,
       );
       await Promise.all([scheduleDue(), scheduleDue()]);
+      assert.equal(await scheduleDue(new Date(), "nonexistent-cycle"), 0);
+      assert.deepEqual(await runOneJob("nonexistent-cycle"), { status: "IDLE" });
       const rows = await prisma.aiEvaluationCheckIn.findMany({
         where: { cycleId: cycle.id },
       });

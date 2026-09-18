@@ -535,7 +535,7 @@ function CycleEditor({
                             ...c.members,
                             {
                               employeeId: p.id,
-                              expectations: p.position || "",
+                              expectations: "",
                               weights: {},
                             },
                           ]
@@ -552,7 +552,7 @@ function CycleEditor({
           </div>
         </div>
         <div className="space-y-4">
-          <h3 className="font-semibold">Mapped interdepartment relationships</h3>
+          <h3 className="font-semibold">Mapped individual relationships</h3>
           <p className="text-sm text-muted-foreground">
             {locked ? "These assignments were frozen at activation. Later mapping changes do not alter this cycle."
               : "Assignments come automatically from Compass mappings for the cohort. Edit employee mappings to change assignments. Save and review the draft before activation."}
@@ -565,7 +565,7 @@ function CycleEditor({
               </ul>
             </div>
           )}
-          {config.assignments.length === 0 && <p className="text-sm text-muted-foreground">No eligible interdepartment assignments for this cohort.</p>}
+          {config.assignments.length === 0 && <p className="text-sm text-muted-foreground">No eligible individual assignments for this cohort.</p>}
           <ul className="divide-y rounded-lg border">
             {config.assignments.map(a => (
               <li key={a.evaluatorId + ':' + a.evaluateeId + ':' + a.relationship} className="flex flex-wrap gap-x-3 gap-y-1 p-3 text-sm">
@@ -576,18 +576,20 @@ function CycleEditor({
           </ul>
         </div>
         <div className="space-y-5">
-          <h3 className="font-semibold">Expectations and weights</h3>
+          <h3 className="font-semibold">Initial profiles and weights</h3>
           <p className="text-sm text-muted-foreground">
-            Enter percentages totaling 100 for each employee. Self-feedback must
-            stay at 0.
+            Review the initial role context, responsibilities, and rubric before activation. These benchmarks stay fixed while evidence profiles develop. Enter weights totaling 100 for each employee.
           </p>
           {config.members.map((m, i) => (
             <div key={m.employeeId} className="space-y-3 border-t pt-4">
               <h4 className="font-medium">
                 {data.people.find((p) => p.id === m.employeeId)?.name}
               </h4>
+              <p className="text-sm text-muted-foreground">
+                Role: {(locked ? m.baseline?.position : data.people.find(p => p.id === m.employeeId)?.position) || "Not recorded"} · Department: {(locked ? m.baseline?.department : data.people.find(p => p.id === m.employeeId)?.department) || "Not recorded"}
+              </p>
               <label className="block space-y-2 text-sm">
-                <span>Role expectations</span>
+                <span>Responsibilities and expected outcomes</span>
                 <textarea
                   className={fieldClass}
                   rows={2}

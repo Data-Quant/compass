@@ -25,16 +25,11 @@ export function derivePilotAssignments(
     const evaluatee = users.get(m.evaluateeId);
     const from = evaluator?.department?.trim().toLowerCase();
     const to = evaluatee?.department?.trim().toLowerCase();
-    if (!from || !to) {
-      issues.add(`Mapping ${m.evaluatorId} → ${m.evaluateeId} needs departments for both employees.`);
+    if (!evaluator || !evaluatee) {
+      issues.add(`Mapping ${m.evaluatorId} → ${m.evaluateeId} references a missing employee.`);
       continue;
     }
     if (from === "3e" || to === "3e") continue;
-    if (from === to) {
-      if (m.relationshipType === "CROSS_DEPARTMENT")
-        issues.add(`Cross-department mapping ${m.evaluatorId} → ${m.evaluateeId} has the same department on both sides.`);
-      continue;
-    }
     if (!relationships.includes(m.relationshipType as typeof relationships[number])) {
       issues.add(`Unsupported relationship for ${m.evaluatorId} → ${m.evaluateeId}.`);
       continue;
@@ -48,7 +43,7 @@ export function derivePilotAssignments(
   assignments.sort((a, b) => assignmentKey(a).localeCompare(assignmentKey(b)));
   for (const id of enrolled) {
     if (!assignments.some(a => a.evaluateeId === id))
-      issues.add(`Employee ${id} has no eligible interdepartment evaluator mapping.`);
+      issues.add(`Employee ${id} has no eligible individual evaluator mapping.`);
   }
   return { assignments, issues: [...issues] };
 }

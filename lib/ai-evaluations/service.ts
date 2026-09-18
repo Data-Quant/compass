@@ -71,6 +71,7 @@ export async function saveCycle(
   const draft = draftConfigSchema.parse(input.config);
   const derived = await mappedAssignments(prisma, draft.members.map(m => m.employeeId));
   draft.assignments = derived.assignments;
+  draft.members = draft.members.map(m => ({ ...m, baseline: derived.baselines.get(m.employeeId) }));
   if (input.id) {
     if (input.revision === undefined)
       throw new PilotError("A cycle revision is required");
@@ -103,9 +104,11 @@ async function mappedAssignments(db: Prisma.TransactionClient, ids: string[]) {
   const [mappings, people] = await Promise.all([
     db.evaluatorMapping.findMany({ where: { evaluateeId: { in: ids } },
       select: { evaluatorId: true, evaluateeId: true, relationshipType: true } }),
-    db.user.findMany({ select: { id: true, department: true } }),
+    db.user.findMany({ select: { id: true, department: true, position: true } }),
   ]);
-  return derivePilotAssignments(ids, mappings, people);
+  return { ...derivePilotAssignments(ids, mappings, people),
+    baselines: new Map(people.map(p => [p.id, { position: p.position, department: p.department,
+      source: "COMPASS_EMPLOYEE_RECORD" as const }])) };
 }
 export async function activate(id: string, revision: number) {
  return prisma.$transaction(async db => {
@@ -116,6 +119,8 @@ export async function activate(id: string, revision: number) {
   if (derived.issues.length) throw new PilotError(derived.issues.join(" "));
   if (!sameAssignments(draft.assignments, derived.assignments))
     throw new PilotError("Employee mappings changed. Refresh and save the draft to review the new assignments before activation.", 409);
+  if (draft.members.some(m => JSON.stringify(m.baseline) !== JSON.stringify(derived.baselines.get(m.employeeId))))
+    throw new PilotError("Employee role context changed. Save and review the initial profiles before activation.", 409);
   const config = configSchema.parse(cycle.config);
   const userIds = [
     ...new Set([
@@ -136,9 +141,9 @@ export async function activate(id: string, revision: number) {
     throw new PilotError("Cycle changed; reload before activating", 409);
  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
-export async function scheduleDue(now = new Date()) {
+export async function scheduleDue(now = new Date(), cycleId?: string) {
   const cycles = await prisma.aiEvaluationCycle.findMany({
-    where: { status: "ACTIVE" },
+    where: { status: "ACTIVE", ...(cycleId ? { id: cycleId } : {}) },
   });
   let scheduled = 0;
   for (const cycle of cycles) {
