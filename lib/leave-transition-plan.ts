@@ -92,6 +92,31 @@ export function classifyTransitionReminder(input: {
 }
 
 /**
+ * Whether a leave needs a transition plan at all.
+ *
+ * The plan exists so the team can cover an absence. A half-day has no absence to
+ * cover -- the person is back the same day -- so no type of half-day needs one. A
+ * single sick day is unplanned; there is nothing to prepare in advance, and chasing
+ * someone who is ill for a handover note helps nobody. A planned single day of casual
+ * or annual leave keeps the reminder, since it was booked ahead.
+ *
+ * This is the one rule behind the cron ladder, the "plan missing" badge, the reminder
+ * banner and the request list, so an exempt leave is exempt everywhere at once.
+ */
+export function transitionPlanRequired(leave: {
+  leaveType: string
+  isHalfDay: boolean
+  startDate: Date
+  endDate: Date
+}): boolean {
+  if (leave.isHalfDay) return false
+  if (leave.leaveType === 'SICK') {
+    return calculateLeaveDuration(leave.startDate, leave.endDate, false) > 1
+  }
+  return true
+}
+
+/**
  * The deadline ladder for long leaves.
  *
  * A leave longer than two working days gets a notice seven days out, a warning the

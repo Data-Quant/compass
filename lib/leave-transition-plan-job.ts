@@ -5,6 +5,7 @@ import {
   classifyTransitionPlanAction,
   qualifiesForTransitionPlanDeadline,
   transitionPlanDeadline,
+  transitionPlanRequired,
   NOTICE_LEAD_DAYS,
 } from '@/lib/leave-transition-plan'
 import { autoCancelLeaveForMissingTransitionPlan } from '@/lib/leave-auto-cancel'
@@ -34,6 +35,7 @@ const ACTIVE_STATUSES: LeaveStatus[] = ['PENDING', 'LEAD_APPROVED', 'HR_APPROVED
 
 type Candidate = {
   id: string
+  leaveType: string
   startDate: Date
   endDate: Date
   isHalfDay: boolean
@@ -131,15 +133,27 @@ export async function runTransitionPlanReminders(
   const cutoff = new Date(today)
   cutoff.setUTCDate(cutoff.getUTCDate() + horizon)
 
-  const candidates: Candidate[] = await prisma.leaveRequest.findMany({
+  const allUnsubmitted: Candidate[] = await prisma.leaveRequest.findMany({
     where: {
       status: { in: ACTIVE_STATUSES },
       transitionPlanSubmittedAt: null,
       startDate: { gte: today, lte: cutoff },
     },
-    select: { id: true, startDate: true, endDate: true, isHalfDay: true },
+    select: { id: true, leaveType: true, startDate: true, endDate: true, isHalfDay: true },
     orderBy: { startDate: 'asc' },
   })
+
+  // Half-days and single sick days need no plan, so they are never reminded,
+  // escalated or cancelled. The rule lives in transitionPlanRequired, shared with
+  // the UI, so what the badge says and what the cron chases cannot disagree.
+  const candidates = allUnsubmitted.filter((c) =>
+    transitionPlanRequired({
+      leaveType: c.leaveType,
+      isHalfDay: c.isHalfDay,
+      startDate: new Date(c.startDate),
+      endDate: new Date(c.endDate),
+    })
+  )
 
   const longLeaves = candidates.filter((c) =>
     qualifiesForTransitionPlanDeadline({

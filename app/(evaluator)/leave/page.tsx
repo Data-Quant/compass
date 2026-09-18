@@ -44,6 +44,7 @@ import { TransitionPlanView } from '@/components/leave/TransitionPlanView'
 import { MemberMultiSelect } from '@/components/leave/MemberMultiSelect'
 import {
   canSubmitTransitionPlan,
+  transitionPlanRequired,
   validateTransitionTasks,
   type TransitionTask,
 } from '@/lib/leave-transition-plan'
@@ -455,6 +456,15 @@ export default function LeavePage() {
     )
   }, [calendarEvents, departmentFilter])
 
+  /** The shared rule: half-days and single sick days need no handover plan. */
+  const planRequiredFor = (request: Pick<LeaveRequest, 'leaveType' | 'isHalfDay' | 'startDate' | 'endDate'>) =>
+    transitionPlanRequired({
+      leaveType: request.leaveType,
+      isHalfDay: request.isHalfDay,
+      startDate: new Date(request.startDate),
+      endDate: new Date(request.endDate),
+    })
+
   const transitionPlanReminderRequests = useMemo(() => {
     const now = new Date()
     now.setHours(0, 0, 0, 0)
@@ -462,6 +472,7 @@ export default function LeavePage() {
     return requests.filter((request) => {
       if (!editableStatuses.has(request.status) && request.status !== 'APPROVED') return false
       if (request.transitionPlanSubmittedAt) return false
+      if (!planRequiredFor(request)) return false
       const start = parseInputDateAsLocal(toDateKey(request.startDate))
       if (!start) return false
       start.setHours(0, 0, 0, 0)
@@ -1481,9 +1492,13 @@ export default function LeavePage() {
                                       </div>
                                     )}
                                   </div>
-                                ) : (
+                                ) : planRequiredFor(request) ? (
                                   <p className="mt-2 text-[11px] text-muted-foreground">
                                     No transition plan submitted yet.
+                                  </p>
+                                ) : (
+                                  <p className="mt-2 text-[11px] text-muted-foreground">
+                                    No transition plan needed for this leave.
                                   </p>
                                 )}
                               </div>

@@ -8,6 +8,7 @@ import {
   daysUntil,
   qualifiesForTransitionPlanDeadline,
   transitionPlanDeadline,
+  transitionPlanRequired,
 } from '../lib/leave-transition-plan'
 
 const now = new Date('2026-07-06T09:00:00.000Z')
@@ -243,4 +244,44 @@ test('classify action: a leave that already started is never cancelled', () => {
     }).action,
     'none',
   )
+})
+
+// --- Which leaves need a transition plan at all ---
+//
+// A handover exists so the team can cover someone's absence. A half-day has no
+// absence to cover -- they are back the same day -- and a single sick day is
+// unplanned, so there is nothing to prepare. Both were still being chased with
+// reminders, escalations and "plan missing" badges.
+
+const leave = (leaveType: string, isHalfDay: boolean, start: string, end: string) => ({
+  leaveType,
+  isHalfDay,
+  startDate: d(start),
+  endDate: d(end),
+})
+
+test('a half-day never needs a plan, whatever the type', () => {
+  assert.equal(transitionPlanRequired(leave('SICK', true, '2026-07-13', '2026-07-13')), false)
+  assert.equal(transitionPlanRequired(leave('CASUAL', true, '2026-07-13', '2026-07-13')), false)
+  assert.equal(transitionPlanRequired(leave('ANNUAL', true, '2026-07-13', '2026-07-13')), false)
+})
+
+test('one sick day needs no plan', () => {
+  assert.equal(transitionPlanRequired(leave('SICK', false, '2026-07-13', '2026-07-13')), false)
+})
+
+test('a planned single day still gets the handover reminder', () => {
+  // Casual and annual leave are booked ahead, so a note for the team is reasonable.
+  assert.equal(transitionPlanRequired(leave('CASUAL', false, '2026-07-13', '2026-07-13')), true)
+  assert.equal(transitionPlanRequired(leave('ANNUAL', false, '2026-07-13', '2026-07-13')), true)
+})
+
+test('sick leave of more than a day needs a plan', () => {
+  // Mon-Tue = 2 working days.
+  assert.equal(transitionPlanRequired(leave('SICK', false, '2026-07-13', '2026-07-14')), true)
+})
+
+test('a one-day sick leave spanning a weekend is still one working day', () => {
+  // Fri..Sat -> Sat is not a working day, so this is one sick day, not two.
+  assert.equal(transitionPlanRequired(leave('SICK', false, '2026-07-10', '2026-07-11')), false)
 })

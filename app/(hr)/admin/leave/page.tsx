@@ -13,7 +13,11 @@ import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { calculateLeaveDuration } from '@/lib/leave-utils'
 import { TransitionPlanView } from '@/components/leave/TransitionPlanView'
-import { validateTransitionTasks, type TransitionTask } from '@/lib/leave-transition-plan'
+import {
+  transitionPlanRequired,
+  validateTransitionTasks,
+  type TransitionTask,
+} from '@/lib/leave-transition-plan'
 import {
   Select,
   SelectContent,
@@ -934,7 +938,13 @@ export default function HRLeavePage() {
                                   </Badge>
                                 )
                               }
-                              if (relevant && !request.transitionPlanSubmittedAt) {
+                              const planRequired = transitionPlanRequired({
+                                leaveType: request.leaveType,
+                                isHalfDay: request.isHalfDay,
+                                startDate: new Date(request.startDate),
+                                endDate: new Date(request.endDate),
+                              })
+                              if (relevant && planRequired && !request.transitionPlanSubmittedAt) {
                                 return (
                                   <Badge variant="outline" className="bg-amber-100 text-amber-800 border-0">
                                     Plan missing

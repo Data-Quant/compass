@@ -323,6 +323,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ requests: await attachCoverPeople(requests) })
     }
 
+    // One person's own list reads as a timeline, so it is ordered by when the leave
+    // is, latest first. Ordering by submission time made it look random: a leave
+    // next week booked a month ago sat below one for December booked yesterday.
+    // The admin queue has no single employee and keeps newest-submitted first,
+    // which is the right order for triage.
+    const singleEmployee = typeof where.employeeId === 'string'
     const requests = await prisma.leaveRequest.findMany({
       where,
       include: {
@@ -333,7 +339,9 @@ export async function GET(request: NextRequest) {
           select: { id: true, name: true },
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: singleEmployee
+        ? [{ startDate: 'desc' }, { createdAt: 'desc' }]
+        : { createdAt: 'desc' },
     })
 
     return NextResponse.json({ requests: await attachCoverPeople(requests) })
