@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PROMPT_VERSION = "1";
+export const PROMPT_VERSION = "2";
 export class InferenceError extends Error {
   constructor(public code: string) {
     super(code);

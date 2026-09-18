@@ -10,6 +10,7 @@ import {
 } from "./domain";
 import {
   infer,
+  PROMPT_VERSION,
   InferenceError,
   questionOutput,
   clarificationOutput,
@@ -114,19 +115,33 @@ export async function runOneJob() {
       data: {
         inputReferences: json(references),
         model: process.env.FIREWORKS_MODEL || null,
+        promptVersion: PROMPT_VERSION,
       },
     });
     let response: { value: unknown; usage: unknown; model: string };
     if (job.operation === "question" && row) {
       const criterion = config.rubric.find((r) => r.id === row.competencyId)!;
+      const previous = await prisma.aiEvaluationCheckIn.findMany({
+        where: { cycleId: job.cycleId, evaluatorId: row.evaluatorId,
+          evaluateeId, relationship: row.relationship, week: { lt: row.week } },
+        orderBy: { week: "desc" }, take: 3,
+        select: { id: true, week: true, question: true, answer: true, submittedAt: true, noInteraction: true },
+      });
+      await prisma.aiEvaluationJob.updateMany({
+        where: { id: job.id, leaseToken: token },
+        data: { inputReferences: json([...references, ...previous.map(p => p.id)]) },
+      });
       response = await infer(
         "question",
-        "Ask one neutral, concrete question about a recent event and outcome relevant to the competency. No numerical scoring language. No leading premise or reference to other feedback. Do not include names. The rubric anchors are not needed for asking.",
+        "Ask the evaluator one neutral, concrete question about the evaluated colleague's work in a recent interaction and its outcome, relevant to the competency. Address the respondent as the observer, never as the person whose performance is being evaluated. Explicitly refer to the evaluated person as 'this colleague'. The expectations describe this colleague, not the respondent. Use this evaluator's previous questions and submitted observations to select a useful new angle or seek a new event; do not repeat a previous question verbatim. A previous problem is a report, not an established recurring weakness. Do not assume an interaction occurred. No numerical scoring language. No leading premise or reference to other feedback. Do not include names. The rubric anchors are not needed for asking.",
         {
           competency: criterion.name,
           relationship: row.relationship,
           week: row.week,
           expectations: member.expectations,
+          previousCheckIns: previous.map(p => ({ week: p.week, question: p.question,
+            submittedObservation: p.submittedAt && !p.noInteraction ? p.answer : null,
+            noInteraction: p.noInteraction })),
           observationWindow: {
             from: new Date(
               job.cycle.startDate.getTime() + (row.week - 1) * WEEK_MS,
