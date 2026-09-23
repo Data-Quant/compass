@@ -18,9 +18,8 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  FileSignature,
+  Mail,
   Loader2,
-  RefreshCcw,
   RotateCcw,
   Users,
   Wallet,
@@ -33,7 +32,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 type WizardStep = 0 | 1 | 2 | 3 | 4 | 5
-type PendingAction = 'recalculate' | 'approve' | 'unapprove' | 'send' | 'sync' | 'none'
+type PendingAction = 'recalculate' | 'approve' | 'unapprove' | 'send' | 'none'
 
 interface PreviousData {
   previousInputs: Record<string, Record<string, number>>
@@ -71,7 +70,7 @@ const STEPS = [
   { label: 'Reconciliation', description: 'Review mismatches' },
   { label: 'Approve', description: 'Sign off on the pay run' },
   { label: 'Payments', description: 'Record what was actually paid' },
-  { label: 'Send', description: 'Dispatch receipts once payments are finalized' },
+  { label: 'Send', description: 'Email pay slips once payments are finalized' },
 ] as const
 
 function num(v: unknown) {
@@ -203,8 +202,7 @@ export function PayrollRunWizard({
         endpoint = `/api/payroll/periods/${periodId}/unapprove`
         body = { comment: approvalComment || undefined }
       }
-      if (action === 'send') endpoint = `/api/payroll/periods/${periodId}/send-docusign`
-      if (action === 'sync') endpoint = `/api/payroll/periods/${periodId}/docusign/sync`
+      if (action === 'send') endpoint = `/api/payroll/periods/${periodId}/send-payslips`
 
       const res = await fetch(endpoint, {
         method: 'POST',
@@ -645,9 +643,9 @@ export function PayrollRunWizard({
           {currentStep === 5 && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-lg font-semibold font-display">Send Receipts</h2>
+                <h2 className="text-lg font-semibold font-display">Send Pay Slips</h2>
                 <p className="text-sm text-muted-foreground">
-                  Generate PDF receipts and send via HelloSign for e-signature.
+                  Generate a PDF pay slip for each paid employee and email it to them.
                 </p>
               </div>
 
@@ -677,7 +675,7 @@ export function PayrollRunWizard({
                         <span className="font-medium text-amber-600 dark:text-amber-400">
                           {held}
                         </span>{' '}
-                        <span className="text-muted-foreground">held (0 paid — no receipt)</span>
+                        <span className="text-muted-foreground">held (0 paid — no pay slip)</span>
                       </>
                     )}
                   </div>
@@ -697,30 +695,21 @@ export function PayrollRunWizard({
                       {pendingAction === 'send' ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
-                        <FileSignature className="w-4 h-4" />
+                        <Mail className="w-4 h-4" />
                       )}
-                      Send Receipts via HelloSign
+                      Email Pay Slips
                     </Button>
-                    <Button
-                      onClick={() => runAction('sync')}
-                      disabled={pendingAction !== 'none'}
-                      variant="outline"
-                      className="w-full"
-                    >
-                      {pendingAction === 'sync' ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <RefreshCcw className="w-4 h-4" />
-                      )}
-                      Sync Signing Status
-                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      Re-running only sends to employees whose pay slip has not gone out yet
+                      or previously failed.
+                    </p>
                   </CardContent>
                 </Card>
 
                 <Card className="lg:col-span-2">
                   <CardContent className="p-0">
                     <div className="p-4 border-b border-border">
-                      <h3 className="font-semibold">Receipts ({period.receipts?.length || 0})</h3>
+                      <h3 className="font-semibold">Pay Slips ({period.receipts?.length || 0})</h3>
                     </div>
                     <Table>
                       <TableHeader>
@@ -728,7 +717,7 @@ export function PayrollRunWizard({
                           <TableHead>Employee</TableHead>
                           <TableHead>Recipient</TableHead>
                           <TableHead>Status</TableHead>
-                          <TableHead>Signature</TableHead>
+                          <TableHead>Delivery</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -758,7 +747,7 @@ export function PayrollRunWizard({
                         {(!period.receipts || period.receipts.length === 0) && (
                           <TableRow>
                             <TableCell colSpan={4} className="text-center py-8 text-muted-foreground text-sm">
-                              No receipts yet. Run calculation first.
+                              No pay slips yet. Run calculation first.
                             </TableCell>
                           </TableRow>
                         )}

@@ -12,7 +12,7 @@ A comprehensive 360-degree performance evaluation system built with Next.js, Pos
 - **HR Admin Panel** - Comprehensive dashboard for managing evaluations and reports
 - **Email Distribution** - Queue and send performance reports via Resend
 - **Excel Export** - Download comprehensive evaluation data as spreadsheets
-- **Payroll Automation (HR + O&A)** - Monthly payroll periods, workbook import/backfill, formula-driven calculations, approval workflow, and DocuSign receipt dispatch
+- **Payroll Automation (HR + O&A)** - Monthly payroll periods, workbook import/backfill, formula-driven calculations, approval workflow, and emailed PDF pay slips
 
 ## Tech Stack
 
@@ -47,13 +47,8 @@ A comprehensive 360-degree performance evaluation system built with Next.js, Pos
    - `RESEND_API_KEY` - Your Resend API key
    - `NEXTAUTH_SECRET` - A random secret for session management
    - `NEXTAUTH_URL` - Your application URL (e.g., http://localhost:3000)
-   - `DOCUSIGN_INTEGRATION_KEY` - DocuSign integration key (JWT)
-   - `DOCUSIGN_USER_ID` - DocuSign API user ID
-   - `DOCUSIGN_ACCOUNT_ID` - DocuSign account ID
-   - `DOCUSIGN_PRIVATE_KEY` - RSA private key for DocuSign JWT
-   - `DOCUSIGN_BASE_PATH` - DocuSign API base (`https://demo.docusign.net` for sandbox)
-   - `DOCUSIGN_OAUTH_BASE_PATH` - OAuth base (`account-d.docusign.com` for sandbox)
-   - `DOCUSIGN_WEBHOOK_HMAC_KEY` - Optional: validates `x-docusign-signature-1` on webhook
+   - `GMAIL_USER` / `GMAIL_APP_PASSWORD` - Gmail account used to send evaluation reports and PDF pay slips
+   - `PAYSLIP_CC_EMAILS` - Optional comma-separated CC list for pay slip emails (defaults to Finance: shoaib@plutus21.com; set empty to disable)
 
 3. **Set up the database**:
    ```bash
@@ -164,9 +159,8 @@ Reports include:
 - `POST /api/payroll/backfill` - Backfill latest N months from workbook (supports dummy-values-to-real-names mode)
 - `POST /api/payroll/periods/:id/recalculate` - Recalculate computed metrics and receipts
 - `POST /api/payroll/periods/:id/approve` - Approve period
-- `POST /api/payroll/periods/:id/send-docusign` - Send receipts through DocuSign template
-- `POST /api/payroll/periods/:id/docusign/sync` - Refresh envelope statuses
-- `GET /api/payroll/config` / `PUT /api/payroll/config` - Manage DocuSign template config
+- `POST /api/payroll/periods/:id/send-payslips` - Email PDF pay slips to paid employees
+- `GET /api/payroll/config` / `PUT /api/payroll/config` - Payroll config and email readiness
 
 ### Email
 - `GET /api/email` - Get email queue
@@ -178,7 +172,7 @@ Reports include:
 2. Create a period using carry-forward (default monthly flow), or import workbook.
 3. Recalculate to produce computed payroll metrics and receipt payloads.
 4. Approve period.
-5. Send DocuSign envelopes and sync statuses.
+5. Record payments, then email PDF pay slips to paid employees.
 
 ### Dummy Workbook Testing Mode
 

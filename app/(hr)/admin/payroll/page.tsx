@@ -8,7 +8,7 @@ export default function AdminPayrollPage() {
       appBasePath="/admin"
       badge="Admin Payroll"
       heading="Payroll"
-      description="Manage payroll periods, workbook imports, reconciliation, approvals, and DocuSign delivery."
+      description="Manage payroll periods, workbook imports, reconciliation, approvals, and emailed PDF pay slips."
     />
   )
 }

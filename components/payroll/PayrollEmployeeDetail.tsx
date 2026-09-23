@@ -58,17 +58,17 @@ export function PayrollEmployeeDetail({
         </SheetHeader>
 
         <div className="mt-6 space-y-6">
-          {/* DocuSign Status */}
+          {/* Delivery Status */}
           {receipt && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Receipt Status</span>
+                <span className="text-sm text-muted-foreground">Pay Slip Status</span>
                 <PayrollStatusBadge status={receipt.status} />
               </div>
               {envelope && (
                 <>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">DocuSign</span>
+                    <span className="text-sm text-muted-foreground">Email Delivery</span>
                     <PayrollStatusBadge status={envelope.status} />
                   </div>
                   {envelope.sentAt && (
@@ -79,7 +79,7 @@ export function PayrollEmployeeDetail({
                   )}
                   {envelope.completedAt && (
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Completed</span>
+                      <span className="text-sm text-muted-foreground">Delivered</span>
                       <span className="text-sm">{new Date(envelope.completedAt).toLocaleString()}</span>
                     </div>
                   )}

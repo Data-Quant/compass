@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { canManagePayroll } from '@/lib/permissions'
-import { getHelloSignRuntimeConfig } from '@/lib/payroll/config'
+import { getPayslipMailRuntimeConfig } from '@/lib/payroll/config'
 
 const configSchema = z.object({
   templateId: z.string().trim().min(1).optional().default('none'),
@@ -21,15 +21,15 @@ export async function GET() {
     const config = await prisma.payrollConfig.findFirst({
       orderBy: { updatedAt: 'desc' },
     })
-    const runtime = getHelloSignRuntimeConfig()
+    const runtime = getPayslipMailRuntimeConfig()
 
     return NextResponse.json({
       config,
       runtime: {
-        provider: 'hellosign',
+        provider: 'email',
+        sender: runtime.sender,
         ready: runtime.ready,
         missing: runtime.missing,
-        testMode: runtime.testMode,
       },
     })
   } catch (error) {

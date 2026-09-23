@@ -1,76 +1,291 @@
 /**
- * PDF receipt generator for payroll payment receipts.
+ * Pay slip PDF generator.
  *
- * Generates a traditional-style receipt matching the Excel workbook format,
- * suitable for HelloSign (Dropbox Sign) signature requests.
+ * Renders the Apollo Ventures pay slip: branded banner, NTN, employee block,
+ * side-by-side earnings and deductions tables, net payable amount,
+ * confidentiality note, accountant stamp and signature.
  *
- * Uses PDFKit for server-side PDF generation.
+ * Uses PDFKit for server-side PDF generation. Layout mirrors the reference
+ * pay slip supplied by Finance (Sept 2026).
  */
 
 import PDFDocument from 'pdfkit'
+import type { PayslipData } from './payslip-data'
+import { payslipBannerBuffer, payslipSignatureBuffer, payslipStampBuffer } from './payslip-assets'
 
-/* ---------- Types ---------- */
+/* ---------- Constants ---------- */
 
-export interface ReceiptData {
-  employeeName: string
-  cnicNumber?: string
-  periodLabel: string
-  earnings: {
-    basicSalary: number
-    medicalTaxExemption: number
-    bonus: number
-    medicalAllowance: number
-    travelReimbursement: number
-    mobileReimbursement: number
-    expenseReimbursement: number
-    advanceLoan: number
-    totalEarnings: number
-  }
-  deductions: {
-    incomeTax: number
-    adjustment: number
-    loanRepayment: number
-    additionalDeductions?: number
-    totalDeductions: number
-  }
-  net: {
-    netSalary: number
-    paid: number
-    balance: number
-  }
-  company?: {
-    name?: string
-    phone?: string
-    email?: string
-  }
-}
+const COMPANY_NTN = 'NTN# 2309373-7'
+const COMPANY_PHONE = '+92 321 2918609'
+const COMPANY_EMAIL = 'apolloventurespk@gmail.com'
+
+const CONFIDENTIALITY_NOTE =
+  'All employees should keep their salaries, benefits, bonuses and any other form of compensation ' +
+  'confidential, and avoid providing or otherwise broadcasting this information with other employees, ' +
+  'or with any third-party that does not have a bona fide need to know.'
+
+const PAGE_MARGIN = 50
+const BANNER_TOP = 36
+const TABLE_GAP = 24
+const ROW_HEIGHT = 15
+const AMOUNT_COL_WIDTH = 70
+const FONT = 'Helvetica'
+const FONT_BOLD = 'Helvetica-Bold'
+const FONT_ITALIC = 'Helvetica-Oblique'
+const FONT_BOLD_ITALIC = 'Helvetica-BoldOblique'
+const BORDER_COLOR = '#333333'
+const HEADER_FILL = '#e5e5e5'
 
 /* ---------- Helpers ---------- */
 
-function num(v: unknown): number {
-  const n = Number(v)
-  return Number.isFinite(n) ? n : 0
-}
-
-function money(v: number): string {
-  const abs = Math.abs(v)
+export function formatPayslipMoney(value: number): string {
+  const abs = Math.abs(value)
   const formatted = abs.toLocaleString('en-US', { maximumFractionDigits: 0 })
-  if (v < 0) return `(${formatted})`
-  return formatted
+  return value < 0 ? `(${formatted})` : formatted
 }
 
-/* ---------- PDF Generator ---------- */
+interface TableRowSpec {
+  label: string
+  value: number
+  bold?: boolean
+}
 
-export async function generateReceiptPdf(data: ReceiptData): Promise<Buffer> {
+function earningsRows(e: PayslipData['earnings']): TableRowSpec[] {
+  const rows: TableRowSpec[] = [
+    { label: 'Basic Salary', value: e.basicSalary },
+    { label: 'Medical Exemption (10% of Basic)', value: e.medicalTaxExemption },
+    { label: 'Bonus', value: e.bonus },
+    { label: 'Total Taxable Salary', value: e.totalTaxableSalary, bold: true },
+    { label: 'Medical Allowance', value: e.medicalAllowance },
+    { label: 'Travel Reimbursement', value: e.travelReimbursement },
+    { label: 'Mobile Internet Reimbursement', value: e.mobileReimbursement },
+    { label: 'Reimbursements (Personal / Office)', value: e.expenseReimbursement },
+    { label: 'Advance Salary (Loan)', value: e.advanceLoan },
+  ]
+  return e.additionalEarnings !== 0
+    ? [...rows, { label: 'Other Earnings', value: e.additionalEarnings }]
+    : rows
+}
+
+function deductionRows(d: PayslipData['deductions']): TableRowSpec[] {
+  const rows: TableRowSpec[] = [
+    { label: 'Income Tax', value: d.incomeTax },
+    { label: 'Adjustment (+Refund/-Deduction)', value: d.adjustment },
+    { label: 'Loan Repayments', value: d.loanRepayment },
+  ]
+  return d.additionalDeductions !== 0
+    ? [...rows, { label: 'Other Deductions', value: d.additionalDeductions }]
+    : rows
+}
+
+/* ---------- Drawing primitives ---------- */
+
+type Doc = PDFKit.PDFDocument
+
+function drawLabelValue(doc: Doc, label: string, value: string, x: number, y: number, labelWidth: number) {
+  doc.font(FONT_BOLD).fontSize(9).fillColor('black').text(label, x, y, { width: labelWidth, lineBreak: false })
+  doc.font(FONT).fontSize(9).text(value, x + labelWidth, y, { lineBreak: false })
+}
+
+function drawAmountRow(doc: Doc, row: TableRowSpec, x: number, y: number, width: number) {
+  const font = row.bold ? FONT_BOLD : FONT
+  doc.font(font).fontSize(9).fillColor('black')
+  doc.text(row.label, x + 4, y + 3, { width: width - AMOUNT_COL_WIDTH - 8, lineBreak: false })
+  doc.text(formatPayslipMoney(row.value), x + width - AMOUNT_COL_WIDTH, y + 3, {
+    width: AMOUNT_COL_WIDTH - 4,
+    align: 'right',
+    lineBreak: false,
+  })
+}
+
+function strokeLine(doc: Doc, x1: number, y1: number, x2: number, y2: number) {
+  doc.save()
+  doc.moveTo(x1, y1).lineTo(x2, y2).lineWidth(0.75).strokeColor(BORDER_COLOR).stroke()
+  doc.restore()
+}
+
+function strokeBox(doc: Doc, x: number, y: number, width: number, height: number) {
+  doc.save()
+  doc.rect(x, y, width, height).lineWidth(0.75).strokeColor(BORDER_COLOR).stroke()
+  doc.restore()
+}
+
+interface AmountTableSpec {
+  title: string
+  rows: TableRowSpec[]
+  total: TableRowSpec
+  /** Total height the table box must occupy so paired tables align at the bottom. */
+  boxHeight: number
+}
+
+function drawAmountTable(doc: Doc, spec: AmountTableSpec, x: number, y: number, width: number): number {
+  strokeBox(doc, x, y, width, spec.boxHeight)
+
+  // Title band
+  doc.save()
+  doc.rect(x, y, width, ROW_HEIGHT).fill(HEADER_FILL)
+  doc.restore()
+  doc.font(FONT_BOLD).fontSize(9).fillColor('black')
+  doc.text(spec.title, x, y + 3, { width, align: 'center', lineBreak: false })
+  strokeLine(doc, x, y + ROW_HEIGHT, x + width, y + ROW_HEIGHT)
+
+  // Column headers
+  let cursor = y + ROW_HEIGHT
+  doc.font(FONT_BOLD).fontSize(9)
+  doc.text('Description', x + 4, cursor + 3, { lineBreak: false })
+  doc.text('Amount', x + width - AMOUNT_COL_WIDTH, cursor + 3, {
+    width: AMOUNT_COL_WIDTH - 4,
+    align: 'right',
+    lineBreak: false,
+  })
+  cursor += ROW_HEIGHT
+
+  for (const row of spec.rows) {
+    drawAmountRow(doc, row, x, cursor, width)
+    cursor += ROW_HEIGHT
+  }
+
+  // Total row pinned to the bottom of the box
+  const totalY = y + spec.boxHeight - ROW_HEIGHT
+  strokeLine(doc, x, totalY, x + width, totalY)
+  drawAmountRow(doc, { ...spec.total, bold: true }, x, totalY, width)
+
+  return y + spec.boxHeight
+}
+
+function drawBoxedRows(doc: Doc, rows: TableRowSpec[], x: number, y: number, width: number): number {
+  const height = rows.length * ROW_HEIGHT
+  strokeBox(doc, x, y, width, height)
+  rows.forEach((row, index) => drawAmountRow(doc, row, x, y + index * ROW_HEIGHT, width))
+  return y + height
+}
+
+/* ---------- Sections ---------- */
+
+function drawHeader(doc: Doc, data: PayslipData, left: number, pageWidth: number): number {
+  const bannerHeight = pageWidth / 4 // banner artwork is 4:1
+  doc.image(payslipBannerBuffer(), left, BANNER_TOP, { width: pageWidth, height: bannerHeight })
+
+  let y = BANNER_TOP + bannerHeight + 6
+  doc.font('Times-Bold').fontSize(9).fillColor('black')
+  doc.text(COMPANY_NTN, left, y, { width: pageWidth, align: 'right', lineBreak: false })
+
+  y += 26
+  doc.font(FONT_BOLD).fontSize(18).text('Payslip', left, y, { lineBreak: false })
+
+  y += 32
+  drawLabelValue(doc, 'Pay Period:', data.periodLabel, left, y, 80)
+
+  y += 26
+  const colGap = pageWidth / 2 + 10
+  const leftRows: Array<[string, string]> = [
+    ['Employee Name:', data.employeeName],
+    ['Designation:', data.designation ?? '-'],
+    ['CNIC:', data.cnicNumber ?? '-'],
+  ]
+  const rightRows: Array<[string, string]> = [
+    ['Department:', data.department ?? '-'],
+    ['Employee Status:', data.employmentStatus ?? '-'],
+    ['Account Number:', data.accountNumber ?? '-'],
+  ]
+  leftRows.forEach(([label, value], i) => drawLabelValue(doc, label, value, left, y + i * 14, 80))
+  rightRows.forEach(([label, value], i) => drawLabelValue(doc, label, value, left + colGap, y + i * 14, 84))
+
+  return y + leftRows.length * 14 + 22
+}
+
+function drawTables(doc: Doc, data: PayslipData, left: number, y: number, pageWidth: number): number {
+  const tableWidth = (pageWidth - TABLE_GAP) / 2
+  const earnings = earningsRows(data.earnings)
+  const deductions = deductionRows(data.deductions)
+  const rowCount = Math.max(earnings.length, deductions.length)
+  const boxHeight = (rowCount + 3) * ROW_HEIGHT // title + column header + rows + total
+
+  drawAmountTable(
+    doc,
+    {
+      title: 'EARNINGS',
+      rows: earnings,
+      total: { label: 'Total Earnings', value: data.earnings.totalEarnings },
+      boxHeight,
+    },
+    left,
+    y,
+    tableWidth,
+  )
+  const bottom = drawAmountTable(
+    doc,
+    {
+      title: 'DEDUCTIONS',
+      rows: deductions,
+      total: { label: 'Total Deductions', value: data.deductions.totalDeductions },
+      boxHeight,
+    },
+    left + tableWidth + TABLE_GAP,
+    y,
+    tableWidth,
+  )
+
+  const netRows: TableRowSpec[] = [{ label: 'Net Payable Amount', value: data.net.netSalary, bold: true }]
+  const withBalance =
+    data.net.balance !== 0
+      ? [
+          ...netRows,
+          { label: 'Paid', value: data.net.paid },
+          { label: 'Balance', value: data.net.balance, bold: true },
+        ]
+      : netRows
+
+  return drawBoxedRows(doc, withBalance, left, bottom + 12, tableWidth)
+}
+
+function drawFooter(doc: Doc, left: number, afterTablesY: number, pageWidth: number) {
+  // The stamp, signature and contact line are anchored to the page bottom so
+  // extra table rows (other earnings, balance) can never push them onto a
+  // second page. The note flows between the tables and the stamp.
+  const pageBottom = doc.page.height - PAGE_MARGIN
+  const contactY = pageBottom - 12
+  const lineY = contactY - 30
+  const signatureWidth = 150
+  const signatureY = lineY - 86
+  const stampWidth = 170
+  const stampY = signatureY - 84
+  const stampX = left + pageWidth - stampWidth
+  const noteY = Math.min(afterTablesY, stampY - 48)
+
+  doc.font(FONT_BOLD_ITALIC).fontSize(8.5).fillColor('black')
+  doc.text('NOTE: ', left, noteY, { continued: true })
+  doc.font(FONT_ITALIC).text(CONFIDENTIALITY_NOTE, { width: pageWidth * 0.9 })
+
+  doc.image(payslipStampBuffer(), stampX, stampY, { width: stampWidth })
+  doc.image(payslipSignatureBuffer(), left + pageWidth - signatureWidth - 10, signatureY, { width: signatureWidth })
+
+  doc.save()
+  doc.moveTo(stampX, lineY).lineTo(left + pageWidth, lineY).lineWidth(0.75).strokeColor('black').stroke()
+  doc.restore()
+  doc.font(FONT_BOLD).fontSize(9)
+  doc.text('Accountant', stampX, lineY + 4, { width: stampWidth, align: 'center', lineBreak: false })
+
+  doc.font(FONT_BOLD).fontSize(9)
+  doc.text(`t: ${COMPANY_PHONE}, e: ${COMPANY_EMAIL}`, left, contactY, {
+    width: pageWidth,
+    align: 'center',
+    lineBreak: false,
+  })
+}
+
+/* ---------- Public API ---------- */
+
+export async function generatePayslipPdf(data: PayslipData): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({
         size: 'A4',
-        margin: 60,
+        margin: PAGE_MARGIN,
         info: {
-          Title: `Payment Receipt - ${data.employeeName} - ${data.periodLabel}`,
-          Author: data.company?.name || 'Apollo Ventures',
-          Subject: 'Employee Payment Receipt',
+          Title: `Payslip - ${data.employeeName} - ${data.periodLabel}`,
+          Author: 'Apollo Ventures',
+          Subject: 'Employee Pay Slip',
         },
       })
 
@@ -79,169 +294,16 @@ export async function generateReceiptPdf(data: ReceiptData): Promise<Buffer> {
       doc.on('end', () => resolve(Buffer.concat(chunks)))
       doc.on('error', reject)
 
-      const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right
-      const leftMargin = doc.page.margins.left
-      const rightEdge = doc.page.width - doc.page.margins.right
+      const left = doc.page.margins.left
+      const pageWidth = doc.page.width - doc.page.margins.right - left
 
-      /* ---- Header ---- */
-      doc.fontSize(14).font('Helvetica-Bold')
-      doc.text('Employee Payment Receipt', leftMargin, 60, { align: 'center', width: pageWidth })
-
-      doc.fontSize(11).font('Helvetica')
-      doc.text(data.employeeName, leftMargin, 82, { align: 'center', width: pageWidth })
-
-      if (data.cnicNumber) {
-        doc.fontSize(10)
-        doc.text(data.cnicNumber, leftMargin, 96, { align: 'center', width: pageWidth })
-      }
-
-      const periodY = data.cnicNumber ? 118 : 104
-      doc.fontSize(10).font('Helvetica')
-      doc.text(data.periodLabel, rightEdge - 100, periodY, { width: 100, align: 'right' })
-
-      /* ---- Table dimensions ---- */
-      const tableLeft = leftMargin
-      const tableWidth = pageWidth
-      const labelColWidth = tableWidth - 120
-      const amountColWidth = 120
-      const amountRight = tableLeft + tableWidth
-      const rowHeight = 20
-
-      let y = periodY + 30
-
-      /* ---- Earnings section header ---- */
-      y = drawSectionHeader(doc, 'EARNINGS:', tableLeft, y, tableWidth, rowHeight)
-
-      /* ---- Earnings rows ---- */
-      y = drawRow(doc, 'Basic Salary', money(data.earnings.basicSalary), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight)
-      y = drawRow(doc, 'Tax exemption on medical (10%)', money(data.earnings.medicalTaxExemption), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight)
-      y = drawRow(doc, 'Bonus', money(data.earnings.bonus), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight)
-
-      // Total Taxable Salary (bold) — bonus is non-taxable, excluded from this sum.
-      const totalTaxable = num(data.earnings.basicSalary) + num(data.earnings.medicalTaxExemption)
-      y = drawRow(doc, 'Total Taxable Salary', money(totalTaxable), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight, true)
-
-      y = drawRow(doc, 'Medical Allowance', money(data.earnings.medicalAllowance), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight)
-      y = drawRow(doc, 'Travel Reimbursement', money(data.earnings.travelReimbursement), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight)
-      y = drawRow(doc, 'Mobile Internet Reimbursement', money(data.earnings.mobileReimbursement), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight)
-      y = drawRow(doc, 'Reimbursements (Personal / Office Purchases)', money(data.earnings.expenseReimbursement), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight)
-      y = drawRow(doc, 'Advance Salary (Loan)', money(data.earnings.advanceLoan), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight)
-      y = drawRow(doc, 'Total Earnings', money(data.earnings.totalEarnings), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight, true)
-
-      y += 8
-
-      /* ---- Deductions section header ---- */
-      y = drawSectionHeader(doc, 'DEDUCTIONS:', tableLeft, y, tableWidth, rowHeight)
-
-      y = drawRow(doc, 'Income Tax', money(data.deductions.incomeTax), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight)
-      y = drawRow(doc, 'Adjustment (+Refund/-Deduction)', money(data.deductions.adjustment), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight)
-      y = drawRow(doc, 'Loan Repayments', money(data.deductions.loanRepayment), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight)
-      y = drawRow(doc, 'Other Deductions', money(data.deductions.additionalDeductions || 0), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight)
-      y = drawRow(doc, 'Total Deductions', money(data.deductions.totalDeductions), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight, true)
-
-      y += 8
-
-      /* ---- Net section ---- */
-      y = drawRow(doc, 'Net Salary', money(data.net.netSalary), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight, true, true)
-      y = drawRow(doc, 'Paid', money(data.net.paid), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight)
-      y = drawRow(doc, 'Balance', money(data.net.balance), tableLeft, y, labelColWidth, amountColWidth, amountRight, rowHeight, false, true)
-
-      /* ---- Signature lines ---- */
-      y += 50
-
-      const sigLineWidth = 200
-      doc.fontSize(10).font('Helvetica')
-
-      // Accountant
-      doc.moveTo(tableLeft, y).lineTo(tableLeft + sigLineWidth, y).stroke()
-      doc.font('Helvetica-Bold').text('Accountant', tableLeft, y + 4)
-
-      y += 50
-
-      // Employee
-      doc.moveTo(tableLeft, y).lineTo(tableLeft + sigLineWidth, y).stroke()
-      doc.font('Helvetica-Bold').text('Employee', tableLeft, y + 4)
-
-      y += 50
-
-      // HR Representative
-      doc.moveTo(tableLeft, y).lineTo(tableLeft + sigLineWidth, y).stroke()
-      doc.font('Helvetica-Bold').text('HR Representative', tableLeft, y + 4)
-
-      /* ---- Company footer ---- */
-      y += 50
-      const companyName = data.company?.name || 'Apollo Ventures'
-      const companyPhone = data.company?.phone || '+92 321 2918609'
-      const companyEmail = data.company?.email || 'apolloventurespk@gmail.com'
-
-      doc.font('Helvetica-Bold').fontSize(10)
-      doc.text(companyName, leftMargin, y, { align: 'center', width: pageWidth })
-      doc.font('Helvetica').fontSize(9)
-      doc.text(`t: ${companyPhone}, e: ${companyEmail}`, leftMargin, y + 14, { align: 'center', width: pageWidth })
+      const afterHeader = drawHeader(doc, data, left, pageWidth)
+      const afterTables = drawTables(doc, data, left, afterHeader, pageWidth)
+      drawFooter(doc, left, afterTables + 28, pageWidth)
 
       doc.end()
     } catch (err) {
       reject(err)
     }
   })
-}
-
-/* ---------- Drawing helpers ---------- */
-
-function drawSectionHeader(
-  doc: PDFKit.PDFDocument,
-  title: string,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-): number {
-  // Dark background header
-  doc.save()
-  doc.rect(x, y, width * 0.35, height).fill('#1a1a2e')
-  doc.restore()
-
-  doc.font('Helvetica-Bold').fontSize(9).fillColor('white')
-  doc.text(title, x + 4, y + 5, { width: width * 0.35 - 8 })
-  doc.fillColor('black')
-
-  return y + height
-}
-
-function drawRow(
-  doc: PDFKit.PDFDocument,
-  label: string,
-  value: string,
-  x: number,
-  y: number,
-  labelWidth: number,
-  amountWidth: number,
-  amountRight: number,
-  height: number,
-  bold?: boolean,
-  bordered?: boolean,
-): number {
-  const font = bold ? 'Helvetica-Bold' : 'Helvetica'
-
-  if (bordered) {
-    doc.save()
-    doc.rect(x, y, labelWidth + amountWidth, height).lineWidth(0.5).stroke('#333333')
-    doc.restore()
-  }
-
-  doc.font(font).fontSize(9).fillColor('black')
-  doc.text(label, x + 4, y + 5, { width: labelWidth - 8 })
-  doc.text(value, amountRight - amountWidth + 4, y + 5, {
-    width: amountWidth - 8,
-    align: 'right',
-  })
-
-  if (!bordered) {
-    // Light bottom border
-    doc.save()
-    doc.moveTo(x, y + height).lineTo(amountRight, y + height).lineWidth(0.25).strokeColor('#cccccc').stroke()
-    doc.restore()
-  }
-
-  return y + height
 }

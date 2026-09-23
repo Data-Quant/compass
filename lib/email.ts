@@ -151,6 +151,31 @@ export async function sendMail(to: string, subject: string, html: string) {
   })
 }
 
+export interface MailAttachment {
+  filename: string
+  content: Buffer
+  contentType: string
+}
+
+export async function sendMailWithAttachments(options: {
+  to: string
+  cc?: string[]
+  subject: string
+  html: string
+  text?: string
+  attachments: MailAttachment[]
+}) {
+  return transporter.sendMail({
+    from: `P21 Compass <${FROM_EMAIL}>`,
+    to: options.to,
+    ...(options.cc && options.cc.length > 0 ? { cc: options.cc } : {}),
+    subject: options.subject,
+    html: options.html,
+    ...(options.text ? { text: options.text } : {}),
+    attachments: options.attachments,
+  })
+}
+
 export async function queueEmails(periodId: string, employeeIds?: string[]) {
   const period =
     periodId === 'active'

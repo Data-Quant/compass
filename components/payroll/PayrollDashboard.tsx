@@ -287,7 +287,7 @@ export function PayrollDashboard({
             <CardContent className="p-4">
               <div className="flex items-center gap-2 text-muted-foreground mb-1">
                 <FileSpreadsheet className="w-3.5 h-3.5" />
-                <p className="text-xs uppercase tracking-wider">DocuSign Sent</p>
+                <p className="text-xs uppercase tracking-wider">Pay Slips Emailed</p>
               </div>
               <p className="text-2xl font-semibold">{dashboard.envelopeCounts.sent || 0}</p>
             </CardContent>

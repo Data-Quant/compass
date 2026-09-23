@@ -8,7 +8,7 @@ export default function OaPayrollPage() {
       appBasePath="/oa"
       badge="O&A Payroll"
       heading="Payroll"
-      description="Default monthly workflow: carry-forward from prior period, apply changes, recalculate, approve, and send DocuSign receipts."
+      description="Default monthly workflow: carry-forward from prior period, apply changes, recalculate, approve, and email PDF pay slips."
     />
   )
 }
