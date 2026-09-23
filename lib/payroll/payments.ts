@@ -193,3 +193,45 @@ export function filterPaymentRows<T extends { payrollName: string }>(
   if (!q) return rows
   return rows.filter((r) => r.payrollName.toLowerCase().includes(q))
 }
+
+/* ---------- Pay slip send selection ---------- */
+
+export interface SelectablePayslipReceipt {
+  id: string
+  status: string
+  payrollName: string
+}
+
+/**
+ * Receipt ids the Send step may dispatch: not yet sent (READY/FAILED) and
+ * with pay recorded. Order follows the input so the UI stays stable.
+ */
+export function eligiblePayslipReceiptIds(
+  receipts: readonly SelectablePayslipReceipt[],
+  paidByName: ReadonlyMap<string, number>,
+): string[] {
+  return receipts
+    .filter((receipt) => isSendableReceipt(receipt.status, paidByName.get(receipt.payrollName) ?? 0))
+    .map((receipt) => receipt.id)
+}
+
+/** Returns a new set with `id` added if absent or removed if present. */
+export function togglePayslipSelection(selected: ReadonlySet<string>, id: string): Set<string> {
+  const next = new Set(selected)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  return next
+}
+
+/**
+ * Header checkbox behaviour: if every eligible id is already selected, clear
+ * the selection; otherwise select exactly the eligible ids (dropping any
+ * stale ids that are no longer eligible).
+ */
+export function toggleAllPayslipSelection(
+  selected: ReadonlySet<string>,
+  eligibleIds: readonly string[],
+): Set<string> {
+  const allSelected = eligibleIds.length > 0 && eligibleIds.every((id) => selected.has(id))
+  return allSelected ? new Set<string>() : new Set(eligibleIds)
+}

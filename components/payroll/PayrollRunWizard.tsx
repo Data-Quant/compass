@@ -9,10 +9,17 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Checkbox } from '@/components/ui/checkbox'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PayrollStatusBadge } from '@/components/payroll/PayrollStatusBadge'
 import { PayrollEmployeeGrid } from '@/components/payroll/PayrollEmployeeGrid'
 import { PayrollPaymentsGrid } from '@/components/payroll/PayrollPaymentsGrid'
 import { PayrollEmployeeDetail } from '@/components/payroll/PayrollEmployeeDetail'
+import {
+  eligiblePayslipReceiptIds,
+  toggleAllPayslipSelection,
+  togglePayslipSelection,
+} from '@/lib/payroll/payments'
 import {
   Calculator,
   CheckCircle2,
@@ -76,6 +83,19 @@ const STEPS = [
 function num(v: unknown) {
   const n = Number(v)
   return Number.isFinite(n) ? n : 0
+}
+
+const CONFIRM_NAME_PREVIEW_LIMIT = 12
+
+function describeSendConfirmation(periodLabel: string, names: string[]) {
+  const preview = names.slice(0, CONFIRM_NAME_PREVIEW_LIMIT).join(', ')
+  const overflow = names.length - CONFIRM_NAME_PREVIEW_LIMIT
+  const list = overflow > 0 ? `${preview} and ${overflow} more` : preview
+  return (
+    `A PDF pay slip for ${periodLabel} will be emailed to ${names.length} ` +
+    `employee${names.length === 1 ? '' : 's'}, with Finance CC'd. ` +
+    `Recipients: ${list}. This cannot be undone.`
+  )
 }
 
 function money(v: number) {
@@ -151,6 +171,8 @@ export function PayrollRunWizard({
   const [payrollEmployees, setPayrollEmployees] = useState<PayrollEmployeeOption[]>([])
   const [detailEmployee, setDetailEmployee] = useState<string | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
+  const [selectedReceiptIds, setSelectedReceiptIds] = useState<Set<string>>(new Set())
+  const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
 
   // Load comparison data
   useEffect(() => {
@@ -188,6 +210,38 @@ export function PayrollRunWizard({
     setCurrentStep(step)
   }, [period?.status])
 
+  const paidByName = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const p of period?.payments || []) {
+      map.set(p.payrollName, (map.get(p.payrollName) || 0) + num(p.paidAmount))
+    }
+    return map
+  }, [period?.payments])
+
+  const eligibleReceiptIds = useMemo(
+    () => eligiblePayslipReceiptIds(period?.receipts || [], paidByName),
+    [period?.receipts, paidByName],
+  )
+  const eligibleKey = eligibleReceiptIds.join('|')
+
+  // Default to "everyone who can be sent" whenever the eligible set changes
+  // (initial load, after payments are recorded, after a send run).
+  useEffect(() => {
+    setSelectedReceiptIds(new Set(eligibleReceiptIds))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eligibleKey])
+
+  const selectedCount = selectedReceiptIds.size
+  const allEligibleSelected =
+    eligibleReceiptIds.length > 0 && eligibleReceiptIds.every((id) => selectedReceiptIds.has(id))
+  const selectedNames = useMemo(
+    () =>
+      (period?.receipts || [])
+        .filter((r: any) => selectedReceiptIds.has(r.id))
+        .map((r: any) => r.payrollName as string),
+    [period?.receipts, selectedReceiptIds],
+  )
+
   const runAction = useCallback(async (action: Exclude<PendingAction, 'none'>) => {
     try {
       setPendingAction(action)
@@ -202,7 +256,10 @@ export function PayrollRunWizard({
         endpoint = `/api/payroll/periods/${periodId}/unapprove`
         body = { comment: approvalComment || undefined }
       }
-      if (action === 'send') endpoint = `/api/payroll/periods/${periodId}/send-payslips`
+      if (action === 'send') {
+        endpoint = `/api/payroll/periods/${periodId}/send-payslips`
+        body = { receiptIds: Array.from(selectedReceiptIds) }
+      }
 
       const res = await fetch(endpoint, {
         method: 'POST',
@@ -219,7 +276,7 @@ export function PayrollRunWizard({
     } finally {
       setPendingAction('none')
     }
-  }, [periodId, approvalComment, onReload])
+  }, [periodId, approvalComment, onReload, selectedReceiptIds])
 
   const mismatches = useMemo(
     () => (period?.summaryJson as any)?.mismatches || [],
@@ -650,25 +707,18 @@ export function PayrollRunWizard({
               </div>
 
               {(() => {
-                const paidByName = new Map<string, number>()
-                for (const p of period.payments || []) {
-                  paidByName.set(p.payrollName, (paidByName.get(p.payrollName) || 0) + p.paidAmount)
-                }
                 const receipts = period.receipts || []
                 const held = receipts.filter(
                   (r: any) =>
                     (r.status === 'READY' || r.status === 'FAILED') &&
                     (paidByName.get(r.payrollName) || 0) <= 0
                 ).length
-                const willSend = receipts.filter(
-                  (r: any) =>
-                    (r.status === 'READY' || r.status === 'FAILED') &&
-                    (paidByName.get(r.payrollName) || 0) > 0
-                ).length
                 return (
                   <div className="rounded-lg border border-border bg-muted/40 px-4 py-2 text-sm">
-                    <span className="font-medium text-foreground">{willSend}</span>{' '}
-                    <span className="text-muted-foreground">will be sent</span>
+                    <span className="font-medium text-foreground">{selectedCount}</span>{' '}
+                    <span className="text-muted-foreground">
+                      of {eligibleReceiptIds.length} eligible selected
+                    </span>
                     {held > 0 && (
                       <>
                         {' · '}
@@ -687,8 +737,8 @@ export function PayrollRunWizard({
                   <CardContent className="p-6 space-y-4">
                     <h3 className="font-semibold">Actions</h3>
                     <Button
-                      onClick={() => runAction('send')}
-                      disabled={pendingAction !== 'none'}
+                      onClick={() => setSendConfirmOpen(true)}
+                      disabled={pendingAction !== 'none' || selectedCount === 0}
                       className="w-full"
                       size="lg"
                     >
@@ -697,11 +747,12 @@ export function PayrollRunWizard({
                       ) : (
                         <Mail className="w-4 h-4" />
                       )}
-                      Email Pay Slips
+                      Email Pay Slips ({selectedCount})
                     </Button>
                     <p className="text-xs text-muted-foreground">
-                      Re-running only sends to employees whose pay slip has not gone out yet
-                      or previously failed.
+                      Tick the employees who should receive a pay slip. Only employees with pay
+                      recorded and no pay slip sent yet can be selected. You will be asked to
+                      confirm before anything is emailed.
                     </p>
                   </CardContent>
                 </Card>
@@ -714,6 +765,18 @@ export function PayrollRunWizard({
                     <Table>
                       <TableHeader>
                         <TableRow className="bg-muted/50">
+                          <TableHead className="w-10">
+                            <Checkbox
+                              aria-label="Select all eligible employees"
+                              checked={allEligibleSelected}
+                              disabled={eligibleReceiptIds.length === 0}
+                              onCheckedChange={() =>
+                                setSelectedReceiptIds((prev) =>
+                                  toggleAllPayslipSelection(prev, eligibleReceiptIds)
+                                )
+                              }
+                            />
+                          </TableHead>
                           <TableHead>Employee</TableHead>
                           <TableHead>Recipient</TableHead>
                           <TableHead>Status</TableHead>
@@ -723,12 +786,23 @@ export function PayrollRunWizard({
                       <TableBody>
                         {(period.receipts || []).map((receipt: any) => {
                           const envelope = receipt.envelopes?.[0]
+                          const eligible = eligibleReceiptIds.includes(receipt.id)
                           return (
                             <TableRow
                               key={receipt.id}
                               className="cursor-pointer hover:bg-muted/30"
                               onClick={() => handleEmployeeClick(receipt.payrollName)}
                             >
+                              <TableCell onClick={(e) => e.stopPropagation()}>
+                                <Checkbox
+                                  aria-label={`Send pay slip to ${receipt.payrollName}`}
+                                  checked={selectedReceiptIds.has(receipt.id)}
+                                  disabled={!eligible}
+                                  onCheckedChange={() =>
+                                    setSelectedReceiptIds((prev) => togglePayslipSelection(prev, receipt.id))
+                                  }
+                                />
+                              </TableCell>
                               <TableCell className="font-medium text-sm">{receipt.payrollName}</TableCell>
                               <TableCell className="text-sm text-muted-foreground">
                                 {receipt.user?.name || 'Unmapped'}
@@ -746,7 +820,7 @@ export function PayrollRunWizard({
                         })}
                         {(!period.receipts || period.receipts.length === 0) && (
                           <TableRow>
-                            <TableCell colSpan={4} className="text-center py-8 text-muted-foreground text-sm">
+                            <TableCell colSpan={5} className="text-center py-8 text-muted-foreground text-sm">
                               No pay slips yet. Run calculation first.
                             </TableCell>
                           </TableRow>
@@ -756,6 +830,16 @@ export function PayrollRunWizard({
                   </CardContent>
                 </Card>
               </div>
+
+              <ConfirmDialog
+                isOpen={sendConfirmOpen}
+                onClose={() => setSendConfirmOpen(false)}
+                onConfirm={() => runAction('send')}
+                title={`Email ${selectedCount} pay slip${selectedCount === 1 ? '' : 's'}?`}
+                message={describeSendConfirmation(period.label, selectedNames)}
+                confirmText="Send"
+                variant="warning"
+              />
             </div>
           )}
 
