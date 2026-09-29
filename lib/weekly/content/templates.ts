@@ -1,7 +1,7 @@
 // Drafts for questions the spec did not cover (and for leads' custom questions): the
 // prompts follow the spec's pattern; each level uses HR's description, falling back to the
 // shared standard when HR left it blank, in which case the profile is marked incomplete.
-import type { LevelKey, ProfileLevels } from '../profile'
+import type { LevelKey, ProfileLevel, ProfileLevels } from '../profile'
 import { STANDARD_LEVELS, type CompetencyContent } from './drafts'
 
 export function draftFromDescriptions(input: {
@@ -10,12 +10,11 @@ export function draftFromDescriptions(input: {
 }): CompetencyContent {
   const topic = input.questionText.trim()
   const keys: LevelKey[] = ['1', '2', '3', '4']
-  const levels = Object.fromEntries(
-    keys.map((key) => {
-      const description = input.descriptions[key]?.trim()
-      return [key, { ...STANDARD_LEVELS[key], behaviours: description || STANDARD_LEVELS[key].behaviours, evidence: [] }]
-    }),
-  ) as ProfileLevels
+  const levelFor = (key: LevelKey): ProfileLevel => {
+    const description = input.descriptions[key]?.trim()
+    return { ...STANDARD_LEVELS[key], behaviours: description || STANDARD_LEVELS[key].behaviours, evidence: [] }
+  }
+  const levels: ProfileLevels = { '1': levelFor('1'), '2': levelFor('2'), '3': levelFor('3'), '4': levelFor('4') }
   return {
     name: topic,
     definition: topic,
