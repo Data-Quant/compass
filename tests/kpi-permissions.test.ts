@@ -13,8 +13,8 @@ const person = (id: string, position: string, department: string): ScopeUser => 
 })
 const scope = buildKpiScope(
   [
-    person('lead', 'Lead', 'Product'), person('jp', 'Junior Partner', 'Product'), person('noha', 'Junior Partner', 'Value Creation'),
-    person('oum', 'Analyst', 'Value Creation'), person('member', 'Analyst', 'Product'), person('other', 'Analyst', 'Design'),
+    person('lead', 'Lead', 'Product'), person('jp', 'Junior Partner', 'Product'), person('exec', 'Junior Partner', 'Value Creation'),
+    person('verifier', 'Analyst', 'Value Creation'), person('member', 'Analyst', 'Product'), person('other', 'Analyst', 'Design'),
     person('partner', 'Partner', 'Executive'), person('hr', 'HR Executive', 'Human Resources'),
   ],
   [{ evaluatorId: 'lead', evaluateeId: 'member', relationshipType: 'TEAM_LEAD' }],
@@ -27,13 +27,13 @@ const lead = actor('lead', 'EMPLOYEE', 'Lead')
 const jp = actor('jp', 'EMPLOYEE', 'Junior Partner')
 const partner = actor('partner', 'EMPLOYEE', 'Partner', 'executive')
 const hr = actor('hr', 'HR', 'HR Executive', 'human resources')
-const noha = actor('noha', 'EXECUTION', 'Junior Partner', 'value creation')
-const oum = actor('oum', 'EMPLOYEE', 'Analyst', 'value creation', ['VERIFIER'])
+const exec = actor('exec', 'EXECUTION', 'Junior Partner', 'value creation')
+const verifier = actor('verifier', 'EMPLOYEE', 'Analyst', 'value creation', ['VERIFIER'])
 const member = actor('member')
 const other = actor('other', 'EMPLOYEE', 'Analyst', 'design')
 
 const teamKpi: KpiRef = { scope: 'TEAM', setterId: 'lead', departmentKey: null, assigneeIds: ['member'], claimedById: null }
-const vcKpi: KpiRef = { scope: 'DEPARTMENT', setterId: 'partner', departmentKey: 'value creation', assigneeIds: ['noha'], claimedById: null }
+const vcKpi: KpiRef = { scope: 'DEPARTMENT', setterId: 'partner', departmentKey: 'value creation', assigneeIds: ['exec'], claimedById: null }
 
 test('department setters are HR, Partner or Managing Partner titles, or a grant', () => {
   assert.equal(isDepartmentSetter(hr), true)
@@ -44,9 +44,9 @@ test('department setters are HR, Partner or Managing Partner titles, or a grant'
 })
 
 test('verifiers are EXECUTION, HR or granted', () => {
-  assert.equal(isVerifierEligible(noha), true)
+  assert.equal(isVerifierEligible(exec), true)
   assert.equal(isVerifierEligible(hr), true)
-  assert.equal(isVerifierEligible(oum), true)
+  assert.equal(isVerifierEligible(verifier), true)
   assert.equal(isVerifierEligible(member), false)
 })
 
@@ -91,25 +91,25 @@ test('KPI visibility', () => {
   assert.equal(canViewKpi(member, teamKpi, scope), true)
   assert.equal(canViewKpi(lead, teamKpi, scope), true)
   assert.equal(canViewKpi(other, teamKpi, scope), false)
-  assert.equal(canViewKpi(oum, teamKpi, scope), true)
-  assert.equal(canViewKpi(noha, vcKpi, scope), true)
+  assert.equal(canViewKpi(verifier, teamKpi, scope), true)
+  assert.equal(canViewKpi(exec, vcKpi, scope), true)
   assert.equal(canViewKpi(jp, vcKpi, scope), false)
 })
 
 test('claimers: team KPIs by the setter, department KPIs by an owner, HR always', () => {
   assert.equal(canClaim(lead, teamKpi), true)
   assert.equal(canClaim(member, teamKpi), false)
-  assert.equal(canClaim(noha, vcKpi), true)
+  assert.equal(canClaim(exec, vcKpi), true)
   assert.equal(canClaim(partner, vcKpi), false)
   assert.equal(canClaim(hr, vcKpi), true)
 })
 
-test('conflict rule: Noha cannot verify her own department KPI; Oum and HR can', () => {
-  assert.equal(canVerify(noha, vcKpi), false)
-  assert.equal(canVerify(oum, vcKpi), true)
+test('conflict rule: the Execution JP cannot verify her own department KPI; a granted verifier and HR can', () => {
+  assert.equal(canVerify(exec, vcKpi), false)
+  assert.equal(canVerify(verifier, vcKpi), true)
   assert.equal(canVerify(hr, vcKpi), true)
   assert.equal(canVerify(member, teamKpi), false)
-  assert.equal(canVerify(oum, { ...teamKpi, claimedById: 'oum' }), false)
+  assert.equal(canVerify(verifier, { ...teamKpi, claimedById: 'verifier' }), false)
   assert.equal(canVerify(actor('lead', 'HR'), teamKpi), false)
 })
 
@@ -117,7 +117,7 @@ test('change requests and their decisions', () => {
   assert.equal(canRequestChange(lead, teamKpi), true)
   assert.equal(canRequestChange(partner, vcKpi), true)
   assert.equal(canRequestChange(other, teamKpi), false)
-  assert.equal(canDecideChange(oum, teamKpi, 'lead'), true)
-  assert.equal(canDecideChange(oum, teamKpi, 'oum'), false)
-  assert.equal(canDecideChange(noha, vcKpi, 'partner'), false)
+  assert.equal(canDecideChange(verifier, teamKpi, 'lead'), true)
+  assert.equal(canDecideChange(verifier, teamKpi, 'verifier'), false)
+  assert.equal(canDecideChange(exec, vcKpi, 'partner'), false)
 })

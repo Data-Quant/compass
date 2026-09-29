@@ -35,7 +35,7 @@ test('capabilities reflect scope, titles, roles and grants', DB_TEST, async () =
   assert.equal(capabilitiesOf(actorFor(PEOPLE.member), scope).isTeamSetter, false)
   assert.equal(capabilitiesOf(actorFor(PEOPLE.partner), scope).isDepartmentSetter, true)
   assert.equal(capabilitiesOf(actorFor(PEOPLE.partner), scope).inScheme, false)
-  assert.equal(capabilitiesOf(actorFor(PEOPLE.oum, ['VERIFIER']), scope).isVerifier, true)
+  assert.equal(capabilitiesOf(actorFor(PEOPLE.verifier, ['VERIFIER']), scope).isVerifier, true)
 })
 
 test('team view: own team for a setter, 403 for others, lead picker for HR', DB_TEST, async () => {
@@ -78,7 +78,7 @@ test('my view lists my KPIs with a provisional KPI %', DB_TEST, async () => {
 
 test('verifier view needs verifier rights', DB_TEST, async () => {
   await seedKpis()
-  const view = await verifierView(actorFor(PEOPLE.oum, ['VERIFIER']), '2026-10', now)
+  const view = await verifierView(actorFor(PEOPLE.verifier, ['VERIFIER']), '2026-10', now)
   assert.equal(view.goals.length, 2)
   await assert.rejects(verifierView(actorFor(PEOPLE.member), '2026-10', now), isStatus(403))
 })
@@ -101,9 +101,9 @@ test('HR assigns and removes setters with logged reasons', DB_TEST, async () => 
 })
 
 test('grants, months and the quarter overview', DB_TEST, async () => {
-  await addGrant(hr, { userId: PEOPLE.oum.id, role: 'VERIFIER' })
-  await assert.rejects(addGrant(hr, { userId: PEOPLE.oum.id, role: 'VERIFIER' }), isStatus(409))
-  assert.equal((await grantsOverview()).grants[0].user.id, PEOPLE.oum.id)
+  await addGrant(hr, { userId: PEOPLE.verifier.id, role: 'VERIFIER' })
+  await assert.rejects(addGrant(hr, { userId: PEOPLE.verifier.id, role: 'VERIFIER' }), isStatus(409))
+  assert.equal((await grantsOverview()).grants[0].user.id, PEOPLE.verifier.id)
   await seedKpis()
   const months = await listAdminMonths(now)
   assert.deepEqual(months.map((m) => [m.monthKey, m.kpiCount]), [['2026-10', 2]])

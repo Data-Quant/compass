@@ -1,7 +1,7 @@
 import { z } from 'zod'
-import { endOfKarachiDay, parseCalendarDate, type KpiMonthDeadlines } from './calendar'
+import { endOfKarachiDay, parseCalendarDate, parseMonthKey, type KpiMonthDeadlines } from './calendar'
 
-const monthKeySchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Use a YYYY-MM month')
+const monthKeySchema = z.string().refine((value) => parseMonthKey(value) !== null, 'Use a YYYY-MM month between 2000 and 2100')
 const titleSchema = z.string().trim().min(3, 'Use at least 3 characters').max(200)
 const targetSchema = z.string().trim().min(3, 'Describe a measurable target').max(500)
 const ownerIdsSchema = z.array(z.string().min(1)).min(1, 'Choose at least one owner').max(50)

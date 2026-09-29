@@ -99,11 +99,19 @@ export function formatCalendarDate(date: CalendarDate): string {
   return `${date.year}-${String(date.month).padStart(2, '0')}-${String(date.day).padStart(2, '0')}`
 }
 
+const MIN_YEAR = 2000
+const MAX_YEAR = 2100
+
+function inYearRange(year: number): boolean {
+  return year >= MIN_YEAR && year <= MAX_YEAR
+}
+
 export function parseMonthKey(value: string): MonthKey | null {
   const match = /^(\d{4})-(\d{2})$/.exec(value)
   if (!match) return null
+  const year = Number(match[1])
   const month = Number(match[2])
-  return month >= 1 && month <= 12 ? { year: Number(match[1]), month } : null
+  return inYearRange(year) && month >= 1 && month <= 12 ? { year, month } : null
 }
 
 export function formatMonthKey(key: MonthKey): string {
@@ -112,7 +120,8 @@ export function formatMonthKey(key: MonthKey): string {
 
 export function parseQuarterKey(value: string): QuarterKey | null {
   const match = /^(\d{4})-Q([1-4])$/.exec(value)
-  return match ? { year: Number(match[1]), quarter: Number(match[2]) as QuarterKey['quarter'] } : null
+  if (!match || !inYearRange(Number(match[1]))) return null
+  return { year: Number(match[1]), quarter: Number(match[2]) as QuarterKey['quarter'] }
 }
 
 export function formatQuarterKey(key: QuarterKey): string {

@@ -1,4 +1,5 @@
 import test from 'node:test'
+import { NO_INCOMING_EVALUATION_NAMES } from '../lib/evaluation-profile-rules'
 import assert from 'node:assert/strict'
 import { buildKpiScope, departmentKeyOf, isInScheme, type ScopeUser } from '../lib/kpi/scope'
 
@@ -17,7 +18,7 @@ const users: ScopeUser[] = [
   user('b', 'Analyst', 'Product'),
   user('c', 'Analyst', 'Design'),
   user('e', 'SDR', '3E'),
-  user('hamiz', 'CEO', 'Executive', { name: 'Hamiz Awan' }),
+  user('named', 'CEO', 'Executive', { name: NO_INCOMING_EVALUATION_NAMES[0] }),
   user('gone', 'Analyst', 'Product', { payrollActive: false }),
 ]
 const mappings = [

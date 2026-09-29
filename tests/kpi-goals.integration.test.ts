@@ -112,3 +112,27 @@ test('discarding cancels a draft; a goal is archived only when no live KPIs rema
   assert.ok(archived.archivedAt)
   await assert.rejects(updateGoal(lead, goal.id, { action: 'edit', title: 'Again' }, beforeLock), isStatus(404))
 })
+
+test('a goal refused after the lock does not leave an empty month behind', DB_TEST, async () => {
+  await assert.rejects(createGoal(lead, { monthKey: '2026-10', scope: 'TEAM', title: 'Late goal' }, afterLock), isStatus(409))
+  assert.equal(await prisma.kpiMonth.count(), 0)
+})
+
+test('someone who cannot edit a KPI cannot force its lock to be saved', DB_TEST, async () => {
+  const { kpi } = await teamKpi()
+  await assert.rejects(updateKpi(actorFor(PEOPLE.orphan), kpi.id, { action: 'edit', version: 0, title: 'Nope' }, afterLock), isStatus(403))
+  assert.equal((await prisma.kpi.findUniqueOrThrow({ where: { id: kpi.id } })).status, 'DRAFT')
+})
+
+test('audit events name the capability used', DB_TEST, async () => {
+  await teamKpi()
+  await createGoal(actorFor(PEOPLE.hr), { monthKey: '2026-10', scope: 'TEAM', setterId: PEOPLE.lead.id, title: 'HR on behalf' }, beforeLock)
+  await createGoal(actorFor(PEOPLE.partner), { monthKey: '2026-10', scope: 'DEPARTMENT', departmentKey: 'product', title: 'Dept goal' }, beforeLock)
+  const events = await prisma.kpiEvent.findMany({ select: { action: true, actorRole: true } })
+  assert.deepEqual(events.map((e) => `${e.action}:${e.actorRole}`).sort(), [
+    'GOAL_CREATE:DEPARTMENT_SETTER',
+    'GOAL_CREATE:HR',
+    'GOAL_CREATE:SETTER',
+    'KPI_CREATE:SETTER',
+  ])
+})

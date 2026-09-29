@@ -22,8 +22,8 @@ export const PEOPLE = {
   partner: { id: 'kpit-partner', name: 'Test Partner', role: 'EMPLOYEE', position: 'Partner', department: 'Executive' },
   lead: { id: 'kpit-lead', name: 'Test Lead', role: 'EMPLOYEE', position: 'Lead', department: 'Product' },
   jp: { id: 'kpit-jp', name: 'Test JP', role: 'EMPLOYEE', position: 'Junior Partner', department: 'Product' },
-  noha: { id: 'kpit-noha', name: 'Test Execution', role: 'EXECUTION', position: 'Junior Partner', department: 'Value Creation' },
-  oum: { id: 'kpit-oum', name: 'Test Verifier', role: 'EMPLOYEE', position: 'Analyst', department: 'Value Creation' },
+  exec: { id: 'kpit-exec', name: 'Test Execution', role: 'EXECUTION', position: 'Junior Partner', department: 'Value Creation' },
+  verifier: { id: 'kpit-verifier', name: 'Test Verifier', role: 'EMPLOYEE', position: 'Analyst', department: 'Value Creation' },
   member: { id: 'kpit-member', name: 'Test Member', role: 'EMPLOYEE', position: 'Analyst', department: 'Product' },
   orphan: { id: 'kpit-orphan', name: 'Test Orphan', role: 'EMPLOYEE', position: 'Analyst', department: 'Design' },
 } satisfies Record<string, TestPerson>

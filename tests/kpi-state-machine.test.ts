@@ -36,7 +36,7 @@ test('claims are accepted until the claims deadline', () => {
 
 test('a claim can be revised only before a decision and the deadline', () => {
   assert.deepEqual(transition(state('CLAIMED_DONE'), { type: 'REVISE_CLAIM' }, month, afterLock), { ok: true, to: 'CLAIMED_DONE' })
-  assert.equal(transition(state('CLAIMED_DONE', { decidedById: 'oum' }), { type: 'REVISE_CLAIM' }, month, afterLock).ok, false)
+  assert.equal(transition(state('CLAIMED_DONE', { decidedById: 'verifier' }), { type: 'REVISE_CLAIM' }, month, afterLock).ok, false)
   assert.equal(transition(state('CLAIMED_DONE'), { type: 'REVISE_CLAIM' }, month, afterClaims).ok, false)
 })
 

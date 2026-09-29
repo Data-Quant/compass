@@ -31,3 +31,14 @@ export async function recordEvent(db: Db, event: KpiEventInput): Promise<void> {
     },
   })
 }
+
+export type EventCapability = 'SETTER' | 'DEPARTMENT_SETTER' | 'CLAIMER' | 'VERIFIER' | 'REQUESTER'
+
+/** Audit label for who acted: HR always shows as HR; everyone else by the capability they used. */
+export function eventRole(actor: { role: string }, capability: EventCapability): string {
+  return actor.role === 'HR' ? 'HR' : capability
+}
+
+export function setterCapability(scope: 'TEAM' | 'DEPARTMENT'): EventCapability {
+  return scope === 'TEAM' ? 'SETTER' : 'DEPARTMENT_SETTER'
+}

@@ -7,8 +7,8 @@ import { transition } from '../state-machine'
 import type { KpiStatusValue } from '../view-types'
 import { loadKpiContext } from './context'
 import { KpiError } from './errors'
-import { recordEvent } from './events'
-import { ensureMonth } from './months'
+import { eventRole, recordEvent, setterCapability } from './events'
+import { ensureMonth, resolveMonth } from './months'
 import { persistSystemTransitions } from './system'
 
 const LOCKED_MESSAGE = 'KPIs for this month are locked'
@@ -38,6 +38,8 @@ export async function createGoal(actor: KpiActor, input: CreateGoalInput, now: D
     if (!scope.departmentOwners.has(departmentKey)) throw new KpiError('This department has no leads or JPs in the scheme')
     setterId = actor.id
   }
+  // Check the lock before creating the month, so a refused goal leaves no empty month behind.
+  if (now > (await resolveMonth(key)).goalsLockAt) throw new KpiError(LOCKED_MESSAGE, 409)
   const month = await ensureMonth(key)
   if (now > month.goalsLockAt) throw new KpiError(LOCKED_MESSAGE, 409)
   return prisma.$transaction(async (tx) => {
@@ -45,7 +47,7 @@ export async function createGoal(actor: KpiActor, input: CreateGoalInput, now: D
       data: { kpiMonthId: month.id, scope: input.scope, departmentKey, setterId, title: input.title, description: input.description ?? null },
     })
     await recordEvent(tx, {
-      kpiMonthId: month.id, actorId: actor.id, actorRole: actor.role, action: 'GOAL_CREATE',
+      kpiMonthId: month.id, actorId: actor.id, actorRole: eventRole(actor, setterCapability(input.scope)), action: 'GOAL_CREATE',
       after: { goalId: goal.id, scope: goal.scope, departmentKey, setterId, title: goal.title, description: goal.description },
     })
     return goal
@@ -78,7 +80,7 @@ export async function updateGoal(actor: KpiActor, goalId: string, input: UpdateG
   return prisma.$transaction(async (tx) => {
     const updated = await tx.kpiGoal.update({ where: { id: goal.id }, data })
     await recordEvent(tx, {
-      kpiMonthId: goal.kpiMonthId, actorId: actor.id, actorRole: actor.role,
+      kpiMonthId: goal.kpiMonthId, actorId: actor.id, actorRole: eventRole(actor, setterCapability(goal.scope)),
       action: input.action === 'archive' ? 'GOAL_ARCHIVE' : 'GOAL_EDIT',
       before: { title: goal.title, description: goal.description },
       after: { title: updated.title, description: updated.description, archivedAt: updated.archivedAt },
@@ -102,7 +104,8 @@ export async function createKpi(actor: KpiActor, input: CreateKpiInput, now: Dat
       },
     })
     await recordEvent(tx, {
-      kpiId: kpi.id, kpiMonthId: goal.kpiMonthId, actorId: actor.id, actorRole: actor.role, action: 'KPI_CREATE', toStatus: 'DRAFT',
+      kpiId: kpi.id, kpiMonthId: goal.kpiMonthId, actorId: actor.id, actorRole: eventRole(actor, setterCapability(goal.scope)),
+      action: 'KPI_CREATE', toStatus: 'DRAFT',
       after: { title: input.title, target: input.target, evidenceType: input.evidenceType, assigneeIds: [...input.ownerIds].sort() },
     })
     return kpi
@@ -115,10 +118,12 @@ export async function updateKpi(
   input: UpdateKpiInput,
   now: Date = new Date(),
 ): Promise<{ id: string; status: KpiStatusValue; version: number }> {
+  // Authorize first: someone who cannot edit must not be able to force a lock to be saved.
+  const existing = await prisma.kpi.findUnique({ where: { id: kpiId }, include: { goal: true } })
+  if (!existing || existing.goal.archivedAt) throw new KpiError('KPI not found', 404)
+  if (!canEditGoal(actor, goalRef(existing.goal))) throw new KpiError('You cannot change this KPI', 403)
   await persistSystemTransitions({ id: kpiId }, now)
-  const kpi = await prisma.kpi.findUnique({ where: { id: kpiId }, include: { goal: { include: { kpiMonth: true } }, assignees: true } })
-  if (!kpi || kpi.goal.archivedAt) throw new KpiError('KPI not found', 404)
-  if (!canEditGoal(actor, goalRef(kpi.goal))) throw new KpiError('You cannot change this KPI', 403)
+  const kpi = await prisma.kpi.findUniqueOrThrow({ where: { id: kpiId }, include: { goal: { include: { kpiMonth: true } }, assignees: true } })
   if (kpi.version !== input.version && kpi.status === 'DRAFT') throw new KpiError(STALE_MESSAGE, 409)
   const result = transition(
     { status: kpi.status, appealUsedAt: kpi.appealUsedAt, decidedById: kpi.decidedById },
@@ -165,7 +170,7 @@ export async function updateKpi(
       await tx.kpiAssignee.createMany({ data: input.ownerIds.map((userId) => ({ kpiId: kpi.id, userId })) })
     }
     await recordEvent(tx, {
-      kpiId: kpi.id, kpiMonthId: kpi.goal.kpiMonthId, actorId: actor.id, actorRole: actor.role,
+      kpiId: kpi.id, kpiMonthId: kpi.goal.kpiMonthId, actorId: actor.id, actorRole: eventRole(actor, setterCapability(kpi.goal.scope)),
       action: input.action === 'discard' ? 'KPI_DISCARD' : 'KPI_EDIT',
       fromStatus: kpi.status, toStatus: result.to, before, after,
     })

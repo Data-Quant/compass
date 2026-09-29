@@ -78,3 +78,10 @@ test('calendar dates are validated', () => {
   assert.equal(parseCalendarDate('2026-02-30'), null)
   assert.equal(parseCalendarDate('14/10/2026'), null)
 })
+
+test('month and quarter keys outside 2000–2100 are rejected', () => {
+  assert.equal(parseMonthKey('0026-10'), null)
+  assert.equal(parseMonthKey('2101-01'), null)
+  assert.equal(parseQuarterKey('1999-Q4'), null)
+  assert.deepEqual(parseMonthKey('2100-12'), { year: 2100, month: 12 })
+})
