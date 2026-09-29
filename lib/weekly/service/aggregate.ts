@@ -10,8 +10,9 @@ import { toJson } from './db'
 export interface DropRecord { evaluateeId: string; perspective: Perspective; overrides: number }
 export interface AggregationResult { runId: string; counts: AggregationCounts }
 
-export function hasLeftBy(person: { payrollActive: boolean; exitDate: Date | null }, now: Date): boolean {
-  return !person.payrollActive || (person.exitDate !== null && person.exitDate <= now)
+/** Left by `cutoff`: by the exit date when payroll has one; otherwise an inactive payroll profile counts as left. */
+export function hasLeftBy(person: { payrollActive: boolean; exitDate: Date | null }, cutoff: Date): boolean {
+  return person.exitDate !== null ? person.exitDate <= cutoff : !person.payrollActive
 }
 
 const rowKey = (r: { evaluatorId: string; evaluateeId: string; questionId: string | null; leadQuestionId: string | null }) =>
@@ -46,7 +47,9 @@ export async function aggregateCycle(
     p.questionId && p.response?.commentText ? [{ evaluatorId: p.evaluatorId, evaluateeId: p.evaluateeId, questionId: p.questionId, text: p.response.commentText }] : [],
   )
   const people = await loadPeople([...scores, ...comments].map((x) => x.evaluateeId), tx)
-  const left = new Set([...people.values()].filter((p) => hasLeftBy(p, input.now)).map((p) => p.id))
+  // Spec 10: people who left before the close get no rows. A challenge re-aggregates after the close, so it uses the close's date.
+  const leaverCutoff = cycle.closedAt ?? input.now
+  const left = new Set([...people.values()].filter((p) => hasLeftBy(p, leaverCutoff)).map((p) => p.id))
   const { rows, counts } = buildAggregateRows({ scores, comments, excludedEvaluateeIds: left })
   const run = await tx.weeklyAggregationRun.create({ data: { cycleId: cycle.id, runById: input.runById, counts: toJson(counts), drops: toJson(input.drops) } })
   await tx.evaluation.deleteMany({ where: { periodId: cycle.periodId, source: 'AI_WEEKLY', ...(scope ? { evaluateeId: { in: [...scope] } } : {}) } })

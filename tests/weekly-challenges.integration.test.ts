@@ -99,3 +99,12 @@ test('only HR sees, adjusts or resolves; answers must be the person’s; a resol
   const list = await challengesView(HR_ACTOR, cycleId)
   assert.deepEqual(list.challenges.map((c) => [c.status, c.resolvedBy]), [['NOT_UPHELD', W.hr.name]])
 })
+
+test('someone who leaves after the close keeps their weekly results when their challenge is resolved', WEEKLY_DB_TEST, async () => {
+  const challenge = await raiseChallenge(person(), { reason: REASON }, at(13, 3), mailbox().send, APP)
+  await adjustForChallenge(HR_ACTOR, challenge.id, { responseId, score: 3, reason: 'A team effort' }, at(13, 4))
+  // Their exit is recorded after the quarter closed (week 13, Monday) and before HR resolves.
+  await prisma.payrollEmployeeProfile.create({ data: { userId: evaluateeId, isPayrollActive: false, exitDate: at(13, 4) } })
+  await resolveChallenge(HR_ACTOR, challenge.id, { outcome: 'UPHELD', resolution: 'Quality of Work adjusted to 3 after review.' }, at(13, 5), mailbox().send, APP)
+  assert.equal((await weeklyRating()).ratingValue, 3)
+})
