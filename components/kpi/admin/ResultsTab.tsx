@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -18,12 +18,16 @@ export function ResultsTab() {
   const [data, setData] = useState<ResultsResponse | null>(null)
   const [correcting, setCorrecting] = useState<ResultsRow | null>(null)
   const [reopening, setReopening] = useState(false)
+  // The month switcher works while a load is in flight: only the latest request may set data.
+  const latest = useRef(0)
 
   const load = useCallback(async () => {
+    const request = ++latest.current
     try {
-      setData(await kpiRequest<ResultsResponse>(`/api/admin/kpi/results?month=${monthKey}`))
+      const next = await kpiRequest<ResultsResponse>(`/api/admin/kpi/results?month=${monthKey}`)
+      if (request === latest.current) setData(next)
     } catch (e) {
-      toast.error(errorMessage(e, 'Could not load results'))
+      if (request === latest.current) toast.error(errorMessage(e, 'Could not load results'))
     }
   }, [monthKey])
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { currentQuarterKey, formatPercent, monthLabel, quarterLabel, shiftQuarter } from '@/lib/kpi/format'
 import type { MyViewResponse } from '@/lib/kpi/view-types'
@@ -12,13 +12,18 @@ export function MyKpisPanel() {
   const [quarterKey, setQuarterKey] = useState(() => currentQuarterKey())
   const [data, setData] = useState<MyViewResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // The quarter switcher works while a load is in flight: only the latest request may set data.
+  const latest = useRef(0)
 
   const load = useCallback(async () => {
+    const request = ++latest.current
     try {
-      setData(await kpiRequest<MyViewResponse>(`/api/kpi/my?quarter=${quarterKey}`))
+      const next = await kpiRequest<MyViewResponse>(`/api/kpi/my?quarter=${quarterKey}`)
+      if (request !== latest.current) return
+      setData(next)
       setError(null)
     } catch (e) {
-      setError(errorMessage(e, 'Could not load your KPIs'))
+      if (request === latest.current) setError(errorMessage(e, 'Could not load your KPIs'))
     }
   }, [quarterKey])
 
