@@ -97,3 +97,18 @@ export const respondSchema = z
   .object({ version: versionSchema, kind: z.enum(['REPLY', 'APPEAL']), note: z.string().trim().min(3, 'Explain your reply').max(4000), url: optionalUrl, reportedValue: optionalValue })
   .strict()
 export type RespondInput = z.infer<typeof respondSchema>
+
+export const decideSchema = z
+  .object({ version: versionSchema, decision: z.enum(['VERIFIED', 'NEEDS_INFO', 'REJECTED', 'NOT_VERIFIED']), note: z.string().trim().max(4000).optional() })
+  .strict()
+export type DecideInput = z.infer<typeof decideSchema>
+
+export const overrideSchema = z
+  .object({ version: versionSchema, to: z.enum(['VERIFIED', 'NOT_VERIFIED', 'NOT_DONE', 'CANCELLED']), reason: reasonSchema })
+  .strict()
+export type OverrideInput = z.infer<typeof overrideSchema>
+
+export const monthStatusSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('reopen'), reason: reasonSchema }).strict(),
+  z.object({ action: z.literal('finalize') }).strict(),
+])

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  claimSchema, createGoalSchema, createKpiSchema, deadlineDatesSchema, respondSchema, setterAssignmentSchema, toDeadlines, updateGoalSchema, updateKpiSchema,
+  claimSchema, createGoalSchema, createKpiSchema, deadlineDatesSchema, decideSchema, monthStatusSchema, overrideSchema, respondSchema, setterAssignmentSchema, toDeadlines, updateGoalSchema, updateKpiSchema,
 } from '../lib/kpi/schemas'
 
 test('department goals need a department; team goals must not have one', () => {
@@ -47,4 +47,14 @@ test('claims and replies validate their inputs', () => {
   assert.equal(claimSchema.safeParse({ version: -1, outcome: 'DONE' }).success, false)
   assert.equal(respondSchema.safeParse({ version: 1, kind: 'APPEAL', note: '' }).success, false)
   assert.equal(respondSchema.safeParse({ version: 1, kind: 'REPLY', note: 'The October summary' }).success, true)
+})
+
+test('decisions, HR corrections and month actions validate their inputs', () => {
+  assert.equal(decideSchema.safeParse({ version: 1, decision: 'NEEDS_INFO', note: 'Which file?' }).success, true)
+  assert.equal(decideSchema.safeParse({ version: 1, decision: 'MAYBE' }).success, false)
+  assert.equal(overrideSchema.safeParse({ version: 1, to: 'VERIFIED', reason: '' }).success, false)
+  assert.equal(overrideSchema.safeParse({ version: 1, to: 'LOCKED', reason: 'Wrong result' }).success, false)
+  assert.equal(monthStatusSchema.safeParse({ action: 'reopen', reason: 'Late correction' }).success, true)
+  assert.equal(monthStatusSchema.safeParse({ action: 'reopen' }).success, false)
+  assert.equal(monthStatusSchema.safeParse({ action: 'finalize' }).success, true)
 })
