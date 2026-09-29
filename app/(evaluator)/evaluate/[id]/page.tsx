@@ -82,6 +82,7 @@ export default function EvaluatePage() {
       const periodData = await periodResponse.json()
       const periodId = periodData.period?.id
       if (!periodId) { toast.error('No active evaluation period found'); router.push('/dashboard'); return }
+      if (periodData.weekly) { router.replace('/evaluations/weekly'); return }
 
       const relationshipQuery = relationshipTypeParam
         ? `&relationshipType=${encodeURIComponent(relationshipTypeParam)}`

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { weeklyCycleIdForPeriod } from '@/lib/weekly/service/legacy'
 import type { RelationshipType } from '@/types'
 import { getResolvedQuestionCount } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
@@ -54,6 +55,8 @@ export async function GET(request: NextRequest) {
         { status: 404 }
       )
     }
+
+    const weekly = Boolean(await weeklyCycleIdForPeriod(period.id))
 
     const directReportMappings = await prisma.evaluatorMapping.findMany({
       where: {
@@ -290,11 +293,13 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       period,
-      mappings: grouped,
+      weekly,
+      // A weekly quarter has no classic questionnaire to fill in.
+      mappings: weekly ? {} : grouped,
       incoming: incomingWithStatus,
       teamIncoming: teamIncomingByMember,
-      totalMappings: outgoingWithStatus.length,
-      completedMappings: outgoingWithStatus.filter((mapping) => mapping.isComplete).length,
+      totalMappings: weekly ? 0 : outgoingWithStatus.length,
+      completedMappings: weekly ? 0 : outgoingWithStatus.filter((mapping) => mapping.isComplete).length,
     })
   } catch (error) {
     console.error('Failed to fetch dashboard data:', error)

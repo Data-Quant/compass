@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { WEEKLY_PERIOD_MESSAGE, weeklyCycleIdForPeriod } from '@/lib/weekly/service/legacy'
 import { z } from 'zod'
 import {
   RELATIONSHIP_TYPE_LABELS,
@@ -132,6 +133,10 @@ export async function POST(request: NextRequest) {
         { error: 'This evaluation period is locked. Submissions are no longer accepted.' },
         { status: 403 }
       )
+    }
+
+    if (period && (await weeklyCycleIdForPeriod(period.id))) {
+      return NextResponse.json({ error: WEEKLY_PERIOD_MESSAGE, weekly: true }, { status: 409 })
     }
 
     const assignment = await getResolvedEvaluationAssignmentForPair(
@@ -357,6 +362,10 @@ export async function PUT(request: NextRequest) {
         { error: 'This evaluation period is locked. Submissions are no longer accepted.' },
         { status: 403 }
       )
+    }
+
+    if (period && (await weeklyCycleIdForPeriod(period.id))) {
+      return NextResponse.json({ error: WEEKLY_PERIOD_MESSAGE, weekly: true }, { status: 409 })
     }
 
     const assignment = await getResolvedEvaluationAssignmentForPair(
