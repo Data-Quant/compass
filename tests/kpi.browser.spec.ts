@@ -84,3 +84,79 @@ test('HR assigns a setter to someone without one', async ({ page }) => {
   await expect(page.getByRole('cell', { name: 'E2E Orphan' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Assign setter for E2E Orphan' })).toHaveCount(0)
 })
+
+async function openLastMonthTeam(page: Page): Promise<void> {
+  await page.goto('/kpis')
+  await page.getByRole('tab', { name: 'Team' }).click()
+  await page.getByRole('button', { name: 'Previous' }).click()
+  await expect(page.getByText('Close the quarter')).toBeVisible()
+}
+
+test('a lead claims a locked KPI, Execution rejects it, and the appeal is verified', async ({ page, browser }) => {
+  await login(page, 'kpie-lead')
+  await openLastMonthTeam(page)
+  await page.getByRole('button', { name: 'Claim Signed proposals' }).click()
+  await page.getByLabel('Link', { exact: true }).fill('https://example.com/proposals')
+  await page.getByRole('button', { name: 'Submit claim' }).click()
+  await expect(page.getByText('Claimed done', { exact: true })).toBeVisible()
+
+  const context = await browser.newContext({ baseURL: base })
+  const verifier = await context.newPage()
+  await login(verifier, 'kpie-verifier')
+  await verifier.goto('/kpis/verify')
+  await verifier.getByRole('button', { name: 'Review Signed proposals' }).click()
+  await expect(verifier.getByText('https://example.com/proposals')).toBeVisible()
+  await verifier.getByLabel('Note').fill('Only two proposals are signed')
+  await verifier.getByRole('button', { name: 'Reject', exact: true }).click()
+  await expect(verifier.getByText('No claims waiting.')).toBeVisible()
+
+  await openLastMonthTeam(page)
+  await expect(page.getByText('Only two proposals are signed')).toBeVisible()
+  await page.getByRole('button', { name: 'Appeal Signed proposals' }).click()
+  await page.getByLabel('Explanation').fill('The third was signed on the last day of the month')
+  await page.getByRole('button', { name: 'Send appeal' }).click()
+  await expect(page.getByText('Appealed', { exact: true })).toBeVisible()
+
+  await verifier.reload()
+  await verifier.getByRole('button', { name: 'Review Signed proposals' }).click()
+  await verifier.getByRole('button', { name: 'Verified', exact: true }).click()
+  await expect(verifier.getByText('No claims waiting.')).toBeVisible()
+  await context.close()
+})
+
+test('Execution approves a lead’s change request to a locked KPI', async ({ page, browser }) => {
+  await login(page, 'kpie-lead')
+  await openLastMonthTeam(page)
+  await page.getByRole('button', { name: 'Request change for Client demos' }).click()
+  await page.getByLabel('Measurable target').fill('2 client demos')
+  await page.getByLabel('Reason').fill('The client paused demos this month')
+  await page.getByRole('button', { name: 'Send request' }).click()
+  await expect(page.getByText('Change requested', { exact: true })).toBeVisible()
+
+  const context = await browser.newContext({ baseURL: base })
+  const verifier = await context.newPage()
+  await login(verifier, 'kpie-verifier')
+  await verifier.goto('/kpis/verify')
+  await verifier.getByRole('tab', { name: 'Change requests' }).click()
+  await verifier.getByRole('button', { name: 'Approve change to Client demos' }).click()
+  await verifier.getByLabel('Decision note').fill('Confirmed with the client')
+  await verifier.getByRole('button', { name: 'Approve', exact: true }).click()
+  await expect(verifier.getByText('No change requests waiting.')).toBeVisible()
+  await context.close()
+
+  await openLastMonthTeam(page)
+  await expect(page.getByText('Target: 2 client demos')).toBeVisible()
+})
+
+test('HR sees last month’s results and downloads the quarter export', async ({ page }) => {
+  await login(page, 'kpie-hr')
+  await page.goto('/admin/kpis')
+  await page.getByRole('tab', { name: 'Results' }).click()
+  await page.getByRole('button', { name: 'Previous' }).click()
+  await expect(page.getByRole('row', { name: /Signed proposals/ })).toContainText('Verified')
+  const now = new Date()
+  const quarter = `${now.getUTCFullYear()}-Q${Math.floor(now.getUTCMonth() / 3) + 1}`
+  const exported = await page.request.get(`/api/admin/kpi/export?quarter=${quarter}`)
+  expect(exported.status()).toBe(200)
+  expect(exported.headers()['content-type']).toContain('spreadsheetml')
+})

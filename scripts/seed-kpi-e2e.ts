@@ -1,8 +1,8 @@
-// Seeds synthetic people and an open month for the KPI Playwright run.
+// Seeds synthetic people, an open month and a locked previous month for the KPI Playwright run.
 // Refuses any database other than the local compass_kpi_test.
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
-import { endOfKarachiDay, karachiCalendarDate, monthKeyOf, type CalendarDate } from '../lib/kpi/calendar'
+import { endOfKarachiDay, karachiCalendarDate, monthKeyOf, type CalendarDate, type MonthKey } from '../lib/kpi/calendar'
 
 const PEOPLE = [
   ['kpie-hr', 'E2E HR', 'HR', 'HR Executive', 'Human Resources'],
@@ -11,6 +11,12 @@ const PEOPLE = [
   ['kpie-partner', 'E2E Partner', 'EMPLOYEE', 'Partner', 'Executive'],
   ['kpie-member', 'E2E Member', 'EMPLOYEE', 'Analyst', 'Product'],
   ['kpie-orphan', 'E2E Orphan', 'EMPLOYEE', 'Analyst', 'Design'],
+  ['kpie-verifier', 'E2E Verifier', 'EMPLOYEE', 'Analyst', 'Value Creation'],
+] as const
+
+const PREVIOUS_MONTH_KPIS = [
+  ['Signed proposals', '3 signed proposals'],
+  ['Client demos', '4 client demos'],
 ] as const
 
 function isLocalTestDb(url: string | undefined): boolean {
@@ -25,6 +31,10 @@ function isLocalTestDb(url: string | undefined): boolean {
 function plusDays(date: CalendarDate, days: number): CalendarDate {
   const moved = new Date(Date.UTC(date.year, date.month - 1, date.day + days))
   return { year: moved.getUTCFullYear(), month: moved.getUTCMonth() + 1, day: moved.getUTCDate() }
+}
+
+function previousMonth(key: MonthKey): MonthKey {
+  return key.month === 1 ? { year: key.year - 1, month: 12 } : { year: key.year, month: key.month - 1 }
 }
 
 async function main(): Promise<void> {
@@ -54,6 +64,7 @@ async function main(): Promise<void> {
       await db.user.create({ data: { id, name, email: `${id}@example.test`, role, position, department, passwordHash, onboardingCompleted: true } })
     }
     await db.evaluatorMapping.create({ data: { evaluatorId: 'kpie-lead', evaluateeId: 'kpie-member', relationshipType: 'TEAM_LEAD' } })
+    await db.kpiRoleGrant.create({ data: { userId: 'kpie-verifier', role: 'VERIFIER', createdById: 'kpie-hr' } })
     const now = new Date()
     const today = karachiCalendarDate(now)
     const at = (days: number) => endOfKarachiDay(plusDays(today, days))
@@ -61,7 +72,15 @@ async function main(): Promise<void> {
     await db.kpiMonth.create({
       data: { ...key, goalsLockAt: at(7), claimsDueAt: at(40), verifyDueAt: at(45), responseDueAt: at(47), targetFinalAt: at(50) },
     })
-    console.log(`Seeded KPI e2e people and ${key.year}-${String(key.month).padStart(2, '0')} (locks in 7 days)`)
+    // Last month: locked two days ago, claims still open, so claims, verification and appeals can run today.
+    const locked = await db.kpiMonth.create({
+      data: { ...previousMonth(key), goalsLockAt: at(-2), claimsDueAt: at(10), verifyDueAt: at(12), responseDueAt: at(14), targetFinalAt: at(16) },
+    })
+    const goal = await db.kpiGoal.create({ data: { kpiMonthId: locked.id, scope: 'TEAM', setterId: 'kpie-lead', title: 'Close the quarter' } })
+    for (const [title, target] of PREVIOUS_MONTH_KPIS) {
+      await db.kpi.create({ data: { goalId: goal.id, title, target, evidenceType: 'LINK', assignees: { create: [{ userId: 'kpie-member' }] } } })
+    }
+    console.log(`Seeded KPI e2e people, ${key.year}-${String(key.month).padStart(2, '0')} (locks in 7 days) and last month (locked, claims open)`)
   } finally {
     await db.$disconnect()
   }
