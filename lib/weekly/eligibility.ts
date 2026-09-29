@@ -1,0 +1,42 @@
+import { shouldReceiveConstantEvaluations } from '../evaluation-profile-rules'
+import { joinedTooLate } from './calendar'
+
+export interface PersonFacts {
+  id: string
+  name: string
+  department: string | null
+  position: string | null
+  payrollActive: boolean
+  exitDate: Date | null
+  joiningDate: Date | null
+}
+
+export type ExclusionReason = 'NOT_EVALUATED' | 'INACTIVE' | 'LEFT' | 'JOINED_LATE'
+
+export const EXCLUSION_LABELS: Record<ExclusionReason, string> = {
+  NOT_EVALUATED: 'Not evaluated (named leader, Partner or 3E)',
+  INACTIVE: 'No longer active',
+  LEFT: 'Has left',
+  JOINED_LATE: 'Joined with fewer than 6 weeks left',
+}
+
+function leftReason(person: PersonFacts, now: Date): ExclusionReason | null {
+  if (!person.payrollActive) return 'INACTIVE'
+  if (person.exitDate && person.exitDate <= now) return 'LEFT'
+  return null
+}
+
+export function evaluatorExclusion(person: PersonFacts, now: Date): ExclusionReason | null {
+  return leftReason(person, now)
+}
+
+export function evaluateeExclusion(
+  person: PersonFacts,
+  ctx: { now: Date; weekOneStartsOn: Date; totalWeeks: number; optedIn: boolean },
+): ExclusionReason | null {
+  if (!shouldReceiveConstantEvaluations(person)) return 'NOT_EVALUATED'
+  const left = leftReason(person, ctx.now)
+  if (left) return left
+  if (!ctx.optedIn && joinedTooLate(person.joiningDate, ctx.weekOneStartsOn, ctx.totalWeeks)) return 'JOINED_LATE'
+  return null
+}
