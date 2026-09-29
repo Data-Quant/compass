@@ -11,7 +11,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
-import { Handshake, Target } from 'lucide-react'
+import { CalendarCheck, Handshake, Target } from 'lucide-react'
 import { withGroupItem, withItemAfter } from '@/components/layout/sidebar-nav'
 
 // Context so child pages can access user info
@@ -65,6 +65,7 @@ export function SidebarLayout({
   // KPIs appear only when the module is on and the person has a KPI role.
   const [showKpis, setShowKpis] = useState(false)
   const [kpiPending, setKpiPending] = useState(0)
+  const [weeklyMe, setWeeklyMe] = useState({ enabled: false, cycleActive: false, openCount: 0 })
   const [loading, setLoading] = useState(true)
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -111,6 +112,12 @@ export function SidebarLayout({
             setKpiPending(typeof me.pending === 'number' ? me.pending : 0)
           })
           .catch(() => setShowKpis(false))
+        fetch('/api/weekly/me')
+          .then((res) => (res.ok ? res.json() : { enabled: false }))
+          .then((me: { enabled?: boolean; cycleActive?: boolean; openCount?: number }) =>
+            setWeeklyMe({ enabled: Boolean(me.enabled), cycleActive: Boolean(me.cycleActive), openCount: typeof me.openCount === 'number' ? me.openCount : 0 }),
+          )
+          .catch(() => setWeeklyMe({ enabled: false, cycleActive: false, openCount: 0 }))
         setLoading(false)
       })
       .catch(() => router.push('/login'))
@@ -178,13 +185,23 @@ export function SidebarLayout({
         ? withGroupItem(effectiveSidebarConfig, 'Performance', { label: 'KPIs', href: '/admin/kpis', icon: Target, ...(kpiPending > 0 ? { badge: kpiPending } : {}) })
         : withItemAfter(effectiveSidebarConfig, { label: 'KPIs', href: '/kpis', icon: Target, ...(kpiPending > 0 ? { badge: kpiPending } : {}) }, '/evaluations')
 
+  const weeklyBadge = weeklyMe.openCount > 0 ? { badge: weeklyMe.openCount } : {}
+  const sidebarConfigWithWeekly =
+    !weeklyMe.enabled || baseSidebarConfig === onboardingSidebarConfig
+      ? sidebarConfigWithKpis
+      : isAdminConsole
+        ? withGroupItem(sidebarConfigWithKpis, 'Performance', { label: 'Weekly evaluations', href: '/admin/weekly', icon: CalendarCheck })
+        : weeklyMe.cycleActive
+          ? withItemAfter(sidebarConfigWithKpis, { label: 'Weekly evaluations', href: '/evaluations/weekly', icon: CalendarCheck, ...weeklyBadge }, '/evaluations')
+          : sidebarConfigWithKpis
+
   return (
     <LayoutUserContext.Provider value={user}>
       <div className="flex h-screen overflow-hidden bg-background">
         {/* Desktop sidebar */}
         <div className="hidden lg:block shrink-0">
           <AppSidebar
-            config={sidebarConfigWithKpis}
+            config={sidebarConfigWithWeekly}
             collapsed={collapsed}
             onToggle={toggleCollapsed}
             userRole={user?.role}
@@ -196,7 +213,7 @@ export function SidebarLayout({
           <SheetContent side="left" className="w-[240px] p-0 [&>button:first-child]:hidden">
             <SheetTitle className="sr-only">Navigation</SheetTitle>
             <AppSidebar
-              config={sidebarConfigWithKpis}
+              config={sidebarConfigWithWeekly}
               collapsed={false}
               onToggle={() => setMobileOpen(false)}
               userRole={user?.role}

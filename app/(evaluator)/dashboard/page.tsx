@@ -14,6 +14,7 @@ import { StatsCard } from '@/components/composed/StatsCard'
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import { EmptyState } from '@/components/composed/EmptyState'
 import { SelfEvaluationPrompt } from '@/components/self-evaluation/SelfEvaluationPrompt'
+import { WeeklyQuestionsCard } from '@/components/weekly/WeeklyQuestionsCard'
 import {
   ClipboardCheck,
   Calendar,
@@ -374,6 +375,8 @@ export default function DashboardPage() {
           </Card>
         </motion.div>
       )}
+
+      <WeeklyQuestionsCard />
 
       {/* Quick stats */}
       <motion.div

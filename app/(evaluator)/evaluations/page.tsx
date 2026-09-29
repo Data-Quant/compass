@@ -15,6 +15,7 @@ import { UserAvatar } from '@/components/composed/UserAvatar'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { EmptyState } from '@/components/composed/EmptyState'
 import { SelfEvaluationPrompt } from '@/components/self-evaluation/SelfEvaluationPrompt'
+import { WeeklyEvaluationsBanner } from '@/components/weekly/WeeklyEvaluationsBanner'
 import {
   Select,
   SelectContent,
@@ -118,6 +119,7 @@ export default function EvaluationsPage() {
   const [incomingAssignments, setIncomingAssignments] = useState<IncomingAssignment[]>([])
   const [teamIncomingAssignments, setTeamIncomingAssignments] = useState<TeamIncomingAssignments[]>([])
   const [period, setPeriod] = useState<any>(null)
+  const [weeklyQuarter, setWeeklyQuarter] = useState(false)
   const [preEvaluationTask, setPreEvaluationTask] = useState<PreEvaluationTask | null>(null)
   const [changeSelections, setChangeSelections] = useState<SelectionRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -138,6 +140,7 @@ export default function EvaluationsPage() {
         setPeriod(data.period)
         setIncomingAssignments(data.incoming || [])
         setTeamIncomingAssignments(data.teamIncoming || [])
+        setWeeklyQuarter(Boolean(data.weekly))
       }
     } catch {
       toast.error('Failed to load evaluations')
@@ -285,8 +288,9 @@ export default function EvaluationsPage() {
 
   return (
     <div className="p-6 sm:p-8 max-w-5xl mx-auto">
-      <div className="mb-6">
+      <div className="mb-6 space-y-4">
         <SelfEvaluationPrompt />
+        <WeeklyEvaluationsBanner forceShow={weeklyQuarter} />
       </div>
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
         <h1 className="text-2xl sm:text-3xl font-display font-light tracking-tight text-foreground">
