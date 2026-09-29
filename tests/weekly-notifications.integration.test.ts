@@ -58,7 +58,8 @@ test('Thursday reminds only people with open questions; other weekdays do nothin
   assert.deepEqual(mail.sent.map((m) => m.to).sort(), ['wkt-ana@example.test', 'wkt-ben@example.test'])
   assert.equal(mail.sent[0].subject, 'Reminder: 1 evaluation question is waiting')
   const tuesday = await runWeeklyDailyJob(mailbox().send, APP, at(1, 2))
-  assert.deepEqual([tuesday.released, tuesday.emails], [null, null])
+  // Later days re-run the release, which finds nothing new once Monday has released the week, and send nothing.
+  assert.deepEqual([tuesday.released?.promptsCreated, tuesday.emails], [0, null])
 })
 
 test('a failed email is retried on the next run', WEEKLY_DB_TEST, async () => {
@@ -79,4 +80,16 @@ test('names with HTML are escaped in the email', WEEKLY_DB_TEST, async () => {
   const html = mail.sent.find((m) => m.to === 'wkt-ana@example.test')?.html ?? ''
   assert.doesNotMatch(html, /<b>Ana<\/b>/)
   assert.match(html, /&lt;b&gt;Ana&lt;\/b&gt;/)
+})
+
+test('a week the Monday run missed is released and announced on the next daily run', WEEKLY_DB_TEST, async () => {
+  process.env.WEEKLY_SEND_EMAILS = 'true'
+  const mail = mailbox()
+  const tuesday = await runWeeklyDailyJob(mail.send, APP, at(1, 2))
+  assert.deepEqual([tuesday.released?.week, tuesday.released?.promptsCreated], [1, 3])
+  assert.deepEqual(mail.sent.map((m) => m.to).sort(), ['wkt-ana@example.test', 'wkt-ben@example.test', 'wkt-lead@example.test'])
+  assert.equal(mail.sent[0].subject, 'Your evaluation questions for this week')
+  const wednesday = await runWeeklyDailyJob(mail.send, APP, at(1, 3))
+  assert.deepEqual([wednesday.released?.promptsCreated, wednesday.emails], [0, null])
+  assert.equal(mail.sent.length, 3)
 })

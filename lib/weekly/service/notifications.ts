@@ -9,12 +9,13 @@ export type WeeklyEmailKind = 'weekly-questions' | 'weekly-reminder'
 export interface QuestionRecipient { userId: string; newCount: number; openCount: number }
 export interface WeeklySendResult { sent: number; recorded: number; skipped: number; failed: number }
 
-export function weeklyDedupeKey(kind: WeeklyEmailKind, userId: string, now: Date): string {
-  return `${kind}:${userId}:${formatCalendarDate(karachiCalendarDate(now))}`
+/** Per Karachi day by default; `scope` (for example a cycle week) replaces the day so the key spans that scope. */
+export function weeklyDedupeKey(kind: WeeklyEmailKind, userId: string, now: Date, scope?: string): string {
+  return `${kind}:${userId}:${scope ?? formatCalendarDate(karachiCalendarDate(now))}`
 }
 
 /**
- * One email per person per kind per Karachi day. The row is claimed before sending and released if the
+ * One email per person per kind per Karachi day (or per `scope`). The row is claimed before sending and released if the
  * send fails, so the next run retries. With emails off (preview) the row is recorded and nothing is sent.
  */
 export async function sendQuestionEmails(
@@ -24,6 +25,7 @@ export async function sendQuestionEmails(
   send: WeeklySendMail,
   appUrl: string,
   emailsEnabled: boolean = areWeeklyEmailsEnabled(),
+  scope?: string,
 ): Promise<WeeklySendResult> {
   const users = await prisma.user.findMany({
     where: { id: { in: recipients.map((r) => r.userId) } },
@@ -37,7 +39,7 @@ export async function sendQuestionEmails(
       result.skipped += 1
       continue
     }
-    const dedupeKey = weeklyDedupeKey(kind, recipient.userId, now)
+    const dedupeKey = weeklyDedupeKey(kind, recipient.userId, now, scope)
     try {
       await prisma.weeklyNotification.create({ data: { userId: recipient.userId, kind, dedupeKey, delivered: emailsEnabled } })
     } catch (error) {
