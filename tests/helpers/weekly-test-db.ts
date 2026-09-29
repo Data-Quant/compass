@@ -70,7 +70,9 @@ export async function resetWeeklyTestData(db: PrismaClient): Promise<void> {
   await db.evaluation.deleteMany({ where: { OR: [{ evaluatorId: { startsWith: 'wkt-' } }, { evaluateeId: { startsWith: 'wkt-' } }] } })
   await db.evaluationPeriod.deleteMany({ where: { name: WEEKLY_PERIOD.name } })
   await db.evaluationQuestion.deleteMany({ where: { orderIndex: { gte: 900 } } })
-  await db.evaluatorMapping.deleteMany({ where: { OR: [{ evaluatorId: { startsWith: 'wkt-' } }, { evaluateeId: { startsWith: 'wkt-' } }] } })
+  // Weekly services read every evaluator mapping (mappings are not per period), so other suites'
+  // leftover fixtures (KPI or weekly e2e seeds, which re-create their own) would leak into these tests.
+  await db.evaluatorMapping.deleteMany()
   await db.payrollEmployeeProfile.deleteMany({ where: { userId: { startsWith: 'wkt-' } } })
   await db.user.deleteMany({ where: { id: { startsWith: 'wkt-' } } })
 }
