@@ -21,6 +21,7 @@ export function SetupTab() {
   const [data, setData] = useState<AdminCyclesResponse | null>(null)
   const [starting, setStarting] = useState<CycleSummary | null>(null)
   const [editing, setEditing] = useState<CycleSummary | null>(null)
+  const [removing, setRemoving] = useState<CycleSummary | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -45,6 +46,17 @@ export function SetupTab() {
     }
   }
 
+  async function remove(cycle: CycleSummary) {
+    setRemoving(null)
+    try {
+      await weeklyRequest(`/api/admin/weekly/cycles/${cycle.id}`, { method: 'DELETE' })
+      toast.success(`${cycle.periodName} is back on the classic questionnaire`)
+      await load()
+    } catch (e) {
+      toast.error(errorMessage(e, 'Could not remove the cycle'))
+    }
+  }
+
   if (!data) return <p className="text-sm text-muted-foreground">Loading…</p>
   const available = data.periods.filter((p) => !p.cycleId && !p.isLocked)
   return (
@@ -64,6 +76,7 @@ export function SetupTab() {
             </div>
             {cycle.status === 'SETUP' && (
               <div className="flex gap-2">
+                <Button variant="ghost" onClick={() => setRemoving(cycle)}>Remove</Button>
                 <Button variant="outline" onClick={() => setEditing(cycle)}>Edit</Button>
                 <Button onClick={() => setStarting(cycle)}>Start</Button>
               </div>
@@ -80,9 +93,20 @@ export function SetupTab() {
           if (starting) void start(starting)
         }}
         title="Start weekly evaluations?"
-        message="Questions go out every Monday from week 1, and the classic questionnaire closes for this quarter."
+        message="The current week’s questions go out at the next daily run (09:00 Karachi time), then every Monday. Once started, the cycle can no longer be removed."
         confirmText="Start now"
         variant="warning"
+      />
+      <ConfirmDialog
+        isOpen={removing !== null}
+        onClose={() => setRemoving(null)}
+        onConfirm={() => {
+          if (removing) void remove(removing)
+        }}
+        title="Remove this cycle?"
+        message="The quarter goes back to the classic questionnaire. Nothing has been sent yet."
+        confirmText="Remove cycle"
+        variant="danger"
       />
     </div>
   )
@@ -93,6 +117,7 @@ function NewCycleForm({ periods, onCreated }: { periods: AdminPeriodRow[]; onCre
   const [weekOne, setWeekOne] = useState('')
   const [cap, setCap] = useState('5')
   const [saving, setSaving] = useState(false)
+  const chosen = periods.find((p) => p.id === periodId)
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -132,6 +157,11 @@ function NewCycleForm({ periods, onCreated }: { periods: AdminPeriodRow[]; onCre
               <Input id="cycle-cap" type="number" min={1} max={10} value={cap} onChange={(e) => setCap(e.target.value)} required />
             </div>
           </div>
+          <p className={`text-sm ${chosen?.isActive ? 'font-medium text-destructive' : 'text-muted-foreground'}`}>
+            {chosen?.isActive
+              ? `${chosen.name} is the active period: creating the cycle closes its classic questionnaire for everyone straight away.`
+              : 'Creating the cycle closes the classic questionnaire for this quarter straight away. You can remove the cycle until it starts.'}
+          </p>
           <div className="flex justify-end">
             <Button type="submit" disabled={saving || !periodId || !weekOne}>{saving ? 'Creating…' : 'Create cycle'}</Button>
           </div>

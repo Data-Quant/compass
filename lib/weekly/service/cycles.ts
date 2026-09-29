@@ -117,6 +117,25 @@ export async function updateCycle(actor: WeeklyActor, cycleId: string, input: Up
   })
 }
 
+const NOT_REMOVABLE = 'Only a cycle that has not started can be removed'
+
+/** Removing a cycle still in setup gives its period back to the classic questionnaire. */
+export async function deleteCycle(actor: WeeklyActor, cycleId: string): Promise<void> {
+  assertHr(actor)
+  const cycle = await loadCycle(cycleId)
+  if (cycle.status !== 'SETUP') throw new WeeklyError(NOT_REMOVABLE, 409)
+  await prisma.$transaction(async (tx) => {
+    await tx.weeklyParticipantOverride.deleteMany({ where: { cycleId: cycle.id } })
+    // Guarded on status so a concurrent start wins cleanly.
+    const removed = await tx.weeklyCycle.deleteMany({ where: { id: cycle.id, status: 'SETUP' } })
+    if (removed.count === 0) throw new WeeklyError(NOT_REMOVABLE, 409)
+    await recordAudit(tx, {
+      cycleId: cycle.id, actorId: actor.id, actorRole: 'HR', action: 'CYCLE_DELETE', objectType: 'WeeklyCycle', objectId: cycle.id,
+      before: { periodId: cycle.periodId, weekOneStartsOn: cycle.weekOneStartsOn.toISOString(), weeklyCap: cycle.weeklyCap },
+    })
+  })
+}
+
 export async function participantsView(actor: WeeklyActor, cycleId: string, now: Date): Promise<ParticipantsResponse> {
   assertHr(actor)
   const cycle = await loadCycle(cycleId)

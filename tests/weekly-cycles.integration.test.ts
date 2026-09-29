@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { prisma } from '../lib/db'
 import { syncFromQuestionBank } from '../lib/weekly/service/content'
 import {
-  createCycle, cycleSummary, findRunningCycle, loadCycle, participantsView, removeOptIn, setOptIn, updateCycle,
+  createCycle, cycleSummary, deleteCycle, findRunningCycle, loadCycle, participantsView, removeOptIn, setOptIn, updateCycle,
 } from '../lib/weekly/service/cycles'
 import { WeeklyError } from '../lib/weekly/service/errors'
 import { approveAllContent, at, HR_ACTOR, WEEK_ONE_MONDAY } from './helpers/weekly-fixtures'
@@ -67,4 +67,19 @@ test('HR sees who is excluded and can opt a late joiner in', WEEKLY_DB_TEST, asy
   assert.equal((await benRow())?.exclusion, 'JOINED_LATE')
   const names = (await participantsView(HR_ACTOR, cycle.id, at(8))).rows.map((r) => r.person.id).sort()
   assert.deepEqual(names, [W.ana.id, W.ben.id, W.lead.id].sort())
+})
+
+test('HR can remove a cycle that has not started, which reopens the classic questionnaire for its period', WEEKLY_DB_TEST, async () => {
+  const cycle = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY, weeklyCap: 5 })
+  await setOptIn(HR_ACTOR, { cycleId: cycle.id, userId: W.ben.id, reason: 'Transferred from a partner firm' })
+  await assert.rejects(deleteCycle(weeklyActor(W.ana), cycle.id), isStatus(403))
+  await deleteCycle(HR_ACTOR, cycle.id)
+  assert.equal(await prisma.weeklyCycle.count({ where: { periodId } }), 0)
+  assert.equal(await prisma.weeklyParticipantOverride.count({ where: { cycleId: cycle.id } }), 0)
+  assert.equal(await prisma.weeklyAuditEvent.count({ where: { action: 'CYCLE_DELETE', objectId: cycle.id } }), 1)
+  const started = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY, weeklyCap: 5 })
+  await syncFromQuestionBank(HR_ACTOR)
+  await approveAllContent()
+  await updateCycle(HR_ACTOR, started.id, { action: 'start' })
+  await assert.rejects(deleteCycle(HR_ACTOR, started.id), isStatus(409))
 })
