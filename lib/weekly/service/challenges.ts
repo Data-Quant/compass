@@ -152,6 +152,9 @@ export async function resolveChallenge(
   const challenge = await openChallenge(challengeId)
   const cycle = await loadCycle(challenge.cycleId)
   const adjustments = await prisma.weeklyAuditEvent.count({ where: { action: 'CHALLENGE_ADJUST', objectId: challengeId } })
+  // The person is told the outcome, so it has to match what happened: upheld with changed scores, or not upheld with none.
+  if (input.outcome === 'UPHELD' && adjustments === 0) throw new WeeklyError('Change at least one score before upholding this challenge, or resolve it as not upheld.', 409)
+  if (input.outcome === 'NOT_UPHELD' && adjustments > 0) throw new WeeklyError('You changed scores for this challenge, so resolve it as upheld.', 409)
   await prisma.$transaction(
     async (tx) => {
       const moved = await tx.weeklyChallenge.updateMany({

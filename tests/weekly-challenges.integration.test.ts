@@ -108,3 +108,18 @@ test('someone who leaves after the close keeps their weekly results when their c
   await resolveChallenge(HR_ACTOR, challenge.id, { outcome: 'UPHELD', resolution: 'Quality of Work adjusted to 3 after review.' }, at(13, 5), mailbox().send, APP)
   assert.equal((await weeklyRating()).ratingValue, 3)
 })
+
+test('the outcome must match what HR did: upheld means scores changed, not upheld means none did', WEEKLY_DB_TEST, async () => {
+  const challenge = await raiseChallenge(person(), { reason: REASON }, at(13, 3), mailbox().send, APP)
+  await assert.rejects(
+    resolveChallenge(HR_ACTOR, challenge.id, { outcome: 'UPHELD', resolution: 'We agree with your challenge.' }, at(13, 4), mailbox().send, APP),
+    isError(409, /Change at least one score/),
+  )
+  await adjustForChallenge(HR_ACTOR, challenge.id, { responseId, score: 3, reason: 'A team effort' }, at(13, 4))
+  const mail = mailbox()
+  await assert.rejects(
+    resolveChallenge(HR_ACTOR, challenge.id, { outcome: 'NOT_UPHELD', resolution: 'The scores reflect the evidence.' }, at(13, 5), mail.send, APP),
+    isError(409, /resolve it as upheld/),
+  )
+  assert.deepEqual([(await prisma.weeklyChallenge.findUniqueOrThrow({ where: { id: challenge.id } })).status, mail.sent.length], ['OPEN', 0])
+})
