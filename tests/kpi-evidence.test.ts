@@ -1,6 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { checkEvidenceUpload, claimEvidenceError, detectEvidenceKind, isHttpUrl, MAX_EVIDENCE_BYTES, safeFileName } from '../lib/kpi/evidence'
+import {
+  checkEvidenceUpload, claimEvidenceError, detectEvidenceKind, isHttpUrl, MAX_EVIDENCE_BYTES, safeFileName, TOO_LARGE_MESSAGE, uploadPrecheck,
+} from '../lib/kpi/evidence'
 
 const bytes = (...values: number[]) => new Uint8Array([...values, ...new Array(16).fill(0x20)])
 
@@ -41,4 +43,13 @@ test('each evidence type needs its own proof before a claim', () => {
   assert.match(claimEvidenceError('CLIENT_CONFIRMATION', { url: null, reportedValue: null, fileCount: 0 }) ?? '', /client confirmation/)
   assert.equal(isHttpUrl('ftp://x.example'), false)
   assert.equal(isHttpUrl('https://x.example/a?b=1'), true)
+})
+
+test('the browser precheck refuses big, empty or unsupported files before sending them', () => {
+  assert.equal(uploadPrecheck('proof.pdf', 1024), null)
+  assert.equal(uploadPrecheck('photo.JPEG', 1024), null)
+  assert.equal(uploadPrecheck('proof.pdf', MAX_EVIDENCE_BYTES + 1), TOO_LARGE_MESSAGE)
+  assert.equal(uploadPrecheck('proof.pdf', 0), 'The file is empty')
+  assert.match(uploadPrecheck('tool.exe', 1024) ?? '', /PDF/)
+  assert.match(uploadPrecheck('no-extension', 1024) ?? '', /PDF/)
 })

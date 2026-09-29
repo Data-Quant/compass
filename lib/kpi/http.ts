@@ -6,7 +6,11 @@ import { assertSameOrigin } from '@/lib/security/same-origin'
 import { isKpiEnabled } from './flag'
 import { KpiError } from './service/errors'
 
-const MUTATIONS_PER_WINDOW = 120
+export interface MutationLimit { bucket: string; limit: number }
+
+/** Per user, per 15 minutes. */
+const DEFAULT_LIMIT: MutationLimit = { bucket: 'kpi', limit: 120 }
+export const UPLOAD_LIMIT: MutationLimit = { bucket: 'kpi-upload', limit: 20 }
 
 export async function requireKpiSession(options: { admin?: boolean } = {}): Promise<SafeUser> {
   if (!isKpiEnabled()) throw new KpiError('Not found', 404)
@@ -16,11 +20,11 @@ export async function requireKpiSession(options: { admin?: boolean } = {}): Prom
   return user
 }
 
-export async function guardMutation(request: NextRequest, userId: string): Promise<void> {
+export async function guardMutation(request: NextRequest, userId: string, limit: MutationLimit = DEFAULT_LIMIT): Promise<void> {
   assertSameOrigin(request.headers, request.url)
   try {
-    const limit = await checkRateLimit(`kpi:${userId}`, MUTATIONS_PER_WINDOW)
-    if (!limit.allowed) throw new KpiError('Too many changes in a short time. Wait a few minutes and try again.', 429)
+    const result = await checkRateLimit(`${limit.bucket}:${userId}`, limit.limit)
+    if (!result.allowed) throw new KpiError('Too many changes in a short time. Wait a few minutes and try again.', 429)
   } catch (error) {
     if (error instanceof RateLimitUnavailableError) {
       console.warn('[kpi] rate limiter unavailable; allowing request')

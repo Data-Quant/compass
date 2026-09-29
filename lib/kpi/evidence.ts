@@ -2,6 +2,9 @@ import type { EvidenceTypeValue } from './view-types'
 
 /** Vercel rejects function request bodies over 4.5 MB, so uploads stop at 4 MB; larger proof is linked. */
 export const MAX_EVIDENCE_BYTES = 4 * 1024 * 1024
+export const TOO_LARGE_MESSAGE = 'Files must be 4 MB or smaller; link larger proof instead'
+export const UNSUPPORTED_MESSAGE = 'Upload a PDF, image (PNG, JPEG, WebP), Excel, Word or CSV file'
+const ALLOWED_EXTENSIONS: ReadonlySet<string> = new Set(['pdf', 'png', 'jpg', 'jpeg', 'webp', 'xlsx', 'docx', 'csv'])
 
 export type EvidenceKind = 'pdf' | 'png' | 'jpg' | 'webp' | 'xlsx' | 'docx' | 'csv'
 export type EvidenceUploadCheck =
@@ -60,9 +63,9 @@ export function safeFileName(fileName: string, kind: EvidenceKind): string {
 
 export function checkEvidenceUpload(fileName: string, bytes: Uint8Array): EvidenceUploadCheck {
   if (bytes.length === 0) return { ok: false, error: 'The file is empty' }
-  if (bytes.length > MAX_EVIDENCE_BYTES) return { ok: false, error: 'Files must be 4 MB or smaller; link larger proof instead' }
+  if (bytes.length > MAX_EVIDENCE_BYTES) return { ok: false, error: TOO_LARGE_MESSAGE }
   const kind = detectEvidenceKind(fileName, bytes)
-  if (!kind) return { ok: false, error: 'Upload a PDF, image (PNG, JPEG, WebP), Excel, Word or CSV file' }
+  if (!kind) return { ok: false, error: UNSUPPORTED_MESSAGE }
   return { ok: true, kind, contentType: CONTENT_TYPES[kind], fileName: safeFileName(fileName, kind) }
 }
 
@@ -90,4 +93,11 @@ export function claimEvidenceError(type: EvidenceTypeValue, evidence: ClaimEvide
     case 'CLIENT_CONFIRMATION':
       return evidence.fileCount > 0 || evidence.url ? null : 'Upload or link the client confirmation'
   }
+}
+
+/** A cheap check the browser runs before sending; the server still checks the bytes. */
+export function uploadPrecheck(fileName: string, size: number): string | null {
+  if (size <= 0) return 'The file is empty'
+  if (size > MAX_EVIDENCE_BYTES) return TOO_LARGE_MESSAGE
+  return ALLOWED_EXTENSIONS.has(extensionOf(fileName)) ? null : UNSUPPORTED_MESSAGE
 }
