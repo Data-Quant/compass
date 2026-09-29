@@ -20,6 +20,7 @@ export function TestToolsTab() {
   const [personId, setPersonId] = useState('')
   const [busy, setBusy] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
+  const [scoreModel, setScoreModel] = useState<'configured' | 'stand-in'>('configured')
   const [refreshKey, setRefreshKey] = useState(0)
 
   const loadPeople = useCallback(async () => {
@@ -63,6 +64,17 @@ export function TestToolsTab() {
               <>
                 <Button disabled={busy} onClick={() => void run({ action: 'release-next-week', cycleId }, (r) => `Week ${String(r.week)} released: ${String(r.promptsCreated)} questions`)}>Release next week now</Button>
                 <Button disabled={busy} variant="outline" onClick={() => void run({ action: 'fill-synthetic', cycleId }, (r) => `${String(r.answered)} answers written`)}>Fill synthetic answers</Button>
+                <Select value={scoreModel} onValueChange={(value) => setScoreModel(value === 'stand-in' ? 'stand-in' : 'configured')}>
+                  <SelectTrigger className="w-60" aria-label="Scoring model"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="configured">Configured AI model</SelectItem>
+                    <SelectItem value="stand-in">Stand-in model (no AI call)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button disabled={busy} variant="outline" onClick={() => void run({ action: 'score-now', cycleId, model: scoreModel }, (r) => `${String(r.scored)} scored, ${String(r.insufficient)} need detail, ${String(r.failed)} failed, ${String(r.remaining)} still queued`)}>
+                  Score now
+                </Button>
+                <Button disabled={busy} variant="outline" onClick={() => void run({ action: 'accept-due-now', cycleId }, (r) => `${String(r.accepted)} scores accepted`)}>Accept answers due now</Button>
                 <Button disabled={busy} variant="ghost" onClick={() => setConfirmReset(true)}>Reset this cycle</Button>
               </>
             )}

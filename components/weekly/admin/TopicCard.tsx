@@ -16,6 +16,22 @@ import { ProfileEditorDialog } from './ProfileEditorDialog'
 export function TopicCard({ topic, onChanged }: { topic: ContentCompetency; onChanged: () => Promise<void> }) {
   const [editing, setEditing] = useState(false)
   const [approving, setApproving] = useState(false)
+  const [confirmDraft, setConfirmDraft] = useState(false)
+  const [drafting, setDrafting] = useState(false)
+
+  async function draftWithAi() {
+    setConfirmDraft(false)
+    setDrafting(true)
+    try {
+      const result = await weeklyRequest<{ version: number }>(`/api/admin/weekly/competencies/${topic.id}/ai-draft`, { method: 'POST' })
+      toast.success(`Draft v${result.version} written. Review it, then approve.`)
+      await onChanged()
+    } catch (e) {
+      toast.error(errorMessage(e, 'The AI could not draft this topic'))
+    } finally {
+      setDrafting(false)
+    }
+  }
   const shown = topic.draft ?? topic.approved
 
   async function approve() {
@@ -50,6 +66,7 @@ export function TopicCard({ topic, onChanged }: { topic: ContentCompetency; onCh
         </div>
         {shown && <ProfileSummary profile={shown} />}
         <div className="flex flex-wrap justify-end gap-2">
+          <Button variant="ghost" size="sm" disabled={drafting} onClick={() => setConfirmDraft(true)}>{drafting ? 'Drafting…' : 'Draft with AI'}</Button>
           <Button variant="outline" size="sm" onClick={() => setEditing(true)}>{topic.draft ? 'Edit draft' : 'Edit profile'}</Button>
           {topic.draft && <Button size="sm" aria-label={`Approve ${topic.name}`} onClick={() => setApproving(true)}>Approve</Button>}
         </div>
@@ -73,6 +90,15 @@ export function TopicCard({ topic, onChanged }: { topic: ContentCompetency; onCh
         message="Answers submitted from now on are scored against this version. Earlier scores keep the version they used."
         confirmText="Approve profile"
         variant="info"
+      />
+      <ConfirmDialog
+        isOpen={confirmDraft}
+        onClose={() => setConfirmDraft(false)}
+        onConfirm={() => void draftWithAi()}
+        title={`Draft ${topic.name} with the AI?`}
+        message="The AI rewrites both questions now and writes a new draft profile from HR’s 1–4 descriptions. The approved profile stays in use until you approve the draft."
+        confirmText="Draft with AI"
+        variant="warning"
       />
     </Card>
   )
