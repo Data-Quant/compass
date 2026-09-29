@@ -44,10 +44,12 @@ export async function resetKpiTestData(db: PrismaClient): Promise<void> {
   await db.kpiMonth.deleteMany()
   await db.kpiSetterAssignment.deleteMany()
   await db.kpiRoleGrant.deleteMany()
+  // Also remove people left by the browser-test seed (kpie-*): the daily job and HR lists read every user.
+  const synthetic = ['kpit-', 'kpie-']
   await db.evaluatorMapping.deleteMany({
-    where: { OR: [{ evaluatorId: { startsWith: 'kpit-' } }, { evaluateeId: { startsWith: 'kpit-' } }] },
+    where: { OR: synthetic.flatMap((prefix) => [{ evaluatorId: { startsWith: prefix } }, { evaluateeId: { startsWith: prefix } }]) },
   })
-  await db.user.deleteMany({ where: { id: { startsWith: 'kpit-' } } })
+  await db.user.deleteMany({ where: { OR: synthetic.map((prefix) => ({ id: { startsWith: prefix } })) } })
 }
 
 export async function seedKpiPeople(db: PrismaClient): Promise<void> {
