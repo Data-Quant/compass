@@ -1,5 +1,6 @@
 'use client'
 
+import { FormsSection } from './forms/FormsSection'
 import { WeeklyInbox } from './WeeklyInbox'
 
 export function WeeklyEvaluationsPage() {
@@ -11,6 +12,7 @@ export function WeeklyEvaluationsPage() {
           Each question asks for one real, recent example: the situation, what the person did, and what happened. Only what you describe counts, so be specific.
         </p>
       </div>
+      <FormsSection />
       <WeeklyInbox />
     </div>
   )
