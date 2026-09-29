@@ -8,12 +8,14 @@ const PEOPLE = [
   ['wkle-lead', 'E2E Weekly Lead', 'EMPLOYEE', 'Lead', 'Product'],
   ['wkle-ana', 'E2E Weekly Ana', 'EMPLOYEE', 'Analyst', 'Product'],
   ['wkle-ben', 'E2E Weekly Ben', 'EMPLOYEE', 'Analyst', 'Product'],
+  ['wkle-chief', 'E2E Weekly Chief', 'EMPLOYEE', 'Chief Executive', 'Leadership'],
 ] as const
 
 const MAPPINGS: Array<[string, string, RelationshipType]> = [
   ['wkle-lead', 'wkle-ana', 'TEAM_LEAD'], ['wkle-ana', 'wkle-lead', 'DIRECT_REPORT'],
   ['wkle-lead', 'wkle-ben', 'TEAM_LEAD'], ['wkle-ben', 'wkle-lead', 'DIRECT_REPORT'],
   ['wkle-ana', 'wkle-ben', 'PEER'], ['wkle-ben', 'wkle-ana', 'PEER'],
+  ['wkle-chief', 'wkle-ana', 'C_LEVEL'], ['wkle-chief', 'wkle-ben', 'C_LEVEL'], ['wkle-hr', 'wkle-ana', 'HR'],
 ]
 
 const BANK: Array<[RelationshipType, string, 'RATING' | 'TEXT']> = [
@@ -24,6 +26,7 @@ const BANK: Array<[RelationshipType, string, 'RATING' | 'TEXT']> = [
   ['TEAM_LEAD', 'Comments', 'TEXT'],
   ['PEER', 'Collaboration & Teamwork', 'RATING'], ['PEER', 'Communication', 'RATING'], ['PEER', 'Reliability', 'RATING'],
   ['PEER', 'Areas for Improvement', 'TEXT'],
+  ['C_LEVEL', 'Strategic contribution', 'RATING'], ['C_LEVEL', 'Ownership', 'RATING'], ['C_LEVEL', 'Comments for the person', 'TEXT'], ['HR', 'Policy adherence', 'RATING'],
 ]
 
 export const E2E_PERIOD = 'Q4 2026 (weekly e2e)'
@@ -66,6 +69,11 @@ async function main(): Promise<void> {
     await db.weeklyAggregationRun.deleteMany()
     await db.weeklyChallenge.deleteMany()
     await db.weeklyCycle.deleteMany()
+    // A previous run's close wrote evaluations, reports and overrides for the old period; clear them first.
+    const oldPeriodIds = (await db.evaluationPeriod.findMany({ where: { name: E2E_PERIOD }, select: { id: true } })).map((p) => p.id)
+    await db.evaluationPeriodAssignmentOverride.deleteMany({ where: { periodId: { in: oldPeriodIds } } })
+    await db.report.deleteMany({ where: { periodId: { in: oldPeriodIds } } })
+    await db.evaluation.deleteMany({ where: { OR: [{ periodId: { in: oldPeriodIds } }, { evaluatorId: { startsWith: 'wkle-' } }, { evaluateeId: { startsWith: 'wkle-' } }] } })
     await db.evaluationPeriod.deleteMany({ where: { name: E2E_PERIOD } })
     await db.evaluationQuestion.deleteMany({ where: { orderIndex: { gte: 900 } } })
     await db.evaluatorMapping.deleteMany({ where: { OR: [{ evaluatorId: { startsWith: 'wkle-' } }, { evaluateeId: { startsWith: 'wkle-' } }] } })
