@@ -2156,3 +2156,193 @@ model ClientRosterRequestItem {
   @@index([requestId])
   @@index([userId])
 }
+
+// ─── KPI module (monthly KPIs + Execution verification) ─────────────────────
+// User references are plain id columns (like Evaluation.evaluateeId) to avoid
+// adding back-relations to User. Nothing here is hard-deleted.
+
+enum KpiScope {
+  TEAM
+  DEPARTMENT
+}
+
+enum KpiEvidenceType {
+  LINK
+  DOCUMENT
+  NUMBER
+  CLIENT_CONFIRMATION
+}
+
+enum KpiStatus {
+  DRAFT
+  LOCKED
+  CLAIMED_DONE
+  NOT_DONE
+  NEEDS_INFO
+  REJECTED
+  APPEALED
+  VERIFIED
+  NOT_VERIFIED
+  CANCELLED
+}
+
+enum KpiGrantRole {
+  VERIFIER
+  DEPARTMENT_SETTER
+}
+
+enum KpiChangeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model KpiMonth {
+  id            String    @id @default(cuid())
+  year          Int
+  month         Int
+  goalsLockAt   DateTime
+  claimsDueAt   DateTime
+  verifyDueAt   DateTime
+  responseDueAt DateTime
+  targetFinalAt DateTime
+  finalizedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  goals         KpiGoal[]
+
+  @@unique([year, month])
+}
+
+model KpiGoal {
+  id            String    @id @default(cuid())
+  kpiMonthId    String
+  scope         KpiScope
+  departmentKey String?
+  setterId      String
+  title         String
+  description   String?
+  archivedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  kpiMonth      KpiMonth  @relation(fields: [kpiMonthId], references: [id])
+  kpis          Kpi[]
+
+  @@index([kpiMonthId, scope, setterId])
+  @@index([kpiMonthId, departmentKey])
+}
+
+model Kpi {
+  id             String             @id @default(cuid())
+  goalId         String
+  title          String
+  target         String
+  evidenceType   KpiEvidenceType
+  status         KpiStatus          @default(DRAFT)
+  lockedSnapshot Json?
+  claimedById    String?
+  claimedAt      DateTime?
+  claimNote      String?
+  claimUrl       String?
+  reportedValue  String?
+  appealUsedAt   DateTime?
+  decidedById    String?
+  decidedAt      DateTime?
+  decisionNote   String?
+  version        Int                @default(0)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  goal           KpiGoal            @relation(fields: [goalId], references: [id])
+  assignees      KpiAssignee[]
+  files          KpiEvidenceFile[]
+  changes        KpiChangeRequest[]
+
+  @@index([goalId])
+  @@index([status])
+}
+
+model KpiAssignee {
+  kpiId  String
+  userId String
+  kpi    Kpi    @relation(fields: [kpiId], references: [id])
+
+  @@id([kpiId, userId])
+  @@index([userId])
+}
+
+model KpiEvidenceFile {
+  id           String   @id @default(cuid())
+  kpiId        String
+  blobPath     String
+  fileName     String
+  contentType  String
+  size         Int
+  uploadedById String
+  createdAt    DateTime @default(now())
+  kpi          Kpi      @relation(fields: [kpiId], references: [id])
+
+  @@index([kpiId])
+}
+
+model KpiChangeRequest {
+  id            String          @id @default(cuid())
+  kpiId         String
+  requestedById String
+  proposed      Json
+  reason        String
+  status        KpiChangeStatus @default(PENDING)
+  decidedById   String?
+  decidedAt     DateTime?
+  decisionNote  String?
+  createdAt     DateTime        @default(now())
+  kpi           Kpi             @relation(fields: [kpiId], references: [id])
+
+  @@index([kpiId, status])
+}
+
+model KpiSetterAssignment {
+  id          String   @id @default(cuid())
+  employeeId  String
+  setterId    String
+  reason      String
+  createdById String
+  createdAt   DateTime @default(now())
+
+  @@unique([employeeId, setterId])
+}
+
+model KpiRoleGrant {
+  id          String       @id @default(cuid())
+  userId      String
+  role        KpiGrantRole
+  createdById String
+  createdAt   DateTime     @default(now())
+
+  @@unique([userId, role])
+}
+
+model KpiEvent {
+  id         String   @id @default(cuid())
+  kpiId      String?
+  kpiMonthId String?
+  actorId    String?
+  actorRole  String
+  action     String
+  fromStatus String?
+  toStatus   String?
+  before     Json?
+  after      Json?
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  @@index([kpiId, createdAt])
+  @@index([kpiMonthId, createdAt])
+}
+
+model KpiNotification {
+  id        String   @id @default(cuid())
+  userId    String
+  kind      String
+  dedupeKey String   @unique
+  sentAt    DateTime @default(now())
+}

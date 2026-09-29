@@ -8,6 +8,7 @@
     "build": "prisma migrate deploy && next build",
     "start": "next start",
     "test": "node --import tsx --test tests/**/*.test.ts",
+    "test:kpi-db": "node --import tsx --test --test-concurrency=1 tests/kpi-*.integration.test.ts",
     "lint": "next lint",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
