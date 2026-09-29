@@ -93,3 +93,16 @@ export interface ParticipantRow {
   optInReason: string | null
 }
 export interface ParticipantsResponse { cycleId: string; rows: ParticipantRow[] }
+
+export interface QualityView {
+  scored: number
+  reviewedByHuman: number
+  exactAgreement: number | null
+  withinOneAgreement: number | null
+  adjustmentsByTopic: Array<{ topic: string; adjusted: number; reviewed: number }>
+  lengthScoreCorrelation: number | null
+  lengthAlert: boolean
+  flagCounts: Record<string, number>
+  foursShare: Record<Perspective, number | null>
+  tokens: number
+}
