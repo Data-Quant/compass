@@ -126,3 +126,13 @@ export type ChangeRequestInput = z.infer<typeof changeRequestSchema>
 
 export const decideChangeSchema = z.object({ approve: z.boolean(), note: z.string().trim().min(3, 'Explain the decision').max(1000) }).strict()
 export type DecideChangeInput = z.infer<typeof decideChangeSchema>
+
+export type MonthPatch =
+  | { kind: 'status'; input: z.infer<typeof monthStatusSchema> }
+  | { kind: 'deadlines'; deadlines: KpiMonthDeadlines }
+
+/** PATCH /api/admin/kpi/months/[id] takes either a status action or new deadlines. */
+export function parseMonthPatch(body: unknown): MonthPatch {
+  if (body !== null && typeof body === 'object' && 'action' in body) return { kind: 'status', input: monthStatusSchema.parse(body) }
+  return { kind: 'deadlines', deadlines: toDeadlines(deadlineDatesSchema.parse(body)) }
+}

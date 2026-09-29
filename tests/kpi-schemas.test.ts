@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  changeRequestSchema, claimSchema, createGoalSchema, createKpiSchema, decideChangeSchema, deadlineDatesSchema, decideSchema, monthStatusSchema, overrideSchema, respondSchema, setterAssignmentSchema, toDeadlines, updateGoalSchema, updateKpiSchema,
+  changeRequestSchema, claimSchema, parseMonthPatch, createGoalSchema, createKpiSchema, decideChangeSchema, deadlineDatesSchema, decideSchema, monthStatusSchema, overrideSchema, respondSchema, setterAssignmentSchema, toDeadlines, updateGoalSchema, updateKpiSchema,
 } from '../lib/kpi/schemas'
 
 test('department goals need a department; team goals must not have one', () => {
@@ -66,4 +66,14 @@ test('change requests either cancel or change at least one field, and decisions 
   assert.equal(changeRequestSchema.safeParse({ version: 1, proposed: { cancel: true, title: 'Both at once' }, reason: 'Both' }).success, false)
   assert.equal(decideChangeSchema.safeParse({ approve: true, note: 'ok' }).success, false)
   assert.equal(decideChangeSchema.safeParse({ approve: false, note: 'Not agreed with the client' }).success, true)
+})
+
+test('a month PATCH is either a status action or a full set of deadlines', () => {
+  assert.deepEqual(parseMonthPatch({ action: 'finalize' }), { kind: 'status', input: { action: 'finalize' } })
+  const dates = { goalsLockAt: '2026-10-14', claimsDueAt: '2026-11-04', verifyDueAt: '2026-11-11', responseDueAt: '2026-11-13', targetFinalAt: '2026-11-17' }
+  const patch = parseMonthPatch(dates)
+  assert.equal(patch.kind, 'deadlines')
+  assert.equal(patch.kind === 'deadlines' ? patch.deadlines.goalsLockAt.toISOString() : null, '2026-10-14T18:59:59.999Z')
+  assert.throws(() => parseMonthPatch({ action: 'reopen' }))
+  assert.throws(() => parseMonthPatch({ goalsLockAt: '2026-10-14' }))
 })
