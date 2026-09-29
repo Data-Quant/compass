@@ -3,8 +3,9 @@ import { configuredModel } from '../ai/configured'
 import { karachiWeekday, questionWeekCount, totalWeeks, weekIndexAt } from '../calendar'
 import { findRunningCycle } from './cycles'
 import { autoAcceptDue } from './decisions'
+import { formsOpenFor } from './forms'
 import {
-  deliverOnce, followUpMessages, lowEvidenceMessages, questionRecipients, scoringFailedMessages, sendQuestionEmails,
+  deliverOnce, followUpMessages, formsOpenMessages, lowEvidenceMessages, questionRecipients, scoringFailedMessages, sendQuestionEmails,
   type WeeklySendMail, type WeeklySendResult,
 } from './notifications'
 import { releaseWeek, type ReleaseSummary } from './release'
@@ -79,6 +80,7 @@ export async function runWeeklyDailyJob(
     ...(await followUpMessages(cycle.id, now, appUrl)),
     ...(await scoringFailedMessages(cycle.id, now, appUrl)),
     ...(week === lowEvidenceWeek(total) ? await lowEvidenceMessages(cycle.id, appUrl) : []),
+    ...(formsOpenFor(cycle, now) ? await formsOpenMessages(cycle, appUrl) : []),
   ]
   const digests = messages.length > 0 ? await deliverOnce(messages, send) : null
   return { cycleId: cycle.id, week, released, emails, scoring, autoAccepted: accepted, digests }

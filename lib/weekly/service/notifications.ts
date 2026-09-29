@@ -1,16 +1,18 @@
 import { prisma } from '@/lib/db'
 import { formatCalendarDate, karachiCalendarDate } from '../../kpi/calendar'
-import { renderFollowUpEmail, renderLowEvidenceEmail, renderQuestionsEmail, renderScoringFailedEmail } from '../emails'
+import { renderFollowUpEmail, renderFormsOpenEmail, renderLowEvidenceEmail, renderQuestionsEmail, renderScoringFailedEmail } from '../emails'
 import { areWeeklyEmailsEnabled } from '../flag'
 import { PERSPECTIVE_LABELS } from '../perspectives'
 import { loadAnswerRecords } from './answer-states'
+import type { CycleWithPeriod } from './cycles'
 import { lowEvidenceRows } from './dashboard'
 import { isUniqueViolation } from './db'
+import { formsProgress } from './forms'
 
 export type WeeklySendMail = (to: string, subject: string, html: string) => Promise<unknown>
 export type WeeklyEmailKind =
   | 'weekly-questions' | 'weekly-reminder' | 'weekly-follow-up' | 'weekly-scoring-failed' | 'weekly-low-evidence'
-  | 'weekly-challenge-new' | 'weekly-challenge-resolved'
+  | 'weekly-challenge-new' | 'weekly-challenge-resolved' | 'weekly-forms-open'
 export interface QuestionRecipient { userId: string; newCount: number; openCount: number }
 export interface WeeklySendResult { sent: number; recorded: number; skipped: number; failed: number }
 
@@ -159,5 +161,14 @@ export async function lowEvidenceMessages(cycleId: string, appUrl: string): Prom
   return (await hrUserIds()).map((userId) => ({
     userId, kind: 'weekly-low-evidence' as const, dedupeKey: `weekly-low-evidence:${userId}:${cycleId}`,
     render: (name: string) => renderLowEvidenceEmail({ name, rows, appUrl }),
+  }))
+}
+
+/** Spec 12: Hamiz and HR hear once per quarter that their forms are open. */
+export async function formsOpenMessages(cycle: CycleWithPeriod, appUrl: string): Promise<WeeklyEmailMessage[]> {
+  const { pendingEvaluatorIds } = await formsProgress(cycle.periodId)
+  return pendingEvaluatorIds.map((userId) => ({
+    userId, kind: 'weekly-forms-open' as const, dedupeKey: `weekly-forms-open:${userId}:${cycle.id}`,
+    render: (name: string) => renderFormsOpenEmail({ name, appUrl }),
   }))
 }

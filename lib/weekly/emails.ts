@@ -81,3 +81,10 @@ export function renderChallengeResolvedEmail(input: { name: string; periodName: 
     html: layout(input.name, [escapeHtml(outcome), `<strong>HR’s explanation:</strong> ${escapeHtml(input.resolution)}`], `${base(input.appUrl)}/dashboard`, 'Open Compass'),
   }
 }
+
+export function renderFormsOpenEmail(input: { name: string; appUrl: string }): { subject: string; html: string } {
+  return {
+    subject: 'End-of-quarter evaluation forms are open',
+    html: layout(input.name, [escapeHtml('Your end-of-quarter evaluation forms (C-Level, Department or HR) are open. Please complete them before the quarter closes.')], `${base(input.appUrl)}/evaluations/weekly`, 'Open the forms'),
+  }
+}
