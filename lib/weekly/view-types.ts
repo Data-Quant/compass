@@ -2,6 +2,7 @@
 import type { EvaluatorAnswerStatus } from './answer-rules'
 import type { Perspective } from './perspectives'
 import type { LevelKey, ProfileLevels } from './profile'
+import type { AnswerState, ReviewReason } from './review-rules'
 
 export interface PersonRef { id: string; name: string; position: string | null }
 export type PromptKindValue = 'STANDARD' | 'FOLLOW_UP' | 'COMMENT'
@@ -106,3 +107,47 @@ export interface QualityView {
   foursShare: Record<Perspective, number | null>
   tokens: number
 }
+
+export type ReviewFilter = 'NEEDS_REVIEW' | 'FAILED' | 'AUTO_ACCEPT' | 'FOLLOW_UP' | 'SCORING' | 'DECIDED'
+export type ReviewActionValue = 'ACCEPTED' | 'ADJUSTED' | 'MARKED_INSUFFICIENT' | 'EXCLUDED' | 'AUTO_ACCEPTED' | 'MANUAL'
+
+export interface AiScoreView {
+  id: string
+  sufficiency: 'SUFFICIENT' | 'INSUFFICIENT'
+  score: number | null
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW'
+  criteriaMet: string[]
+  criteriaNotDemonstrated: string[]
+  evidenceQuotes: string[]
+  rationale: string
+  followUpPrompt: string | null
+  flags: string[]
+  model: string
+  profileVersion: number | null
+  createdAt: string
+}
+export interface DecisionView { id: string; action: ReviewActionValue; finalScore: number | null; reason: string | null; reviewerName: string | null; createdAt: string }
+export interface ReviewAnswerView {
+  responseId: string
+  promptId: string
+  weekIndex: number
+  kind: PromptKindValue
+  topic: string
+  perspective: Perspective
+  evaluator: PersonRef
+  evaluatee: PersonRef
+  question: string
+  answer: AnswerView
+  wordCount: number
+  revision: number
+  submittedAt: string | null
+  state: AnswerState
+  reasons: ReviewReason[]
+  ai: AiScoreView | null
+  decision: DecisionView | null
+  /** Sent back with a decision; anything newer makes the decision stale. */
+  basedOn: { aiScoreId: string | null; reviewId: string | null }
+  autoAcceptAt: string | null
+  jobError: string | null
+}
+export interface ReviewQueueResponse { cycleId: string; filter: ReviewFilter; counts: Record<ReviewFilter, number>; total: number; items: ReviewAnswerView[] }

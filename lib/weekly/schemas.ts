@@ -60,3 +60,9 @@ export const decisionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('EXCLUDE'), basedOn: basedOnSchema, reason: reasonSchema }).strict(),
 ])
 export type DecisionInput = z.infer<typeof decisionSchema>
+
+export const reviewFilterSchema = z.enum(['NEEDS_REVIEW', 'FAILED', 'AUTO_ACCEPT', 'FOLLOW_UP', 'SCORING', 'DECIDED'])
+export const correctionSchema = z
+  .object({ situation: field, action: field, result: field, shortfall: field.nullable().optional(), reason: reasonSchema })
+  .strict()
+export type CorrectionInput = z.infer<typeof correctionSchema>
