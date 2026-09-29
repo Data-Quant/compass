@@ -3,9 +3,10 @@ import assert from 'node:assert/strict'
 import { prisma } from '../lib/db'
 import { setOptIn } from '../lib/weekly/service/cycles'
 import { WeeklyError } from '../lib/weekly/service/errors'
+import { submitAnswer } from '../lib/weekly/service/inbox'
 import { releaseWeek } from '../lib/weekly/service/release'
 import { at, HR_ACTOR, startedCycle } from './helpers/weekly-fixtures'
-import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST } from './helpers/weekly-test-db'
+import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST, weeklyActor } from './helpers/weekly-test-db'
 
 const isStatus = (status: number) => (e: unknown) => e instanceof WeeklyError && e.status === status
 let cycleId = ''
@@ -94,4 +95,16 @@ test('only a running cycle releases, and only within its weeks', WEEKLY_DB_TEST,
   await assert.rejects(releaseWeek(cycleId, 14, at(14)), isStatus(409))
   await prisma.weeklyCycle.update({ where: { id: cycleId }, data: { status: 'SETUP' } })
   await assert.rejects(releaseWeek(cycleId, 1, at(1)), isStatus(409))
+})
+
+test('a slot whose submitted answer awaits a decision is not asked again', WEEKLY_DB_TEST, async () => {
+  await releaseWeek(cycleId, 1, at(1))
+  const asked = await prisma.weeklyPrompt.findFirstOrThrow({ where: { evaluatorId: W.lead.id } })
+  const words = (n: number) => Array.from({ length: n }, (_, i) => `word${i}`).join(' ')
+  const answer = { situation: `The client moved the launch ${words(10)}`, action: `They rebuilt the plan ${words(15)}`, result: `We delivered on time ${words(15)}` }
+  await submitAnswer(weeklyActor(W.lead), { evaluatorId: W.lead.id, actingAs: false }, asked.id, answer, at(1))
+  // Leave the answered slot as the lead's only open one, so nothing else competes for the batch.
+  await prisma.weeklySlot.updateMany({ where: { evaluatorId: W.lead.id, id: { not: asked.slotId ?? '' } }, data: { status: 'CLOSED_NOT_OBSERVED' } })
+  await releaseWeek(cycleId, 4, at(4))
+  assert.equal(await prisma.weeklyPrompt.count({ where: { evaluatorId: W.lead.id } }), 1)
 })

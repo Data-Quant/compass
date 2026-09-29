@@ -11,6 +11,8 @@ export interface SchedulableSlot {
   confirmedSamples: number
   /** A standard or follow-up question for this slot is still open or in draft. */
   hasOpenPrompt: boolean
+  /** A submitted answer for this slot has no review decision yet; asking again would duplicate it. */
+  awaitingDecision: boolean
   lastAskedWeek: number | null
   snoozedUntilWeek: number | null
 }
@@ -32,6 +34,7 @@ export const MIN_WEEKS_BETWEEN_ASKS = 3
 type Sample = 'FIRST' | 'SECOND'
 
 function wantedSample(slot: SchedulableSlot): Sample | null {
+  if (slot.awaitingDecision) return null
   if (slot.status === 'OPEN' && slot.confirmedSamples === 0) return 'FIRST'
   const leadSecond = slot.perspective === 'LEAD' && slot.confirmedSamples === 1
   if (leadSecond && (slot.status === 'OPEN' || slot.status === 'SATISFIED')) return 'SECOND'

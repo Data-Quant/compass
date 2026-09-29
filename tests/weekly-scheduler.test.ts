@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { nextVariant, planBatch, type BatchInput, type SchedulableSlot } from '../lib/weekly/scheduler'
 
 const slot = (id: string, overrides: Partial<SchedulableSlot> = {}): SchedulableSlot => ({
-  id, evaluateeId: `e-${id}`, perspective: 'PEER', status: 'OPEN', confirmedSamples: 0, hasOpenPrompt: false, lastAskedWeek: null, snoozedUntilWeek: null, ...overrides,
+  id, evaluateeId: `e-${id}`, perspective: 'PEER', status: 'OPEN', confirmedSamples: 0, hasOpenPrompt: false, awaitingDecision: false, lastAskedWeek: null, snoozedUntilWeek: null, ...overrides,
 })
 const input = (slots: SchedulableSlot[], overrides: Partial<BatchInput> = {}): BatchInput => ({
   week: 1, totalWeeks: 13, cap: 5, openPromptCount: 0, slots, evidenceByEvaluatee: new Map(), ...overrides,
@@ -73,4 +73,12 @@ test('prompt variants rotate: the least-used variant first, A before B', () => {
   assert.equal(nextVariant(variants, ['a'])?.id, 'b')
   assert.equal(nextVariant(variants, ['a', 'b'])?.id, 'a')
   assert.equal(nextVariant([], []), null)
+})
+
+test('a slot whose answer still awaits a decision is neither asked again nor counted when pacing', () => {
+  assert.deepEqual(planBatch(input([slot('waiting', { lastAskedWeek: 1, awaitingDecision: true })], { week: 4 })), [])
+  // Week 4 of 13 leaves 8 question weeks: 12 fresh slots pace to ceil(12 / 8) = 2; the 12 answered ones must not add to it.
+  const fresh = many(12)
+  const waiting = Array.from({ length: 12 }, (_, i) => slot(`w${i}`, { lastAskedWeek: 1, awaitingDecision: true }))
+  assert.equal(planBatch(input([...fresh, ...waiting], { week: 4 })).length, 2)
 })

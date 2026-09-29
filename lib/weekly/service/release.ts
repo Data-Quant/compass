@@ -63,17 +63,25 @@ export async function syncSlots(cycle: CycleWithPeriod, now: Date): Promise<{ cr
   return { created: toCreate.length, cancelled: cancelIds.length, pairs }
 }
 
-async function confirmedBySlot(prompts: Array<{ slotId: string | null; response: { id: string } | null }>): Promise<Map<string, number>> {
+type ReviewedPrompt = { slotId: string | null; kind: string; status: string; response: { id: string } | null }
+
+/** Confirmed answers per slot, and slots whose submitted answer has no review decision yet. */
+async function reviewStateBySlot(prompts: ReviewedPrompt[]): Promise<{ confirmed: Map<string, number>; awaiting: Set<string> }> {
   const slotByResponse = new Map(prompts.flatMap((p) => (p.slotId && p.response ? [[p.response.id, p.slotId] as const] : [])))
-  const counts = new Map<string, number>()
-  if (slotByResponse.size === 0) return counts
+  const confirmed = new Map<string, number>()
+  const awaiting = new Set<string>()
+  if (slotByResponse.size === 0) return { confirmed, awaiting }
   const reviews = await prisma.weeklyScoreReview.findMany({ where: { responseId: { in: [...slotByResponse.keys()] } }, select: { id: true, responseId: true, createdAt: true, action: true } })
-  for (const review of latestByResponse(reviews).values()) {
+  const latest = latestByResponse(reviews)
+  for (const review of latest.values()) {
     if (!isConfirmedAction(review.action)) continue
     const slotId = slotByResponse.get(review.responseId)
-    if (slotId) counts.set(slotId, (counts.get(slotId) ?? 0) + 1)
+    if (slotId) confirmed.set(slotId, (confirmed.get(slotId) ?? 0) + 1)
   }
-  return counts
+  for (const p of prompts) {
+    if (p.slotId && p.response && p.kind !== 'COMMENT' && p.status === 'SUBMITTED' && !latest.has(p.response.id)) awaiting.add(p.slotId)
+  }
+  return { confirmed, awaiting }
 }
 
 async function releaseForEvaluator(cycleId: string, week: number, evaluatorId: string, slotIds: string[], askedVariants: Map<string, string[]>, now: Date): Promise<number | null> {
@@ -140,11 +148,11 @@ export async function releaseWeek(cycleId: string, week: number, now: Date): Pro
   })
   const open = prompts.filter((p) => (p.status === 'OPEN' || p.status === 'DRAFT') && p.kind !== 'COMMENT')
   const openSlots = new Set(open.flatMap((p) => (p.slotId ? [p.slotId] : [])))
-  const confirmed = await confirmedBySlot(prompts)
+  const { confirmed, awaiting } = await reviewStateBySlot(prompts)
   const askedVariants = new Map<string, string[]>()
   for (const p of prompts) if (p.slotId && p.promptVariantId) askedVariants.set(p.slotId, [...(askedVariants.get(p.slotId) ?? []), p.promptVariantId])
   const evidenceByEvaluatee = new Map<string, number>()
-  for (const s of slots) evidenceByEvaluatee.set(s.evaluateeId, (evidenceByEvaluatee.get(s.evaluateeId) ?? 0) + (confirmed.get(s.id) ?? 0) + (openSlots.has(s.id) ? 1 : 0))
+  for (const s of slots) evidenceByEvaluatee.set(s.evaluateeId, (evidenceByEvaluatee.get(s.evaluateeId) ?? 0) + (confirmed.get(s.id) ?? 0) + (openSlots.has(s.id) || awaiting.has(s.id) ? 1 : 0))
   const byEvaluator = new Map<string, typeof slots>()
   for (const s of slots) byEvaluator.set(s.evaluatorId, [...(byEvaluator.get(s.evaluatorId) ?? []), s])
   let evaluatorsReleased = 0
@@ -155,7 +163,7 @@ export async function releaseWeek(cycleId: string, week: number, now: Date): Pro
       openPromptCount: open.filter((p) => p.evaluatorId === evaluatorId).length,
       slots: evaluatorSlots.map((s) => ({
         id: s.id, evaluateeId: s.evaluateeId, perspective: s.competency.perspective, status: s.status as WeeklySlotStatus,
-        confirmedSamples: confirmed.get(s.id) ?? 0, hasOpenPrompt: openSlots.has(s.id), lastAskedWeek: s.lastAskedWeek, snoozedUntilWeek: s.snoozedUntilWeek,
+        confirmedSamples: confirmed.get(s.id) ?? 0, hasOpenPrompt: openSlots.has(s.id), awaitingDecision: awaiting.has(s.id), lastAskedWeek: s.lastAskedWeek, snoozedUntilWeek: s.snoozedUntilWeek,
       })),
     })
     const count = await releaseForEvaluator(cycleId, week, evaluatorId, chosen, askedVariants, now)
