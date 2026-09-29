@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     const now = new Date()
     switch (input.action) {
       case 'close':
-        return NextResponse.json({ success: true, ...(await closeCycle(actor, input.cycleId, { drops: input.drops }, now)) })
+        return NextResponse.json({ success: true, ...(await closeCycle(actor, input.cycleId, { drops: input.drops, formsAcknowledged: input.formsAcknowledged }, now)) })
       case 'reopen':
         await reopenCycle(actor, input.cycleId, now)
         return NextResponse.json({ success: true })

@@ -194,7 +194,8 @@ export interface CloseViewResponse {
   pendingAutoAccept: number
   /** Unanswered questions; they expire at close. */
   openPrompts: number
-  forms: { open: boolean; opensAt: string; total: number; done: number }
+  /** `outstanding`: names of the evaluators who still have forms to submit. */
+  forms: { open: boolean; opensAt: string; total: number; done: number; outstanding: string[] }
   dropCandidates: DropCandidateView[]
   lowCoverage: CoverageView[]
   lastRun: AggregationRunView | null

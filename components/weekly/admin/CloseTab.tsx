@@ -75,6 +75,7 @@ export function CloseTab() {
         <CardContent className="space-y-2 p-4">
           <h2 className="font-semibold">End-of-quarter forms</h2>
           <p className="text-sm">{data.forms.done} of {data.forms.total} C-Level, Department and HR forms submitted.</p>
+          {running && data.forms.outstanding.length > 0 && <p className="text-sm text-muted-foreground">Still to submit: {data.forms.outstanding.join(', ')}.</p>}
           {data.forms.open ? <p className="text-sm text-muted-foreground">The forms are open.</p> : <p className="text-sm text-muted-foreground">They open on {formatKarachiDate(data.forms.opensAt)}.</p>}
           {running && !data.forms.open && (
             <Button size="sm" variant="outline" disabled={busy} onClick={() => void act({ action: 'open-forms', cycleId }, () => 'Forms are open')}>Open forms now</Button>
@@ -163,12 +164,12 @@ export function CloseTab() {
       <ConfirmDialog
         isOpen={pending === 'close'}
         onClose={() => setPending(null)}
-        onConfirm={() => void act({ action: 'close', cycleId, drops }, (r) => {
+        onConfirm={() => void act({ action: 'close', cycleId, drops, formsAcknowledged: data.forms.outstanding.length > 0 }, (r) => {
           const counts = r.counts as { ratingRows: number; commentRows: number }
           return `Quarter closed: ${counts.ratingRows} scores and ${counts.commentRows} comments written`
         })}
         title={`Close ${data.cycle.periodName}?`}
-        message={`Weekly questions stop, accepted scores become evaluation results, and ${drops.length} group${drops.length === 1 ? ' is' : 's are'} dropped. You can reopen until results are published.`}
+        message={`${data.forms.outstanding.length > 0 ? `${data.forms.total - data.forms.done} end-of-quarter forms are not submitted (${data.forms.outstanding.join(', ')}) and cannot be filled after the close; their groups will count as empty. ` : ''}Weekly questions stop, accepted scores become evaluation results, and ${drops.length} group${drops.length === 1 ? ' is' : 's are'} dropped. You can reopen until results are published.`}
         confirmText="Close quarter"
         variant="warning"
       />

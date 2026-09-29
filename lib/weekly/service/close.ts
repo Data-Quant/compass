@@ -71,6 +71,8 @@ export async function closeView(actor: WeeklyActor, cycleId: string, now: Date):
     prisma.weeklyAggregationRun.findFirst({ where: { cycleId }, orderBy: { createdAt: 'desc' } }),
   ])
   const runner = lastRun ? (await loadPeople([lastRun.runById])).get(lastRun.runById) : undefined
+  const formEvaluators = await loadPeople(progress.pendingEvaluatorIds)
+  const outstanding = progress.pendingEvaluatorIds.map((id) => personRef(formEvaluators, id).name).sort((a, b) => a.localeCompare(b))
   return {
     cycle: cycleSummary(cycle, now),
     periodLocked: period.isLocked,
@@ -80,7 +82,7 @@ export async function closeView(actor: WeeklyActor, cycleId: string, now: Date):
     blockers,
     pendingAutoAccept: records.filter((r) => r.state === 'AUTO_ACCEPT_PENDING').length,
     openPrompts,
-    forms: { open: formsOpenFor(cycle, now), opensAt: formsOpenDate(cycle).toISOString(), total: progress.total, done: progress.done },
+    forms: { open: formsOpenFor(cycle, now), opensAt: formsOpenDate(cycle).toISOString(), total: progress.total, done: progress.done, outstanding },
     dropCandidates: candidates
       .map((c) => ({ evaluatee: personRef(people, c.evaluateeId), perspective: c.perspective, assignments: categories.get(categoryKey(c.evaluateeId, c.perspective))?.assignments.length ?? 0 }))
       .sort((a, b) => byName(a.evaluatee, b.evaluatee) || a.perspective.localeCompare(b.perspective)),
@@ -96,7 +98,7 @@ export async function closeView(actor: WeeklyActor, cycleId: string, now: Date):
 export async function closeCycle(
   actor: WeeklyActor,
   cycleId: string,
-  input: { drops: ReadonlyArray<{ evaluateeId: string; perspective: Perspective }> },
+  input: { drops: ReadonlyArray<{ evaluateeId: string; perspective: Perspective }>; formsAcknowledged?: boolean },
   now: Date,
 ): Promise<{ runId: string; counts: AggregationCounts; drops: DropRecord[] }> {
   assertHr(actor)
@@ -107,6 +109,11 @@ export async function closeCycle(
   const view = await closeView(actor, cycleId, now)
   if (view.periodLocked) throw new WeeklyError('Unlock the evaluation period first: a locked period ignores dropped groups', 409)
   if (hasBlockers(view.blockers)) throw new WeeklyError(`Resolve these first: ${describe(view.blockers)}`, 409)
+  // Forms cannot be filled once the quarter closes, and a missing form's group keeps its weight, so HR confirms knowingly.
+  if (view.forms.outstanding.length > 0 && input.formsAcknowledged !== true) {
+    const missing = view.forms.total - view.forms.done
+    throw new WeeklyError(`${missing} end-of-quarter form${missing === 1 ? ' is' : 's are'} not submitted yet (${view.forms.outstanding.join(', ')}). They cannot be filled after the close. Confirm to close anyway.`, 409)
+  }
   const candidateKeys = new Set(view.dropCandidates.map((c) => categoryKey(c.evaluatee.id, c.perspective)))
   for (const drop of input.drops) {
     if (!candidateKeys.has(categoryKey(drop.evaluateeId, drop.perspective))) throw new WeeklyError('Someone’s evidence changed since the page loaded. Reload and try again.', 409)

@@ -87,6 +87,7 @@ export const closeActionSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('close'), cycleId: z.string().min(1),
     drops: z.array(z.object({ evaluateeId: z.string().min(1), perspective: z.enum(['LEAD', 'UPWARD', 'PEER']) }).strict()).max(5000),
+    formsAcknowledged: z.boolean().optional(),
   }).strict(),
   z.object({ action: z.literal('reopen'), cycleId: z.string().min(1) }).strict(),
   z.object({ action: z.literal('publish'), cycleId: z.string().min(1) }).strict(),
