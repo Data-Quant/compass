@@ -46,6 +46,7 @@ export const testToolSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('reset'), cycleId: z.string().min(1) }).strict(),
   z.object({ action: z.literal('score-now'), cycleId: z.string().min(1), model: z.enum(['configured', 'stand-in']).default('configured') }).strict(),
   z.object({ action: z.literal('accept-due-now'), cycleId: z.string().min(1) }).strict(),
+  z.object({ action: z.literal('settle-for-close'), cycleId: z.string().min(1) }).strict(),
 ])
 export type TestToolInput = z.infer<typeof testToolSchema>
 
@@ -81,3 +82,14 @@ export const formResponseSchema = z
 export const formInputSchema = z.object({ relationshipType: formRelationshipTypeSchema, evaluateeId: z.string().min(1), responses: z.array(formResponseSchema).max(200) }).strict()
 export type FormInput = z.infer<typeof formInputSchema>
 export const formQuerySchema = z.object({ relationshipType: formRelationshipTypeSchema, evaluateeId: z.string().min(1) })
+
+export const closeActionSchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('close'), cycleId: z.string().min(1),
+    drops: z.array(z.object({ evaluateeId: z.string().min(1), perspective: z.enum(['LEAD', 'UPWARD', 'PEER']) }).strict()).max(5000),
+  }).strict(),
+  z.object({ action: z.literal('reopen'), cycleId: z.string().min(1) }).strict(),
+  z.object({ action: z.literal('publish'), cycleId: z.string().min(1) }).strict(),
+  z.object({ action: z.literal('open-forms'), cycleId: z.string().min(1) }).strict(),
+])
+export type CloseActionInput = z.infer<typeof closeActionSchema>

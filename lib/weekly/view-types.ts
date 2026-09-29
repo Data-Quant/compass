@@ -1,4 +1,5 @@
 // JSON-safe types shared by routes and client components. Dates are ISO strings.
+import type { AggregationCounts } from './aggregation'
 import type { EvaluatorAnswerStatus } from './answer-rules'
 import type { Perspective } from './perspectives'
 import type { LevelKey, ProfileLevels } from './profile'
@@ -179,3 +180,23 @@ export interface FormQuestionView {
   textResponse: string | null
 }
 export interface FormDetailResponse extends FormSummaryView { open: boolean; questions: FormQuestionView[]; fourRatings: { max: number; used: number } | null }
+
+export interface DropCandidateView { evaluatee: PersonRef; perspective: Perspective; assignments: number }
+export interface AggregationRunView { id: string; at: string; runBy: string; counts: AggregationCounts; drops: number }
+export interface CloseViewResponse {
+  cycle: CycleSummary
+  periodLocked: boolean
+  closedAt: string | null
+  resultsPublishedAt: string | null
+  challengeDeadline: string | null
+  blockers: { scoring: number; failed: number; needsReview: number }
+  /** Accepted automatically when HR closes. */
+  pendingAutoAccept: number
+  /** Unanswered questions; they expire at close. */
+  openPrompts: number
+  forms: { open: boolean; opensAt: string; total: number; done: number }
+  dropCandidates: DropCandidateView[]
+  lowCoverage: CoverageView[]
+  lastRun: AggregationRunView | null
+  canClose: boolean
+}

@@ -1,13 +1,15 @@
 import { prisma } from '@/lib/db'
 import { modelFor, type ModelChoice } from '../ai/configured'
+import { fakeModel } from '../ai/model'
 import { effectiveWeek, totalWeeks } from '../calendar'
 import { syntheticAnswer, syntheticComment } from '../content/synthetic'
 import { areWeeklyTestToolsEnabled } from '../flag'
+import { loadAnswerRecords } from './answer-states'
 import { recordAudit } from './audit'
 import { approveProfile } from './content'
 import { assertHr, type WeeklyActor } from './context'
 import { loadCycle } from './cycles'
-import { autoAcceptDue } from './decisions'
+import { autoAcceptDue, decideAnswer } from './decisions'
 import { WeeklyError } from './errors'
 import { submitAnswer } from './inbox'
 import { releaseWeek, type ReleaseSummary } from './release'
@@ -94,4 +96,29 @@ export async function acceptDueNow(actor: WeeklyActor, cycleId: string, now: Dat
   const result = await autoAcceptDue(now, { cycleId, ignoreWait: true })
   await recordAudit(prisma, { cycleId, actorId: actor.id, actorRole: 'HR', action: 'TEST_ACCEPT_DUE', objectType: 'WeeklyCycle', objectId: cycleId, after: result })
   return result
+}
+
+/** Preview only: finishes scoring with the stand-in model and decides everything that would block the close. */
+export async function settleForClose(actor: WeeklyActor, cycleId: string, now: Date): Promise<{ scored: number; accepted: number; scoredByHand: number }> {
+  assertTestTools(actor)
+  await loadCycle(cycleId)
+  const responses = await prisma.weeklyResponse.findMany({ where: { prompt: { cycleId, kind: { not: 'COMMENT' } } }, select: { id: true } })
+  // Scored "at" now, so the decisions below (also at now) follow the scores they decide.
+  const scoring = await runScoring({ model: fakeModel(), budgetMs: SCORE_NOW_BUDGET_MS, responseIds: responses.map((r) => r.id), clock: () => now })
+  let accepted = 0
+  let scoredByHand = 0
+  for (const record of await loadAnswerRecords({ cycleId })) {
+    const basedOn = { aiScoreId: record.aiScore?.id ?? null, reviewId: record.latestReview?.id ?? null }
+    const acceptable = record.aiScore?.sufficiency === 'SUFFICIENT' && record.aiScore.score !== null
+    if (record.state === 'NEEDS_REVIEW' && acceptable) {
+      await decideAnswer(actor, record.responseId, { action: 'ACCEPT', basedOn }, now)
+      accepted += 1
+    } else if (record.state === 'NEEDS_REVIEW' || record.state === 'FAILED') {
+      // Failed scoring, or a thin answer HR must see (Part B sends sensitive thin answers to review): score it by hand.
+      await decideAnswer(actor, record.responseId, { action: 'SET_SCORE', score: 2, reason: 'Scored by the preview test tools', basedOn }, now)
+      scoredByHand += 1
+    }
+  }
+  await recordAudit(prisma, { cycleId, actorId: actor.id, actorRole: 'HR', action: 'TEST_SETTLE', objectType: 'WeeklyCycle', objectId: cycleId, after: { scored: scoring.scored, accepted, scoredByHand } })
+  return { scored: scoring.scored, accepted, scoredByHand }
 }
