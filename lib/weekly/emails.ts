@@ -66,3 +66,18 @@ export function renderLowEvidenceEmail(input: { name: string; rows: ReadonlyArra
     ], `${base(input.appUrl)}/admin/weekly?tab=dashboard`, 'Open the dashboard'),
   }
 }
+
+export function renderChallengeRaisedEmail(input: { name: string; evaluatee: string; periodName: string; appUrl: string }): { subject: string; html: string } {
+  return {
+    subject: `${input.evaluatee} raised a challenge on their ${input.periodName} results`,
+    html: layout(input.name, [escapeHtml(`${input.evaluatee} has challenged their ${input.periodName} results. Review their evidence and resolve the challenge.`)], `${base(input.appUrl)}/admin/weekly?tab=challenges`, 'Open challenges'),
+  }
+}
+
+export function renderChallengeResolvedEmail(input: { name: string; periodName: string; upheld: boolean; resolution: string; appUrl: string }): { subject: string; html: string } {
+  const outcome = input.upheld ? 'HR upheld your challenge and updated your results.' : 'HR reviewed your challenge and kept your results as they were.'
+  return {
+    subject: `Your challenge on your ${input.periodName} results has been decided`,
+    html: layout(input.name, [escapeHtml(outcome), `<strong>HR’s explanation:</strong> ${escapeHtml(input.resolution)}`], `${base(input.appUrl)}/dashboard`, 'Open Compass'),
+  }
+}

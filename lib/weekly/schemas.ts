@@ -93,3 +93,10 @@ export const closeActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('open-forms'), cycleId: z.string().min(1) }).strict(),
 ])
 export type CloseActionInput = z.infer<typeof closeActionSchema>
+
+export const challengeSchema = z.object({ reason: z.string().trim().min(20, 'Explain in at least 20 characters').max(3000) }).strict()
+export const challengeActionSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('adjust'), responseId: z.string().min(1), score: z.number().int().min(1).max(4), reason: reasonSchema }).strict(),
+  z.object({ action: z.literal('resolve'), outcome: z.enum(['UPHELD', 'NOT_UPHELD']), resolution: z.string().trim().min(10, 'Write at least 10 characters').max(3000) }).strict(),
+])
+export type ChallengeActionInput = z.infer<typeof challengeActionSchema>

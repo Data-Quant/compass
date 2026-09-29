@@ -8,7 +8,9 @@ import { lowEvidenceRows } from './dashboard'
 import { isUniqueViolation } from './db'
 
 export type WeeklySendMail = (to: string, subject: string, html: string) => Promise<unknown>
-export type WeeklyEmailKind = 'weekly-questions' | 'weekly-reminder' | 'weekly-follow-up' | 'weekly-scoring-failed' | 'weekly-low-evidence'
+export type WeeklyEmailKind =
+  | 'weekly-questions' | 'weekly-reminder' | 'weekly-follow-up' | 'weekly-scoring-failed' | 'weekly-low-evidence'
+  | 'weekly-challenge-new' | 'weekly-challenge-resolved'
 export interface QuestionRecipient { userId: string; newCount: number; openCount: number }
 export interface WeeklySendResult { sent: number; recorded: number; skipped: number; failed: number }
 
@@ -123,7 +125,7 @@ export async function deliverOnce(messages: readonly WeeklyEmailMessage[], send:
   return result
 }
 
-async function hrUserIds(): Promise<string[]> {
+export async function hrUserIds(): Promise<string[]> {
   return (await prisma.user.findMany({ where: { role: 'HR' }, select: { id: true } })).map((u) => u.id)
 }
 

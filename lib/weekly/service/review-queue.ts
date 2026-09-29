@@ -33,7 +33,7 @@ function aiView(record: AnswerRecord, versions: ReadonlyMap<string, number>): Ai
   }
 }
 
-async function toViews(records: readonly AnswerRecord[]): Promise<ReviewAnswerView[]> {
+export async function reviewViews(records: readonly AnswerRecord[]): Promise<ReviewAnswerView[]> {
   if (records.length === 0) return []
   const responses = await prisma.weeklyResponse.findMany({
     where: { id: { in: records.map((r) => r.responseId) } },
@@ -76,7 +76,7 @@ export async function reviewQueue(actor: WeeklyActor, input: { cycleId: string; 
   const sorted = [...matching].sort((a, b) =>
     input.filter === 'DECIDED' ? time(b.latestReview?.createdAt) - time(a.latestReview?.createdAt) : time(a.submittedAt) - time(b.submittedAt),
   )
-  return { cycleId: input.cycleId, filter: input.filter, counts, total: matching.length, items: await toViews(sorted.slice(0, REVIEW_PAGE_SIZE)) }
+  return { cycleId: input.cycleId, filter: input.filter, counts, total: matching.length, items: await reviewViews(sorted.slice(0, REVIEW_PAGE_SIZE)) }
 }
 
 /** Spec 8.3: HR fixes a submitted answer's text (reason required, original kept in the audit log) and it is re-scored. */

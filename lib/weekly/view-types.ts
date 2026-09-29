@@ -200,3 +200,10 @@ export interface CloseViewResponse {
   lastRun: AggregationRunView | null
   canClose: boolean
 }
+
+export type ChallengeStatusValue = 'OPEN' | 'UPHELD' | 'NOT_UPHELD'
+export interface ChallengeView { id: string; status: ChallengeStatusValue; reason: string; resolution: string | null; createdAt: string; resolvedAt: string | null }
+export interface MyChallengeResponse { available: boolean; periodName: string | null; deadline: string | null; canRaise: boolean; challenge: ChallengeView | null }
+export interface ChallengeRow extends ChallengeView { evaluatee: PersonRef; resolvedBy: string | null }
+export interface ChallengesResponse { cycleId: string; deadline: string | null; challenges: ChallengeRow[] }
+export interface ChallengeDetailResponse { challenge: ChallengeRow; overallScore: number | null; answers: ReviewAnswerView[] }
