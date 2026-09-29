@@ -3,7 +3,7 @@ import { guardWeeklyMutation, requireWeeklySession } from '@/lib/weekly/http'
 import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
 import { testToolSchema } from '@/lib/weekly/schemas'
 import { actorFromUser } from '@/lib/weekly/service/context'
-import { approveAllDrafts, fillSynthetic, releaseNextWeek, resetCycle } from '@/lib/weekly/service/test-tools'
+import { acceptDueNow, approveAllDrafts, fillSynthetic, releaseNextWeek, resetCycle, scoreNow } from '@/lib/weekly/service/test-tools'
 
 export const runtime = 'nodejs'
 
@@ -24,6 +24,10 @@ export async function POST(request: NextRequest) {
       case 'reset':
         await resetCycle(actor, input.cycleId)
         return NextResponse.json({ success: true })
+      case 'score-now':
+        return NextResponse.json({ success: true, ...(await scoreNow(actor, input.cycleId, input.model)) })
+      case 'accept-due-now':
+        return NextResponse.json({ success: true, ...(await acceptDueNow(actor, input.cycleId, now)) })
     }
   } catch (error) {
     return weeklyErrorResponse(error)
