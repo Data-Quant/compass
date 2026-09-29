@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { currentQuarterKey, formatPercent, monthLabel, quarterLabel, shiftQuarter } from '@/lib/kpi/format'
 import type { MyViewResponse } from '@/lib/kpi/view-types'
-import { KpiStatusBadge } from './KpiStatusBadge'
+import { KpiRow } from './KpiRow'
 import { PeriodSwitcher } from './PeriodSwitcher'
 import { errorMessage, kpiRequest } from './kpi-api'
 
@@ -13,23 +13,19 @@ export function MyKpisPanel() {
   const [data, setData] = useState<MyViewResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    let active = true
-    setData(null)
-    kpiRequest<MyViewResponse>(`/api/kpi/my?quarter=${quarterKey}`)
-      .then((value) => {
-        if (active) {
-          setData(value)
-          setError(null)
-        }
-      })
-      .catch((e: unknown) => {
-        if (active) setError(errorMessage(e, 'Could not load your KPIs'))
-      })
-    return () => {
-      active = false
+  const load = useCallback(async () => {
+    try {
+      setData(await kpiRequest<MyViewResponse>(`/api/kpi/my?quarter=${quarterKey}`))
+      setError(null)
+    } catch (e) {
+      setError(errorMessage(e, 'Could not load your KPIs'))
     }
   }, [quarterKey])
+
+  useEffect(() => {
+    setData(null)
+    void load()
+  }, [load])
 
   return (
     <div className="space-y-4">
@@ -57,16 +53,12 @@ export function MyKpisPanel() {
                 ) : (
                   <ul className="divide-y rounded-md border">
                     {monthKpis.map((kpi) => (
-                      <li key={kpi.id} className="flex flex-wrap items-start justify-between gap-3 p-3">
-                        <div className="min-w-0 space-y-1">
-                          <p className="font-medium">{kpi.title}</p>
-                          <p className="text-sm">Target: {kpi.target}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {kpi.scope === 'DEPARTMENT' ? 'Department goal' : 'Team goal'}: {kpi.goalTitle}
-                          </p>
-                        </div>
-                        <KpiStatusBadge status={kpi.status} />
-                      </li>
+                      <KpiRow
+                        key={kpi.id}
+                        kpi={kpi}
+                        context={`${kpi.scope === 'DEPARTMENT' ? 'Department goal' : 'Team goal'}: ${kpi.goalTitle}`}
+                        onChanged={load}
+                      />
                     ))}
                   </ul>
                 )}

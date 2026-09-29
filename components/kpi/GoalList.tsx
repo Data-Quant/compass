@@ -3,9 +3,8 @@
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { EVIDENCE_LABELS } from '@/lib/kpi/format'
 import type { GoalView, KpiView } from '@/lib/kpi/view-types'
-import { KpiStatusBadge } from './KpiStatusBadge'
+import { KpiRow } from './KpiRow'
 
 interface GoalListProps {
   goals: GoalView[]
@@ -16,9 +15,11 @@ interface GoalListProps {
   onAddKpi?: (goal: GoalView) => void
   onEditKpi?: (goal: GoalView, kpi: KpiView) => void
   onDiscardKpi?: (kpi: KpiView) => void
+  /** Reloads after a claim, reply, appeal or change request. Without it KPI rows are read-only. */
+  onChanged?: () => Promise<void>
 }
 
-export function GoalList({ goals, editable, emptyMessage, onEditGoal, onArchiveGoal, onAddKpi, onEditKpi, onDiscardKpi }: GoalListProps) {
+export function GoalList({ goals, editable, emptyMessage, onEditGoal, onArchiveGoal, onAddKpi, onEditKpi, onDiscardKpi, onChanged }: GoalListProps) {
   if (goals.length === 0) return <p className="text-sm text-muted-foreground">{emptyMessage}</p>
   return (
     <div className="space-y-4">
@@ -50,24 +51,19 @@ export function GoalList({ goals, editable, emptyMessage, onEditGoal, onArchiveG
             ) : (
               <ul className="divide-y rounded-md border">
                 {goal.kpis.map((kpi) => (
-                  <li key={kpi.id} className="flex flex-wrap items-start justify-between gap-3 p-3">
-                    <div className="min-w-0 space-y-1">
-                      <p className="font-medium">{kpi.title}</p>
-                      <p className="text-sm">Target: {kpi.target}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Proof: {EVIDENCE_LABELS[kpi.evidenceType]} · Owners: {kpi.owners.map((owner) => owner.name).join(', ')}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <KpiStatusBadge status={kpi.status} />
-                      {editable && kpi.status === 'DRAFT' && (
+                  <KpiRow
+                    key={kpi.id}
+                    kpi={kpi}
+                    onChanged={onChanged}
+                    draftActions={
+                      editable && kpi.status === 'DRAFT' ? (
                         <>
                           <Button size="sm" variant="outline" onClick={() => onEditKpi?.(goal, kpi)}>Edit</Button>
                           <Button size="sm" variant="ghost" onClick={() => onDiscardKpi?.(kpi)}>Discard</Button>
                         </>
-                      )}
-                    </div>
-                  </li>
+                      ) : undefined
+                    }
+                  />
                 ))}
               </ul>
             )}

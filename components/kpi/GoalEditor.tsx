@@ -97,6 +97,7 @@ export function GoalEditor({ goals, editable, ownerOptions, defaultOwnerIds, emp
         onAddKpi={(goal) => setKpiDialog({ goal, kpi: null })}
         onEditKpi={(goal, kpi) => setKpiDialog({ goal, kpi })}
         onDiscardKpi={setToDiscard}
+        onChanged={onChanged}
       />
       {goalDialog && (
         <GoalFormDialog
