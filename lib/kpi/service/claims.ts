@@ -1,7 +1,7 @@
 import type { KpiEvidenceFile } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { availableActions } from '../actions'
-import { checkEvidenceUpload, claimEvidenceError } from '../evidence'
+import { checkEvidenceUpload, claimEvidenceError, isHttpUrl } from '../evidence'
 import { canClaim, canViewKpi, type KpiActor } from '../permissions'
 import type { ClaimInput, RespondInput } from '../schemas'
 import { transition, type KpiAction } from '../state-machine'
@@ -32,6 +32,8 @@ export async function claimKpi(actor: KpiActor, kpiId: string, input: ClaimInput
   if (revising && input.outcome === 'NOT_DONE') throw new KpiError('This KPI is already claimed done; revise its evidence instead', 409)
   const to = nextStatus(kpi, revising ? { type: 'REVISE_CLAIM' } : { type: input.outcome === 'DONE' ? 'CLAIM_DONE' : 'CLAIM_NOT_DONE' }, now)
   const evidence = { note: clean(input.note), url: clean(input.url), reportedValue: clean(input.reportedValue) }
+  // Links are shown as links on every KPI screen, so only http(s) is stored, whatever the outcome.
+  if (evidence.url && !isHttpUrl(evidence.url)) throw new KpiError('Links must start with http:// or https://')
   if (input.outcome === 'DONE') {
     const problem = claimEvidenceError(kpi.evidenceType, { url: evidence.url, reportedValue: evidence.reportedValue, fileCount: kpi.files.length })
     if (problem) throw new KpiError(problem)

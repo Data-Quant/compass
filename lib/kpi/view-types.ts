@@ -137,6 +137,8 @@ export interface EvidenceFileView { id: string; fileName: string; size: number; 
 export interface ClaimView { claimedBy: PersonRef; claimedAt: string; note: string | null; url: string | null; reportedValue: string | null }
 export interface DecisionView { decidedAt: string; note: string | null }
 
+export interface ChangeableFields { title: string; target: string; evidenceType: EvidenceTypeValue }
+
 export type ChangeProposal =
   | { cancel: true }
   | { title?: string; target?: string; evidenceType?: EvidenceTypeValue; ownerIds?: string[] }
@@ -148,6 +150,9 @@ export interface ChangeRequestView {
   monthKey: string
   requestedBy: PersonRef
   proposed: ChangeProposal
+  /** The KPI as it is now, and as it was when it locked, so deciders see what the proposal changes. */
+  current: ChangeableFields
+  locked: ChangeableFields | null
   reason: string
   createdAt: string
   status: 'PENDING' | 'APPROVED' | 'REJECTED'

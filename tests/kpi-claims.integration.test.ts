@@ -6,6 +6,7 @@ import { KpiError } from '../lib/kpi/service/errors'
 import { memoryEvidenceStore } from '../lib/kpi/service/evidence-store'
 import { createGoal, createKpi } from '../lib/kpi/service/goals'
 import type { EvidenceTypeValue } from '../lib/kpi/view-types'
+import { decideKpi } from '../lib/kpi/service/verification'
 import { actorFor, DB_TEST, KPI_DB_READY, PEOPLE, resetKpiTestData, seedKpiPeople } from './helpers/kpi-test-db'
 
 const beforeLock = new Date('2026-10-02T08:00:00Z')
@@ -110,4 +111,32 @@ test('a reply after the response deadline is refused and the claim ends not veri
   const late = new Date('2026-11-16T08:00:00Z')
   await assert.rejects(respondToKpi(lead, kpi.id, { version: claimed.version + 1, kind: 'REPLY', note: 'Sorry, this is late' }, late), isStatus(409))
   assert.equal((await prisma.kpi.findUniqueOrThrow({ where: { id: kpi.id } })).status, 'NOT_VERIFIED')
+})
+
+test('a claim link that is not http or https is refused, even when claiming not done', DB_TEST, async () => {
+  const kpi = await teamKpi()
+  await assert.rejects(claimKpi(lead, kpi.id, { version: 0, outcome: 'NOT_DONE', url: 'javascript:alert(1)' }, afterLock), /http/)
+  assert.equal((await prisma.kpi.findUniqueOrThrow({ where: { id: kpi.id } })).claimUrl, null)
+})
+
+test('late claims and late replies say which deadline passed', DB_TEST, async () => {
+  const verifier = actorFor(PEOPLE.verifier, ['VERIFIER'])
+  const goal = await teamGoal()
+  const unclaimed = await teamKpi('LINK', goal.id)
+  const asked = await teamKpi('LINK', goal.id, 'Demos')
+  await assert.rejects(claimKpi(lead, unclaimed.id, { version: 0, outcome: 'DONE', url: 'https://x.example' }, afterClaims), /claims deadline has passed/)
+  const claimed = await claimKpi(lead, asked.id, { version: 0, outcome: 'DONE', url: 'https://x.example/a' }, afterLock)
+  const decided = await decideKpi(verifier, asked.id, { version: claimed.version, decision: 'NEEDS_INFO', note: 'Which report?' }, afterLock)
+  const late = new Date('2026-11-16T08:00:00Z')
+  await assert.rejects(respondToKpi(lead, asked.id, { version: decided.version, kind: 'REPLY', note: 'Sorry, this is late' }, late), /response deadline has passed/)
+})
+
+test('a second appeal after the final decision is refused as already used', DB_TEST, async () => {
+  const verifier = actorFor(PEOPLE.verifier, ['VERIFIER'])
+  const kpi = await teamKpi()
+  const claimed = await claimKpi(lead, kpi.id, { version: 0, outcome: 'DONE', url: 'https://x.example/a' }, afterLock)
+  const rejected = await decideKpi(verifier, kpi.id, { version: claimed.version, decision: 'REJECTED', note: 'No proof' }, afterLock)
+  const appealed = await respondToKpi(lead, kpi.id, { version: rejected.version, kind: 'APPEAL', note: 'Here is the proof' }, afterLock)
+  const final = await decideKpi(verifier, kpi.id, { version: appealed.version, decision: 'NOT_VERIFIED', note: 'Still no proof' }, afterLock)
+  await assert.rejects(respondToKpi(lead, kpi.id, { version: final.version, kind: 'APPEAL', note: 'One more time' }, afterLock), /already been appealed/)
 })

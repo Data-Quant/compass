@@ -8,6 +8,7 @@ import type { KpiGrantRoleValue } from '../lib/kpi/view-types'
 const OCTOBER_DEADLINES = {
   claimsDueAt: new Date('2026-11-04T18:59:59.999Z'),
   verifyDueAt: new Date('2026-11-11T18:59:59.999Z'),
+  responseDueAt: new Date('2026-11-13T18:59:59.999Z'),
   targetFinalAt: new Date('2026-11-17T18:59:59.999Z'),
 }
 const kpi = (id: string, overrides: Partial<DigestKpi> = {}): DigestKpi => ({
@@ -63,10 +64,9 @@ test('claimers are reminded the working day before claims close', () => {
   assert.deepEqual(kinds(buildDigests(input('2026-11-03T04:00:00Z', { kpis: [kpi('a', { status: 'CLAIMED_DONE' })] })), 'lead'), [])
 })
 
-test('a needs-info or rejected claim reaches its claimer in the next digest only', () => {
+test('a needs-info or rejected claim reaches its claimer; an appealed one does not', () => {
   const asked = [kpi('a', { status: 'NEEDS_INFO', claimedById: 'lead', decidedAt: new Date('2026-11-05T10:00:00Z') })]
   assert.deepEqual(kinds(buildDigests(input('2026-11-06T04:00:00Z', { kpis: asked })), 'lead'), ['RESPONSE_NEEDED'])
-  assert.deepEqual(kinds(buildDigests(input('2026-11-07T04:00:00Z', { kpis: asked })), 'lead'), [])
   const appealed = [kpi('a', { status: 'REJECTED', claimedById: 'lead', appealUsed: true, decidedAt: new Date('2026-11-05T10:00:00Z') })]
   assert.deepEqual(kinds(buildDigests(input('2026-11-06T04:00:00Z', { kpis: appealed })), 'lead'), [])
 })
@@ -87,4 +87,11 @@ test('HR hears about overdue verification and months that are not final', () => 
   assert.deepEqual(kinds(digests, 'hr'), ['VERIFY_QUEUE', 'OVERDUE', 'OVERDUE'])
   assert.match(digests.get('hr')?.[2].text ?? '', /September 2026/)
   assert.deepEqual(kinds(digests, 'verifier'), ['VERIFY_QUEUE'])
+})
+
+test('a reply reminder repeats daily until the response deadline, so a missed or failed run loses nothing', () => {
+  const asked = [kpi('a', { status: 'NEEDS_INFO', claimedById: 'lead', decidedAt: new Date('2026-11-05T10:00:00Z') })]
+  assert.deepEqual(kinds(buildDigests(input('2026-11-09T04:00:00Z', { kpis: asked })), 'lead'), ['RESPONSE_NEEDED'])
+  assert.match(buildDigests(input('2026-11-09T04:00:00Z', { kpis: asked })).get('lead')?.[0].text ?? '', /13 Nov/)
+  assert.deepEqual(kinds(buildDigests(input('2026-11-14T04:00:00Z', { kpis: asked })), 'lead'), [])
 })

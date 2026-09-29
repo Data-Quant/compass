@@ -6,6 +6,7 @@ import { effectiveStatus, isFinalStatus, transition } from '../state-machine'
 import { KpiError } from './errors'
 import { recordEvent } from './events'
 import { assertFresh, loadForAction, stateOf, STALE_MESSAGE } from './kpi-load'
+import { persistSystemTransitions } from './system'
 import type { KpiActionResult } from './claims'
 import { isVisibleKpi } from './views'
 
@@ -29,6 +30,8 @@ export async function refreshMonthFinalization(monthId: string, now: Date = new 
   if (!month || month.finalizedAt) return false
   const reopened = await prisma.kpiEvent.count({ where: { kpiMonthId: monthId, action: 'MONTH_REOPEN' } })
   if (reopened > 0 || !(await monthIsComplete(month, now))) return false
+  // A final month is never revisited by the daily job, so save its deadline results now.
+  await persistSystemTransitions({ goal: { kpiMonthId: monthId } }, now)
   return prisma.$transaction(async (tx) => {
     const updated = await tx.kpiMonth.updateMany({ where: { id: monthId, finalizedAt: null }, data: { finalizedAt: now } })
     if (updated.count === 0) return false
@@ -48,6 +51,7 @@ export async function markMonthFinal(actor: KpiActor, monthId: string, now: Date
   const month = await findMonth(monthId)
   if (month.finalizedAt) throw new KpiError('This month is already final', 409)
   if (!(await monthIsComplete(month, now))) throw new KpiError('Some KPIs still need a claim or a decision', 409)
+  await persistSystemTransitions({ goal: { kpiMonthId: monthId } }, now)
   await prisma.$transaction(async (tx) => {
     const updated = await tx.kpiMonth.updateMany({ where: { id: monthId, finalizedAt: null }, data: { finalizedAt: now } })
     if (updated.count === 0) throw new KpiError('This month is already final', 409)

@@ -1,10 +1,11 @@
 import type { KpiChangeRequest } from '@prisma/client'
+import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { formatMonthKey } from '../calendar'
 import { canDecideChange, canRequestChange, isVerifierEligible, ownerError, type GoalRef, type KpiActor, type KpiRef } from '../permissions'
-import { changeProposalSchema, type ChangeRequestInput, type DecideChangeInput } from '../schemas'
+import { changeProposalSchema, evidenceTypeSchema, type ChangeRequestInput, type DecideChangeInput } from '../schemas'
 import { transition } from '../state-machine'
-import type { ChangeProposal, ChangeRequestView } from '../view-types'
+import type { ChangeableFields, ChangeProposal, ChangeRequestView, EvidenceTypeValue } from '../view-types'
 import { loadKpiContext, personRef, type KpiContext } from './context'
 import { toJson } from './db'
 import { KpiError } from './errors'
@@ -118,9 +119,19 @@ export async function decideChange(
   return { status: 'APPROVED' }
 }
 
+const lockedFieldsSchema = z.object({ title: z.string(), target: z.string(), evidenceType: evidenceTypeSchema })
+
+function lockedFieldsOf(snapshot: unknown): ChangeableFields | null {
+  const parsed = lockedFieldsSchema.safeParse(snapshot)
+  return parsed.success ? { title: parsed.data.title, target: parsed.data.target, evidenceType: parsed.data.evidenceType } : null
+}
+
 interface ChangeKpiLike {
   id: string
   title: string
+  target: string
+  evidenceType: EvidenceTypeValue
+  lockedSnapshot: unknown
   claimedById: string | null
   assignees: Array<{ userId: string }>
   goal: { scope: 'TEAM' | 'DEPARTMENT'; setterId: string; departmentKey: string | null; kpiMonth: { year: number; month: number } }
@@ -138,6 +149,8 @@ export function toChangeRequestView(ctx: KpiContext, actor: KpiActor, request: K
     monthKey: formatMonthKey(kpi.goal.kpiMonth),
     requestedBy: personRef(ctx, request.requestedById),
     proposed: changeProposalSchema.parse(request.proposed) as ChangeProposal,
+    current: { title: kpi.title, target: kpi.target, evidenceType: kpi.evidenceType },
+    locked: lockedFieldsOf(kpi.lockedSnapshot),
     reason: request.reason,
     createdAt: request.createdAt.toISOString(),
     status: request.status,

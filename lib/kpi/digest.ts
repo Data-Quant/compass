@@ -24,6 +24,7 @@ export interface DigestKpi extends KpiRef {
   appealUsed: boolean
   claimsDueAt: Date
   verifyDueAt: Date
+  responseDueAt: Date
   targetFinalAt: Date
 }
 
@@ -47,7 +48,6 @@ export interface DigestInput {
 
 type Entry = [userId: string, item: DigestItem]
 
-const DAY_MS = 24 * 60 * 60 * 1000
 const MAX_TITLES = 3
 
 const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? '' : 's'}`
@@ -98,16 +98,18 @@ function claimReminders(input: DigestInput): Entry[] {
   )
 }
 
+/** Daily while a reply or appeal is still possible, so a missed or failed run never loses the only notice. */
 function responseReminders(input: DigestInput): Entry[] {
-  const since = input.now.getTime() - DAY_MS
   const answered = input.kpis.filter(
-    (kpi) =>
-      (kpi.status === 'NEEDS_INFO' || (kpi.status === 'REJECTED' && !kpi.appealUsed)) &&
-      kpi.decidedAt !== null &&
-      kpi.decidedAt.getTime() > since,
+    (kpi) => (kpi.status === 'NEEDS_INFO' || (kpi.status === 'REJECTED' && !kpi.appealUsed)) && input.now <= kpi.responseDueAt,
   )
   return [...groupBy(answered, (kpi) => (kpi.claimedById ? [kpi.claimedById] : claimersOf(kpi)))].map(([id, kpis]) =>
-    entry(id, 'RESPONSE_NEEDED', `Execution answered ${plural(kpis.length, 'claim')}; reply or appeal: ${titles(kpis)}`, '/kpis'),
+    entry(
+      id,
+      'RESPONSE_NEEDED',
+      `Execution answered ${plural(kpis.length, 'claim')}; reply or appeal by ${formatKarachiDate(kpis[0].responseDueAt.toISOString())}: ${titles(kpis)}`,
+      '/kpis',
+    ),
   )
 }
 

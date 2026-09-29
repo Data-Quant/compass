@@ -7,20 +7,30 @@ import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/ui/modal'
 import { Textarea } from '@/components/ui/textarea'
 import { EVIDENCE_LABELS, formatKarachiDate, monthLabel } from '@/lib/kpi/format'
-import type { ChangeProposal, ChangeRequestView } from '@/lib/kpi/view-types'
+import type { ChangeRequestView } from '@/lib/kpi/view-types'
 import { errorMessage, kpiRequest } from '../kpi-api'
 
 interface Deciding { request: ChangeRequestView; approve: boolean }
 
-function describeProposal(proposed: ChangeProposal): string {
+/** "from → to" for each proposed field, against the KPI as it is now. */
+function describeProposal(request: ChangeRequestView): string {
+  const { proposed, current } = request
   if ('cancel' in proposed) return 'Cancel this KPI'
   const parts = [
-    proposed.title ? `Title → ${proposed.title}` : null,
-    proposed.target ? `Target → ${proposed.target}` : null,
-    proposed.evidenceType ? `Proof → ${EVIDENCE_LABELS[proposed.evidenceType]}` : null,
+    proposed.title ? `Title: ${current.title} → ${proposed.title}` : null,
+    proposed.target ? `Target: ${current.target} → ${proposed.target}` : null,
+    proposed.evidenceType ? `Proof: ${EVIDENCE_LABELS[current.evidenceType]} → ${EVIDENCE_LABELS[proposed.evidenceType]}` : null,
     proposed.ownerIds ? `Owners → ${proposed.ownerIds.length} people` : null,
   ]
   return parts.filter((part): part is string => part !== null).join(' · ')
+}
+
+/** The values the KPI locked with, shown when they differ from its current values. */
+function lockedNote(request: ChangeRequestView): string | null {
+  const { locked, current } = request
+  if (!locked) return null
+  const changed = locked.title !== current.title || locked.target !== current.target || locked.evidenceType !== current.evidenceType
+  return changed ? `When locked: ${locked.title} · Target: ${locked.target} · Proof: ${EVIDENCE_LABELS[locked.evidenceType]}` : 'Unchanged since the lock'
 }
 
 export function ChangeRequestsTab() {
@@ -50,7 +60,8 @@ export function ChangeRequestsTab() {
             <li key={request.id} className="flex flex-wrap items-start justify-between gap-3 p-3">
               <div className="min-w-0 space-y-1 text-sm">
                 <p className="font-medium">{request.kpiTitle}</p>
-                <p>{describeProposal(request.proposed)}</p>
+                <p>{describeProposal(request)}</p>
+                {lockedNote(request) && <p className="text-xs text-muted-foreground">{lockedNote(request)}</p>}
                 <p className="text-xs text-muted-foreground">
                   {monthLabel(request.monthKey)} · asked by {request.requestedBy.name} on {formatKarachiDate(request.createdAt)} · “{request.reason}”
                 </p>
@@ -100,7 +111,8 @@ function DecideChangeDialog({ deciding, onClose, onDone }: DecideChangeDialogPro
   return (
     <Modal isOpen onClose={onClose} title={`${verb} change: ${deciding.request.kpiTitle}`}>
       <form onSubmit={submit} className="space-y-4">
-        <p className="text-sm">{describeProposal(deciding.request.proposed)}</p>
+        <p className="text-sm">{describeProposal(deciding.request)}</p>
+        {lockedNote(deciding.request) && <p className="text-xs text-muted-foreground">{lockedNote(deciding.request)}</p>}
         <div className="space-y-2">
           <Label htmlFor="change-decision-note">Decision note</Label>
           <Textarea id="change-decision-note" required minLength={3} maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)} />

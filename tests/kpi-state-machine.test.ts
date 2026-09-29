@@ -42,7 +42,7 @@ test('a claim can be revised only before a decision and the deadline', () => {
 
 test('verifier decisions apply only to submitted claims', () => {
   for (const decision of ['VERIFIED', 'NEEDS_INFO', 'REJECTED'] as const) {
-    assert.deepEqual(transition(state('CLAIMED_DONE'), { type: 'DECIDE', decision }, month, afterResponse), { ok: true, to: decision })
+    assert.deepEqual(transition(state('CLAIMED_DONE'), { type: 'DECIDE', decision }, month, afterClaims), { ok: true, to: decision })
   }
   assert.equal(transition(state('LOCKED'), { type: 'DECIDE', decision: 'VERIFIED' }, month, afterLock).ok, false)
 })
@@ -86,4 +86,20 @@ test('system transitions chain and are never verifications', () => {
 
 test('final statuses', () => {
   assert.deepEqual((['NOT_DONE', 'VERIFIED', 'NOT_VERIFIED', 'CANCELLED', 'LOCKED'] as const).map(isFinalStatus), [true, true, true, true, false])
+})
+
+test('refusals after a deadline name the deadline, and a second appeal says it was already used', () => {
+  const error = (result: ReturnType<typeof transition>) => (result.ok ? null : result.error)
+  assert.equal(error(transition(state('NOT_DONE'), { type: 'CLAIM_DONE' }, month, afterClaims)), 'The claims deadline has passed')
+  assert.equal(error(transition(state('NOT_VERIFIED'), { type: 'RESPOND' }, month, afterResponse)), 'The response deadline has passed')
+  assert.equal(error(transition(state('NOT_VERIFIED'), { type: 'APPEAL' }, month, afterResponse)), 'The response deadline has passed')
+  assert.equal(error(transition(state('NOT_VERIFIED', { appealUsedAt: afterClaims }), { type: 'APPEAL' }, month, afterClaims)), 'This claim has already been appealed')
+  assert.equal(error(transition(state('APPEALED', { appealUsedAt: afterClaims }), { type: 'APPEAL' }, month, afterClaims)), 'This claim has already been appealed')
+})
+
+test('after the response deadline a verifier can no longer ask for more information', () => {
+  const late = transition(state('CLAIMED_DONE'), { type: 'DECIDE', decision: 'NEEDS_INFO' }, month, afterResponse)
+  assert.equal(late.ok, false)
+  assert.match(late.ok ? '' : late.error, /response deadline/)
+  assert.deepEqual(transition(state('CLAIMED_DONE'), { type: 'DECIDE', decision: 'REJECTED' }, month, afterResponse), { ok: true, to: 'REJECTED' })
 })

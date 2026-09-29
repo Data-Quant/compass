@@ -97,3 +97,11 @@ test('pending requests are listed for deciders only', DB_TEST, async () => {
   assert.equal(list[0].kpiTitle, 'Outreach')
   await assert.rejects(changeRequestsFor(actorFor(PEOPLE.member)), isStatus(403))
 })
+
+test('listed change requests show the current and locked values next to the proposal', DB_TEST, async () => {
+  const kpi = await lockedKpi()
+  await requestChange(lead, kpi.id, { version: 0, proposed: { target: '30 emails' }, reason: 'Client cut the list' }, afterLock)
+  const [row] = await changeRequestsFor(verifier)
+  assert.deepEqual(row.current, { title: 'Outreach', target: '40 emails', evidenceType: 'LINK' })
+  assert.deepEqual(row.locked, { title: 'Outreach', target: '40 emails', evidenceType: 'LINK' })
+})

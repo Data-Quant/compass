@@ -111,3 +111,13 @@ test('HR corrects a result only after reopening, then finalizes by hand', DB_TES
   const monthEvents = await prisma.kpiEvent.findMany({ where: { kpiMonthId: kpi.monthId, action: { in: ['MONTH_FINAL', 'MONTH_REOPEN'] } } })
   assert.deepEqual(monthEvents.map((e) => e.action).sort(), ['MONTH_FINAL', 'MONTH_FINAL', 'MONTH_REOPEN'])
 })
+
+test('a month finalized by a decision also saves its missed claims as not done', DB_TEST, async () => {
+  const kpi = await claimedTeamKpi()
+  const { goalId } = await prisma.kpi.findUniqueOrThrow({ where: { id: kpi.id }, select: { goalId: true } })
+  const unclaimed = await createKpi(lead, { goalId, title: 'Demos', target: '5 demos', evidenceType: 'LINK', ownerIds: [PEOPLE.member.id] }, beforeLock)
+  await decideKpi(verifier, kpi.id, { version: kpi.version, decision: 'VERIFIED' }, afterClaims)
+  assert.ok((await prisma.kpiMonth.findUniqueOrThrow({ where: { id: kpi.monthId } })).finalizedAt)
+  assert.equal((await prisma.kpi.findUniqueOrThrow({ where: { id: unclaimed.id } })).status, 'NOT_DONE')
+  assert.equal(await prisma.kpiEvent.count({ where: { kpiId: unclaimed.id, action: 'CLAIMS_DEADLINE' } }), 1)
+})

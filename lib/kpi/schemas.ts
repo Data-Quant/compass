@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { endOfKarachiDay, parseCalendarDate, parseMonthKey, type KpiMonthDeadlines } from './calendar'
+import { isHttpUrl } from './evidence'
 
 const monthKeySchema = z.string().refine((value) => parseMonthKey(value) !== null, 'Use a YYYY-MM month between 2000 and 2100')
 const titleSchema = z.string().trim().min(3, 'Use at least 3 characters').max(200)
@@ -85,7 +86,12 @@ export const grantSchema = z.object({ userId: z.string().min(1), role: z.enum(['
 export const removeGrantSchema = z.object({ id: z.string().min(1) }).strict()
 
 const versionSchema = z.number().int().min(0)
-const optionalUrl = z.string().trim().max(2000).optional()
+const optionalUrl = z
+  .string()
+  .trim()
+  .max(2000)
+  .refine((value) => value === '' || isHttpUrl(value), 'Links must start with http:// or https://')
+  .optional()
 const optionalValue = z.string().trim().max(200).optional()
 
 export const claimSchema = z

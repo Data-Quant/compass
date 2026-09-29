@@ -77,3 +77,9 @@ test('a month PATCH is either a status action or a full set of deadlines', () =>
   assert.throws(() => parseMonthPatch({ action: 'reopen' }))
   assert.throws(() => parseMonthPatch({ goalsLockAt: '2026-10-14' }))
 })
+
+test('claim and reply links must be http or https, whatever the outcome', () => {
+  assert.equal(claimSchema.safeParse({ version: 1, outcome: 'NOT_DONE', url: 'javascript:alert(1)' }).success, false)
+  assert.equal(respondSchema.safeParse({ version: 1, kind: 'REPLY', note: 'See the link', url: 'data:text/html,hi' }).success, false)
+  assert.equal(claimSchema.safeParse({ version: 1, outcome: 'NOT_DONE', url: 'https://x.example' }).success, true)
+})

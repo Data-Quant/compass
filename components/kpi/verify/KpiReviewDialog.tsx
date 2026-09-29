@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/ui/modal'
 import { Textarea } from '@/components/ui/textarea'
+import { isHttpUrl } from '@/lib/kpi/evidence'
 import { EVIDENCE_LABELS, STATUS_LABELS, formatKarachiDate } from '@/lib/kpi/format'
 import type { KpiDetailResponse, KpiStatusValue } from '@/lib/kpi/view-types'
 import { EvidenceFiles } from '../EvidenceFiles'
@@ -73,6 +74,9 @@ export function KpiReviewDialog({ kpiId, onClose, onDecided }: KpiReviewDialogPr
   const snapshot = data?.lockedSnapshot
   const changed = Boolean(snapshot && kpi && (snapshot.title !== kpi.title || snapshot.target !== kpi.target || snapshot.evidenceType !== kpi.evidenceType))
   const awaitingDecision = kpi?.status === 'CLAIMED_DONE' || kpi?.status === 'APPEALED'
+  // After the response deadline the claimer can no longer reply or appeal: needs info is refused and a rejection is final.
+  const responsesClosed = data ? Date.now() > new Date(data.month.responseDueAt).getTime() : false
+  const firstDecisions = responsesClosed ? FIRST_DECISIONS.filter((option) => option.value !== 'NEEDS_INFO') : FIRST_DECISIONS
 
   return (
     <Modal isOpen onClose={onClose} title={kpi ? kpi.title : 'Loading…'} size="lg">
@@ -107,7 +111,7 @@ export function KpiReviewDialog({ kpiId, onClose, onDecided }: KpiReviewDialogPr
                 {data.claimerStats ? ` · ${data.claimerStats.claims} claims, ${data.claimerStats.rejections} rejected` : ''}
               </p>
               {kpi.claim.reportedValue && <p>Result: {kpi.claim.reportedValue}</p>}
-              {kpi.claim.url && (
+              {kpi.claim.url && isHttpUrl(kpi.claim.url) && (
                 <a href={kpi.claim.url} target="_blank" rel="noopener noreferrer" className="break-all text-primary hover:underline">{kpi.claim.url}</a>
               )}
               {kpi.claim.note && <p className="text-muted-foreground">“{kpi.claim.note}”</p>}
@@ -130,10 +134,15 @@ export function KpiReviewDialog({ kpiId, onClose, onDecided }: KpiReviewDialogPr
           )}
           {data.canDecide ? (
             <div className="space-y-2">
+              {responsesClosed && kpi.status === 'CLAIMED_DONE' && (
+                <p className="rounded-md bg-muted p-3 text-xs">
+                  The response deadline has passed, so the claimer can no longer reply or appeal. A rejection now is final (Not verified).
+                </p>
+              )}
               <Label htmlFor="decision-note">Note</Label>
               <Textarea id="decision-note" maxLength={4000} placeholder="Required unless you verify" value={note} onChange={(e) => setNote(e.target.value)} />
               <div className="flex flex-wrap justify-end gap-2">
-                {(kpi.status === 'APPEALED' ? APPEAL_DECISIONS : FIRST_DECISIONS).map((option) => (
+                {(kpi.status === 'APPEALED' ? APPEAL_DECISIONS : firstDecisions).map((option) => (
                   <Button key={option.value} disabled={saving} variant={option.value === 'VERIFIED' ? 'default' : 'outline'} onClick={() => void decide(option.value)}>
                     {option.label}
                   </Button>

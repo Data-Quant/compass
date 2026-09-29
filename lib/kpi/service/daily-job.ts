@@ -54,6 +54,7 @@ async function digestInput(now: Date): Promise<DigestInput> {
     appealUsed: row.appealUsedAt !== null,
     claimsDueAt: row.goal.kpiMonth.claimsDueAt,
     verifyDueAt: row.goal.kpiMonth.verifyDueAt,
+    responseDueAt: row.goal.kpiMonth.responseDueAt,
     targetFinalAt: row.goal.kpiMonth.targetFinalAt,
   }))
   const currentRows = current.id ? visible.filter((row) => row.goal.kpiMonthId === current.id) : []

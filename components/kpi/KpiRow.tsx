@@ -4,6 +4,7 @@ import { useState, type ReactNode } from 'react'
 import { ExternalLink } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { isHttpUrl } from '@/lib/kpi/evidence'
 import { EVIDENCE_LABELS } from '@/lib/kpi/format'
 import type { KpiView } from '@/lib/kpi/view-types'
 import { ChangeRequestDialog } from './ChangeRequestDialog'
@@ -47,7 +48,7 @@ export function KpiRow({ kpi, context, draftActions, onChanged }: KpiRowProps) {
               Claimed by {kpi.claim.claimedBy.name}
               {kpi.claim.reportedValue ? ` · Result: ${kpi.claim.reportedValue}` : ''}
             </p>
-            {kpi.claim.url && (
+            {kpi.claim.url && isHttpUrl(kpi.claim.url) && (
               <a href={kpi.claim.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
                 Evidence link <ExternalLink className="h-3 w-3" />
               </a>
