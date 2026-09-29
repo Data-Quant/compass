@@ -75,6 +75,9 @@ export function TestToolsTab() {
                   Score now
                 </Button>
                 <Button disabled={busy} variant="outline" onClick={() => void run({ action: 'accept-due-now', cycleId }, (r) => `${String(r.accepted)} scores accepted`)}>Accept answers due now</Button>
+                <Button disabled={busy} variant="outline" onClick={() => void run({ action: 'settle-for-close', cycleId }, (r) => `${String(r.scored)} scored, ${String(r.accepted)} accepted, ${String(r.scoredByHand)} scored by hand`)}>
+                  Settle everything for close
+                </Button>
                 <Button disabled={busy} variant="ghost" onClick={() => setConfirmReset(true)}>Reset this cycle</Button>
               </>
             )}
