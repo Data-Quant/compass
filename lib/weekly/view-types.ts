@@ -164,3 +164,18 @@ export interface DashboardResponse {
   quality: QualityView
   drift: DriftView[]
 }
+
+export type FormRelationshipTypeValue = 'C_LEVEL' | 'DEPT' | 'HR'
+export type FormStatusValue = 'NOT_STARTED' | 'DRAFT' | 'SUBMITTED' | 'CLOSED_BY_OTHER'
+export interface FormSummaryView { relationshipType: FormRelationshipTypeValue; evaluatee: PersonRef; department: string | null; memberCount: number; status: FormStatusValue }
+export interface FormsResponse { cycle: CycleSummary | null; open: boolean; opensAt: string | null; forms: FormSummaryView[] }
+export interface FormQuestionView {
+  id: string
+  source: 'GLOBAL' | 'LEAD'
+  text: string
+  type: 'RATING' | 'TEXT'
+  ratingDescriptions: Record<'1' | '2' | '3' | '4', string> | null
+  ratingValue: number | null
+  textResponse: string | null
+}
+export interface FormDetailResponse extends FormSummaryView { open: boolean; questions: FormQuestionView[]; fourRatings: { max: number; used: number } | null }

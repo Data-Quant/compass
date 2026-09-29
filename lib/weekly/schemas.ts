@@ -68,3 +68,16 @@ export const correctionSchema = z
   .object({ situation: field, action: field, result: field, shortfall: field.nullable().optional(), reason: reasonSchema })
   .strict()
 export type CorrectionInput = z.infer<typeof correctionSchema>
+
+const formRelationshipTypeSchema = z.enum(['C_LEVEL', 'DEPT', 'HR'])
+export const formResponseSchema = z
+  .object({
+    questionId: z.string().min(1),
+    questionSource: z.enum(['GLOBAL', 'LEAD']),
+    ratingValue: z.number().int().min(1).max(4).nullable().optional(),
+    textResponse: z.string().max(5000).nullable().optional(),
+  })
+  .strict()
+export const formInputSchema = z.object({ relationshipType: formRelationshipTypeSchema, evaluateeId: z.string().min(1), responses: z.array(formResponseSchema).max(200) }).strict()
+export type FormInput = z.infer<typeof formInputSchema>
+export const formQuerySchema = z.object({ relationshipType: formRelationshipTypeSchema, evaluateeId: z.string().min(1) })
