@@ -3,7 +3,7 @@
 import { getDeptEvaluationPoolContext, groupDeptAssignmentsByDepartment, pickRepresentativeDeptAssignment } from '@/lib/dept-evaluation-pool'
 import { prisma } from '@/lib/db'
 import { getResolvedEvaluationAssignmentForPair, getResolvedEvaluationAssignments, type ResolvedEvaluationAssignment } from '@/lib/evaluation-assignments'
-import { getEvaluatorFourRatingQuota } from '@/lib/evaluation-rating-quota'
+import { buildDepartmentEvaluationResponseKey, buildEvaluationResponseKey, getEvaluatorFourRatingQuota } from '@/lib/evaluation-rating-quota'
 import { getResolvedEvaluationQuestions } from '@/lib/pre-evaluation'
 import { effectiveWeek, questionWeekCount, totalWeeks, weekStartsAt } from '../calendar'
 import { formsAreOpen } from '../close-rules'
@@ -120,7 +120,7 @@ export async function formDetail(actor: WeeklyActor, input: { relationshipType: 
   })
   const byKey = new Map(saved.map((s) => [s.questionId ? `GLOBAL:${s.questionId}` : `LEAD:${s.leadQuestionId}`, s]))
   const status = (await formStatuses(cycle.periodId, actor.id, [unit])).get(formKey(unit.relationshipType, unit.evaluateeId)) ?? 'NOT_STARTED'
-  const quota = input.relationshipType === 'HR' ? null : await getEvaluatorFourRatingQuota({ periodId: cycle.periodId, evaluatorId: actor.id, relationshipType: input.relationshipType })
+  const quota = input.relationshipType === 'HR' ? null : await formFourRatingQuota(cycle.periodId, actor.id, input.relationshipType)
   const questions: FormQuestionView[] = resolved.questions.map((q) => {
     const answer = byKey.get(`${q.sourceType}:${q.id}`)
     const d = q.ratingDescriptions
@@ -132,8 +132,29 @@ export async function formDetail(actor: WeeklyActor, input: { relationshipType: 
   })
   return {
     ...summaryOf(unit, status), open: formsOpenFor(cycle, now), questions,
-    fourRatings: quota && !quota.isExempt ? { max: quota.maxAllowedFourRatings, used: quota.usedFourRatings } : null,
+    fourRatings: quota && !quota.isExempt ? { max: quota.max, used: quota.used } : null,
   }
+}
+
+export interface FormFourRatingQuota { isExempt: boolean; totalQuestions: number; max: number; used: number }
+
+/**
+ * The classic quota (exemptions, question total, cap) with the used 4s counted from the form's own bank. The classic
+ * count types each 4 by the evaluator's pair, so a C-Level 4 is missed when the same evaluator also holds that
+ * person's Department form. Keys in `exclude` (the answers being resubmitted) are not counted.
+ */
+export async function formFourRatingQuota(periodId: string, evaluatorId: string, type: 'C_LEVEL' | 'DEPT', exclude: ReadonlySet<string> = new Set()): Promise<FormFourRatingQuota> {
+  const quota = await getEvaluatorFourRatingQuota({ periodId, evaluatorId, relationshipType: type })
+  if (quota.isExempt) return { isExempt: true, totalQuestions: quota.totalQuestions, max: quota.maxAllowedFourRatings, used: 0 }
+  const fours = await prisma.evaluation.findMany({
+    where: { periodId, evaluatorId, submittedAt: { not: null }, ratingValue: 4, questionId: { not: null }, question: { relationshipType: type } },
+    select: { evaluateeId: true, questionId: true },
+  })
+  const departments = type === 'DEPT' ? await loadPeople(fours.map((f) => f.evaluateeId)) : new Map()
+  const keys = new Set(fours.map((f) => type === 'DEPT'
+    ? buildDepartmentEvaluationResponseKey(departments.get(f.evaluateeId)?.department, 'GLOBAL', f.questionId as string)
+    : buildEvaluationResponseKey(f.evaluateeId, 'GLOBAL', f.questionId as string)))
+  return { isExempt: false, totalQuestions: quota.totalQuestions, max: quota.maxAllowedFourRatings, used: [...keys].filter((k) => !exclude.has(k)).length }
 }
 
 export async function openForms(actor: WeeklyActor, cycleId: string, now: Date): Promise<void> {
