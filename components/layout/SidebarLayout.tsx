@@ -11,7 +11,8 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
-import { Handshake } from 'lucide-react'
+import { Handshake, Target } from 'lucide-react'
+import { withGroupItem, withItemAfter } from '@/components/layout/sidebar-nav'
 
 // Context so child pages can access user info
 interface LayoutUser {
@@ -61,6 +62,8 @@ export function SidebarLayout({
   // resolved from data rather than role. Checked live because the session cookie
   // would not reflect a fresh assignment until the next login.
   const [hasClientele, setHasClientele] = useState(false)
+  // KPIs appear only when the module is on and the person has a KPI role.
+  const [showKpis, setShowKpis] = useState(false)
   const [loading, setLoading] = useState(true)
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -100,6 +103,12 @@ export function SidebarLayout({
           .then((res) => res.json())
           .then((access) => setHasClientele(Boolean(access?.hasAccess)))
           .catch(() => setHasClientele(false))
+        fetch('/api/kpi/me')
+          .then((res) => (res.ok ? res.json() : { enabled: false }))
+          .then((me: { enabled?: boolean; capabilities?: Record<string, boolean> }) =>
+            setShowKpis(Boolean(me.enabled && me.capabilities && Object.values(me.capabilities).some(Boolean))),
+          )
+          .catch(() => setShowKpis(false))
         setLoading(false)
       })
       .catch(() => router.push('/login'))
@@ -160,13 +169,20 @@ export function SidebarLayout({
         }
       : baseSidebarConfig
 
+  const sidebarConfigWithKpis =
+    !showKpis || baseSidebarConfig === onboardingSidebarConfig
+      ? effectiveSidebarConfig
+      : isAdminConsole
+        ? withGroupItem(effectiveSidebarConfig, 'Performance', { label: 'KPIs', href: '/admin/kpis', icon: Target })
+        : withItemAfter(effectiveSidebarConfig, { label: 'KPIs', href: '/kpis', icon: Target }, '/evaluations')
+
   return (
     <LayoutUserContext.Provider value={user}>
       <div className="flex h-screen overflow-hidden bg-background">
         {/* Desktop sidebar */}
         <div className="hidden lg:block shrink-0">
           <AppSidebar
-            config={effectiveSidebarConfig}
+            config={sidebarConfigWithKpis}
             collapsed={collapsed}
             onToggle={toggleCollapsed}
             userRole={user?.role}
@@ -178,7 +194,7 @@ export function SidebarLayout({
           <SheetContent side="left" className="w-[240px] p-0 [&>button:first-child]:hidden">
             <SheetTitle className="sr-only">Navigation</SheetTitle>
             <AppSidebar
-              config={effectiveSidebarConfig}
+              config={sidebarConfigWithKpis}
               collapsed={false}
               onToggle={() => setMobileOpen(false)}
               userRole={user?.role}
