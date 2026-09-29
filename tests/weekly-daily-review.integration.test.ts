@@ -1,7 +1,7 @@
 import test, { after, afterEach, before, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { prisma } from '../lib/db'
-import { fakeModel } from '../lib/weekly/ai/model'
+import { fakeModel, type StructuredModel } from '../lib/weekly/ai/model'
 import { isSampled } from '../lib/weekly/review-rules'
 import { runWeeklyDailyJob } from '../lib/weekly/service/daily-job'
 import { WeeklyError } from '../lib/weekly/service/errors'
@@ -80,4 +80,23 @@ test('preview tools: score now with the stand-in model, then accept everything d
   const accepted = await acceptDueNow(HR_ACTOR, cycleId, new Date())
   assert.equal(accepted.accepted, ids.filter((id) => !isSampled(id)).length)
   assert.equal(await prisma.weeklyAuditEvent.count({ where: { action: { in: ['TEST_SCORE_NOW', 'TEST_ACCEPT_DUE'] } } }), 2)
+})
+
+test('the week’s questions go out before any time is spent scoring the backlog', WEEKLY_DB_TEST, async () => {
+  const prompts = new Map((await releaseWeekOne(cycleId)).map((p) => [p.evaluatorId, p]))
+  await answerAs(prompts.get(W.lead.id)!, 'solid')
+  const mail = mailbox()
+  let sentWhenScoringStarted: number | null = null
+  const stand = fakeModel()
+  const watching: StructuredModel = {
+    name: 'watching',
+    async complete(request) {
+      sentWhenScoringStarted ??= mail.sent.length
+      return stand.complete(request)
+    },
+  }
+  const monday = await runWeeklyDailyJob(mail.send, APP, at(2), { model: watching })
+  assert.equal(monday.scoring?.scored, 1)
+  assert.ok(monday.emails && monday.emails.sent > 0)
+  assert.equal(sentWhenScoringStarted, monday.emails.sent, 'every question email was sent before scoring started')
 })

@@ -6,6 +6,8 @@ import { draftTopicWithAi } from '@/lib/weekly/service/ai-drafting'
 import { actorFromUser } from '@/lib/weekly/service/context'
 
 export const runtime = 'nodejs'
+// One model call (MODEL_TIMEOUT_MS) plus saving the draft.
+export const maxDuration = 60
 type Context = { params: Promise<{ id: string }> }
 
 export async function POST(request: NextRequest, context: Context) {

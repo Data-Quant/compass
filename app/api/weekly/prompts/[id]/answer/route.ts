@@ -6,6 +6,9 @@ import { actorFromUser } from '@/lib/weekly/service/context'
 import { resolveSubject, saveDraft, submitAnswer } from '@/lib/weekly/service/inbox'
 import { scorePromptSoon } from '@/lib/weekly/service/scoring'
 
+// Scoring runs after the response (after()) for up to INLINE_BUDGET_MS plus one model call.
+export const maxDuration = 180
+
 type Context = { params: Promise<{ id: string }> }
 
 export async function PUT(request: NextRequest, context: Context) {

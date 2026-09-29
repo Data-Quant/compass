@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { ModelError, type StructuredModel } from './model'
 
 export const FIREWORKS_URL = 'https://api.fireworks.ai/inference/v1/chat/completions'
-const DEFAULT_TIMEOUT_MS = 45_000
+export const MODEL_TIMEOUT_MS = 45_000
 // Reasoning models spend part of this budget thinking before they answer.
 const MAX_TOKENS = 8000
 
@@ -43,7 +43,7 @@ export function fireworksModel(options: { apiKey: string; model: string; fetcher
         response = await fetcher(FIREWORKS_URL, {
           method: 'POST',
           headers: { Authorization: `Bearer ${options.apiKey}`, 'Content-Type': 'application/json' },
-          signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+          signal: AbortSignal.timeout(options.timeoutMs ?? MODEL_TIMEOUT_MS),
           body: JSON.stringify({
             model: options.model,
             temperature: 0,

@@ -22,7 +22,8 @@ export interface WeeklyDailyResult {
 
 const MONDAY = 1
 const THURSDAY = 4
-export const DAILY_SCORING_BUDGET_MS = 180_000
+/** Leaves room in the cron's 300 s for the release, question emails and digests, plus one model call in flight. */
+export const DAILY_SCORING_BUDGET_MS = 120_000
 
 /** Spec 8.2: HR is emailed the low-evidence list two question weeks before questions stop (week 10 of 13). */
 export function lowEvidenceWeek(total: number): number {
@@ -51,8 +52,10 @@ async function releaseAndAnnounce(cycleId: string, week: number, now: Date, send
 }
 
 /**
- * 04:00 UTC = 09:00 Karachi. Scores what is waiting and accepts what is due first, so slots satisfied since
- * yesterday are not asked again; then the release and question emails; then the digests.
+ * 04:00 UTC = 09:00 Karachi. Accepts what is due first, so slots satisfied since yesterday are not asked again;
+ * then the release and question emails, so a slow scoring backlog can never delay or cut off the week's questions;
+ * then scores what is waiting (answers still being scored are not asked again meanwhile); then the digests, which
+ * include today's follow-ups and scoring failures.
  * Uses the calendar week only; the preview's simulated week never affects production.
  */
 export async function runWeeklyDailyJob(
@@ -67,11 +70,11 @@ export async function runWeeklyDailyJob(
   // Advances in real time from `now`, so leases stay honest during a long run and tests stay deterministic.
   const started = Date.now()
   const clock = () => new Date(now.getTime() + (Date.now() - started))
-  const scoring = await runScoring({ model, budgetMs: DAILY_SCORING_BUDGET_MS, clock })
   const { accepted } = await autoAcceptDue(clock(), { cycleId: cycle.id })
   const week = weekIndexAt(cycle.weekOneStartsOn, now)
   const total = totalWeeks(cycle.weekOneStartsOn, cycle.period.endDate)
   const { released, emails } = week >= 1 && week <= total ? await releaseAndAnnounce(cycle.id, week, now, send, appUrl) : { released: null, emails: null }
+  const scoring = await runScoring({ model, budgetMs: DAILY_SCORING_BUDGET_MS, clock })
   const messages = [
     ...(await followUpMessages(cycle.id, now, appUrl)),
     ...(await scoringFailedMessages(cycle.id, now, appUrl)),

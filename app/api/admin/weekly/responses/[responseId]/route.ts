@@ -6,6 +6,9 @@ import { actorFromUser } from '@/lib/weekly/service/context'
 import { correctAnswer } from '@/lib/weekly/service/review-queue'
 import { scoreResponseSoon } from '@/lib/weekly/service/scoring'
 
+// Scoring runs after the response (after()) for up to INLINE_BUDGET_MS plus one model call.
+export const maxDuration = 180
+
 type Context = { params: Promise<{ responseId: string }> }
 
 export async function PATCH(request: NextRequest, context: Context) {

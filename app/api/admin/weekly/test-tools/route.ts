@@ -6,6 +6,8 @@ import { actorFromUser } from '@/lib/weekly/service/context'
 import { acceptDueNow, approveAllDrafts, fillSynthetic, releaseNextWeek, resetCycle, scoreNow } from '@/lib/weekly/service/test-tools'
 
 export const runtime = 'nodejs'
+// "Score now" runs for up to SCORE_NOW_BUDGET_MS plus one model call.
+export const maxDuration = 120
 
 export async function POST(request: NextRequest) {
   try {

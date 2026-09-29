@@ -6,7 +6,7 @@ import { runWeeklyDailyJob } from '@/lib/weekly/service/daily-job'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
-// The daily job now scores the backlog (up to three minutes) before releasing questions.
+// The daily job also scores the backlog (up to two minutes, after the release and question emails).
 export const maxDuration = 300
 
 export async function GET(request: NextRequest) {
