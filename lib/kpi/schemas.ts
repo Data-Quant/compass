@@ -83,3 +83,17 @@ export const setterAssignmentSchema = z.object({ employeeId: z.string().min(1), 
 export const removeSetterSchema = z.object({ id: z.string().min(1), reason: reasonSchema }).strict()
 export const grantSchema = z.object({ userId: z.string().min(1), role: z.enum(['VERIFIER', 'DEPARTMENT_SETTER']) }).strict()
 export const removeGrantSchema = z.object({ id: z.string().min(1) }).strict()
+
+const versionSchema = z.number().int().min(0)
+const optionalUrl = z.string().trim().max(2000).optional()
+const optionalValue = z.string().trim().max(200).optional()
+
+export const claimSchema = z
+  .object({ version: versionSchema, outcome: z.enum(['DONE', 'NOT_DONE']), note: z.string().trim().max(4000).optional(), url: optionalUrl, reportedValue: optionalValue })
+  .strict()
+export type ClaimInput = z.infer<typeof claimSchema>
+
+export const respondSchema = z
+  .object({ version: versionSchema, kind: z.enum(['REPLY', 'APPEAL']), note: z.string().trim().min(3, 'Explain your reply').max(4000), url: optionalUrl, reportedValue: optionalValue })
+  .strict()
+export type RespondInput = z.infer<typeof respondSchema>

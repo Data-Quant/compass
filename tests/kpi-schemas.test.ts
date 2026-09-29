@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  createGoalSchema, createKpiSchema, deadlineDatesSchema, setterAssignmentSchema, toDeadlines, updateGoalSchema, updateKpiSchema,
+  claimSchema, createGoalSchema, createKpiSchema, deadlineDatesSchema, respondSchema, setterAssignmentSchema, toDeadlines, updateGoalSchema, updateKpiSchema,
 } from '../lib/kpi/schemas'
 
 test('department goals need a department; team goals must not have one', () => {
@@ -39,4 +39,12 @@ test('deadline dates must be real dates and convert to the end of the Karachi da
 test('setter assignments need a reason', () => {
   assert.equal(setterAssignmentSchema.safeParse({ employeeId: 'a', setterId: 'b', reason: '' }).success, false)
   assert.equal(setterAssignmentSchema.safeParse({ employeeId: 'a', setterId: 'b', reason: 'No lead mapping' }).success, true)
+})
+
+test('claims and replies validate their inputs', () => {
+  assert.equal(claimSchema.safeParse({ version: 1, outcome: 'DONE', url: 'https://x.example' }).success, true)
+  assert.equal(claimSchema.safeParse({ version: 1, outcome: 'MAYBE' }).success, false)
+  assert.equal(claimSchema.safeParse({ version: -1, outcome: 'DONE' }).success, false)
+  assert.equal(respondSchema.safeParse({ version: 1, kind: 'APPEAL', note: '' }).success, false)
+  assert.equal(respondSchema.safeParse({ version: 1, kind: 'REPLY', note: 'The October summary' }).success, true)
 })
