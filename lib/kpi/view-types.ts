@@ -65,7 +65,7 @@ export interface Capabilities {
   isHr: boolean
 }
 
-export interface MeResponse { enabled: boolean; capabilities?: Capabilities; departmentKey?: string }
+export interface MeResponse { enabled: boolean; capabilities?: Capabilities; departmentKey?: string; pending?: number }
 
 export interface TeamViewResponse {
   month: MonthView

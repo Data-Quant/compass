@@ -64,6 +64,7 @@ export function SidebarLayout({
   const [hasClientele, setHasClientele] = useState(false)
   // KPIs appear only when the module is on and the person has a KPI role.
   const [showKpis, setShowKpis] = useState(false)
+  const [kpiPending, setKpiPending] = useState(0)
   const [loading, setLoading] = useState(true)
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -105,9 +106,10 @@ export function SidebarLayout({
           .catch(() => setHasClientele(false))
         fetch('/api/kpi/me')
           .then((res) => (res.ok ? res.json() : { enabled: false }))
-          .then((me: { enabled?: boolean; capabilities?: Record<string, boolean> }) =>
-            setShowKpis(Boolean(me.enabled && me.capabilities && Object.values(me.capabilities).some(Boolean))),
-          )
+          .then((me: { enabled?: boolean; capabilities?: Record<string, boolean>; pending?: number }) => {
+            setShowKpis(Boolean(me.enabled && me.capabilities && Object.values(me.capabilities).some(Boolean)))
+            setKpiPending(typeof me.pending === 'number' ? me.pending : 0)
+          })
           .catch(() => setShowKpis(false))
         setLoading(false)
       })
@@ -173,8 +175,8 @@ export function SidebarLayout({
     !showKpis || baseSidebarConfig === onboardingSidebarConfig
       ? effectiveSidebarConfig
       : isAdminConsole
-        ? withGroupItem(effectiveSidebarConfig, 'Performance', { label: 'KPIs', href: '/admin/kpis', icon: Target })
-        : withItemAfter(effectiveSidebarConfig, { label: 'KPIs', href: '/kpis', icon: Target }, '/evaluations')
+        ? withGroupItem(effectiveSidebarConfig, 'Performance', { label: 'KPIs', href: '/admin/kpis', icon: Target, ...(kpiPending > 0 ? { badge: kpiPending } : {}) })
+        : withItemAfter(effectiveSidebarConfig, { label: 'KPIs', href: '/kpis', icon: Target, ...(kpiPending > 0 ? { badge: kpiPending } : {}) }, '/evaluations')
 
   return (
     <LayoutUserContext.Provider value={user}>
