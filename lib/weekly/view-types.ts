@@ -151,3 +151,16 @@ export interface ReviewAnswerView {
   jobError: string | null
 }
 export interface ReviewQueueResponse { cycleId: string; filter: ReviewFilter; counts: Record<ReviewFilter, number>; total: number; items: ReviewAnswerView[] }
+
+export interface CoverageView { evaluatee: PersonRef; perspective: Perspective; satisfied: number; total: number; evaluatorsContributing: number; share: number; lowEvidence: boolean }
+export interface EvaluatorStatsView { evaluator: PersonRef; released: number; answered: number; notObserved: number; open: number; overdue: number; responseRate: number | null }
+export interface DriftView { evaluator: PersonRef; perspective: Perspective; difference: number; count: number }
+export interface DashboardResponse {
+  cycle: CycleSummary
+  queue: Record<ReviewFilter, number>
+  jobs: { pending: number; failed: number }
+  coverage: CoverageView[]
+  evaluators: EvaluatorStatsView[]
+  quality: QualityView
+  drift: DriftView[]
+}
