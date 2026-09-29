@@ -1,7 +1,7 @@
 import test, { after, before, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { prisma } from '../lib/db'
-import { approveProfile, contentView, syncFromQuestionBank } from '../lib/weekly/service/content'
+import { approveProfile, contentView, saveProfileDraft, syncFromQuestionBank } from '../lib/weekly/service/content'
 import { draftTopicWithAi } from '../lib/weekly/service/ai-drafting'
 import { WeeklyError } from '../lib/weekly/service/errors'
 import { spyModel } from './helpers/weekly-answers'
@@ -54,4 +54,19 @@ test('only HR can draft; no model or an unusable answer is reported clearly', WE
   await assert.rejects(draftTopicWithAi(HR_ACTOR, topic.id, null), isStatus(503))
   await assert.rejects(draftTopicWithAi(HR_ACTOR, topic.id, spyModel({ nonsense: true })), isStatus(502))
   await assert.rejects(draftTopicWithAi(HR_ACTOR, 'missing', spyModel()), isStatus(404))
+})
+
+test('drafting an approved topic keeps its definition and HR’s insufficient-evidence text, and records the draft it replaced', WEEKLY_DB_TEST, async () => {
+  const topic = await clientTopic()
+  await approveProfile(HR_ACTOR, topic.draft!.id)
+  const approved = (await clientTopic()).approved!
+  const hrDraft = await saveProfileDraft(HR_ACTOR, topic.id, { levels: approved.levels, insufficientDefinition: 'No example that names a client conversation.' })
+  const liveDefinition = 'How clearly and early they keep clients informed.'
+  await prisma.weeklyCompetency.update({ where: { id: topic.id }, data: { definition: liveDefinition } })
+  const result = await draftTopicWithAi(HR_ACTOR, topic.id, spyModel())
+  assert.equal(result.profileId, hrDraft.id)
+  assert.equal((await prisma.weeklyCompetency.findUniqueOrThrow({ where: { id: topic.id } })).definition, liveDefinition)
+  assert.equal((await prisma.weeklyProfile.findUniqueOrThrow({ where: { id: result.profileId } })).insufficientDefinition, 'No example that names a client conversation.')
+  const audit = await prisma.weeklyAuditEvent.findFirstOrThrow({ where: { action: 'PROFILE_AI_DRAFT', objectId: result.profileId } })
+  assert.match(JSON.stringify(audit.before), /No example that names a client conversation/)
 })

@@ -96,7 +96,11 @@ export function TopicCard({ topic, onChanged }: { topic: ContentCompetency; onCh
         onClose={() => setConfirmDraft(false)}
         onConfirm={() => void draftWithAi()}
         title={`Draft ${topic.name} with the AI?`}
-        message="The AI rewrites both questions now and writes a new draft profile from HR’s 1–4 descriptions. The approved profile stays in use until you approve the draft."
+        message={[
+          'The AI rewrites both questions now and writes a draft profile from HR’s 1–4 descriptions.',
+          topic.draft ? `It replaces draft v${topic.draft.version}; the replaced text is kept in the audit log.` : '',
+          topic.approved ? 'The approved profile stays in use until you approve the draft, and the topic’s definition is not changed.' : '',
+        ].filter(Boolean).join(' ')}
         confirmText="Draft with AI"
         variant="warning"
       />
