@@ -214,4 +214,3 @@ ALTER TABLE "KpiEvidenceFile" ADD CONSTRAINT "KpiEvidenceFile_kpiId_fkey" FOREIG
 
 -- AddForeignKey
 ALTER TABLE "KpiChangeRequest" ADD CONSTRAINT "KpiChangeRequest_kpiId_fkey" FOREIGN KEY ("kpiId") REFERENCES "Kpi"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
