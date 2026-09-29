@@ -1,13 +1,14 @@
 import type { KpiStatus, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
+import { availableActions } from '../actions'
 import { formatMonthKey, formatQuarterKey, parseMonthKey, parseQuarterKey, quarterMonths } from '../calendar'
 import { computeKpiPercent } from '../kpi-percent'
-import { canViewDepartment, isDepartmentSetter, isHr, isTeamSetter, isVerifierEligible, type KpiActor } from '../permissions'
+import { canViewDepartment, isDepartmentSetter, isHr, isTeamSetter, isVerifierEligible, type KpiActor, type KpiRef } from '../permissions'
 import { departmentKeyOf, type KpiScope } from '../scope'
 import { effectiveStatus, type MonthDeadlinesLike } from '../state-machine'
 import type {
-  Capabilities, DepartmentOption, DepartmentViewResponse, EvidenceTypeValue, GoalView, KpiStatusValue, KpiView, MyKpi, MyViewResponse,
-  TeamViewResponse, VerifierViewResponse,
+  Capabilities, DepartmentOption, DepartmentViewResponse, EvidenceTypeValue, GoalView, KpiScopeValue, KpiStatusValue, KpiView, MyKpi,
+  MyViewResponse, PersonRef, TeamViewResponse, VerifierViewResponse,
 } from '../view-types'
 import { byName, departmentLabel, loadKpiContext, personRef, type KpiContext } from './context'
 import { KpiError } from './errors'
@@ -18,9 +19,14 @@ type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never
 const statusUnionMatches: Same<KpiStatus, KpiStatusValue> = true
 void statusUnionMatches
 
-const goalInclude = { kpis: { include: { assignees: true }, orderBy: { createdAt: 'asc' } } } as const satisfies Prisma.KpiGoalInclude
+export const kpiRowInclude = {
+  assignees: true,
+  files: { orderBy: { createdAt: 'asc' } },
+  changes: { where: { status: 'PENDING' }, select: { id: true } },
+} as const satisfies Prisma.KpiInclude
+const goalInclude = { kpis: { include: kpiRowInclude, orderBy: { createdAt: 'asc' } } } as const satisfies Prisma.KpiGoalInclude
 
-interface KpiRowLike {
+export interface KpiRowLike {
   id: string
   title: string
   target: string
@@ -28,37 +34,56 @@ interface KpiRowLike {
   status: KpiStatusValue
   version: number
   lockedSnapshot: unknown
+  claimedById: string | null
+  claimedAt: Date | null
+  claimNote: string | null
+  claimUrl: string | null
+  reportedValue: string | null
+  appealUsedAt: Date | null
+  decidedById: string | null
+  decidedAt: Date | null
+  decisionNote: string | null
   assignees: Array<{ userId: string }>
+  files: Array<{ id: string; fileName: string; size: number; contentType: string }>
+  changes: Array<{ id: string }>
 }
-interface GoalRowLike {
-  id: string
-  scope: 'TEAM' | 'DEPARTMENT'
-  departmentKey: string | null
-  setterId: string
-  title: string
-  description: string | null
-  kpis: KpiRowLike[]
-}
+export interface GoalRefLike { id: string; scope: KpiScopeValue; departmentKey: string | null; setterId: string }
+interface GoalRowLike extends GoalRefLike { title: string; description: string | null; kpis: KpiRowLike[] }
 
 /** Discarded drafts are hidden everywhere; cancellations after lock stay visible. */
 export function isVisibleKpi(kpi: { status: string; lockedSnapshot: unknown }): boolean {
   return !(kpi.status === 'CANCELLED' && kpi.lockedSnapshot === null)
 }
 
-function toKpiView(ctx: KpiContext, goalId: string, kpi: KpiRowLike, month: MonthDeadlinesLike, now: Date): KpiView {
+export function toKpiView(ctx: KpiContext, actor: KpiActor, goal: GoalRefLike, kpi: KpiRowLike, month: MonthDeadlinesLike, now: Date): KpiView {
+  const status = effectiveStatus(kpi.status, month, now)
+  const ref: KpiRef = {
+    scope: goal.scope, setterId: goal.setterId, departmentKey: goal.departmentKey,
+    assigneeIds: kpi.assignees.map((assignee) => assignee.userId), claimedById: kpi.claimedById,
+  }
+  const pendingChange = kpi.changes.length > 0
   return {
     id: kpi.id,
-    goalId,
+    goalId: goal.id,
     title: kpi.title,
     target: kpi.target,
     evidenceType: kpi.evidenceType,
-    status: effectiveStatus(kpi.status, month, now),
+    status,
     version: kpi.version,
-    owners: kpi.assignees.map((assignee) => personRef(ctx, assignee.userId)).sort(byName),
+    owners: ref.assigneeIds.map((id) => personRef(ctx, id)).sort(byName),
+    claim:
+      kpi.claimedById && kpi.claimedAt
+        ? { claimedBy: personRef(ctx, kpi.claimedById), claimedAt: kpi.claimedAt.toISOString(), note: kpi.claimNote, url: kpi.claimUrl, reportedValue: kpi.reportedValue }
+        : null,
+    decision: kpi.decidedAt ? { decidedAt: kpi.decidedAt.toISOString(), note: kpi.decisionNote } : null,
+    files: kpi.files.map(({ id, fileName, size, contentType }) => ({ id, fileName, size, contentType })),
+    appealUsed: kpi.appealUsedAt !== null,
+    pendingChange,
+    actions: availableActions(actor, ref, { status, appealUsedAt: kpi.appealUsedAt, decidedById: kpi.decidedById }, month, now, pendingChange),
   }
 }
 
-function toGoalView(ctx: KpiContext, goal: GoalRowLike, month: MonthDeadlinesLike, now: Date): GoalView {
+function toGoalView(ctx: KpiContext, actor: KpiActor, goal: GoalRowLike, month: MonthDeadlinesLike, now: Date): GoalView {
   return {
     id: goal.id,
     scope: goal.scope,
@@ -67,7 +92,7 @@ function toGoalView(ctx: KpiContext, goal: GoalRowLike, month: MonthDeadlinesLik
     setter: personRef(ctx, goal.setterId),
     title: goal.title,
     description: goal.description,
-    kpis: goal.kpis.filter(isVisibleKpi).map((kpi) => toKpiView(ctx, goal.id, kpi, month, now)),
+    kpis: goal.kpis.filter(isVisibleKpi).map((kpi) => toKpiView(ctx, actor, goal, kpi, month, now)),
   }
 }
 
@@ -83,7 +108,7 @@ async function goalsFor(month: ResolvedMonth, where: Prisma.KpiGoalWhereInput) {
 }
 
 /** Current setters plus anyone who set team goals that month, so HR can still reach goals whose team has emptied. */
-async function hrSetterChoices(ctx: KpiContext, month: ResolvedMonth) {
+async function hrSetterChoices(ctx: KpiContext, month: ResolvedMonth): Promise<PersonRef[]> {
   const withGoals = month.id
     ? await prisma.kpiGoal.findMany({ where: { kpiMonthId: month.id, scope: 'TEAM', archivedAt: null }, select: { setterId: true }, distinct: ['setterId'] })
     : []
@@ -125,7 +150,7 @@ export async function teamView(actor: KpiActor, monthKey: string, requestedSette
     month: toMonthView(month, now),
     setter: setterId ? personRef(ctx, setterId) : null,
     team: (setterId ? ctx.scope.teamBySetter.get(setterId) ?? [] : []).map((id) => personRef(ctx, id)).sort(byName),
-    goals: goals.map((goal) => toGoalView(ctx, goal, month, now)),
+    goals: goals.map((goal) => toGoalView(ctx, actor, goal, month, now)),
     ...(isHr(actor) ? { setters: await hrSetterChoices(ctx, month) } : {}),
   }
 }
@@ -151,7 +176,7 @@ export async function departmentView(actor: KpiActor, monthKey: string, requeste
     month: toMonthView(month, now),
     department,
     departments: seesAll ? departments : [department],
-    goals: goals.map((goal) => toGoalView(ctx, goal, month, now)),
+    goals: goals.map((goal) => toGoalView(ctx, actor, goal, month, now)),
     canEdit: isDepartmentSetter(actor),
     departmentsWithoutKpis: isDepartmentSetter(actor) ? await departmentsWithoutKpis(ctx, month) : [],
   }
@@ -167,14 +192,14 @@ export async function myView(actor: KpiActor, quarterKey: string, now: Date = ne
   const rows = monthById.size
     ? await prisma.kpi.findMany({
         where: { assignees: { some: { userId: actor.id } }, goal: { kpiMonthId: { in: [...monthById.keys()] }, archivedAt: null } },
-        include: { assignees: true, goal: true },
+        include: { ...kpiRowInclude, goal: true },
         orderBy: { createdAt: 'asc' },
       })
     : []
   const kpis: MyKpi[] = rows.filter(isVisibleKpi).flatMap((row) => {
     const month = monthById.get(row.goal.kpiMonthId)
     if (!month) return []
-    return [{ ...toKpiView(ctx, row.goalId, row, month, now), monthKey: formatMonthKey(month), goalTitle: row.goal.title, scope: row.goal.scope }]
+    return [{ ...toKpiView(ctx, actor, row.goal, row, month, now), monthKey: formatMonthKey(month), goalTitle: row.goal.title, scope: row.goal.scope }]
   })
   const percent = computeKpiPercent(
     actor.id,
@@ -191,5 +216,5 @@ export async function verifierView(actor: KpiActor, monthKey: string, now: Date 
   const ctx = await loadKpiContext()
   const month = await resolveMonth(key)
   const goals = await goalsFor(month, {})
-  return { month: toMonthView(month, now), goals: goals.map((goal) => toGoalView(ctx, goal, month, now)) }
+  return { month: toMonthView(month, now), goals: goals.map((goal) => toGoalView(ctx, actor, goal, month, now)) }
 }

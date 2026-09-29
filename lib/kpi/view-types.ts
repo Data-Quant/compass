@@ -37,6 +37,12 @@ export interface KpiView {
   status: KpiStatusValue
   version: number
   owners: PersonRef[]
+  claim: ClaimView | null
+  decision: DecisionView | null
+  files: EvidenceFileView[]
+  appealUsed: boolean
+  pendingChange: boolean
+  actions: KpiActions
 }
 
 export interface GoalView {
