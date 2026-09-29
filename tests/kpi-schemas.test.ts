@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  claimSchema, createGoalSchema, createKpiSchema, deadlineDatesSchema, decideSchema, monthStatusSchema, overrideSchema, respondSchema, setterAssignmentSchema, toDeadlines, updateGoalSchema, updateKpiSchema,
+  changeRequestSchema, claimSchema, createGoalSchema, createKpiSchema, decideChangeSchema, deadlineDatesSchema, decideSchema, monthStatusSchema, overrideSchema, respondSchema, setterAssignmentSchema, toDeadlines, updateGoalSchema, updateKpiSchema,
 } from '../lib/kpi/schemas'
 
 test('department goals need a department; team goals must not have one', () => {
@@ -57,4 +57,13 @@ test('decisions, HR corrections and month actions validate their inputs', () => 
   assert.equal(monthStatusSchema.safeParse({ action: 'reopen', reason: 'Late correction' }).success, true)
   assert.equal(monthStatusSchema.safeParse({ action: 'reopen' }).success, false)
   assert.equal(monthStatusSchema.safeParse({ action: 'finalize' }).success, true)
+})
+
+test('change requests either cancel or change at least one field, and decisions need a note', () => {
+  assert.equal(changeRequestSchema.safeParse({ version: 1, proposed: { cancel: true }, reason: 'Client cancelled' }).success, true)
+  assert.equal(changeRequestSchema.safeParse({ version: 1, proposed: { target: '30 emails' }, reason: 'Scope cut' }).success, true)
+  assert.equal(changeRequestSchema.safeParse({ version: 1, proposed: {}, reason: 'Nothing' }).success, false)
+  assert.equal(changeRequestSchema.safeParse({ version: 1, proposed: { cancel: true, title: 'Both at once' }, reason: 'Both' }).success, false)
+  assert.equal(decideChangeSchema.safeParse({ approve: true, note: 'ok' }).success, false)
+  assert.equal(decideChangeSchema.safeParse({ approve: false, note: 'Not agreed with the client' }).success, true)
 })

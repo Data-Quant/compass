@@ -112,3 +112,17 @@ export const monthStatusSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('reopen'), reason: reasonSchema }).strict(),
   z.object({ action: z.literal('finalize') }).strict(),
 ])
+
+export const changeProposalSchema = z.union([
+  z.object({ cancel: z.literal(true) }).strict(),
+  z
+    .object({ title: titleSchema.optional(), target: targetSchema.optional(), evidenceType: evidenceTypeSchema.optional(), ownerIds: ownerIdsSchema.optional() })
+    .strict()
+    .refine((value) => Object.keys(value).length > 0, 'Change at least one field, or ask to cancel the KPI'),
+])
+
+export const changeRequestSchema = z.object({ version: versionSchema, proposed: changeProposalSchema, reason: reasonSchema }).strict()
+export type ChangeRequestInput = z.infer<typeof changeRequestSchema>
+
+export const decideChangeSchema = z.object({ approve: z.boolean(), note: z.string().trim().min(3, 'Explain the decision').max(1000) }).strict()
+export type DecideChangeInput = z.infer<typeof decideChangeSchema>
