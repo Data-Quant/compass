@@ -113,6 +113,7 @@ export function GoalEditor({ goals, editable, ownerOptions, defaultOwnerIds, emp
               : undefined
           }
           ownerOptions={ownerOptions}
+          currentOwners={kpiDialog.kpi?.owners ?? []}
           defaultOwnerIds={defaultOwnerIds}
           onClose={() => setKpiDialog(null)}
           onSubmit={saveKpi}

@@ -114,3 +114,12 @@ test('grants, months and the quarter overview', DB_TEST, async () => {
   assert.equal(overview.rows.find((row) => row.person.id === PEOPLE.jp.id)?.kind, 'LEAD_JP')
   assert.deepEqual(overview.departmentsWithoutKpis[0].departments, ['Value Creation'])
 })
+
+test('HR can pick any in-scheme team member to reassign, not only people without a setter', DB_TEST, async () => {
+  const overview = await settersOverview()
+  const memberIds = overview.members.map((person) => person.id)
+  assert.ok(memberIds.includes(PEOPLE.member.id), 'a member who already has a default lead')
+  assert.ok(memberIds.includes(PEOPLE.orphan.id))
+  assert.equal(memberIds.includes(PEOPLE.lead.id), false, 'leads and JPs have department KPIs')
+  assert.equal(memberIds.includes(PEOPLE.partner.id), false, 'Partners are outside the scheme')
+})

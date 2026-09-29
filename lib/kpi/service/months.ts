@@ -1,4 +1,4 @@
-import type { KpiMonth } from '@prisma/client'
+import { Prisma, type KpiMonth } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { defaultDeadlines, formatMonthKey, validateDeadlineOrder, type KpiMonthDeadlines, type MonthKey } from '../calendar'
 import type { KpiActor } from '../permissions'
@@ -58,7 +58,12 @@ export async function createMonth(actor: KpiActor, key: MonthKey, deadlines?: Kp
   })
 }
 
-export async function updateMonthDeadlines(actor: KpiActor, monthId: string, deadlines: KpiMonthDeadlines): Promise<KpiMonth> {
+export async function updateMonthDeadlines(
+  actor: KpiActor,
+  monthId: string,
+  deadlines: KpiMonthDeadlines,
+  now: Date = new Date(),
+): Promise<KpiMonth> {
   assertHr(actor)
   const values = deadlinesOf(deadlines)
   const orderError = validateDeadlineOrder(values)
@@ -68,6 +73,30 @@ export async function updateMonthDeadlines(actor: KpiActor, monthId: string, dea
     if (!existing) throw new KpiError('Month not found', 404)
     const month = await tx.kpiMonth.update({ where: { id: monthId }, data: values })
     await recordEvent(tx, { kpiMonthId: month.id, actorId: actor.id, actorRole: actor.role, action: 'MONTH_EDIT', before: deadlinesOf(existing), after: values })
+    if (now <= values.goalsLockAt) await reopenLockedKpis(tx, month.id, actor)
     return month
   })
+}
+
+/**
+ * Moving the lock to a date that has not passed reopens the month for editing, so
+ * KPIs that already locked (and were not claimed) go back to draft. Without this a
+ * lock saved under the old date would outlive HR's extension.
+ */
+async function reopenLockedKpis(tx: Prisma.TransactionClient, monthId: string, actor: KpiActor): Promise<void> {
+  const locked = await tx.kpi.findMany({
+    where: { goal: { kpiMonthId: monthId }, status: 'LOCKED', claimedById: null },
+    select: { id: true, version: true },
+  })
+  for (const kpi of locked) {
+    const result = await tx.kpi.updateMany({
+      where: { id: kpi.id, version: kpi.version, status: 'LOCKED' },
+      data: { status: 'DRAFT', lockedSnapshot: Prisma.DbNull, version: { increment: 1 } },
+    })
+    if (result.count === 0) continue
+    await recordEvent(tx, {
+      kpiId: kpi.id, kpiMonthId: monthId, actorId: actor.id, actorRole: actor.role, action: 'LOCK_REVERTED',
+      fromStatus: 'LOCKED', toStatus: 'DRAFT', reason: 'KPI lock date moved later',
+    })
+  }
 }

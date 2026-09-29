@@ -68,12 +68,27 @@ test('edits need the current version, replace owners, and log before/after', DB_
   assert.equal((event.after as { target: string }).target, '45 emails')
 })
 
-test('an owner who left the team does not block editing other fields', DB_TEST, async () => {
+test('an owner who left the team does not block edits; only newly added owners are checked', DB_TEST, async () => {
   const { kpi } = await teamKpi()
   await prisma.evaluatorMapping.deleteMany({ where: { evaluatorId: PEOPLE.lead.id, evaluateeId: PEOPLE.member.id } })
   const updated = await updateKpi(lead, kpi.id, { action: 'edit', version: 0, title: 'Renamed' }, beforeLock)
   assert.equal(updated.version, 1)
-  await assert.rejects(updateKpi(lead, kpi.id, { action: 'edit', version: 1, ownerIds: [PEOPLE.member.id] }, beforeLock), /team/)
+  // The edit form re-sends every current owner, including one who has left: that must still save.
+  const resent = await updateKpi(lead, kpi.id, { action: 'edit', version: 1, title: 'Renamed again', ownerIds: [PEOPLE.member.id] }, beforeLock)
+  assert.equal(resent.version, 2)
+  // Adding someone outside the team is still refused.
+  await assert.rejects(
+    updateKpi(lead, kpi.id, { action: 'edit', version: 2, ownerIds: [PEOPLE.member.id, PEOPLE.orphan.id] }, beforeLock),
+    /team/,
+  )
+  // Replacing the departed owner with a current team member works.
+  await prisma.kpiSetterAssignment.create({
+    data: { employeeId: PEOPLE.orphan.id, setterId: PEOPLE.lead.id, reason: 'Joined the team', createdById: PEOPLE.hr.id },
+  })
+  const replaced = await updateKpi(lead, kpi.id, { action: 'edit', version: 2, ownerIds: [PEOPLE.orphan.id] }, beforeLock)
+  assert.equal(replaced.version, 3)
+  const owners = await prisma.kpiAssignee.findMany({ where: { kpiId: kpi.id } })
+  assert.deepEqual(owners.map((owner) => owner.userId), [PEOPLE.orphan.id])
 })
 
 test('after the lock, edits are refused and the KPI is persisted as LOCKED', DB_TEST, async () => {

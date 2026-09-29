@@ -15,6 +15,8 @@ export interface KpiFormValues { title: string; target: string; evidenceType: Ev
 interface KpiFormDialogProps {
   initial?: KpiFormValues
   ownerOptions: PersonRef[]
+  /** The KPI's current owners, so someone who has left the team can still be seen and removed. */
+  currentOwners?: PersonRef[]
   defaultOwnerIds: string[]
   onClose: () => void
   onSubmit: (values: KpiFormValues) => Promise<void>
@@ -22,9 +24,11 @@ interface KpiFormDialogProps {
 
 const EVIDENCE_TYPES: EvidenceTypeValue[] = ['LINK', 'DOCUMENT', 'NUMBER', 'CLIENT_CONFIRMATION']
 
-export function KpiFormDialog({ initial, ownerOptions, defaultOwnerIds, onClose, onSubmit }: KpiFormDialogProps) {
+export function KpiFormDialog({ initial, ownerOptions, currentOwners = [], defaultOwnerIds, onClose, onSubmit }: KpiFormDialogProps) {
   const [values, setValues] = useState<KpiFormValues>(initial ?? { title: '', target: '', evidenceType: 'LINK', ownerIds: defaultOwnerIds })
   const [saving, setSaving] = useState(false)
+  const departedIds = new Set(currentOwners.filter((owner) => !ownerOptions.some((option) => option.id === owner.id)).map((owner) => owner.id))
+  const choices = [...ownerOptions, ...currentOwners.filter((owner) => departedIds.has(owner.id))]
 
   function toggleOwner(id: string, checked: boolean) {
     setValues((current) => ({
@@ -76,14 +80,15 @@ export function KpiFormDialog({ initial, ownerOptions, defaultOwnerIds, onClose,
         </div>
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium">Owners</legend>
-          {ownerOptions.length === 0 ? (
+          {choices.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nobody can own KPIs here yet.</p>
           ) : (
-            ownerOptions.map((person) => (
+            choices.map((person) => (
               <label key={person.id} className="flex items-center gap-2 text-sm">
                 <Checkbox checked={values.ownerIds.includes(person.id)} onCheckedChange={(checked) => toggleOwner(person.id, checked === true)} aria-label={person.name} />
                 <span>{person.name}</span>
                 {person.position ? <span className="text-muted-foreground">· {person.position}</span> : null}
+                {departedIds.has(person.id) ? <span className="text-destructive">· no longer in this team</span> : null}
               </label>
             ))
           )}

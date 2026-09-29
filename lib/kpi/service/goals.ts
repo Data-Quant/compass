@@ -128,9 +128,15 @@ export async function updateKpi(
   )
   if (!result.ok) throw new KpiError(result.error, 409)
   if (input.action === 'edit' && input.ownerIds) {
-    const { scope } = await loadKpiContext()
-    const problem = ownerError(goalRef(kpi.goal), input.ownerIds, scope)
-    if (problem) throw new KpiError(problem)
+    if (new Set(input.ownerIds).size !== input.ownerIds.length) throw new KpiError('Owners must be unique')
+    // Only newly added owners must be in the team: an owner who has since left can be kept or removed.
+    const currentIds = kpi.assignees.map((assignee) => assignee.userId)
+    const added = input.ownerIds.filter((id) => !currentIds.includes(id))
+    if (added.length > 0) {
+      const { scope } = await loadKpiContext()
+      const problem = ownerError(goalRef(kpi.goal), added, scope)
+      if (problem) throw new KpiError(problem)
+    }
   }
   const before = {
     title: kpi.title, target: kpi.target, evidenceType: kpi.evidenceType,

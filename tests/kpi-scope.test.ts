@@ -72,3 +72,20 @@ test('department keys trim and lowercase, but do not merge different spellings',
   assert.deepEqual([...scope.departmentOwners.keys()].sort(), ['1to1 plans', '1to1plans', 'noble'])
   assert.deepEqual(scope.departmentOwners.get('noble'), ['l3', 'l4'])
 })
+
+test('setters who have left no longer count, so their reports need a new setter', () => {
+  const scope = buildKpiScope(
+    [
+      user('lead', 'Lead', 'Product', { payrollActive: false }),
+      user('stand-in', 'Manager', 'Product', { payrollActive: false }),
+      user('a', 'Analyst', 'Product'),
+      user('b', 'Analyst', 'Product'),
+    ],
+    [tl('lead', 'a')],
+    [{ employeeId: 'b', setterId: 'stand-in' }],
+  )
+  assert.deepEqual(scope.setterIdsByEmployee.get('a'), [])
+  assert.deepEqual(scope.setterIdsByEmployee.get('b'), [])
+  assert.deepEqual(scope.membersWithoutSetter, ['a', 'b'])
+  assert.equal(scope.teamBySetter.has('lead'), false)
+})

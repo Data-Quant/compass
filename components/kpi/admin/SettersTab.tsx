@@ -15,6 +15,7 @@ export function SettersTab() {
   const [data, setData] = useState<SettersResponse | null>(null)
   const [assigning, setAssigning] = useState<PersonRef | null>(null)
   const [removing, setRemoving] = useState<SetterAssignmentRow | null>(null)
+  const [reassignId, setReassignId] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -48,6 +49,32 @@ export function SettersTab() {
               ))}
             </ul>
           )}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="space-y-3 p-4">
+          <h3 className="font-semibold">Change anyone’s setter</h3>
+          <p className="text-sm text-muted-foreground">
+            An HR-assigned setter replaces the person’s default lead for team KPIs. Leads and JPs are not listed: they have department KPIs.
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="reassign-person">Person</Label>
+              <Select value={reassignId} onValueChange={setReassignId}>
+                <SelectTrigger id="reassign-person" className="w-64" aria-label="Person to reassign"><SelectValue placeholder="Choose a person" /></SelectTrigger>
+                <SelectContent>
+                  {data.members.map((person) => <SelectItem key={person.id} value={person.id}>{person.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              variant="outline"
+              disabled={!reassignId}
+              onClick={() => setAssigning(data.members.find((person) => person.id === reassignId) ?? null)}
+            >
+              Choose setter
+            </Button>
+          </div>
         </CardContent>
       </Card>
       <section className="space-y-3">

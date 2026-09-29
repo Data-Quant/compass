@@ -98,7 +98,13 @@ export interface AdminMonthRow extends Omit<MonthView, 'id'> { id: string; kpiCo
 
 export interface SetterAssignmentRow { id: string; employee: PersonRef; setter: PersonRef; reason: string; createdAt: string }
 
-export interface SettersResponse { assignments: SetterAssignmentRow[]; membersWithoutSetter: PersonRef[]; people: PersonRef[] }
+export interface SettersResponse {
+  assignments: SetterAssignmentRow[]
+  membersWithoutSetter: PersonRef[]
+  /** Every in-scheme team member, so HR can replace anyone's default lead. */
+  members: PersonRef[]
+  people: PersonRef[]
+}
 
 export interface GrantRow { id: string; user: PersonRef; role: KpiGrantRoleValue; createdAt: string }
 

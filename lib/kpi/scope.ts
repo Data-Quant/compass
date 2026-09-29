@@ -55,13 +55,15 @@ export function buildKpiScope(
 
   const overrides = new Map<string, string[]>()
   for (const row of assignments) {
-    if (row.setterId !== row.employeeId && byId.has(row.setterId)) appendTo(overrides, row.employeeId, row.setterId)
+    // A setter who has left no longer counts, so their people surface as "without a setter".
+    if (row.setterId !== row.employeeId && byId.get(row.setterId)?.payrollActive) appendTo(overrides, row.employeeId, row.setterId)
   }
 
   const defaults = new Map<string, string[]>()
   for (const mapping of mappings) {
     if (mapping.relationshipType !== 'TEAM_LEAD' || mapping.evaluatorId === mapping.evaluateeId) continue
-    if (isLeadTitle(byId.get(mapping.evaluatorId)?.position ?? null)) appendTo(defaults, mapping.evaluateeId, mapping.evaluatorId)
+    const lead = byId.get(mapping.evaluatorId)
+    if (lead?.payrollActive && isLeadTitle(lead.position)) appendTo(defaults, mapping.evaluateeId, mapping.evaluatorId)
   }
 
   const setterIdsByEmployee = new Map<string, string[]>()

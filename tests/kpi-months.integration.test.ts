@@ -74,3 +74,27 @@ test('an unclaimed draft chains to NOT_DONE after the claims deadline', DB_TEST,
   const events = await prisma.kpiEvent.findMany({ where: { kpiId: kpi.id } })
   assert.deepEqual(events.map((e) => e.action).sort(), ['CLAIMS_DEADLINE', 'GOALS_LOCK'])
 })
+
+test('moving the lock later reopens KPIs that had already locked', DB_TEST, async () => {
+  const kpi = await draftKpi()
+  await persistSystemTransitions({ id: kpi.id }, new Date('2026-10-09T00:00:00Z'))
+  assert.equal((await prisma.kpi.findUniqueOrThrow({ where: { id: kpi.id } })).status, 'LOCKED')
+  const month = await prisma.kpiMonth.findFirstOrThrow({ where: { year: 2026, month: 10 } })
+  const moved = { ...defaultDeadlines({ year: 2026, month: 10 }), goalsLockAt: new Date('2026-10-14T18:59:59.999Z') }
+  await updateMonthDeadlines(actorFor(PEOPLE.hr), month.id, moved, new Date('2026-10-09T08:00:00Z'))
+  const reopened = await prisma.kpi.findUniqueOrThrow({ where: { id: kpi.id } })
+  assert.equal(reopened.status, 'DRAFT')
+  assert.equal(reopened.lockedSnapshot, null)
+  const events = await prisma.kpiEvent.findMany({ where: { kpiId: kpi.id, action: 'LOCK_REVERTED' } })
+  assert.equal(events.length, 1)
+  assert.equal(events[0].actorId, PEOPLE.hr.id)
+})
+
+test('moving the lock to a date that has already passed reopens nothing', DB_TEST, async () => {
+  const kpi = await draftKpi()
+  await persistSystemTransitions({ id: kpi.id }, new Date('2026-10-09T00:00:00Z'))
+  const month = await prisma.kpiMonth.findFirstOrThrow({ where: { year: 2026, month: 10 } })
+  const moved = { ...defaultDeadlines({ year: 2026, month: 10 }), goalsLockAt: new Date('2026-10-08T18:59:59.999Z') }
+  await updateMonthDeadlines(actorFor(PEOPLE.hr), month.id, moved, new Date('2026-10-09T08:00:00Z'))
+  assert.equal((await prisma.kpi.findUniqueOrThrow({ where: { id: kpi.id } })).status, 'LOCKED')
+})

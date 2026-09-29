@@ -39,6 +39,7 @@ export async function settersOverview(): Promise<SettersResponse> {
       id: row.id, employee: personRef(ctx, row.employeeId), setter: personRef(ctx, row.setterId), reason: row.reason, createdAt: row.createdAt.toISOString(),
     })),
     membersWithoutSetter: ctx.scope.membersWithoutSetter.map((id) => personRef(ctx, id)),
+    members: [...ctx.scope.setterIdsByEmployee.keys()].map((id) => personRef(ctx, id)).sort(byName),
     people: [...ctx.usersById.values()].filter((user) => user.payrollActive).map((user) => personRef(ctx, user.id)).sort(byName),
   }
 }
