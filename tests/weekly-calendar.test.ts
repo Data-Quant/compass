@@ -47,3 +47,12 @@ test('a joiner with fewer than 6 question weeks left is late (D17)', () => {
   assert.equal(joinedTooLate(new Date('2026-11-09T05:00:00.000Z'), weekOne, 13), false)
   assert.equal(joinedTooLate(new Date('2026-11-16T05:00:00.000Z'), weekOne, 13), true)
 })
+
+test('in a short cycle, people who were already there when it started are never late joiners', () => {
+  const shortStart = parseWeekOneMonday('2026-11-16')
+  assert.ok(shortStart)
+  assert.equal(totalWeeks(shortStart, quarterEnd), 7) // 5 question weeks
+  assert.equal(joinedTooLate(new Date('2021-03-01T00:00:00.000Z'), shortStart, 7), false)
+  assert.equal(joinedTooLate(new Date('2026-11-17T05:00:00.000Z'), shortStart, 7), false) // joined during week 1
+  assert.equal(joinedTooLate(new Date('2026-11-24T05:00:00.000Z'), shortStart, 7), true) // week 2: 4 of 5 question weeks left
+})

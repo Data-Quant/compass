@@ -53,8 +53,13 @@ export function effectiveWeek(weekOneStartsOn: Date, simulatedWeek: number | nul
   return Math.max(weekIndexAt(weekOneStartsOn, now), simulatedWeek ?? 0)
 }
 
+/**
+ * D17: a joiner is late when fewer question weeks are left than the minimum. In a cycle shorter than the
+ * minimum, someone present for every question week is never late (only later joiners are).
+ */
 export function joinedTooLate(joiningDate: Date | null, weekOneStartsOn: Date, total: number): boolean {
   if (!joiningDate) return false
+  const questionWeeks = questionWeekCount(total)
   const joinWeek = Math.max(1, weekIndexAt(weekOneStartsOn, joiningDate))
-  return questionWeekCount(total) - joinWeek + 1 < LATE_JOINER_MIN_WEEKS
+  return questionWeeks - joinWeek + 1 < Math.min(LATE_JOINER_MIN_WEEKS, questionWeeks)
 }
