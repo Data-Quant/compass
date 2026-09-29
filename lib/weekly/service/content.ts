@@ -26,7 +26,7 @@ export interface ReadyCompetency {
 }
 export interface ReadyCompetencies { global: Map<Perspective, ReadyCompetency[]>; customByLead: Map<string, ReadyCompetency[]> }
 
-function descriptionsOf(q: { rating1Description: string | null; rating2Description: string | null; rating3Description: string | null; rating4Description: string | null }): Descriptions {
+export function descriptionsOf(q: { rating1Description: string | null; rating2Description: string | null; rating3Description: string | null; rating4Description: string | null }): Descriptions {
   return { '1': q.rating1Description, '2': q.rating2Description, '3': q.rating3Description, '4': q.rating4Description }
 }
 
