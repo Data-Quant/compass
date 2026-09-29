@@ -55,6 +55,16 @@ export function nthWorkingDayAfter(date: CalendarDate, n: number): CalendarDate 
   return fromUtcMs(ms)
 }
 
+export function workingDayBefore(date: CalendarDate): CalendarDate {
+  let ms = toUtcMidnight(date) - DAY_MS
+  while (!isWorkingDay(fromUtcMs(ms))) ms -= DAY_MS
+  return fromUtcMs(ms)
+}
+
+export function sameCalendarDate(a: CalendarDate, b: CalendarDate): boolean {
+  return a.year === b.year && a.month === b.month && a.day === b.day
+}
+
 export function endOfKarachiDay(date: CalendarDate): Date {
   return new Date(toUtcMidnight(date) + DAY_MS - 1 - KARACHI_OFFSET_MS)
 }
