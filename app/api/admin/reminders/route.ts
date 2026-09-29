@@ -53,6 +53,7 @@ export async function POST(request: NextRequest) {
         submittedAt: true,
         leadQuestionId: true,
         question: { select: { relationshipType: true } },
+        source: true,
       },
     })
 

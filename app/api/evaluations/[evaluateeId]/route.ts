@@ -117,6 +117,7 @@ export async function GET(
         submittedAt: true,
         leadQuestionId: true,
         question: { select: { relationshipType: true } },
+        source: true,
       },
     })
     const relevantAssignments = deptPool

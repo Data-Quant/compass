@@ -22,6 +22,7 @@ type EvaluationWithBank = {
   submittedAt?: Date | null
   leadQuestionId?: string | null
   question?: { relationshipType: RelationshipType } | null
+  source?: string | null
 }
 
 // An evaluation row's question comes from the bank corresponding to the
@@ -37,6 +38,10 @@ export function isEvaluationInBankForRelationshipType(
     return relationshipType === 'TEAM_LEAD'
   }
   if (evaluation.question) {
+    // D32: weekly evidence from cross-department evaluators is collected with the peer questions.
+    if (relationshipType === 'CROSS_DEPARTMENT' && evaluation.source === 'AI_WEEKLY') {
+      return evaluation.question.relationshipType === 'PEER'
+    }
     const expectedBankType = getDefaultQuestionBankRelationshipType(relationshipType)
     return evaluation.question.relationshipType === expectedBankType
   }

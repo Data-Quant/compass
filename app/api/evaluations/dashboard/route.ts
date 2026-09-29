@@ -98,6 +98,7 @@ export async function GET(request: NextRequest) {
           submittedAt: true,
           leadQuestionId: true,
           question: { select: { relationshipType: true } },
+          source: true,
         },
       }),
     ])
