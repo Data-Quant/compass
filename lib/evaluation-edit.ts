@@ -11,6 +11,8 @@ export type EvaluationEditTarget = {
   textResponse: string | null
   periodId: string
   submittedAt: Date | null
+  /** MANUAL (the classic form) or AI_WEEKLY (written by the weekly module's quarter close). */
+  source?: string | null
 }
 
 export type EvaluationEditInput = {
@@ -95,6 +97,12 @@ export function decideEdit(params: {
   input: EvaluationEditInput
   activePeriodId: string | null
 }): EditDecision {
+  // Weekly results are rewritten whenever the quarter is re-aggregated (a reopen or a challenge), which would
+  // silently undo a correction made here and delete its audit row. They are corrected in the weekly module.
+  if (params.target.source === 'AI_WEEKLY') {
+    return { ok: false, reason: 'This result comes from weekly evaluations. Change it in Weekly evaluations (through a challenge, or by reopening the quarter before results are published).' }
+  }
+
   const periodDecision = canEditInPeriod(params.target, params.activePeriodId)
   if (!periodDecision.ok) return periodDecision
 

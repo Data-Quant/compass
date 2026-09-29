@@ -50,6 +50,7 @@ export async function PATCH(request: NextRequest) {
         ratingValue: true,
         textResponse: true,
         submittedAt: true,
+        source: true,
       },
     })
 

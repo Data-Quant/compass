@@ -96,3 +96,11 @@ test('the full gate applies period, range and change checks in order', () => {
   assert.equal(noop.ok, false)
   assert.match(noop.ok === false ? noop.reason : '', /nothing changed/i)
 })
+
+test('results written by weekly evaluations are corrected in the weekly module, not here', () => {
+  const weekly = { ...target, source: 'AI_WEEKLY' }
+  const decision = decideEdit({ target: weekly, input: { ratingValue: 2 }, activePeriodId: 'period-active' })
+  assert.equal(decision.ok, false)
+  assert.match(decision.ok === false ? decision.reason : '', /weekly evaluations/i)
+  assert.equal(decideEdit({ target: { ...target, source: 'MANUAL' }, input: { ratingValue: 2 }, activePeriodId: 'period-active' }).ok, true)
+})
