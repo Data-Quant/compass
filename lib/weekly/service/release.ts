@@ -6,6 +6,7 @@ import { evaluateeExclusion, evaluatorExclusion } from '../eligibility'
 import { bankForPerspective, isWeeklyRelationshipType, perspectiveOf, type Perspective, type WeeklyRelationshipType } from '../perspectives'
 import { isConfirmedAction, latestByResponse } from '../reviews'
 import { nextVariant, planBatch } from '../scheduler'
+import { awaitingDecisionSlotIds } from './answer-states'
 import { ensureLeadCustomCompetencies, loadReadyCompetencies } from './content'
 import { loadPeople } from './context'
 import { loadCycle, type CycleWithPeriod } from './cycles'
@@ -65,12 +66,11 @@ export async function syncSlots(cycle: CycleWithPeriod, now: Date): Promise<{ cr
 
 type ReviewedPrompt = { slotId: string | null; kind: string; status: string; response: { id: string } | null }
 
-/** Confirmed answers per slot, and slots whose submitted answer has no review decision yet. */
-async function reviewStateBySlot(prompts: ReviewedPrompt[]): Promise<{ confirmed: Map<string, number>; awaiting: Set<string> }> {
+/** Confirmed answers per slot. */
+async function reviewStateBySlot(prompts: ReviewedPrompt[]): Promise<{ confirmed: Map<string, number> }> {
   const slotByResponse = new Map(prompts.flatMap((p) => (p.slotId && p.response ? [[p.response.id, p.slotId] as const] : [])))
   const confirmed = new Map<string, number>()
-  const awaiting = new Set<string>()
-  if (slotByResponse.size === 0) return { confirmed, awaiting }
+  if (slotByResponse.size === 0) return { confirmed }
   const reviews = await prisma.weeklyScoreReview.findMany({ where: { responseId: { in: [...slotByResponse.keys()] } }, select: { id: true, responseId: true, createdAt: true, action: true } })
   const latest = latestByResponse(reviews)
   for (const review of latest.values()) {
@@ -78,10 +78,7 @@ async function reviewStateBySlot(prompts: ReviewedPrompt[]): Promise<{ confirmed
     const slotId = slotByResponse.get(review.responseId)
     if (slotId) confirmed.set(slotId, (confirmed.get(slotId) ?? 0) + 1)
   }
-  for (const p of prompts) {
-    if (p.slotId && p.response && p.kind !== 'COMMENT' && p.status === 'SUBMITTED' && !latest.has(p.response.id)) awaiting.add(p.slotId)
-  }
-  return { confirmed, awaiting }
+  return { confirmed }
 }
 
 async function releaseForEvaluator(cycleId: string, week: number, evaluatorId: string, slotIds: string[], askedVariants: Map<string, string[]>, now: Date): Promise<number | null> {
@@ -148,7 +145,9 @@ export async function releaseWeek(cycleId: string, week: number, now: Date): Pro
   })
   const open = prompts.filter((p) => (p.status === 'OPEN' || p.status === 'DRAFT') && p.kind !== 'COMMENT')
   const openSlots = new Set(open.flatMap((p) => (p.slotId ? [p.slotId] : [])))
-  const { confirmed, awaiting } = await reviewStateBySlot(prompts)
+  const { confirmed } = await reviewStateBySlot(prompts)
+  // Being scored, failed, or waiting for HR or the 72-hour accept. A thin answer waiting on its follow-up is not.
+  const awaiting = await awaitingDecisionSlotIds(cycleId)
   const askedVariants = new Map<string, string[]>()
   for (const p of prompts) if (p.slotId && p.promptVariantId) askedVariants.set(p.slotId, [...(askedVariants.get(p.slotId) ?? []), p.promptVariantId])
   const evidenceByEvaluatee = new Map<string, number>()

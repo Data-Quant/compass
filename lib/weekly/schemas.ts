@@ -35,7 +35,7 @@ export const promptUpdateSchema = z
 export const profileDraftSchema = z.object({ levels: profileLevelsSchema, insufficientDefinition: z.string().trim().min(10).max(1000) }).strict()
 export type ProfileDraftInput = z.infer<typeof profileDraftSchema>
 
-const reasonSchema = z.string().trim().min(3, 'Give a reason').max(500)
+export const reasonSchema = z.string().trim().min(3, 'Give a reason').max(500)
 export const optInSchema = z.object({ cycleId: z.string().min(1), userId: z.string().min(1), reason: reasonSchema }).strict()
 export const removeOptInSchema = z.object({ cycleId: z.string().min(1), userId: z.string().min(1) }).strict()
 
@@ -46,3 +46,17 @@ export const testToolSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('reset'), cycleId: z.string().min(1) }).strict(),
 ])
 export type TestToolInput = z.infer<typeof testToolSchema>
+
+const basedOnSchema = z.object({ aiScoreId: z.string().min(1).nullable(), reviewId: z.string().min(1).nullable() }).strict()
+const optionalReason = z.string().trim().max(500).optional()
+/** `basedOn` is what HR was looking at; a decision on anything newer is refused as stale. */
+export const decisionSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('ACCEPT'), basedOn: basedOnSchema, reason: optionalReason }).strict(),
+  z.object({ action: z.literal('SET_SCORE'), basedOn: basedOnSchema, score: z.number().int().min(1).max(4), reason: reasonSchema }).strict(),
+  z.object({
+    action: z.literal('ASK_FOR_DETAIL'), basedOn: basedOnSchema, reason: optionalReason,
+    followUpText: z.string().trim().min(20, 'Write at least 20 characters').max(600).optional(),
+  }).strict(),
+  z.object({ action: z.literal('EXCLUDE'), basedOn: basedOnSchema, reason: reasonSchema }).strict(),
+])
+export type DecisionInput = z.infer<typeof decisionSchema>
