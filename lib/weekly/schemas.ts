@@ -44,6 +44,8 @@ export const testToolSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('fill-synthetic'), cycleId: z.string().min(1), evaluatorId: z.string().min(1).optional() }).strict(),
   z.object({ action: z.literal('approve-all-drafts') }).strict(),
   z.object({ action: z.literal('reset'), cycleId: z.string().min(1) }).strict(),
+  z.object({ action: z.literal('score-now'), cycleId: z.string().min(1), model: z.enum(['configured', 'stand-in']).default('configured') }).strict(),
+  z.object({ action: z.literal('accept-due-now'), cycleId: z.string().min(1) }).strict(),
 ])
 export type TestToolInput = z.infer<typeof testToolSchema>
 

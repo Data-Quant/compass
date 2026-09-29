@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db'
+import { modelFor, type ModelChoice } from '../ai/configured'
 import { effectiveWeek, totalWeeks } from '../calendar'
 import { syntheticAnswer, syntheticComment } from '../content/synthetic'
 import { areWeeklyTestToolsEnabled } from '../flag'
@@ -6,9 +7,11 @@ import { recordAudit } from './audit'
 import { approveProfile } from './content'
 import { assertHr, type WeeklyActor } from './context'
 import { loadCycle } from './cycles'
+import { autoAcceptDue } from './decisions'
 import { WeeklyError } from './errors'
 import { submitAnswer } from './inbox'
 import { releaseWeek, type ReleaseSummary } from './release'
+import { runScoring, type ScoringRunSummary } from './scoring'
 
 /** Preview-only: refuses unless WEEKLY_TEST_TOOLS is on, and only for HR. */
 export function assertTestTools(actor: WeeklyActor): void {
@@ -70,4 +73,25 @@ export async function resetCycle(actor: WeeklyActor, cycleId: string): Promise<v
     prisma.weeklyCycle.update({ where: { id: cycleId }, data: { simulatedWeek: null } }),
   ])
   await recordAudit(prisma, { cycleId, actorId: actor.id, actorRole: 'HR', action: 'TEST_RESET', objectType: 'WeeklyCycle', objectId: cycleId })
+}
+
+export const SCORE_NOW_BUDGET_MS = 50_000
+
+/** Scores this cycle's waiting answers now (cron jobs do not run on previews). Time-boxed; run again for the rest. */
+export async function scoreNow(actor: WeeklyActor, cycleId: string, choice: ModelChoice): Promise<ScoringRunSummary> {
+  assertTestTools(actor)
+  await loadCycle(cycleId)
+  const responses = await prisma.weeklyResponse.findMany({ where: { prompt: { cycleId, kind: { not: 'COMMENT' } } }, select: { id: true } })
+  const summary = await runScoring({ model: modelFor(choice), budgetMs: SCORE_NOW_BUDGET_MS, responseIds: responses.map((r) => r.id) })
+  await recordAudit(prisma, { cycleId, actorId: actor.id, actorRole: 'HR', action: 'TEST_SCORE_NOW', objectType: 'WeeklyCycle', objectId: cycleId, after: { ...summary, model: choice } })
+  return summary
+}
+
+/** Accepts every score that would be accepted after 72 hours, without waiting. */
+export async function acceptDueNow(actor: WeeklyActor, cycleId: string, now: Date): Promise<{ accepted: number }> {
+  assertTestTools(actor)
+  await loadCycle(cycleId)
+  const result = await autoAcceptDue(now, { cycleId, ignoreWait: true })
+  await recordAudit(prisma, { cycleId, actorId: actor.id, actorRole: 'HR', action: 'TEST_ACCEPT_DUE', objectType: 'WeeklyCycle', objectId: cycleId, after: result })
+  return result
 }

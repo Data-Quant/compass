@@ -1,6 +1,7 @@
 import test, { after, afterEach, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { prisma } from '../lib/db'
+import { fakeModel } from '../lib/weekly/ai/model'
 import { runWeeklyDailyJob } from '../lib/weekly/service/daily-job'
 import { inboxView, submitAnswer } from '../lib/weekly/service/inbox'
 import { at, startedCycle } from './helpers/weekly-fixtures'
@@ -54,7 +55,7 @@ test('Thursday reminds only people with open questions; other weekdays do nothin
   const answer = { situation: `The client moved the launch ${words(10)}`, action: `They rebuilt the plan ${words(15)}`, result: `We delivered on time ${words(15)}` }
   await submitAnswer(weeklyActor(W.lead), { evaluatorId: W.lead.id, actingAs: false }, prompt.id, answer, at(1, 2))
   const mail = mailbox()
-  await runWeeklyDailyJob(mail.send, APP, at(1, 4))
+  await runWeeklyDailyJob(mail.send, APP, at(1, 4), { model: fakeModel() })
   assert.deepEqual(mail.sent.map((m) => m.to).sort(), ['wkt-ana@example.test', 'wkt-ben@example.test'])
   assert.equal(mail.sent[0].subject, 'Reminder: 1 evaluation question is waiting')
   const tuesday = await runWeeklyDailyJob(mailbox().send, APP, at(1, 2))

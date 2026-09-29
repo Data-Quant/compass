@@ -18,3 +18,51 @@ export function renderQuestionsEmail(input: { name: string; newCount: number; op
     '<p style="color:#666;font-size:12px">Unanswered questions stay open until the quarter closes.</p></div>'
   return { subject, html }
 }
+
+function layout(name: string, paragraphs: string[], link: string, button: string): string {
+  return (
+    '<div style="font-family:Arial,sans-serif;font-size:14px;color:#111;max-width:600px">' +
+    `<p>Hi ${escapeHtml(name)},</p>` +
+    paragraphs.map((p) => `<p>${p}</p>`).join('') +
+    `<p><a href="${escapeHtml(link)}" style="display:inline-block;padding:10px 16px;background:#111;color:#fff;border-radius:6px;text-decoration:none">${escapeHtml(button)}</a></p></div>`
+  )
+}
+const base = (appUrl: string) => appUrl.replace(/\/$/, '')
+
+/** Daily digest: the AI (or HR) asked for more detail on some of this person's answers. The score is never mentioned (D13). */
+export function renderFollowUpEmail(input: { name: string; count: number; appUrl: string }): { subject: string; html: string } {
+  return {
+    subject: `Please add detail to ${plural(input.count, 'evaluation answer')}`,
+    html: layout(input.name, [
+      escapeHtml(`We need a little more detail on ${input.count === 1 ? 'one of your recent answers' : `${input.count} of your recent answers`}.`),
+      'Each follow-up asks for one specific example: what was going on, what the person did, and what happened.',
+    ], `${base(input.appUrl)}/evaluations/weekly`, 'Add detail'),
+  }
+}
+
+export function renderScoringFailedEmail(input: { name: string; count: number; appUrl: string }): { subject: string; html: string } {
+  const answers = plural(input.count, 'weekly answer')
+  return {
+    subject: `${answers} could not be scored`,
+    html: layout(input.name, [escapeHtml(`The AI could not score ${answers}. Retry them, or score them by hand, in the review queue.`)], `${base(input.appUrl)}/admin/weekly?tab=review`, 'Open the review queue'),
+  }
+}
+
+const MAX_EMAIL_ROWS = 50
+
+export function renderLowEvidenceEmail(input: { name: string; rows: ReadonlyArray<{ evaluatee: string; group: string; satisfied: number; total: number }>; appUrl: string }): { subject: string; html: string } {
+  const shown = input.rows.slice(0, MAX_EMAIL_ROWS)
+  const table =
+    '<table style="border-collapse:collapse;font-size:13px">' +
+    '<tr><th align="left" style="padding:4px 8px">Person</th><th align="left" style="padding:4px 8px">Group</th><th align="left" style="padding:4px 8px">Topics with accepted evidence</th></tr>' +
+    shown.map((r) => `<tr><td style="padding:4px 8px">${escapeHtml(r.evaluatee)}</td><td style="padding:4px 8px">${escapeHtml(r.group)}</td><td style="padding:4px 8px">${r.satisfied} of ${r.total}</td></tr>`).join('') +
+    '</table>'
+  const more = input.rows.length > shown.length ? `<p>…and ${input.rows.length - shown.length} more on the dashboard.</p>` : ''
+  return {
+    subject: `Weekly evaluations: ${plural(input.rows.length, 'person-group')} with low evidence`,
+    html: layout(input.name, [
+      escapeHtml('These people have less than 60% of their topics covered by accepted evidence in a group, with two question weeks left.'),
+      table + more,
+    ], `${base(input.appUrl)}/admin/weekly?tab=dashboard`, 'Open the dashboard'),
+  }
+}
