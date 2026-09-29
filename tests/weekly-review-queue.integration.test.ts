@@ -4,8 +4,9 @@ import { prisma } from '../lib/db'
 import { fakeModel } from '../lib/weekly/ai/model'
 import { AUTO_ACCEPT_MS } from '../lib/weekly/review-rules'
 import { loadAnswerRecords } from '../lib/weekly/service/answer-states'
-import { decideAnswer } from '../lib/weekly/service/decisions'
+import { autoAcceptDue, decideAnswer } from '../lib/weekly/service/decisions'
 import { WeeklyError } from '../lib/weekly/service/errors'
+import { submitAnswer } from '../lib/weekly/service/inbox'
 import { correctAnswer, retryScoring, reviewQueue } from '../lib/weekly/service/review-queue'
 import { runScoring } from '../lib/weekly/service/scoring'
 import { answerAs, answerFor, releaseWeekOne, scoringClock } from './helpers/weekly-answers'
@@ -98,4 +99,22 @@ test('only answers whose scoring failed can be retried; a retry scores them', WE
   await score()
   assert.notEqual((await loadAnswerRecords({ responseIds: [ben] }))[0].state, 'FAILED')
   await assert.rejects(retryScoring(HR_ACTOR, ben, at(1, 3)), isStatus(409))
+})
+
+test('a correction made before any review comes back to HR whatever the new score, and the evaluator can no longer edit it', WEEKLY_DB_TEST, async () => {
+  const { prompts, ben } = await answered()
+  await score()
+  const benPrompt = prompts.get(W.ben.id)!
+  const solid = answerFor('solid', benPrompt)
+  const corrected = { ...solid, result: `${solid.result} The finance lead thanked them for it.`, reason: 'Removed a client’s confidential figure' }
+  await correctAnswer(HR_ACTOR, ben, corrected, at(1, 2, 10))
+  await score(fakeModel(), at(1, 2, 11))
+  const [record] = await loadAnswerRecords({ responseIds: [ben] })
+  assert.equal(record.state, 'NEEDS_REVIEW')
+  assert.ok(record.reasons.includes('CORRECTED'), `reasons: ${record.reasons.join(', ')}`)
+  assert.equal((await autoAcceptDue(new Date(at(1, 2, 11).getTime() + 100 * 60 * 60 * 1000), { cycleId })).accepted, 0)
+  await assert.rejects(
+    submitAnswer(weeklyActor(W.ben), { evaluatorId: W.ben.id, actingAs: false }, benPrompt.id, solid, at(1, 2, 12)),
+    isStatus(409),
+  )
 })

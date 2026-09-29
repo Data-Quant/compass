@@ -31,7 +31,7 @@ export interface AnswerStateInput {
   /** The latest AI score for the answer's current revision. */
   aiScore: { createdAt: Date; sufficiency: string; score: number | null; confidence: string; flags: readonly string[] } | null
   latestReview: { createdAt: Date } | null
-  /** Any review by a person (not the 72-hour auto-accept), at any time. */
+  /** Any review by a person (not the 72-hour auto-accept), or an HR correction of the text, at any time. */
   humanReviewedBefore: boolean
 }
 
@@ -40,9 +40,17 @@ export function isSampled(responseId: string): boolean {
   return stableHash(responseId) % 1000 < SAMPLE_RATE * 1000
 }
 
-/** Why HR must review an AI score; empty means it is auto-accepted after 72 hours. Thin answers get a follow-up instead. */
+/** Health, harassment or legal matters: HR only, never auto-accepted, and never sent back to the evaluator automatically. */
+export function isSensitive(flags: readonly string[]): boolean {
+  return flags.includes('SENSITIVE_CONTENT')
+}
+
+/**
+ * Why HR must review an AI score; empty means it is auto-accepted after 72 hours. Thin answers get a follow-up
+ * instead, unless they disclose something sensitive, which HR sees first.
+ */
 export function reviewReasons(score: { sufficiency: string; score: number | null; confidence: string; flags: readonly string[] }, responseId: string): ReviewReason[] {
-  if (score.sufficiency !== 'SUFFICIENT') return []
+  if (score.sufficiency !== 'SUFFICIENT') return isSensitive(score.flags) ? ['FLAGGED'] : []
   const reasons: ReviewReason[] = []
   if (score.score === 1 || score.score === 4) reasons.push('EXTREME_SCORE')
   if (score.confidence === 'LOW') reasons.push('LOW_CONFIDENCE')
@@ -57,16 +65,16 @@ export function isAutoAcceptDue(scoredAt: Date, now: Date): boolean {
 
 /**
  * A review decides the AI score it follows. A newer AI score (HR corrected the text) reopens the answer, and
- * because a person already judged it, it goes back to HR rather than being auto-accepted. A failed job is
- * decided by a review made after it failed.
+ * because a person already judged or corrected it, it goes back to HR rather than being auto-accepted or
+ * waiting for detail. A failed job is decided by a review made after it failed.
  */
 export function answerState(input: AnswerStateInput): { state: AnswerState; reasons: ReviewReason[] } {
   const decidedAfter = (instant: Date) => input.latestReview !== null && input.latestReview.createdAt >= instant
   if (input.job && (input.job.status === 'PENDING' || input.job.status === 'RUNNING')) return { state: 'SCORING', reasons: [] }
   if (input.aiScore) {
     if (decidedAfter(input.aiScore.createdAt)) return { state: 'DECIDED', reasons: [] }
-    if (input.aiScore.sufficiency !== 'SUFFICIENT') return { state: 'INSUFFICIENT', reasons: [] }
     const reasons: ReviewReason[] = [...reviewReasons(input.aiScore, input.responseId), ...(input.humanReviewedBefore ? (['CORRECTED'] as const) : [])]
+    if (input.aiScore.sufficiency !== 'SUFFICIENT' && reasons.length === 0) return { state: 'INSUFFICIENT', reasons: [] }
     return { state: reasons.length > 0 ? 'NEEDS_REVIEW' : 'AUTO_ACCEPT_PENDING', reasons }
   }
   if (input.job?.status === 'FAILED') {

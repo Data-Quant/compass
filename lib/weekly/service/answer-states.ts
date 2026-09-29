@@ -37,6 +37,19 @@ export function jsonStrings(value: Prisma.JsonValue): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 }
 
+/** The audit action written when HR corrects an answer's text; it marks the answer as handled by a person. */
+export const ANSWER_CORRECTED = 'ANSWER_CORRECTED'
+
+/** Answers whose text HR has corrected: they go back to HR after re-scoring, and the evaluator can no longer edit them. */
+export async function correctedResponseIds(responseIds: readonly string[], db: Db = prisma): Promise<Set<string>> {
+  if (responseIds.length === 0) return new Set()
+  const events = await db.weeklyAuditEvent.findMany({
+    where: { action: ANSWER_CORRECTED, objectType: 'WeeklyResponse', objectId: { in: [...responseIds] } },
+    select: { objectId: true },
+  })
+  return new Set(events.flatMap((e) => (e.objectId ? [e.objectId] : [])))
+}
+
 function groupBy<T>(rows: readonly T[], key: (row: T) => string): Map<string, T[]> {
   const groups = new Map<string, T[]>()
   for (const row of rows) groups.set(key(row), [...(groups.get(key(row)) ?? []), row])
@@ -65,6 +78,7 @@ export async function loadAnswerRecords(filter: { cycleId?: string; responseIds?
   const jobs = await db.weeklyScoringJob.findMany({ where: { responseId: { in: ids } }, orderBy: { createdAt: 'asc' } })
   const scores = await db.weeklyAiScore.findMany({ where: { responseId: { in: ids } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] })
   const reviews = await db.weeklyScoreReview.findMany({ where: { responseId: { in: ids } } })
+  const corrected = await correctedResponseIds(ids, db)
   const jobByRevision = new Map(jobs.map((j) => [`${j.responseId}|${j.revision}`, j]))
   const scoresByResponse = groupBy(scores, (s) => s.responseId)
   const latest = latestByResponse(reviews)
@@ -81,7 +95,7 @@ export async function loadAnswerRecords(filter: { cycleId?: string; responseIds?
       job: job && { status: job.status, updatedAt: job.updatedAt },
       aiScore: aiScore && { createdAt: aiScore.createdAt, sufficiency: aiScore.sufficiency, score: aiScore.score, confidence: aiScore.confidence, flags: jsonStrings(aiScore.flags) },
       latestReview,
-      humanReviewedBefore: human.has(response.id),
+      humanReviewedBefore: human.has(response.id) || corrected.has(response.id),
     })
     return [{
       responseId: response.id, promptId: p.id, cycleId: p.cycleId, slotId: p.slotId, competencyId: p.slot?.competencyId ?? null,

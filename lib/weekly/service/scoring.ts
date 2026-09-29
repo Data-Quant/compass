@@ -10,6 +10,7 @@ import {
 import { perspectiveOf } from '../perspectives'
 import { parseProfileLevels } from '../profile'
 import { redactNames } from '../redact'
+import { isSensitive } from '../review-rules'
 import { looksSensitive } from '../sensitive'
 import { isNearDuplicate } from '../similarity'
 import { loadPeople } from './context'
@@ -129,7 +130,8 @@ function saveScore(job: ClaimedJob, input: ScoreToSave, now: Date): Promise<JobO
           inputTokens: input.usage.inputTokens, outputTokens: input.usage.outputTokens, createdAt: now,
         },
       })
-      if (final.sufficiency === 'INSUFFICIENT') await requestFollowUp(tx, { promptId: input.promptId, text: final.followUpPrompt ?? DEFAULT_FOLLOW_UP, now })
+      // A sensitive disclosure goes to HR first (reviewReasons); HR decides whether to ask the evaluator for more.
+      if (final.sufficiency === 'INSUFFICIENT' && !isSensitive(final.flags)) await requestFollowUp(tx, { promptId: input.promptId, text: final.followUpPrompt ?? DEFAULT_FOLLOW_UP, now })
     }
     return final.sufficiency === 'SUFFICIENT' ? 'SCORED' : 'INSUFFICIENT'
   })

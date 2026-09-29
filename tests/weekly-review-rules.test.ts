@@ -87,3 +87,13 @@ test('quality: agreement, adjustments, length bias, flags, 4s and drift', () => 
   assert.ok(drift[0].difference < -1)
   assert.deepEqual(evaluatorDrift([{ evaluatorId: 'solo', perspective: 'LEAD', finalScore: 4 }, { evaluatorId: 'solo', perspective: 'LEAD', finalScore: 4 }, { evaluatorId: 'solo', perspective: 'LEAD', finalScore: 4 }]), [])
 })
+
+test('a sensitive thin answer goes to HR instead of a follow-up; a corrected answer comes back to HR whatever its new score', () => {
+  const base: AnswerStateInput = { responseId: unsampled, job: { status: 'DONE', updatedAt: t(1) }, aiScore: null, latestReview: null, humanReviewedBefore: false }
+  const thinSensitive = { ...ai({ sufficiency: 'INSUFFICIENT', score: null, flags: ['GENERIC_PRAISE', 'SENSITIVE_CONTENT'] }), createdAt: t(1) }
+  assert.deepEqual(reviewReasons(thinSensitive, unsampled), ['FLAGGED'])
+  assert.deepEqual(answerState({ ...base, aiScore: thinSensitive }), { state: 'NEEDS_REVIEW', reasons: ['FLAGGED'] })
+  const thinPraise = { ...ai({ sufficiency: 'INSUFFICIENT', score: null, flags: ['GENERIC_PRAISE'] }), createdAt: t(1) }
+  assert.deepEqual(answerState({ ...base, aiScore: thinPraise }), { state: 'INSUFFICIENT', reasons: [] })
+  assert.deepEqual(answerState({ ...base, aiScore: thinPraise, humanReviewedBefore: true }), { state: 'NEEDS_REVIEW', reasons: ['CORRECTED'] })
+})

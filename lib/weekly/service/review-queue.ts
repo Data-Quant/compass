@@ -3,7 +3,7 @@ import { answerProblem, answerWordCount } from '../answer-rules'
 import { AUTO_ACCEPT_MS, type AnswerState } from '../review-rules'
 import type { CorrectionInput } from '../schemas'
 import type { AiScoreView, ReviewActionValue, ReviewAnswerView, ReviewFilter, ReviewQueueResponse } from '../view-types'
-import { jsonStrings, loadAnswerRecords, type AnswerRecord } from './answer-states'
+import { ANSWER_CORRECTED, jsonStrings, loadAnswerRecords, type AnswerRecord } from './answer-states'
 import { recordAudit } from './audit'
 import { assertHr, loadPeople, personRef, type WeeklyActor } from './context'
 import { loadCycle } from './cycles'
@@ -98,7 +98,7 @@ export async function correctAnswer(actor: WeeklyActor, responseId: string, inpu
     await tx.weeklyScoringJob.updateMany({ where: { responseId, status: 'PENDING' }, data: { status: 'CANCELLED', updatedAt: now } })
     await tx.weeklyScoringJob.create({ data: { responseId, revision } })
     await recordAudit(tx, {
-      cycleId: response.prompt.cycleId, actorId: actor.id, actorRole: 'HR', action: 'ANSWER_CORRECTED', objectType: 'WeeklyResponse', objectId: responseId,
+      cycleId: response.prompt.cycleId, actorId: actor.id, actorRole: 'HR', action: ANSWER_CORRECTED, objectType: 'WeeklyResponse', objectId: responseId,
       before: { revision: response.revision, situation: response.situation, action: response.action, result: response.result, shortfall: response.shortfall },
       after: { revision, ...text }, reason: input.reason,
     })

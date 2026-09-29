@@ -2,6 +2,7 @@ import test, { after, before, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { prisma } from '../lib/db'
 import { fakeModel } from '../lib/weekly/ai/model'
+import { loadAnswerRecords } from '../lib/weekly/service/answer-states'
 import { historyView } from '../lib/weekly/service/inbox'
 import { releaseWeek } from '../lib/weekly/service/release'
 import { runScoring } from '../lib/weekly/service/scoring'
@@ -101,4 +102,16 @@ test('quotes that are not in the answer are dropped and the score is marked low 
   const ai = await aiScoreFor(responseId)
   assert.deepEqual(ai.evidenceQuotes, ['raised one data question with me'])
   assert.equal(ai.confidence, 'LOW')
+})
+
+test('a thin answer that discloses something sensitive goes to HR, not back to the evaluator', WEEKLY_DB_TEST, async () => {
+  const prompt = await leadPrompt()
+  const thin = answerFor('praise', prompt)
+  const responseId = await answerAs(prompt, { ...thin, action: `They told me about a serious health condition this month. ${thin.action}` })
+  assert.equal((await score()).insufficient, 1)
+  assert.equal(await prisma.weeklyPrompt.count({ where: { slotId: prompt.slotId, kind: 'FOLLOW_UP' } }), 0)
+  const [record] = await loadAnswerRecords({ responseIds: [responseId] })
+  assert.deepEqual([record.state, record.reasons], ['NEEDS_REVIEW', ['FLAGGED']])
+  const history = await historyView(W.lead.id)
+  assert.equal(history.groups.flatMap((g) => g.entries).find((e) => e.id === prompt.id)?.status, 'BEING_REVIEWED')
 })

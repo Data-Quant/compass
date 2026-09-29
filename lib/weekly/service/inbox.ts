@@ -6,9 +6,11 @@ import {
 import { effectiveWeek, totalWeeks } from '../calendar'
 import { areWeeklyTestToolsEnabled } from '../flag'
 import { perspectiveOf } from '../perspectives'
+import { isSensitive } from '../review-rules'
 import { latestByResponse } from '../reviews'
 import type { AnswerInput } from '../schemas'
 import type { AnswerView, EvaluateeProgress, HistoryGroup, HistoryResponse, InboxPrompt, InboxResponse } from '../view-types'
+import { correctedResponseIds, jsonStrings } from './answer-states'
 import { recordAudit } from './audit'
 import { byName, isHrActor, loadPeople, personRef, type WeeklyActor } from './context'
 import { cycleSummary, findRunningCycle, loadCycle } from './cycles'
@@ -42,10 +44,11 @@ function topicOf(prompt: PromptRow): string {
   return prompt.kind === 'COMMENT' ? 'Comment (optional)' : prompt.slot?.competency.name ?? 'Question'
 }
 
+/** Answers a person has reviewed or corrected: the evaluator can no longer edit them. */
 async function humanReviewed(responseIds: string[]): Promise<Set<string>> {
   if (responseIds.length === 0) return new Set()
   const reviews = await prisma.weeklyScoreReview.findMany({ where: { responseId: { in: responseIds }, reviewerId: { not: null } }, select: { responseId: true } })
-  return new Set(reviews.map((r) => r.responseId))
+  return new Set([...reviews.map((r) => r.responseId), ...(await correctedResponseIds(responseIds))])
 }
 
 async function progressFor(cycleId: string, evaluatorId: string): Promise<EvaluateeProgress[]> {
@@ -131,7 +134,8 @@ export async function submitAnswer(actor: WeeklyActor, subject: InboxSubject, pr
       await tx.weeklyResponse.upsert({ where: { promptId }, create: { promptId, ...data, revision, submittedAt: now }, update: { ...data, revision, submittedAt: now } })
     } else if (prompt.status === 'SUBMITTED' && prompt.response) {
       const reviewed = await tx.weeklyScoreReview.count({ where: { responseId: prompt.response.id, reviewerId: { not: null } } })
-      if (!canEditSubmitted({ submittedAt: prompt.response.submittedAt, reviewedByHuman: reviewed > 0, now })) throw new WeeklyError('This answer can no longer be edited', 409)
+      const corrected = (await correctedResponseIds([prompt.response.id], tx)).size
+      if (!canEditSubmitted({ submittedAt: prompt.response.submittedAt, reviewedByHuman: reviewed + corrected > 0, now })) throw new WeeklyError('This answer can no longer be edited', 409)
       const updated = await tx.weeklyResponse.updateMany({ where: { id: prompt.response.id, revision: prompt.response.revision }, data: { ...data, revision: { increment: 1 } } })
       if (updated.count === 0) throw new WeeklyError('This answer changed since you opened it; reload and try again', 409)
       revision = prompt.response.revision + 1
@@ -175,10 +179,13 @@ export async function markNotObserved(actor: WeeklyActor, subject: InboxSubject,
 
 async function aiInsufficient(responseIds: string[]): Promise<Set<string>> {
   if (responseIds.length === 0) return new Set()
-  const scores = await prisma.weeklyAiScore.findMany({ where: { responseId: { in: responseIds } }, orderBy: [{ revision: 'desc' }, { createdAt: 'desc' }], select: { responseId: true, sufficiency: true } })
-  const latest = new Map<string, string>()
-  for (const score of scores) if (!latest.has(score.responseId)) latest.set(score.responseId, score.sufficiency)
-  return new Set([...latest].filter(([, sufficiency]) => sufficiency === 'INSUFFICIENT').map(([id]) => id))
+  const scores = await prisma.weeklyAiScore.findMany({
+    where: { responseId: { in: responseIds } }, orderBy: [{ revision: 'desc' }, { createdAt: 'desc' }], select: { responseId: true, sufficiency: true, flags: true },
+  })
+  const latest = new Map<string, (typeof scores)[number]>()
+  for (const score of scores) if (!latest.has(score.responseId)) latest.set(score.responseId, score)
+  // A thin answer with a sensitive disclosure waits for HR, so the evaluator sees "being reviewed", not "please add detail".
+  return new Set([...latest].filter(([, score]) => score.sufficiency === 'INSUFFICIENT' && !isSensitive(jsonStrings(score.flags))).map(([id]) => id))
 }
 
 export async function historyView(evaluatorId: string): Promise<HistoryResponse> {
