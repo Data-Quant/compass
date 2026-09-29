@@ -125,3 +125,104 @@ export interface OverviewResponse {
   rows: OverviewRow[]
   departmentsWithoutKpis: Array<{ monthKey: string; departments: string[] }>
 }
+
+export interface KpiActions { claim: boolean; respond: boolean; appeal: boolean; uploadEvidence: boolean; requestChange: boolean }
+export interface EvidenceFileView { id: string; fileName: string; size: number; contentType: string }
+export interface ClaimView { claimedBy: PersonRef; claimedAt: string; note: string | null; url: string | null; reportedValue: string | null }
+export interface DecisionView { decidedAt: string; note: string | null }
+
+export type ChangeProposal =
+  | { cancel: true }
+  | { title?: string; target?: string; evidenceType?: EvidenceTypeValue; ownerIds?: string[] }
+
+export interface ChangeRequestView {
+  id: string
+  kpiId: string
+  kpiTitle: string
+  monthKey: string
+  requestedBy: PersonRef
+  proposed: ChangeProposal
+  reason: string
+  createdAt: string
+  status: 'PENDING' | 'APPROVED' | 'REJECTED'
+  decisionNote: string | null
+  canDecide: boolean
+}
+
+export interface HistoryRow {
+  id: string
+  at: string
+  actorName: string
+  actorRole: string
+  action: string
+  fromStatus: string | null
+  toStatus: string | null
+  reason: string | null
+}
+
+export interface ClaimerStats { claims: number; rejections: number }
+
+export interface VerificationQueueItem {
+  kpiId: string
+  version: number
+  title: string
+  target: string
+  goalTitle: string
+  monthKey: string
+  scope: KpiScopeValue
+  departmentLabel: string | null
+  setter: PersonRef
+  owners: PersonRef[]
+  claimedBy: PersonRef | null
+  claimedAt: string | null
+  status: KpiStatusValue
+  dueAt: string
+  overdue: boolean
+  canDecide: boolean
+  claimerStats: ClaimerStats
+}
+export interface VerificationQueueResponse { items: VerificationQueueItem[] }
+
+export interface KpiDetailResponse {
+  kpi: KpiView & { monthKey: string; goalTitle: string; scope: KpiScopeValue; departmentLabel: string | null; setter: PersonRef }
+  month: MonthView
+  lockedSnapshot: { title: string; target: string; evidenceType: EvidenceTypeValue; owners: PersonRef[] } | null
+  history: HistoryRow[]
+  changeRequests: ChangeRequestView[]
+  canDecide: boolean
+  decidedBy: PersonRef | null
+  claimerStats: ClaimerStats | null
+}
+
+export interface ResultsRow {
+  kpiId: string
+  version: number
+  title: string
+  goalTitle: string
+  scope: KpiScopeValue
+  departmentLabel: string | null
+  setter: PersonRef
+  owners: PersonRef[]
+  status: KpiStatusValue
+  claimedBy: PersonRef | null
+  decisionNote: string | null
+  final: boolean
+}
+export interface ResultsResponse {
+  month: MonthView & { finalizedAt: string | null }
+  rows: ResultsRow[]
+  pending: { verification: number; changeRequests: number }
+}
+
+export interface AuditRow {
+  id: string
+  createdAt: string
+  actorName: string
+  actorRole: string
+  action: string
+  kpiId: string | null
+  kpiTitle: string | null
+  fromStatus: string | null
+  toStatus: string | null
+  reason: string | null
+}
