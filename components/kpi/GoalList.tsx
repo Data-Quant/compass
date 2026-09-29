@@ -30,7 +30,7 @@ export function GoalList({ goals, editable, emptyMessage, onEditGoal, onArchiveG
                 <h3 className="font-semibold">{goal.title}</h3>
                 {goal.description && <p className="text-sm text-muted-foreground">{goal.description}</p>}
                 <p className="text-xs text-muted-foreground">
-                  {goal.scope === 'DEPARTMENT' ? `Department KPIs (${goal.departmentKey ?? ''})` : 'Team KPIs'} · Set by {goal.setter.name}
+                  {goal.scope === 'DEPARTMENT' ? `Department KPIs (${goal.departmentLabel ?? goal.departmentKey ?? ''})` : 'Team KPIs'} · Set by {goal.setter.name}
                 </p>
               </div>
               {editable && (

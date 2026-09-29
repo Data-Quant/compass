@@ -57,6 +57,9 @@ export function DepartmentKpisPanel({ allowPicker }: { allowPicker: boolean }) {
           {department.owners.map((person) => person.name).join(', ')}
         </CardContent>
       </Card>
+      {data.canEdit && data.departmentsWithoutKpis.length > 0 && (
+        <p className="text-sm text-muted-foreground">{`Departments without KPIs this month: ${data.departmentsWithoutKpis.join(', ')}`}</p>
+      )}
       <GoalEditor
         goals={data.goals}
         editable={data.canEdit && !data.month.locked}

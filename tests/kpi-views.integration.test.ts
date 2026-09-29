@@ -123,3 +123,21 @@ test('HR can pick any in-scheme team member to reassign, not only people without
   assert.equal(memberIds.includes(PEOPLE.lead.id), false, 'leads and JPs have department KPIs')
   assert.equal(memberIds.includes(PEOPLE.partner.id), false, 'Partners are outside the scheme')
 })
+
+test('department goals carry a readable label, and setters see departments still without KPIs', DB_TEST, async () => {
+  await seedKpis()
+  const view = await departmentView(actorFor(PEOPLE.partner), '2026-10', 'product', now)
+  assert.equal(view.goals[0].departmentLabel, 'Product')
+  assert.deepEqual(view.departmentsWithoutKpis, ['Value Creation'])
+  const jpView = await departmentView(actorFor(PEOPLE.jp), '2026-10', null, now)
+  assert.deepEqual(jpView.departmentsWithoutKpis, [])
+})
+
+test('HR can still open a lead whose team emptied after they set goals', DB_TEST, async () => {
+  await seedKpis()
+  await prisma.evaluatorMapping.deleteMany({ where: { evaluatorId: PEOPLE.lead.id } })
+  const hrView = await teamView(hr, '2026-10', null, now)
+  assert.ok(hrView.setters?.some((person) => person.id === PEOPLE.lead.id))
+  const opened = await teamView(hr, '2026-10', PEOPLE.lead.id, now)
+  assert.equal(opened.goals.length, 1)
+})

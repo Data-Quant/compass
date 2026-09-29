@@ -43,6 +43,7 @@ export interface GoalView {
   id: string
   scope: KpiScopeValue
   departmentKey: string | null
+  departmentLabel: string | null
   setter: PersonRef
   title: string
   description: string | null
@@ -76,6 +77,7 @@ export interface DepartmentViewResponse {
   departments: DepartmentOption[]
   goals: GoalView[]
   canEdit: boolean
+  departmentsWithoutKpis: string[]
 }
 
 export interface MyKpi extends KpiView { monthKey: string; goalTitle: string; scope: KpiScopeValue }

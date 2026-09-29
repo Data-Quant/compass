@@ -63,6 +63,7 @@ function toGoalView(ctx: KpiContext, goal: GoalRowLike, month: MonthDeadlinesLik
     id: goal.id,
     scope: goal.scope,
     departmentKey: goal.departmentKey,
+    departmentLabel: goal.departmentKey ? departmentLabel(ctx, goal.departmentKey) : null,
     setter: personRef(ctx, goal.setterId),
     title: goal.title,
     description: goal.description,
@@ -79,6 +80,26 @@ function requireMonthKey(value: string) {
 async function goalsFor(month: ResolvedMonth, where: Prisma.KpiGoalWhereInput) {
   if (!month.id) return []
   return prisma.kpiGoal.findMany({ where: { ...where, kpiMonthId: month.id, archivedAt: null }, include: goalInclude, orderBy: { createdAt: 'asc' } })
+}
+
+/** Current setters plus anyone who set team goals that month, so HR can still reach goals whose team has emptied. */
+async function hrSetterChoices(ctx: KpiContext, month: ResolvedMonth) {
+  const withGoals = month.id
+    ? await prisma.kpiGoal.findMany({ where: { kpiMonthId: month.id, scope: 'TEAM', archivedAt: null }, select: { setterId: true }, distinct: ['setterId'] })
+    : []
+  const ids = new Set([...ctx.scope.teamBySetter.keys(), ...withGoals.map((goal) => goal.setterId)])
+  return [...ids].map((id) => personRef(ctx, id)).sort(byName)
+}
+
+async function departmentsWithoutKpis(ctx: KpiContext, month: ResolvedMonth): Promise<string[]> {
+  const goals = month.id
+    ? await prisma.kpiGoal.findMany({
+        where: { kpiMonthId: month.id, scope: 'DEPARTMENT', archivedAt: null },
+        include: { kpis: { select: { status: true, lockedSnapshot: true } } },
+      })
+    : []
+  const covered = new Set(goals.filter((goal) => goal.kpis.some(isVisibleKpi)).map((goal) => goal.departmentKey))
+  return [...ctx.scope.departmentOwners.keys()].filter((key) => !covered.has(key)).map((key) => departmentLabel(ctx, key)).sort()
 }
 
 export function capabilitiesOf(actor: KpiActor, scope: KpiScope): Capabilities {
@@ -105,7 +126,7 @@ export async function teamView(actor: KpiActor, monthKey: string, requestedSette
     setter: setterId ? personRef(ctx, setterId) : null,
     team: (setterId ? ctx.scope.teamBySetter.get(setterId) ?? [] : []).map((id) => personRef(ctx, id)).sort(byName),
     goals: goals.map((goal) => toGoalView(ctx, goal, month, now)),
-    ...(isHr(actor) ? { setters: [...ctx.scope.teamBySetter.keys()].map((id) => personRef(ctx, id)).sort(byName) } : {}),
+    ...(isHr(actor) ? { setters: await hrSetterChoices(ctx, month) } : {}),
   }
 }
 
@@ -132,6 +153,7 @@ export async function departmentView(actor: KpiActor, monthKey: string, requeste
     departments: seesAll ? departments : [department],
     goals: goals.map((goal) => toGoalView(ctx, goal, month, now)),
     canEdit: isDepartmentSetter(actor),
+    departmentsWithoutKpis: isDepartmentSetter(actor) ? await departmentsWithoutKpis(ctx, month) : [],
   }
 }
 
