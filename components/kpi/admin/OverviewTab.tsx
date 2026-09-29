@@ -26,7 +26,10 @@ export function OverviewTab() {
 
   return (
     <div className="space-y-4">
-      <PeriodSwitcher label={quarterLabel(quarterKey)} onPrevious={() => setQuarterKey(shiftQuarter(quarterKey, -1))} onNext={() => setQuarterKey(shiftQuarter(quarterKey, 1))} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <PeriodSwitcher label={quarterLabel(quarterKey)} onPrevious={() => setQuarterKey(shiftQuarter(quarterKey, -1))} onNext={() => setQuarterKey(shiftQuarter(quarterKey, 1))} />
+        <a href={`/api/admin/kpi/export?quarter=${quarterKey}`} download className="text-sm font-medium text-primary hover:underline">Download Excel</a>
+      </div>
       {!data ? (
         <p className="text-sm text-muted-foreground">Loading overview…</p>
       ) : (
