@@ -167,6 +167,10 @@ export interface DashboardResponse {
   evaluators: EvaluatorStatsView[]
   quality: QualityView
   drift: DriftView[]
+  aiCost: AiCostView
+  standards: StandardsUsedView[]
+  /** The model scoring answers now, and whether it passed calibration; null when none is available. */
+  gate: ModelGateView | null
 }
 
 export type FormRelationshipTypeValue = 'C_LEVEL' | 'DEPT' | 'HR'
@@ -300,3 +304,17 @@ export interface ModelGateView {
 }
 
 export interface MoreEvidenceResponse { reopened: number; prompts: number; evaluators: number }
+
+export interface AiCostView {
+  /** US dollars; null while a model used this quarter has no price. */
+  usd: number | null
+  inputTokens: number
+  outputTokens: number
+  unpricedModels: string[]
+  byModel: Array<{ model: string; inputTokens: number; outputTokens: number; usd: number | null }>
+}
+export interface StandardsUsedView {
+  topic: string
+  perspective: Perspective
+  versions: Array<{ version: number; answers: number; status: 'DRAFT' | 'APPROVED' | 'RETIRED'; approvedAt: string | null }>
+}

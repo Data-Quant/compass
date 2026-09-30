@@ -8,6 +8,10 @@ import { jsonStrings, loadAnswerRecords, type AnswerRecord } from './answer-stat
 import { assertHr, byName, loadPeople, personRef, type WeeklyActor } from './context'
 import { cycleSummary, loadCycle } from './cycles'
 import { filterOf, REVIEW_FILTERS } from './review-queue'
+import { activeModelName } from '../ai/configured'
+import { loadAiSettings } from './ai-settings'
+import { modelGate } from './calibration-gate'
+import { aiCostForCycle, standardsUsed } from './reporting'
 
 export async function coverageRows(cycleId: string): Promise<CoverageView[]> {
   const slots = await prisma.weeklySlot.findMany({
@@ -78,7 +82,12 @@ export async function dashboardView(actor: WeeklyActor, cycleId: string, now: Da
   const records = await loadAnswerRecords({ cycleId })
   const queue = Object.fromEntries(REVIEW_FILTERS.map((filter) => [filter, 0])) as Record<ReviewFilter, number>
   for (const record of records) queue[filterOf(record.state)] += 1
-  const [coverage, evaluators, rows] = await Promise.all([coverageRows(cycleId), evaluatorStats(cycleId, summary.currentWeek), qualityRows(records)])
+  const settings = await loadAiSettings()
+  const effective = activeModelName(settings.activeModel)
+  const [coverage, evaluators, rows, aiCost, standards, gate] = await Promise.all([
+    coverageRows(cycleId), evaluatorStats(cycleId, summary.currentWeek), qualityRows(records),
+    aiCostForCycle(cycleId, settings.prices), standardsUsed(cycleId), effective ? modelGate(effective) : Promise.resolve(null),
+  ])
   const confirmed = records.flatMap((r) => {
     const finalScore = confirmedScore(r)
     return finalScore === null ? [] : [{ evaluatorId: r.evaluatorId, perspective: r.perspective, finalScore }]
@@ -93,5 +102,8 @@ export async function dashboardView(actor: WeeklyActor, cycleId: string, now: Da
     evaluators,
     quality: qualityReport(rows),
     drift: drift.map((d) => ({ evaluator: personRef(people, d.evaluatorId), perspective: d.perspective, difference: d.difference, count: d.count })),
+    aiCost,
+    standards,
+    gate,
   }
 }

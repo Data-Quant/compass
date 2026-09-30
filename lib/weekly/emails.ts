@@ -100,3 +100,18 @@ export function renderMoreEvidenceEmail(input: { name: string; count: number; ap
     ], `${base(input.appUrl)}/evaluations/weekly`, 'Answer now'),
   }
 }
+
+/** Spec 8.7: once a month, HR sees whether longer answers score higher because they are longer. */
+export function renderLengthBiasEmail(input: { name: string; periodName: string; correlation: number; alert: boolean; scored: number; appUrl: string }): { subject: string; html: string } {
+  const value = input.correlation.toFixed(2)
+  const verdict = input.alert
+    ? `<strong>${escapeHtml('Alert: this is above 0.3, so longer answers may be scoring higher just for being longer. Check the AI quality section and review a sample.')}</strong>`
+    : escapeHtml('This is within the expected range (0.3 or below).')
+  return {
+    subject: `Weekly evaluations: length–score check for ${input.periodName} (${value})`,
+    html: layout(input.name, [
+      escapeHtml(`Across ${plural(input.scored, 'scored answer')} in ${input.periodName} so far, the correlation between an answer’s length and its AI score is ${value}.`),
+      verdict,
+    ], `${base(input.appUrl)}/admin/weekly?tab=dashboard`, 'Open the dashboard'),
+  }
+}

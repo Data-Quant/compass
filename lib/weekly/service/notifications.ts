@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db'
-import { formatCalendarDate, karachiCalendarDate } from '../../kpi/calendar'
-import { renderFollowUpEmail, renderFormsOpenEmail, renderLowEvidenceEmail, renderQuestionsEmail, renderScoringFailedEmail } from '../emails'
+import { formatCalendarDate, formatMonthKey, karachiCalendarDate, monthKeyOf } from '../../kpi/calendar'
+import { renderFollowUpEmail, renderFormsOpenEmail, renderLengthBiasEmail, renderLowEvidenceEmail, renderQuestionsEmail, renderScoringFailedEmail } from '../emails'
+import { LENGTH_ALERT_THRESHOLD } from '../quality'
 import { areWeeklyEmailsEnabled } from '../flag'
 import { PERSPECTIVE_LABELS } from '../perspectives'
 import { loadAnswerRecords } from './answer-states'
@@ -8,6 +9,7 @@ import type { CycleWithPeriod } from './cycles'
 import { lowEvidenceRows } from './dashboard'
 import { isUniqueViolation } from './db'
 import { formsProgress } from './forms'
+import { lengthCorrelation } from './reporting'
 
 export type WeeklySendMail = (to: string, subject: string, html: string) => Promise<unknown>
 export type WeeklyEmailKind =
@@ -170,5 +172,19 @@ export async function formsOpenMessages(cycle: CycleWithPeriod, appUrl: string):
   return pendingEvaluatorIds.map((userId) => ({
     userId, kind: 'weekly-forms-open' as const, dedupeKey: `weekly-forms-open:${userId}:${cycle.id}`,
     render: (name: string) => renderFormsOpenEmail({ name, appUrl }),
+  }))
+}
+
+/**
+ * Spec 8.7: HR hears the running quarter's length–score correlation once per Karachi month. Until it can be computed
+ * (two scored answers that differ) there is nothing to report, and the month's email goes out on a later run.
+ */
+export async function lengthBiasMessages(cycle: CycleWithPeriod, now: Date, appUrl: string): Promise<WeeklyEmailMessage[]> {
+  const { correlation, scored } = await lengthCorrelation(cycle.id)
+  if (correlation === null) return []
+  const month = formatMonthKey(monthKeyOf(now))
+  return (await hrUserIds()).map((userId) => ({
+    userId, kind: 'weekly-length-bias' as const, dedupeKey: `weekly-length-bias:${userId}:${month}`,
+    render: (name: string) => renderLengthBiasEmail({ name, periodName: cycle.period.name, correlation, alert: correlation > LENGTH_ALERT_THRESHOLD, scored, appUrl }),
   }))
 }
