@@ -2252,6 +2252,7 @@ model Kpi {
   decidedById    String?
   decidedAt      DateTime?
   decisionNote   String?
+  dueDate        DateTime?
   version        Int                @default(0)
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
@@ -2259,9 +2260,22 @@ model Kpi {
   assignees      KpiAssignee[]
   files          KpiEvidenceFile[]
   changes        KpiChangeRequest[]
+  comments       KpiComment[]
 
   @@index([goalId])
   @@index([status])
+}
+
+/// A comment on one KPI: Execution, HR, the setter and owners discuss it in one thread.
+model KpiComment {
+  id        String   @id @default(cuid())
+  kpiId     String
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+  kpi       Kpi      @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+
+  @@index([kpiId, createdAt])
 }
 
 model KpiAssignee {

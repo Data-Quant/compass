@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db'
+import { parseDueDate } from '../deadline'
 import { parseMonthKey } from '../calendar'
 import { canEditGoal, canManageTeamGoalsFor, isDepartmentSetter, ownerError, type GoalRef, type KpiActor } from '../permissions'
 import type { CreateGoalInput, CreateKpiInput, UpdateGoalInput, UpdateKpiInput } from '../schemas'
@@ -96,17 +97,18 @@ export async function createKpi(actor: KpiActor, input: CreateKpiInput, now: Dat
   const { scope } = await loadKpiContext()
   const problem = ownerError(goalRef(goal), input.ownerIds, scope)
   if (problem) throw new KpiError(problem)
+  const dueDate = parseDueDate(input.dueDate, goal.kpiMonth)
   return prisma.$transaction(async (tx) => {
     const kpi = await tx.kpi.create({
       data: {
-        goalId: goal.id, title: input.title, target: input.target, evidenceType: input.evidenceType,
+        goalId: goal.id, title: input.title, target: input.target, evidenceType: input.evidenceType, dueDate,
         assignees: { create: input.ownerIds.map((userId) => ({ userId })) },
       },
     })
     await recordEvent(tx, {
       kpiId: kpi.id, kpiMonthId: goal.kpiMonthId, actorId: actor.id, actorRole: eventRole(actor, setterCapability(goal.scope)),
       action: 'KPI_CREATE', toStatus: 'DRAFT',
-      after: { title: input.title, target: input.target, evidenceType: input.evidenceType, assigneeIds: [...input.ownerIds].sort() },
+      after: { title: input.title, target: input.target, evidenceType: input.evidenceType, assigneeIds: [...input.ownerIds].sort(), dueDate: dueDate.toISOString() },
     })
     return kpi
   })
@@ -143,9 +145,10 @@ export async function updateKpi(
       if (problem) throw new KpiError(problem)
     }
   }
+  const dueDate = input.action === 'edit' && input.dueDate !== undefined ? parseDueDate(input.dueDate, kpi.goal.kpiMonth) : kpi.dueDate
   const before = {
     title: kpi.title, target: kpi.target, evidenceType: kpi.evidenceType,
-    assigneeIds: kpi.assignees.map((assignee) => assignee.userId).sort(),
+    assigneeIds: kpi.assignees.map((assignee) => assignee.userId).sort(), dueDate: kpi.dueDate?.toISOString() ?? null,
   }
   const after =
     input.action === 'discard'
@@ -155,6 +158,7 @@ export async function updateKpi(
           target: input.target ?? kpi.target,
           evidenceType: input.evidenceType ?? kpi.evidenceType,
           assigneeIds: [...(input.ownerIds ?? before.assigneeIds)].sort(),
+          dueDate: dueDate?.toISOString() ?? null,
         }
   return prisma.$transaction(async (tx) => {
     const updated = await tx.kpi.updateMany({
@@ -162,7 +166,7 @@ export async function updateKpi(
       data:
         input.action === 'discard'
           ? { status: 'CANCELLED', version: { increment: 1 } }
-          : { title: after.title, target: after.target, evidenceType: after.evidenceType, version: { increment: 1 } },
+          : { title: after.title, target: after.target, evidenceType: after.evidenceType, dueDate, version: { increment: 1 } },
     })
     if (updated.count === 0) throw new KpiError(STALE_MESSAGE, 409)
     if (input.action === 'edit' && input.ownerIds) {

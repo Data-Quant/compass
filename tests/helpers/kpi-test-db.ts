@@ -34,6 +34,7 @@ export function actorFor(person: TestPerson, grants: KpiGrantRoleValue[] = []): 
 
 export async function resetKpiTestData(db: PrismaClient): Promise<void> {
   if (!isKpiTestDatabase(process.env.DATABASE_URL)) throw new Error('Refusing to reset a database that is not compass_kpi_test')
+  await db.kpiComment.deleteMany()
   await db.kpiEvent.deleteMany()
   await db.kpiNotification.deleteMany()
   await db.kpiChangeRequest.deleteMany()

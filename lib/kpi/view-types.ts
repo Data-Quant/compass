@@ -43,7 +43,14 @@ export interface KpiView {
   appealUsed: boolean
   pendingChange: boolean
   actions: KpiActions
+  /** The KPI's own deadline and when it was completed (the done claim), both YYYY-MM-DD in Karachi. */
+  dueDate: string
+  completedAt: string | null
+  late: boolean
+  commentCount: number
 }
+
+export interface KpiCommentView { id: string; author: PersonRef; body: string; createdAt: string }
 
 export interface GoalView {
   id: string

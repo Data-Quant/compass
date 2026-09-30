@@ -1,4 +1,6 @@
 import type { KpiStatus, Prisma } from '@prisma/client'
+import type { MonthKey } from '../calendar'
+import { kpiDeadline } from '../deadline'
 import { prisma } from '@/lib/db'
 import { availableActions } from '../actions'
 import { formatMonthKey, formatQuarterKey, parseMonthKey, parseQuarterKey, quarterMonths } from '../calendar'
@@ -23,6 +25,7 @@ export const kpiRowInclude = {
   assignees: true,
   files: { orderBy: { createdAt: 'asc' } },
   changes: { where: { status: 'PENDING' }, select: { id: true } },
+  _count: { select: { comments: true } },
 } as const satisfies Prisma.KpiInclude
 const goalInclude = { kpis: { include: kpiRowInclude, orderBy: { createdAt: 'asc' } } } as const satisfies Prisma.KpiGoalInclude
 
@@ -43,6 +46,8 @@ export interface KpiRowLike {
   decidedById: string | null
   decidedAt: Date | null
   decisionNote: string | null
+  dueDate: Date | null
+  _count?: { comments: number }
   assignees: Array<{ userId: string }>
   files: Array<{ id: string; fileName: string; size: number; contentType: string }>
   changes: Array<{ id: string }>
@@ -55,7 +60,7 @@ export function isVisibleKpi(kpi: { status: string; lockedSnapshot: unknown }): 
   return !(kpi.status === 'CANCELLED' && kpi.lockedSnapshot === null)
 }
 
-export function toKpiView(ctx: KpiContext, actor: KpiActor, goal: GoalRefLike, kpi: KpiRowLike, month: MonthDeadlinesLike, now: Date): KpiView {
+export function toKpiView(ctx: KpiContext, actor: KpiActor, goal: GoalRefLike, kpi: KpiRowLike, month: MonthDeadlinesLike & MonthKey, now: Date): KpiView {
   const status = effectiveStatus(kpi.status, month, now)
   const ref: KpiRef = {
     scope: goal.scope, setterId: goal.setterId, departmentKey: goal.departmentKey,
@@ -80,10 +85,12 @@ export function toKpiView(ctx: KpiContext, actor: KpiActor, goal: GoalRefLike, k
     appealUsed: kpi.appealUsedAt !== null,
     pendingChange,
     actions: availableActions(actor, ref, { status, appealUsedAt: kpi.appealUsedAt, decidedById: kpi.decidedById }, month, now, pendingChange),
+    ...kpiDeadline({ dueDate: kpi.dueDate, claimedAt: kpi.claimedAt, status }, month),
+    commentCount: kpi._count?.comments ?? 0,
   }
 }
 
-function toGoalView(ctx: KpiContext, actor: KpiActor, goal: GoalRowLike, month: MonthDeadlinesLike, now: Date): GoalView {
+function toGoalView(ctx: KpiContext, actor: KpiActor, goal: GoalRowLike, month: MonthDeadlinesLike & MonthKey, now: Date): GoalView {
   return {
     id: goal.id,
     scope: goal.scope,

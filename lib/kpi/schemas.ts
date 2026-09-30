@@ -7,6 +7,7 @@ const titleSchema = z.string().trim().min(3, 'Use at least 3 characters').max(20
 const targetSchema = z.string().trim().min(3, 'Describe a measurable target').max(500)
 const ownerIdsSchema = z.array(z.string().min(1)).min(1, 'Choose at least one owner').max(50)
 const reasonSchema = z.string().trim().min(3, 'Give a reason').max(500)
+const dueDateSchema = z.string().regex(/^d{4}-d{2}-d{2}$/, 'Use a YYYY-MM-DD date')
 export const evidenceTypeSchema = z.enum(['LINK', 'DOCUMENT', 'NUMBER', 'CLIENT_CONFIRMATION'])
 
 export const createGoalSchema = z
@@ -39,7 +40,7 @@ export const updateGoalSchema = z.discriminatedUnion('action', [
 export type UpdateGoalInput = z.infer<typeof updateGoalSchema>
 
 export const createKpiSchema = z
-  .object({ goalId: z.string().min(1), title: titleSchema, target: targetSchema, evidenceType: evidenceTypeSchema, ownerIds: ownerIdsSchema })
+  .object({ goalId: z.string().min(1), title: titleSchema, target: targetSchema, evidenceType: evidenceTypeSchema, ownerIds: ownerIdsSchema, dueDate: dueDateSchema.optional() })
   .strict()
 export type CreateKpiInput = z.infer<typeof createKpiSchema>
 
@@ -52,11 +53,15 @@ export const updateKpiSchema = z.discriminatedUnion('action', [
       target: targetSchema.optional(),
       evidenceType: evidenceTypeSchema.optional(),
       ownerIds: ownerIdsSchema.optional(),
+      dueDate: dueDateSchema.optional(),
     })
     .strict(),
   z.object({ action: z.literal('discard'), version: z.number().int().min(0) }).strict(),
 ])
 export type UpdateKpiInput = z.infer<typeof updateKpiSchema>
+
+export const commentSchema = z.object({ body: z.string().trim().min(1, 'Write a comment').max(2000) }).strict()
+export type CommentInput = z.infer<typeof commentSchema>
 
 const dateOnlySchema = z.string().refine((value) => parseCalendarDate(value) !== null, 'Use a valid YYYY-MM-DD date')
 export const deadlineDatesSchema = z
