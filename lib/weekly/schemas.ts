@@ -156,3 +156,5 @@ export const calibrationRunSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('CYCLE'), cycleId: z.string().min(1), model: runModel }).strict(),
 ])
 export type CalibrationRunInput = z.infer<typeof calibrationRunSchema>
+
+export const moreEvidenceSchema = z.object({ cycleId: z.string().min(1), evaluateeId: z.string().min(1), perspective: z.enum(['LEAD', 'UPWARD', 'PEER']) }).strict()

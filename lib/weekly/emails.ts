@@ -88,3 +88,15 @@ export function renderFormsOpenEmail(input: { name: string; appUrl: string }): {
     html: layout(input.name, [escapeHtml('Your end-of-quarter evaluation forms (C-Level, Department or HR) are open. Please complete them before the quarter closes.')], `${base(input.appUrl)}/evaluations/weekly`, 'Open the forms'),
   }
 }
+
+/** Part D: HR asked for more examples about someone; the evaluator has new questions. Nobody is named and no score is mentioned. */
+export function renderMoreEvidenceEmail(input: { name: string; count: number; appUrl: string }): { subject: string; html: string } {
+  const questions = input.count === 1 ? 'there is one new question' : `there are ${input.count} new questions`
+  return {
+    subject: `HR asked for more examples: ${plural(input.count, 'new evaluation question')}`,
+    html: layout(input.name, [
+      escapeHtml(`HR would like a few more examples from you, so ${questions} on your weekly evaluations page.`),
+      'Each takes about five minutes: describe a real situation, what the person did, and what happened.',
+    ], `${base(input.appUrl)}/evaluations/weekly`, 'Answer now'),
+  }
+}

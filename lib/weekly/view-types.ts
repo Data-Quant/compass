@@ -298,3 +298,5 @@ export interface ModelGateView {
   finishedAt: string | null
   reasons: string[]
 }
+
+export interface MoreEvidenceResponse { reopened: number; prompts: number; evaluators: number }
