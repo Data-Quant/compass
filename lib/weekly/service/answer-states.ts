@@ -58,10 +58,11 @@ function groupBy<T>(rows: readonly T[], key: (row: T) => string): Map<string, T[
 }
 
 /** Every submitted, scored-type answer (standard and follow-up) with its job, AI score, reviews and state. No answer text. */
-export async function loadAnswerRecords(filter: { cycleId?: string; responseIds?: readonly string[] }, db: Db = prisma): Promise<AnswerRecord[]> {
+export async function loadAnswerRecords(filter: { cycleId?: string; responseIds?: readonly string[]; evaluateeId?: string }, db: Db = prisma): Promise<AnswerRecord[]> {
   const prompts = await db.weeklyPrompt.findMany({
     where: {
       ...(filter.cycleId ? { cycleId: filter.cycleId } : {}),
+      ...(filter.evaluateeId ? { evaluateeId: filter.evaluateeId } : {}),
       status: 'SUBMITTED',
       kind: { not: 'COMMENT' },
       response: filter.responseIds ? { is: { id: { in: [...filter.responseIds] } } } : { isNot: null },

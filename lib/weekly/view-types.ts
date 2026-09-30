@@ -318,3 +318,34 @@ export interface StandardsUsedView {
   perspective: Perspective
   versions: Array<{ version: number; answers: number; status: 'DRAFT' | 'APPROVED' | 'RETIRED'; approvedAt: string | null }>
 }
+
+
+export interface PersonScoreAnswer {
+  responseId: string
+  evaluator: { id: string; name: string; position: string | null }
+  perspective: string
+  topic: string
+  weekIndex: number
+  submittedAt: string | null
+  state: string
+  stateLabel: string
+  aiScore: number | null
+  aiSufficiency: string | null
+  aiConfidence: string | null
+  aiRationale: string | null
+  model: string | null
+  /** The accepted score; null until HR or the 72-hour rule decides. */
+  finalScore: number | null
+}
+
+export interface PersonScoreView {
+  cycleId: string
+  person: { id: string; name: string; position: string | null; department: string | null }
+  /** Provisional score (1 to 4) from accepted answers only; the PE score itself is calculated at quarter close. */
+  provisional: {
+    score: number | null
+    byRelationship: Array<{ relationshipType: string; label: string; count: number; average: number; weight: number }>
+  }
+  answers: PersonScoreAnswer[]
+  people: Array<{ id: string; name: string; position: string | null }>
+}
