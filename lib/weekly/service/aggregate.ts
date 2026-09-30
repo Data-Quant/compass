@@ -3,6 +3,7 @@ import { buildAggregateRows, type AggregateRow, type AggregationCounts, type Com
 import type { Perspective } from '../perspectives'
 import { isConfirmedAction } from '../reviews'
 import { loadAnswerRecords } from './answer-states'
+import { classicPairKeys } from './classic-form'
 import { loadPeople } from './context'
 import type { CycleWithPeriod } from './cycles'
 import { toJson } from './db'
@@ -17,6 +18,18 @@ export function hasLeftBy(person: { payrollActive: boolean; exitDate: Date | nul
 
 const rowKey = (r: { evaluatorId: string; evaluateeId: string; questionId: string | null; leadQuestionId: string | null }) =>
   `${r.evaluatorId}|${r.evaluateeId}|${r.questionId ?? ''}|${r.leadQuestionId ?? ''}`
+
+/** Unsubmitted classic drafts on a weekly row's question. A submitted one would have made the pair keep its classic rows. */
+async function draftsUnder(tx: Prisma.TransactionClient, periodId: string, rows: readonly AggregateRow[]): Promise<string[]> {
+  const evaluateeIds = [...new Set(rows.map((r) => r.evaluateeId))]
+  if (evaluateeIds.length === 0) return []
+  const keys = new Set(rows.map(rowKey))
+  const drafts = await tx.evaluation.findMany({
+    where: { periodId, evaluateeId: { in: evaluateeIds }, source: 'MANUAL', submittedAt: null },
+    select: { id: true, evaluatorId: true, evaluateeId: true, questionId: true, leadQuestionId: true },
+  })
+  return drafts.filter((d) => keys.has(rowKey(d))).map((d) => d.id)
+}
 
 /**
  * Spec 10: replaces the period's AI_WEEKLY rows (all of them, or only `evaluateeIds`') with one row per evaluator, person and
@@ -50,31 +63,22 @@ export async function aggregateCycle(
   // Spec 10: people who left before the close get no rows. A challenge re-aggregates after the close, so it uses the close's date.
   const leaverCutoff = cycle.closedAt ?? input.now
   const left = new Set([...people.values()].filter((p) => hasLeftBy(p, leaverCutoff)).map((p) => p.id))
-  const { rows, counts } = buildAggregateRows({ scores, comments, excludedEvaluateeIds: left })
+  // Spec 13.3: a pair with a submitted classic answer in the weekly banks keeps its classic rows; its weekly evidence is not written.
+  const manualPairs = await classicPairKeys(tx, cycle.periodId)
+  const { rows, counts } = buildAggregateRows({ scores, comments, excludedEvaluateeIds: left, manualPairs })
   const run = await tx.weeklyAggregationRun.create({ data: { cycleId: cycle.id, runById: input.runById, counts: toJson(counts), drops: toJson(input.drops) } })
   await tx.evaluation.deleteMany({ where: { periodId: cycle.periodId, source: 'AI_WEEKLY', ...(scope ? { evaluateeId: { in: [...scope] } } : {}) } })
-  const evaluateeIds = [...new Set(rows.map((r) => r.evaluateeId))]
-  const existing = evaluateeIds.length === 0 ? [] : await tx.evaluation.findMany({
-    where: { periodId: cycle.periodId, evaluateeId: { in: evaluateeIds } },
-    select: { id: true, evaluatorId: true, evaluateeId: true, questionId: true, leadQuestionId: true },
-  })
-  const existingByKey = new Map(existing.map((e) => [rowKey(e), e.id]))
-  const values = (r: AggregateRow) => ({ ratingValue: r.ratingValue, textResponse: r.textResponse, submittedAt: input.now, source: 'AI_WEEKLY', aggregationRunId: run.id })
-  const fresh = rows.filter((r) => !existingByKey.has(rowKey(r)))
-  if (fresh.length > 0) {
+  const drafts = await draftsUnder(tx, cycle.periodId, rows)
+  if (drafts.length > 0) await tx.evaluation.deleteMany({ where: { id: { in: drafts } } })
+  if (rows.length > 0) {
     await tx.evaluation.createMany({
-      data: fresh.map((r) => ({ evaluatorId: r.evaluatorId, evaluateeId: r.evaluateeId, periodId: cycle.periodId, questionId: r.questionId, leadQuestionId: r.leadQuestionId, ...values(r) })),
+      data: rows.map((r) => ({
+        evaluatorId: r.evaluatorId, evaluateeId: r.evaluateeId, periodId: cycle.periodId, questionId: r.questionId, leadQuestionId: r.leadQuestionId,
+        ratingValue: r.ratingValue, textResponse: r.textResponse, submittedAt: input.now, source: 'AI_WEEKLY', aggregationRunId: run.id,
+      })),
     })
   }
-  let replacedManual = 0
-  for (const r of rows) {
-    const id = existingByKey.get(rowKey(r))
-    if (!id) continue
-    // A classic row for the same evaluator, person and question (e.g. a draft from before the cycle) is taken over.
-    await tx.evaluation.update({ where: { id }, data: values(r) })
-    replacedManual += 1
-  }
-  const finalCounts: AggregationCounts = { ...counts, replacedManual }
+  const finalCounts: AggregationCounts = { ...counts, clearedClassicDrafts: drafts.length }
   await tx.weeklyAggregationRun.update({ where: { id: run.id }, data: { counts: toJson(finalCounts) } })
   return { runId: run.id, counts: finalCounts }
 }

@@ -17,26 +17,41 @@ export interface AggregationCounts {
   skippedNoQuestion: number
   /** People who left before close: no PE score. */
   excludedEvaluatees: number
-  /** Rows the classic form had left for the same evaluator, person and question, taken over by the weekly row. */
-  replacedManual: number
+  /** Spec 13.3: evaluator–person pairs with classic answers in the weekly banks; their weekly evidence was not written. */
+  skippedManualPairs: number
+  /** Unsubmitted classic drafts removed because a weekly row took their question (the service fills this in). */
+  clearedClassicDrafts: number
 }
 
 const rowKey = (r: { evaluatorId: string; evaluateeId: string; questionId: string | null; leadQuestionId: string | null }) =>
   `${r.evaluatorId}|${r.evaluateeId}|${r.questionId ?? ''}|${r.leadQuestionId ?? ''}`
+export const pairKey = (entry: { evaluatorId: string; evaluateeId: string }): string => `${entry.evaluatorId}|${entry.evaluateeId}`
 
 export function buildAggregateRows(input: {
   scores: readonly ConfirmedScore[]
   comments: readonly CommentAnswer[]
   excludedEvaluateeIds: ReadonlySet<string>
+  /** pairKey()s of the pairs that keep their classic rows. */
+  manualPairs: ReadonlySet<string>
 }): { rows: AggregateRow[]; counts: AggregationCounts } {
   const excluded = new Set<string>()
+  const skippedPairs = new Set<string>()
   let skippedNoQuestion = 0
+  /** Leavers and pairs with classic answers are left out. */
+  const keep = (entry: { evaluatorId: string; evaluateeId: string }): boolean => {
+    if (input.excludedEvaluateeIds.has(entry.evaluateeId)) {
+      excluded.add(entry.evaluateeId)
+      return false
+    }
+    if (input.manualPairs.has(pairKey(entry))) {
+      skippedPairs.add(pairKey(entry))
+      return false
+    }
+    return true
+  }
   const ratingGroups = new Map<string, { base: ConfirmedScore; total: number; count: number }>()
   for (const score of input.scores) {
-    if (input.excludedEvaluateeIds.has(score.evaluateeId)) {
-      excluded.add(score.evaluateeId)
-      continue
-    }
+    if (!keep(score)) continue
     if (!score.questionId && !score.leadQuestionId) {
       skippedNoQuestion += 1
       continue
@@ -47,10 +62,7 @@ export function buildAggregateRows(input: {
   }
   const commentGroups = new Map<string, { base: CommentAnswer; texts: string[] }>()
   for (const comment of input.comments) {
-    if (input.excludedEvaluateeIds.has(comment.evaluateeId)) {
-      excluded.add(comment.evaluateeId)
-      continue
-    }
+    if (!keep(comment)) continue
     const text = comment.text.trim()
     if (!text) continue
     const key = rowKey({ ...comment, leadQuestionId: null })
@@ -70,7 +82,7 @@ export function buildAggregateRows(input: {
     rows,
     counts: {
       ratingRows: ratingRows.length, commentRows: commentRows.length, evaluatees: new Set(rows.map((r) => r.evaluateeId)).size,
-      skippedNoQuestion, excludedEvaluatees: excluded.size, replacedManual: 0,
+      skippedNoQuestion, excludedEvaluatees: excluded.size, skippedManualPairs: skippedPairs.size, clearedClassicDrafts: 0,
     },
   }
 }
