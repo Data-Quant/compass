@@ -160,3 +160,11 @@ test('HR sees last month’s results and downloads the quarter export', async ({
   expect(exported.status()).toBe(200)
   expect(exported.headers()['content-type']).toContain('spreadsheetml')
 })
+
+test('HR sees each lead’s claim history with their first-decision rejection rate', async ({ page }) => {
+  await login(page, 'kpie-hr')
+  await page.goto('/admin/kpis')
+  await page.getByRole('tab', { name: 'Lead history' }).click()
+  // Earlier in this file E2E Lead's "Signed proposals" was rejected at its first decision, then verified on appeal.
+  await expect(page.getByRole('row', { name: /E2E Lead/ })).toContainText('1 of 1 (100%)')
+})
