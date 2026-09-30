@@ -1,4 +1,5 @@
 // JSON-safe types shared by routes and client components. Dates are ISO strings.
+import type { CalibrationSummary } from './calibration-rules'
 import type { AggregationCounts } from './aggregation'
 import type { EvaluatorAnswerStatus } from './answer-rules'
 import type { Perspective } from './perspectives'
@@ -247,3 +248,39 @@ export interface CalibrationItemView {
   updatedAt: string
 }
 export interface CalibrationItemsResponse { items: CalibrationItemView[]; active: number; needed: number; topics: CalibrationTopicOption[] }
+
+export type CalibrationRunStatusValue = 'RUNNING' | 'DONE' | 'FAILED'
+export interface CalibrationRunRow {
+  id: string
+  kind: 'SET' | 'CYCLE'
+  cycleId: string | null
+  cycleName: string | null
+  model: string
+  promptVersion: string
+  status: CalibrationRunStatusValue
+  itemCount: number
+  completed: number
+  startedBy: string
+  createdAt: string
+  finishedAt: string | null
+  /** Stored when the run ends; the detail view fills in the agreement so far for a running run. */
+  summary: CalibrationSummary | null
+  costUsd: number | null
+  /** Calibration-set runs that finished: whether the model passes the trust gate. */
+  gate: { passed: boolean; reasons: string[] } | null
+}
+export interface CalibrationRunsResponse { runs: CalibrationRunRow[] }
+export interface CalibrationResultView {
+  id: string
+  label: string
+  topic: string
+  target: { sufficiency: SufficiencyValue; score: number | null }
+  ai: { sufficiency: SufficiencyValue; score: number | null; confidence: string | null; rationale: string | null } | null
+  exact: boolean | null
+  withinOne: boolean | null
+  error: string | null
+  latencyMs: number
+  completed: boolean
+}
+export interface CalibrationRunDetailResponse { run: CalibrationRunRow; results: CalibrationResultView[] }
+export interface CalibrationProgressView { runId: string; status: CalibrationRunStatusValue; completed: number; itemCount: number; busy: boolean }

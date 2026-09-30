@@ -148,3 +148,10 @@ export const calibrationItemUpdateSchema = z
     if (value.op === 'edit') judgementMatches(value, ctx)
   })
 export type CalibrationItemUpdate = z.infer<typeof calibrationItemUpdateSchema>
+
+const runModel = z.string().trim().min(1, 'Enter a model id').max(200)
+export const calibrationRunSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('SET'), model: runModel }).strict(),
+  z.object({ kind: z.literal('CYCLE'), cycleId: z.string().min(1), model: runModel }).strict(),
+])
+export type CalibrationRunInput = z.infer<typeof calibrationRunSchema>
