@@ -208,3 +208,19 @@ export interface MyChallengeResponse { available: boolean; periodName: string | 
 export interface ChallengeRow extends ChallengeView { evaluatee: PersonRef; resolvedBy: string | null }
 export interface ChallengesResponse { cycleId: string; deadline: string | null; challenges: ChallengeRow[] }
 export interface ChallengeDetailResponse { challenge: ChallengeRow; overallScore: number | null; answers: ReviewAnswerView[] }
+
+export interface ModelPriceView { model: string; inputPerMillion: number; outputPerMillion: number }
+export interface AiSettingsResponse {
+  /** HR's choice; null means the deployment default (FIREWORKS_MODEL). */
+  activeModel: string | null
+  envModel: string | null
+  /** The model that scores answers right now; null without an API key. */
+  effectiveModel: string | null
+  apiKeyConfigured: boolean
+  standInForced: boolean
+  /** The test tools are on, so calibration runs may use the stand-in. */
+  standInAvailable: boolean
+  prices: ModelPriceView[]
+  updatedAt: string | null
+  updatedBy: string | null
+}

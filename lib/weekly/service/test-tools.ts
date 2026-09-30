@@ -1,10 +1,11 @@
 import { prisma } from '@/lib/db'
-import { modelFor, type ModelChoice } from '../ai/configured'
+import type { ModelChoice } from '../ai/configured'
 import { fakeModel } from '../ai/model'
 import { effectiveWeek, totalWeeks } from '../calendar'
 import { syntheticAnswer, syntheticComment } from '../content/synthetic'
 import { areWeeklyTestToolsEnabled } from '../flag'
 import { loadAnswerRecords } from './answer-states'
+import { resolveActiveModel } from './ai-settings'
 import { recordAudit } from './audit'
 import { approveProfile } from './content'
 import { assertHr, type WeeklyActor } from './context'
@@ -84,7 +85,8 @@ export async function scoreNow(actor: WeeklyActor, cycleId: string, choice: Mode
   assertTestTools(actor)
   await loadCycle(cycleId)
   const responses = await prisma.weeklyResponse.findMany({ where: { prompt: { cycleId, kind: { not: 'COMMENT' } } }, select: { id: true } })
-  const summary = await runScoring({ model: modelFor(choice), budgetMs: SCORE_NOW_BUDGET_MS, responseIds: responses.map((r) => r.id) })
+  const model = choice === 'stand-in' ? fakeModel() : await resolveActiveModel()
+  const summary = await runScoring({ model, budgetMs: SCORE_NOW_BUDGET_MS, responseIds: responses.map((r) => r.id) })
   await recordAudit(prisma, { cycleId, actorId: actor.id, actorRole: 'HR', action: 'TEST_SCORE_NOW', objectType: 'WeeklyCycle', objectId: cycleId, after: { ...summary, model: choice } })
   return summary
 }

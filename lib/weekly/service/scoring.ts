@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
-import { configuredModel } from '../ai/configured'
 import { ModelError, type ModelResult, type StructuredModel } from '../ai/model'
 import { scoreOnce } from '../ai/score-once'
 import { DEFAULT_FOLLOW_UP, SCORING_PROMPT_VERSION, type FinalScore, type ScoreFlag } from '../ai/scoring-prompt'
@@ -10,6 +9,7 @@ import { parseProfileLevels } from '../profile'
 import { isSensitive } from '../review-rules'
 import { looksSensitive } from '../sensitive'
 import { isNearDuplicate } from '../similarity'
+import { resolveActiveModel } from './ai-settings'
 import { redactorFor } from './anonymise'
 import { lockResponse, toJson } from './db'
 import { requestFollowUp } from './follow-ups'
@@ -216,10 +216,11 @@ export async function runScoring(input: {
   return { ...counts, remaining }
 }
 
-/** Runs after the response has been sent (Next.js `after`): scores one answer now, retrying briefly. Never throws. */
-export async function scoreResponseSoon(responseId: string, model: StructuredModel | null = configuredModel()): Promise<void> {
+/** Runs after the response has been sent (Next.js `after`): scores one answer now with the active model, retrying briefly. Never throws. */
+export async function scoreResponseSoon(responseId: string, model?: StructuredModel | null): Promise<void> {
   try {
-    await runScoring({ model, budgetMs: INLINE_BUDGET_MS, responseIds: [responseId], limit: MAX_ATTEMPTS, concurrency: 1, waitForRetries: true })
+    const chosen = model !== undefined ? model : await resolveActiveModel()
+    await runScoring({ model: chosen, budgetMs: INLINE_BUDGET_MS, responseIds: [responseId], limit: MAX_ATTEMPTS, concurrency: 1, waitForRetries: true })
   } catch (error) {
     console.error('[weekly] scoring after submit failed', { responseId, error })
   }

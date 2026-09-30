@@ -1,6 +1,6 @@
 import type { StructuredModel } from '../ai/model'
-import { configuredModel } from '../ai/configured'
 import { karachiWeekday, questionWeekCount, totalWeeks, weekIndexAt } from '../calendar'
+import { resolveActiveModel } from './ai-settings'
 import { findRunningCycle } from './cycles'
 import { autoAcceptDue } from './decisions'
 import { formsOpenFor } from './forms'
@@ -67,7 +67,7 @@ export async function runWeeklyDailyJob(
 ): Promise<WeeklyDailyResult> {
   const cycle = await findRunningCycle()
   if (!cycle) return { cycleId: null, week: null, released: null, emails: null, scoring: null, autoAccepted: 0, digests: null }
-  const model = options.model !== undefined ? options.model : configuredModel()
+  const model = options.model !== undefined ? options.model : await resolveActiveModel()
   // Advances in real time from `now`, so leases stay honest during a long run and tests stay deterministic.
   const started = Date.now()
   const clock = () => new Date(now.getTime() + (Date.now() - started))

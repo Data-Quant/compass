@@ -38,8 +38,3 @@ export function calibrationModelFor(modelId: string, env: Env = process.env, fet
   if (modelId === FAKE_MODEL_NAME) return areWeeklyTestToolsEnabled(env) ? fakeModel() : null
   return fireworksModelFor(modelId, env, fetcher)
 }
-
-/** HR's preview "Score now" can pick the stand-in explicitly (the caller has already checked the test tools). */
-export function modelFor(choice: ModelChoice): StructuredModel | null {
-  return choice === 'stand-in' ? fakeModel() : configuredModel()
-}

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isValidModelId } from './calibration-rules'
 import { MAX_FIELD_CHARS } from './answer-rules'
 import { parseWeekOneMonday } from './calendar'
 import { profileLevelsSchema } from './profile'
@@ -101,3 +102,12 @@ export const challengeActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('resolve'), outcome: z.enum(['UPHELD', 'NOT_UPHELD']), resolution: z.string().trim().min(10, 'Write at least 10 characters').max(3000) }).strict(),
 ])
 export type ChallengeActionInput = z.infer<typeof challengeActionSchema>
+
+const modelIdSchema = z.string().trim().refine(isValidModelId, 'Use a Fireworks model id such as accounts/fireworks/models/llama-v3p1-70b-instruct')
+const priceValue = z.number().finite().min(0, 'Prices cannot be negative').max(1000)
+export const aiSettingsSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('set-active'), model: modelIdSchema.nullable() }).strict(),
+  z.object({ action: z.literal('set-price'), model: modelIdSchema, inputPerMillion: priceValue, outputPerMillion: priceValue }).strict(),
+  z.object({ action: z.literal('remove-price'), model: z.string().trim().min(1).max(200) }).strict(),
+])
+export type AiSettingsInput = z.infer<typeof aiSettingsSchema>

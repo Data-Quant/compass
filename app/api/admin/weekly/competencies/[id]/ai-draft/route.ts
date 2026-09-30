@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { configuredModel } from '@/lib/weekly/ai/configured'
+import { resolveActiveModel } from '@/lib/weekly/service/ai-settings'
 import { guardWeeklyMutation, requireWeeklySession } from '@/lib/weekly/http'
 import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
 import { draftTopicWithAi } from '@/lib/weekly/service/ai-drafting'
@@ -15,7 +15,7 @@ export async function POST(request: NextRequest, context: Context) {
     const user = await requireWeeklySession({ admin: true })
     await guardWeeklyMutation(request, user.id)
     const { id } = await context.params
-    return NextResponse.json({ success: true, ...(await draftTopicWithAi(actorFromUser(user), id, configuredModel())) })
+    return NextResponse.json({ success: true, ...(await draftTopicWithAi(actorFromUser(user), id, await resolveActiveModel())) })
   } catch (error) {
     return weeklyErrorResponse(error)
   }
