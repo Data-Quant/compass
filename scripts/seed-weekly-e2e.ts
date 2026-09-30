@@ -53,6 +53,10 @@ async function main(): Promise<void> {
   if (!password || password.length < 12) throw new Error('Set KPI_FIXTURE_PASSWORD (at least 12 characters)')
   const db = new PrismaClient()
   try {
+    await db.weeklyCalibrationResult.deleteMany()
+    await db.weeklyCalibrationRun.deleteMany()
+    await db.weeklyCalibrationItem.deleteMany()
+    await db.weeklyAiSettings.deleteMany()
     await db.weeklyScoreReview.deleteMany()
     await db.weeklyAiScore.deleteMany()
     await db.weeklyScoringJob.deleteMany()
