@@ -49,10 +49,11 @@ export function ReviewTab() {
       <div className="flex flex-wrap gap-2" role="group" aria-label="Show answers">
         {FILTERS.map((f) => (
           <Button key={f.value} size="sm" variant={filter === f.value ? 'default' : 'outline'} aria-pressed={filter === f.value} onClick={() => setFilter(f.value)}>
-            {f.label} ({data?.counts[f.value] ?? 0})
+            {f.label}{data ? ` (${data.counts[f.value]})` : ''}
           </Button>
         ))}
       </div>
+      {!data && <p className="text-sm text-muted-foreground">Loading answers…</p>}
       {data && data.total > data.items.length && <p className="text-sm text-muted-foreground">Showing the oldest {data.items.length} of {data.total}.</p>}
       {data && data.items.length === 0 && <p className="text-sm text-muted-foreground">Nothing here.</p>}
       <div className="space-y-4">

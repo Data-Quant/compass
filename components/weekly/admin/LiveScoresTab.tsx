@@ -91,13 +91,14 @@ export function LiveScoresTab() {
       <div className="flex flex-wrap items-center gap-3">
         <CyclePicker cycles={cycles} cycleId={cycleId} onChange={setCycleId} />
         <Select value={personId} onValueChange={setPersonId}>
-          <SelectTrigger className="w-72" aria-label="Person"><SelectValue placeholder="Choose a person" /></SelectTrigger>
+          <SelectTrigger className="w-72" aria-label="Person"><SelectValue placeholder={people.length === 0 ? 'Loading people…' : 'Choose a person'} /></SelectTrigger>
           <SelectContent>{people.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
         </Select>
         <span className="text-xs text-muted-foreground">Updates every few seconds. Scores belong to the person the answers are about.</span>
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
       {!personId && <p className="text-sm text-muted-foreground">Choose a person to watch their answers being scored.</p>}
+      {personId && !data && !error && <p className="text-sm text-muted-foreground">Loading scores…</p>}
       {data && (
         <>
           <ScoreCard data={data} />
