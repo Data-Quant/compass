@@ -110,7 +110,7 @@ test('the live demo: HR asks a pair now, the lead answers, the AI scores it and 
   await page.getByRole('combobox', { name: 'Evaluator' }).click()
   await page.getByRole('option', { name: 'E2E Weekly Lead' }).click()
   await page.getByRole('combobox', { name: 'About' }).click()
-  await page.getByRole('option', { name: 'E2E Weekly Ana' }).click()
+  await page.getByRole('option', { name: 'E2E Weekly Ana · As their lead' }).click()
   await page.getByRole('button', { name: 'Ask this pair now' }).click()
   await expect(page.getByText(/questions asked/)).toBeVisible()
   await page.getByRole('combobox', { name: 'Open inbox as' }).click()
@@ -131,8 +131,9 @@ test('the live demo: HR asks a pair now, the lead answers, the AI scores it and 
   await expect(fromLead.getByText(/confidence|Not enough evidence/)).toBeVisible()
 
   await page.getByRole('tab', { name: 'Test tools' }).click()
-  await page.getByRole('button', { name: 'Accept answers due now' }).click()
-  await expect(page.getByText(/scores accepted/)).toBeVisible()
+  // Uncalibrated scores wait for HR; settling decides every one, as HR would on the Review tab.
+  await page.getByRole('button', { name: 'Settle everything for close' }).click()
+  await expect(page.getByText(/accepted,/)).toBeVisible()
   await page.getByRole('tab', { name: 'Live scores' }).click()
   await expect(page.getByText('Running score for E2E Weekly Ana')).toBeVisible()
   // The running score ("3.00 / 4") appears once an accepted answer counts; the page refreshes itself.

@@ -16,7 +16,7 @@ import { submitAnswer } from './inbox'
 import { requestMoreEvidence } from './more-evidence'
 import type { WeeklySendMail } from './notifications'
 import { releaseWeek, syncSlots, type ReleaseSummary } from './release'
-import { perspectiveOf, type Perspective } from '../perspectives'
+import { PERSPECTIVE_LABELS, perspectiveOf, type Perspective } from '../perspectives'
 import { runScoring, type ScoringRunSummary } from './scoring'
 
 /** Preview-only: refuses unless WEEKLY_TEST_TOOLS is on, and only for HR. */
@@ -151,4 +151,18 @@ export async function askPairNow(
   }
   await recordAudit(prisma, { cycleId, actorId: actor.id, actorRole: 'HR', action: 'TEST_ASK_PAIR', objectType: 'User', objectId: pair.evaluateeId, after: { ...pair, prompts } })
   return { prompts }
+}
+
+export interface PairOption { evaluatee: { id: string; name: string }; perspective: string }
+
+/** Who an evaluator really evaluates this quarter, for the pair picker. Syncs the quarter's topics first, as asking does. */
+export async function pairsFor(actor: WeeklyActor, cycleId: string, evaluatorId: string, now: Date): Promise<PairOption[]> {
+  assertTestTools(actor)
+  const cycle = await loadCycle(cycleId)
+  const mine = (await syncSlots(cycle, now)).pairs.filter((p) => p.evaluatorId === evaluatorId)
+  const people = await prisma.user.findMany({ where: { id: { in: mine.map((p) => p.evaluateeId) } }, select: { id: true, name: true } })
+  const names = new Map(people.map((u) => [u.id, u.name]))
+  return mine
+    .map((p) => ({ evaluatee: { id: p.evaluateeId, name: names.get(p.evaluateeId) ?? 'Unknown person' }, perspective: PERSPECTIVE_LABELS[p.perspective] }))
+    .sort((a, b) => a.evaluatee.name.localeCompare(b.evaluatee.name))
 }

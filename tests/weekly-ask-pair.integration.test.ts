@@ -2,7 +2,7 @@ import test, { after, afterEach, before, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { prisma } from '../lib/db'
 import { WeeklyError } from '../lib/weekly/service/errors'
-import { askPairNow } from '../lib/weekly/service/test-tools'
+import { askPairNow, pairsFor } from '../lib/weekly/service/test-tools'
 import { at, HR_ACTOR, startedCycle } from './helpers/weekly-fixtures'
 import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST } from './helpers/weekly-test-db'
 
@@ -39,4 +39,10 @@ test('only mapped pairs, only with test tools on', WEEKLY_DB_TEST, async () => {
   await assert.rejects(askPairNow(HR_ACTOR, cycleId, { evaluatorId: W.cara.id, evaluateeId: W.lead.id }, at(1)), isError(409))
   delete process.env.WEEKLY_TEST_TOOLS
   await assert.rejects(askPairNow(HR_ACTOR, cycleId, { evaluatorId: W.ana.id, evaluateeId: W.lead.id }, at(1)), isError(404))
+})
+
+test('the pair picker lists only the people an evaluator really evaluates, with the relationship', WEEKLY_DB_TEST, async () => {
+  const pairs = await pairsFor(HR_ACTOR, cycleId, W.ana.id, at(1))
+  assert.deepEqual(pairs.map((p) => [p.evaluatee.name, p.perspective]).sort(), [[W.ben.name, 'As a peer'], [W.lead.name, 'As a member of their team']].sort())
+  assert.deepEqual(await pairsFor(HR_ACTOR, cycleId, W.cara.id, at(1)), [])
 })
