@@ -110,7 +110,7 @@ export function GoalEditor({ goals, editable, ownerOptions, defaultOwnerIds, emp
         <KpiFormDialog
           initial={
             kpiDialog.kpi
-              ? { title: kpiDialog.kpi.title, target: kpiDialog.kpi.target, evidenceType: kpiDialog.kpi.evidenceType, ownerIds: kpiDialog.kpi.owners.map((o) => o.id) }
+              ? { title: kpiDialog.kpi.title, target: kpiDialog.kpi.target, evidenceType: kpiDialog.kpi.evidenceType, ownerIds: kpiDialog.kpi.owners.map((o) => o.id), dueDate: kpiDialog.kpi.dueDate }
               : undefined
           }
           ownerOptions={ownerOptions}

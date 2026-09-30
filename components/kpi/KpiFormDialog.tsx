@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { EVIDENCE_LABELS } from '@/lib/kpi/format'
 import type { EvidenceTypeValue, PersonRef } from '@/lib/kpi/view-types'
 
-export interface KpiFormValues { title: string; target: string; evidenceType: EvidenceTypeValue; ownerIds: string[] }
+export interface KpiFormValues { title: string; target: string; evidenceType: EvidenceTypeValue; ownerIds: string[]; dueDate?: string }
 
 interface KpiFormDialogProps {
   initial?: KpiFormValues
@@ -42,7 +42,8 @@ export function KpiFormDialog({ initial, ownerOptions, currentOwners = [], defau
     if (values.ownerIds.length === 0) return
     setSaving(true)
     try {
-      await onSubmit({ ...values, title: values.title.trim(), target: values.target.trim() })
+      const { dueDate, ...rest } = values
+      await onSubmit({ ...rest, title: values.title.trim(), target: values.target.trim(), ...(dueDate ? { dueDate } : {}) })
     } finally {
       setSaving(false)
     }
@@ -66,6 +67,11 @@ export function KpiFormDialog({ initial, ownerOptions, currentOwners = [], defau
             minLength={3}
             maxLength={500}
           />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="kpi-due">Deadline</Label>
+          <Input id="kpi-due" type="date" value={values.dueDate ?? ''} onChange={(e) => setValues({ ...values, dueDate: e.target.value })} />
+          <p className="text-xs text-muted-foreground">A day in this KPI's month. Leave it empty for the last day of the month.</p>
         </div>
         <div className="space-y-2">
           <Label htmlFor="kpi-evidence">Proof of completion</Label>
