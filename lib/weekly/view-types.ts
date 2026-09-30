@@ -226,6 +226,7 @@ export interface AiSettingsResponse {
   prices: ModelPriceView[]
   updatedAt: string | null
   updatedBy: string | null
+  gates: ModelGateView[]
 }
 
 export type SufficiencyValue = 'SUFFICIENT' | 'INSUFFICIENT'
@@ -284,3 +285,14 @@ export interface CalibrationResultView {
 }
 export interface CalibrationRunDetailResponse { run: CalibrationRunRow; results: CalibrationResultView[] }
 export interface CalibrationProgressView { runId: string; status: CalibrationRunStatusValue; completed: number; itemCount: number; busy: boolean }
+
+export interface ModelGateView {
+  model: string
+  trusted: boolean
+  /** The preview's test double: always trusted. */
+  standIn: boolean
+  /** The latest completed calibration-set run on the current scoring prompt. */
+  runId: string | null
+  finishedAt: string | null
+  reasons: string[]
+}

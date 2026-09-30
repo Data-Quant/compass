@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db'
 import { perspectiveOf, type Perspective } from '../perspectives'
 import { answerState, type AnswerState, type ReviewReason } from '../review-rules'
 import { latestByResponse } from '../reviews'
+import { trustedModelNames } from './calibration-gate'
 import type { Db } from './db'
 
 export interface AnswerRecord {
@@ -79,6 +80,8 @@ export async function loadAnswerRecords(filter: { cycleId?: string; responseIds?
   const scores = await db.weeklyAiScore.findMany({ where: { responseId: { in: ids } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] })
   const reviews = await db.weeklyScoreReview.findMany({ where: { responseId: { in: ids } } })
   const corrected = await correctedResponseIds(ids, db)
+  // D10: worked out once per call; a score from an untrusted model is never auto-accepted.
+  const trusted = await trustedModelNames(db)
   const jobByRevision = new Map(jobs.map((j) => [`${j.responseId}|${j.revision}`, j]))
   const scoresByResponse = groupBy(scores, (s) => s.responseId)
   const latest = latestByResponse(reviews)
@@ -96,6 +99,7 @@ export async function loadAnswerRecords(filter: { cycleId?: string; responseIds?
       aiScore: aiScore && { createdAt: aiScore.createdAt, sufficiency: aiScore.sufficiency, score: aiScore.score, confidence: aiScore.confidence, flags: jsonStrings(aiScore.flags) },
       latestReview,
       humanReviewedBefore: human.has(response.id) || corrected.has(response.id),
+      modelTrusted: aiScore ? trusted.has(aiScore.model) : true,
     })
     return [{
       responseId: response.id, promptId: p.id, cycleId: p.cycleId, slotId: p.slotId, competencyId: p.slot?.competencyId ?? null,

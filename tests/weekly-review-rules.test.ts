@@ -97,3 +97,12 @@ test('a sensitive thin answer goes to HR instead of a follow-up; a corrected ans
   assert.deepEqual(answerState({ ...base, aiScore: thinPraise }), { state: 'INSUFFICIENT', reasons: [] })
   assert.deepEqual(answerState({ ...base, aiScore: thinPraise, humanReviewedBefore: true }), { state: 'NEEDS_REVIEW', reasons: ['CORRECTED'] })
 })
+
+test('a sufficient score from a model that has not passed calibration always goes to HR; thin answers still get their follow-up', () => {
+  const base: AnswerStateInput = { responseId: unsampled, job: { status: 'DONE', updatedAt: t(1) }, aiScore: { ...ai(), createdAt: t(1) }, latestReview: null, humanReviewedBefore: false }
+  assert.deepEqual(answerState({ ...base, modelTrusted: false }), { state: 'NEEDS_REVIEW', reasons: ['UNCALIBRATED_MODEL'] })
+  assert.deepEqual(answerState({ ...base, modelTrusted: true }), { state: 'AUTO_ACCEPT_PENDING', reasons: [] })
+  assert.equal(answerState({ ...base, modelTrusted: false, aiScore: { ...ai({ sufficiency: 'INSUFFICIENT', score: null }), createdAt: t(1) } }).state, 'INSUFFICIENT')
+  assert.deepEqual(answerState({ ...base, modelTrusted: false, aiScore: { ...ai({ score: 4 }), createdAt: t(1) } }).reasons, ['EXTREME_SCORE', 'UNCALIBRATED_MODEL'])
+  assert.equal(answerState({ ...base, modelTrusted: false, latestReview: { createdAt: t(2) } }).state, 'DECIDED')
+})

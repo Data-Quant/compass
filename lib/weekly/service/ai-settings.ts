@@ -7,6 +7,7 @@ import { areWeeklyTestToolsEnabled } from '../flag'
 import type { AiSettingsInput } from '../schemas'
 import type { AiSettingsResponse } from '../view-types'
 import { recordAudit } from './audit'
+import { gateView, latestSetRuns } from './calibration-gate'
 import { assertHr, loadPeople, type WeeklyActor } from './context'
 import { toJson, type Db } from './db'
 
@@ -27,18 +28,22 @@ export async function resolveActiveModel(env: Env = process.env, fetcher?: typeo
 
 export async function aiSettingsView(actor: WeeklyActor, env: Env = process.env): Promise<AiSettingsResponse> {
   assertHr(actor)
-  const settings = await loadAiSettings()
+  const [settings, latest] = await Promise.all([loadAiSettings(), latestSetRuns()])
+  const effective = activeModelName(settings.activeModel, env)
+  const models = [effective, settings.activeModel, env.FIREWORKS_MODEL || null, ...Object.keys(settings.prices), ...latest.keys()]
+  const gates = [...new Set(models.filter((m): m is string => Boolean(m)))].map((model) => gateView(model, latest))
   const updatedBy = settings.updatedById ? (await loadPeople([settings.updatedById])).get(settings.updatedById)?.name ?? null : null
   return {
     activeModel: settings.activeModel,
     envModel: env.FIREWORKS_MODEL || null,
-    effectiveModel: activeModelName(settings.activeModel, env),
+    effectiveModel: effective,
     apiKeyConfigured: Boolean(env.FIREWORKS_API_KEY),
     standInForced: standInForced(env),
     standInAvailable: areWeeklyTestToolsEnabled(env),
     prices: Object.entries(settings.prices).map(([model, price]) => ({ model, ...price })).sort((a, b) => a.model.localeCompare(b.model)),
     updatedAt: settings.updatedAt?.toISOString() ?? null,
     updatedBy,
+    gates,
   }
 }
 

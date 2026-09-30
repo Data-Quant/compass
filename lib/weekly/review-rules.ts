@@ -4,7 +4,7 @@ export const AUTO_ACCEPT_MS = 72 * 60 * 60 * 1000
 export const SAMPLE_RATE = 0.1
 export const MAX_FOLLOW_UPS = 2
 
-export type ReviewReason = 'EXTREME_SCORE' | 'LOW_CONFIDENCE' | 'FLAGGED' | 'SAMPLED' | 'SCORING_FAILED' | 'CORRECTED'
+export type ReviewReason = 'EXTREME_SCORE' | 'LOW_CONFIDENCE' | 'FLAGGED' | 'SAMPLED' | 'SCORING_FAILED' | 'CORRECTED' | 'UNCALIBRATED_MODEL'
 export const REVIEW_REASON_LABELS: Record<ReviewReason, string> = {
   EXTREME_SCORE: 'Proposed 1 or 4',
   LOW_CONFIDENCE: 'Low confidence',
@@ -12,6 +12,7 @@ export const REVIEW_REASON_LABELS: Record<ReviewReason, string> = {
   SAMPLED: 'Random check',
   SCORING_FAILED: 'Scoring failed — score by hand',
   CORRECTED: 'Re-scored after an HR correction',
+  UNCALIBRATED_MODEL: 'Model not yet calibrated',
 }
 
 export type AnswerState = 'SCORING' | 'FAILED' | 'INSUFFICIENT' | 'NEEDS_REVIEW' | 'AUTO_ACCEPT_PENDING' | 'DECIDED'
@@ -33,6 +34,8 @@ export interface AnswerStateInput {
   latestReview: { createdAt: Date } | null
   /** Any review by a person (not the 72-hour auto-accept), or an HR correction of the text, at any time. */
   humanReviewedBefore: boolean
+  /** D10: false when the model that scored the answer has not passed calibration. Defaults to true. */
+  modelTrusted?: boolean
 }
 
 /** The random 10% calibration sample, stable per answer. */
@@ -73,7 +76,13 @@ export function answerState(input: AnswerStateInput): { state: AnswerState; reas
   if (input.job && (input.job.status === 'PENDING' || input.job.status === 'RUNNING')) return { state: 'SCORING', reasons: [] }
   if (input.aiScore) {
     if (decidedAfter(input.aiScore.createdAt)) return { state: 'DECIDED', reasons: [] }
-    const reasons: ReviewReason[] = [...reviewReasons(input.aiScore, input.responseId), ...(input.humanReviewedBefore ? (['CORRECTED'] as const) : [])]
+    // A sufficient score from an uncalibrated model is never auto-accepted; a thin answer still gets its follow-up.
+    const uncalibrated = input.aiScore.sufficiency === 'SUFFICIENT' && input.modelTrusted === false
+    const reasons: ReviewReason[] = [
+      ...reviewReasons(input.aiScore, input.responseId),
+      ...(input.humanReviewedBefore ? (['CORRECTED'] as const) : []),
+      ...(uncalibrated ? (['UNCALIBRATED_MODEL'] as const) : []),
+    ]
     if (input.aiScore.sufficiency !== 'SUFFICIENT' && reasons.length === 0) return { state: 'INSUFFICIENT', reasons: [] }
     return { state: reasons.length > 0 ? 'NEEDS_REVIEW' : 'AUTO_ACCEPT_PENDING', reasons }
   }
