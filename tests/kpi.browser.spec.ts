@@ -15,37 +15,45 @@ async function login(page: Page, id: string): Promise<void> {
   expect(result.status()).toBe(200)
 }
 
-async function addGoalAndKpi(page: Page, goal: string, kpi: string, target: string): Promise<void> {
-  await page.getByRole('button', { name: 'New goal' }).click()
-  await page.getByLabel('Goal', { exact: true }).fill(goal)
-  await page.getByRole('button', { name: 'Save goal' }).click()
-  await expect(page.getByRole('heading', { name: goal })).toBeVisible()
-  await page.getByRole('button', { name: 'Add KPI' }).click()
-  await page.getByLabel('KPI', { exact: true }).fill(kpi)
-  await page.getByLabel('Measurable target').fill(target)
+/** Types a goal and one KPI straight into the table (no dialogs), choosing owners when given. */
+async function addGoalAndKpi(page: Page, goal: string, kpi: string, target: string, options: { owners?: string[]; deadline?: string } = {}): Promise<void> {
+  await page.getByRole('textbox', { name: 'New goal' }).fill(goal)
+  await page.getByRole('textbox', { name: 'New goal' }).press('Enter')
+  await expect(page.getByRole('button', { name: `Edit Goal ${goal}` })).toBeVisible()
+  await page.getByRole('textbox', { name: `New KPI for ${goal}` }).fill(kpi)
+  await page.getByRole('textbox', { name: `New KPI target for ${goal}` }).fill(target)
+  if (options.deadline) await page.getByLabel(`New KPI deadline for ${goal}`).fill(options.deadline)
+  if (options.owners) {
+    await page.getByRole('button', { name: `New KPI owners for ${goal}` }).click()
+    for (const owner of options.owners) await page.getByRole('checkbox', { name: owner }).check()
+    await page.keyboard.press('Escape')
+  }
+  await page.getByRole('button', { name: `Add KPI to ${goal}` }).click()
+  await expect(page.getByRole('button', { name: `Edit KPI title for ${kpi}` })).toBeVisible()
 }
 
 test('a lead sets a team KPI and its owner sees it', async ({ page, browser }) => {
   await login(page, 'kpie-lead')
   await page.goto('/kpis')
   await page.getByRole('tab', { name: 'Team' }).click()
-  await addGoalAndKpi(page, 'Grow the pipeline', 'Qualified outreach', 'Send 40 qualified outreach emails')
-  await page.getByRole('checkbox', { name: 'E2E Member' }).check()
   // Its own deadline: the 28th of the current month (Karachi).
   const month = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 7)
-  await page.getByLabel('Deadline').fill(`${month}-28`)
-  await page.getByRole('button', { name: 'Save KPI' }).click()
-  await expect(page.getByText('Qualified outreach', { exact: true })).toBeVisible()
+  await addGoalAndKpi(page, 'Grow the pipeline', 'Qualified outreach', 'Send 40 qualified outreach emails', { owners: ['E2E Member'], deadline: `${month}-28` })
   await expect(page.getByText('Draft', { exact: true })).toBeVisible()
   for (const header of ['Goal', 'KPI', 'Deadline', 'Notes', 'Completed', 'Verified']) await expect(page.getByRole('columnheader', { name: header, exact: true })).toBeVisible()
-  await expect(page.getByRole('row', { name: /Qualified outreach/ })).toContainText('28 ')
+  await expect(page.getByLabel('Deadline for Qualified outreach')).toHaveValue(`${month}-28`)
+  // Cells edit in place: the target is changed by typing into it.
+  await page.getByRole('button', { name: 'Edit Target for Qualified outreach' }).click()
+  await page.getByRole('textbox', { name: 'Target for Qualified outreach' }).fill('Send 45 qualified outreach emails')
+  await page.getByRole('textbox', { name: 'Target for Qualified outreach' }).press('Enter')
+  await expect(page.getByRole('button', { name: 'Edit Target for Qualified outreach' })).toHaveText('Send 45 qualified outreach emails')
 
   const context = await browser.newContext({ baseURL: base })
   const member = await context.newPage()
   await login(member, 'kpie-member')
   await member.goto('/kpis')
   await expect(member.getByText('Qualified outreach', { exact: true })).toBeVisible()
-  await expect(member.getByText('Target: Send 40 qualified outreach emails')).toBeVisible()
+  await expect(member.getByText('Target: Send 45 qualified outreach emails')).toBeVisible()
   await member.getByRole('button', { name: 'Comments on Qualified outreach' }).click()
   await member.getByLabel('Add a comment').fill('I will share the tracker on Friday.')
   await member.getByRole('button', { name: 'Post comment' }).click()
@@ -62,10 +70,9 @@ test('a Partner sets department KPIs owned by the department’s leads and JPs',
   await login(page, 'kpie-partner')
   await page.goto('/kpis/department')
   await addGoalAndKpi(page, 'Ship the Q4 roadmap', 'Release v2', 'v2 live for all clients')
-  await expect(page.getByRole('checkbox', { name: 'E2E Lead' })).toBeChecked()
-  await expect(page.getByRole('checkbox', { name: 'E2E JP' })).toBeChecked()
-  await page.getByRole('button', { name: 'Save KPI' }).click()
-  await expect(page.getByText('Release v2', { exact: true })).toBeVisible()
+  // Department KPIs default to all of the department's leads and JPs.
+  await expect(page.getByRole('button', { name: 'Owners of Release v2' })).toContainText('E2E JP')
+  await expect(page.getByRole('button', { name: 'Owners of Release v2' })).toContainText('E2E Lead')
 })
 
 test('people without a role cannot use team, department-setting or verification APIs', async ({ page }) => {
@@ -189,7 +196,7 @@ test('a lead on a locked month is pointed at the next month to set KPIs', async 
   await page.getByRole('tab', { name: 'Team' }).click()
   // Last month is locked in the seed: no New goal there, but a way forward.
   await page.getByRole('button', { name: 'Previous' }).click()
-  await expect(page.getByRole('button', { name: 'New goal' })).toHaveCount(0)
+  await expect(page.getByRole('textbox', { name: 'New goal' })).toHaveCount(0)
   await page.getByRole('button', { name: /^Set KPIs for / }).click()
-  await expect(page.getByRole('button', { name: 'New goal' })).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'New goal' })).toBeVisible()
 })

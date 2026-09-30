@@ -6,15 +6,22 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { isHttpUrl } from '@/lib/kpi/evidence'
 import { EVIDENCE_LABELS } from '@/lib/kpi/format'
-import type { KpiView } from '@/lib/kpi/view-types'
+import type { EvidenceTypeValue, KpiView, PersonRef } from '@/lib/kpi/view-types'
 import { ChangeRequestDialog } from './ChangeRequestDialog'
 import { ClaimDialog } from './ClaimDialog'
 import { EvidenceFiles } from './EvidenceFiles'
+import { InlineDate, InlineOwners, InlineSelect, InlineText, type SaveResult } from './inline/InlineCells'
 import { KpiCommentsDialog } from './KpiCommentsDialog'
 import { KpiStatusBadge } from './KpiStatusBadge'
 import { RespondDialog } from './RespondDialog'
 
 type OpenDialog = 'claim' | 'reply' | 'appeal' | 'change' | 'comments' | null
+
+export interface KpiPatch { title?: string; target?: string; evidenceType?: EvidenceTypeValue; ownerIds?: string[]; dueDate?: string }
+/** Inline editing of a draft KPI's cells, for its setter before the month locks. */
+export interface KpiRowEdit { ownerOptions: PersonRef[]; save: (patch: KpiPatch) => SaveResult }
+
+export const EVIDENCE_OPTIONS = (Object.keys(EVIDENCE_LABELS) as EvidenceTypeValue[]).map((value) => ({ value, label: EVIDENCE_LABELS[value] }))
 
 interface KpiRowProps {
   kpi: KpiView
@@ -24,6 +31,7 @@ interface KpiRowProps {
   draftActions?: ReactNode
   /** Reloads after an action. Without it the row is read-only (comments stay open to everyone who can see it). */
   onChanged?: () => Promise<void>
+  edit?: KpiRowEdit
 }
 
 const day = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })
@@ -52,7 +60,21 @@ function NotesCell({ kpi, onComments }: { kpi: KpiView; onComments: () => void }
   )
 }
 
-export function KpiRow({ kpi, goalCell, draftActions, onChanged }: KpiRowProps) {
+function EditableKpiCell({ kpi, edit }: { kpi: KpiView; edit: KpiRowEdit }) {
+  return (
+    <div className="space-y-1">
+      <InlineText value={kpi.title} label={`KPI title for ${kpi.title}`} maxLength={200} className="font-medium" onSave={(title) => edit.save({ title })} />
+      <InlineText value={kpi.target} label={`Target for ${kpi.title}`} placeholder="Measurable target" maxLength={500} className="text-sm" onSave={(target) => edit.save({ target })} />
+      <div className="flex flex-wrap items-center gap-2">
+        <InlineSelect value={kpi.evidenceType} label={`Proof for ${kpi.title}`} options={EVIDENCE_OPTIONS} onSave={(evidenceType) => edit.save({ evidenceType })} />
+        <InlineOwners value={kpi.owners} options={edit.ownerOptions} label={`Owners of ${kpi.title}`} onSave={(ownerIds) => edit.save({ ownerIds })} />
+      </div>
+    </div>
+  )
+}
+
+export function KpiRow({ kpi, goalCell, draftActions, onChanged, edit }: KpiRowProps) {
+  const inline = edit && kpi.status === 'DRAFT' ? edit : null
   const [dialog, setDialog] = useState<OpenDialog>(null)
   const actions = onChanged ? kpi.actions : null
   const close = () => setDialog(null)
@@ -64,13 +86,21 @@ export function KpiRow({ kpi, goalCell, draftActions, onChanged }: KpiRowProps) 
     <tr className="border-t align-top">
       {goalCell}
       <td className="space-y-1 p-3">
-        <p className="font-medium">{kpi.title}</p>
-        <p className="text-sm">Target: {kpi.target}</p>
-        <p className="text-xs text-muted-foreground">
-          Proof: {EVIDENCE_LABELS[kpi.evidenceType]} · Owners: {kpi.owners.map((owner) => owner.name).join(', ')}
-        </p>
+        {inline ? (
+          <EditableKpiCell kpi={kpi} edit={inline} />
+        ) : (
+          <>
+            <p className="font-medium">{kpi.title}</p>
+            <p className="text-sm">Target: {kpi.target}</p>
+            <p className="text-xs text-muted-foreground">
+              Proof: {EVIDENCE_LABELS[kpi.evidenceType]} · Owners: {kpi.owners.map((owner) => owner.name).join(', ')}
+            </p>
+          </>
+        )}
       </td>
-      <td className="whitespace-nowrap p-3 text-sm">{day(kpi.dueDate)}</td>
+      <td className="whitespace-nowrap p-3 text-sm">
+        {inline ? <InlineDate value={kpi.dueDate} label={`Deadline for ${kpi.title}`} onSave={(dueDate) => inline.save({ dueDate })} /> : day(kpi.dueDate)}
+      </td>
       <td className="p-3"><NotesCell kpi={kpi} onComments={() => setDialog('comments')} /></td>
       <td className="whitespace-nowrap p-3 text-sm">
         {kpi.completedAt ? (
