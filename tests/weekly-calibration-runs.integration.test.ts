@@ -1,6 +1,7 @@
 import test, { after, afterEach, before, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { prisma } from '../lib/db'
+import { MODEL_TIMEOUT_MS } from '../lib/weekly/ai/fireworks'
 import { fakeModel } from '../lib/weekly/ai/model'
 import { gateResult, parseSummary } from '../lib/weekly/calibration-rules'
 import { updateAiSettings } from '../lib/weekly/service/ai-settings'
@@ -147,4 +148,43 @@ test('re-scoring a quarter compares the AI with HR’s final decisions, removes 
   }
   assert.deepEqual([await prisma.weeklyAiScore.count(), await prisma.weeklyScoreReview.count()], before)
   assert.equal((await calibrationRunsView(HR_ACTOR)).runs[0].gate, null)
+})
+
+test('a worker whose lease ran out never clears the lease another worker took, and its lease covers a retried call', WEEKLY_DB_TEST, async () => {
+  await seedCalibrationSet(prisma, { count: 8, competencyId })
+  const { runId } = await startCalibrationRun(HR_ACTOR, { kind: 'SET', model: SCRIPTED_MODEL }, at(1))
+  const inner = scriptedModel()
+  const theirs = at(1, 5)
+  let seenLease: Date | null = null
+  const model = {
+    ...inner,
+    async complete(request: Parameters<typeof inner.complete>[0]) {
+      if (!seenLease) {
+        seenLease = (await prisma.weeklyCalibrationRun.findUniqueOrThrow({ where: { id: runId } })).leaseUntil
+        await prisma.weeklyCalibrationRun.update({ where: { id: runId }, data: { leaseUntil: theirs } })
+      }
+      await new Promise((resolve) => setTimeout(resolve, 150))
+      return inner.complete(request)
+    },
+  }
+  const budget = 100
+  const progress = await advanceCalibrationRun(runId, budget, { resolveModel: () => model, clock: () => at(1, 3) })
+  assert.equal(progress.status, 'RUNNING')
+  assert.ok(seenLease && (seenLease as Date).getTime() >= at(1, 3).getTime() + budget + 2 * MODEL_TIMEOUT_MS, 'the lease outlasts a call and its retry')
+  assert.deepEqual((await prisma.weeklyCalibrationRun.findUniqueOrThrow({ where: { id: runId } })).leaseUntil, theirs)
+})
+
+test('a run scores the text its items had when it started, not later edits', WEEKLY_DB_TEST, async () => {
+  const [id] = await seedCalibrationSet(prisma, { count: 1, competencyId, markerFor: () => 3 })
+  const before = await prisma.weeklyCalibrationItem.findUniqueOrThrow({ where: { id } })
+  const { runId } = await startCalibrationRun(HR_ACTOR, { kind: 'SET', model: SCRIPTED_MODEL }, at(1))
+  await updateCalibrationItem(HR_ACTOR, id, {
+    op: 'edit', competencyId, question: 'A different question?', situation: 'Rewritten [L1] weaker example.', action: before.action, result: before.result, hrSufficiency: 'SUFFICIENT', hrScore: 1,
+  }, at(1, 2))
+  const model = scriptedModel()
+  assert.equal((await advance(runId, model)).status, 'DONE')
+  const sent = JSON.parse(model.requests[0].user) as { questionAsked: string; answer: { situation: string } }
+  assert.deepEqual([sent.questionAsked, sent.answer.situation], [before.question, before.situation])
+  const result = await prisma.weeklyCalibrationResult.findFirstOrThrow({ where: { runId } })
+  assert.deepEqual([result.score, result.targetScore], [3, before.hrScore])
 })

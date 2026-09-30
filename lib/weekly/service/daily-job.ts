@@ -26,8 +26,8 @@ export interface WeeklyDailyResult {
 const MONDAY = 1
 const THURSDAY = 4
 /**
- * The cron has 300 s: live scoring gets 120 s and calibration runs 45 s, each with one model call (45 s) possibly
- * still in flight, which leaves room for the release, question emails and digests.
+ * The cron has 300 s: live scoring gets 120 s with one model call (45 s) possibly still in flight, then the digests go
+ * out; calibration runs come last with 45 s, so a slow model can only cut calibration short, never the day's emails.
  */
 export const DAILY_SCORING_BUDGET_MS = 120_000
 
@@ -60,8 +60,8 @@ async function releaseAndAnnounce(cycleId: string, week: number, now: Date, send
 /**
  * 04:00 UTC = 09:00 Karachi. Accepts what is due first, so slots satisfied since yesterday are not asked again;
  * then the release and question emails, so a slow scoring backlog can never delay or cut off the week's questions;
- * then scores what is waiting; then continues calibration runs; then the digests, which include today's follow-ups,
- * scoring failures and the month's length check. Calibration runs continue even when no quarter is running.
+ * then scores what is waiting; then the digests, which include today's follow-ups, scoring failures and the month's
+ * length check; then continues calibration runs, last. Calibration runs continue even when no quarter is running.
  * Uses the calendar week only; the preview's simulated week never affects production.
  */
 export async function runWeeklyDailyJob(
@@ -82,7 +82,6 @@ export async function runWeeklyDailyJob(
   const total = totalWeeks(cycle.weekOneStartsOn, cycle.period.endDate)
   const { released, emails } = week >= 1 && week <= total ? await releaseAndAnnounce(cycle.id, week, now, send, appUrl) : { released: null, emails: null }
   const scoring = await runScoring({ model, budgetMs: DAILY_SCORING_BUDGET_MS, clock })
-  const calibration = await calibrate()
   const messages = [
     ...(await followUpMessages(cycle.id, now, appUrl)),
     ...(await scoringFailedMessages(cycle.id, now, appUrl)),
@@ -91,5 +90,6 @@ export async function runWeeklyDailyJob(
     ...(await lengthBiasMessages(cycle, now, appUrl)),
   ]
   const digests = messages.length > 0 ? await deliverOnce(messages, send) : null
+  const calibration = await calibrate()
   return { cycleId: cycle.id, week, released, emails, scoring, autoAccepted: accepted, digests, calibration }
 }

@@ -2729,6 +2729,11 @@ model WeeklyCalibrationResult {
   competencyId      String
   targetSufficiency String
   targetScore       Float?
+  question          String?
+  situation         String?
+  action            String?
+  result            String?
+  shortfall         String?
   sufficiency       String?
   score             Int?
   confidence        String?

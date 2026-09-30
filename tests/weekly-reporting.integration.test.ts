@@ -113,3 +113,19 @@ test('the daily job continues running calibration runs, with or without a quarte
   const withoutCycle = await runWeeklyDailyJob(mailbox().send, APP, at(1, 4), { resolveModel: () => model })
   assert.deepEqual([withoutCycle.cycleId, withoutCycle.calibration.map((p) => [p.runId, p.status])], [null, [[second.runId, 'DONE']]])
 })
+
+test('the daily job sends its digests before it continues calibration, so a slow model cannot cost the day’s emails', WEEKLY_DB_TEST, async () => {
+  process.env.WEEKLY_SEND_EMAILS = 'true'
+  const prompts = new Map((await releaseWeekOne(cycleId)).map((p) => [p.evaluatorId, p]))
+  await answerAs(prompts.get(W.lead.id)!, LONG)
+  await answerAs(prompts.get(W.ben.id)!, SHORT)
+  await runScoring({ model: fakeModel(), budgetMs: 30_000, clock: () => scoringClock() })
+  await seedCalibrationSet(prisma, { count: 1, competencyId: await approvedTopicId(prisma) })
+  await startCalibrationRun(HR_ACTOR, { kind: 'SET', model: SCRIPTED_MODEL }, at(3))
+  const mail = mailbox()
+  const inner = scriptedModel()
+  let sentBeforeCalibration = -1
+  const model = { ...inner, async complete(request: Parameters<typeof inner.complete>[0]) { if (sentBeforeCalibration < 0) sentBeforeCalibration = mail.sent.filter((m) => m.to === 'wkt-hr@example.test' && m.subject.startsWith('Weekly evaluations: length–score check')).length; return inner.complete(request) } }
+  await runWeeklyDailyJob(mail.send, APP, at(4), { model: fakeModel(), resolveModel: () => model })
+  assert.equal(sentBeforeCalibration, 1)
+})

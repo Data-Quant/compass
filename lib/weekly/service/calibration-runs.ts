@@ -27,6 +27,8 @@ import { WeeklyError } from './errors'
 export const CALIBRATION_BUDGET_MS = 50_000
 export const CALIBRATION_DAILY_BUDGET_MS = 45_000
 export const CALIBRATION_CONCURRENCY = 4
+/** Room for database work after the last call; the lease also covers a call and its retry after the budget. */
+export const CALIBRATION_LEASE_MARGIN_MS = 10_000
 export const INVALID_RUN_MODEL = 'Use a Fireworks model id such as accounts/fireworks/models/llama-v3p1-70b-instruct (the stand-in only on the preview)'
 export const MODEL_UNAVAILABLE = 'The model is not available: FIREWORKS_API_KEY is not set, or the stand-in was used outside the preview'
 
@@ -35,13 +37,17 @@ export interface AdvanceOptions { resolveModel?: ModelResolver; clock?: () => Da
 export type CalibrationProgress = CalibrationProgressView
 
 type Target = Pick<WeeklyCalibrationResult, 'itemId' | 'responseId' | 'competencyId' | 'targetSufficiency' | 'targetScore'>
+  & Partial<Pick<WeeklyCalibrationResult, 'question' | 'situation' | 'action' | 'result' | 'shortfall'>>
 interface Prepared { input: ScoringInput; systemFlags: ScoreFlag[]; profileId: string }
 type Outcome = Prisma.WeeklyCalibrationResultUpdateManyMutationInput
 
-/** Every active item, HR's judgement as the target. Targets are copied into the run, so later edits do not change it. */
+/** Every active item, HR's judgement as the target. Targets and text are copied into the run, so later edits do not change it. */
 async function setTargets(): Promise<Target[]> {
   const items = await prisma.weeklyCalibrationItem.findMany({ where: { archivedAt: null }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] })
-  return items.map((i) => ({ itemId: i.id, responseId: null, competencyId: i.competencyId, targetSufficiency: i.hrSufficiency, targetScore: i.hrScore }))
+  return items.map((i) => ({
+    itemId: i.id, responseId: null, competencyId: i.competencyId, targetSufficiency: i.hrSufficiency, targetScore: i.hrScore,
+    question: i.question, situation: i.situation, action: i.action, result: i.result, shortfall: i.shortfall,
+  }))
 }
 
 /** Spec 8.6: the quarter's decided answers, the final decision as the target. Excluded answers are skipped. */
@@ -94,10 +100,10 @@ async function approvedProfile(competencyId: string) {
   return competency && profile && levels ? { competency, profile, levels } : null
 }
 
-/** A calibration item is stored anonymised. */
-async function itemInput(itemId: string, competencyId: string): Promise<Prepared | string> {
-  const [item, approved] = await Promise.all([prisma.weeklyCalibrationItem.findUnique({ where: { id: itemId } }), approvedProfile(competencyId)])
-  if (!item) return 'ITEM_MISSING'
+/** A calibration item is stored anonymised; the run scores the copy it took at the start. */
+async function itemInput(item: WeeklyCalibrationResult): Promise<Prepared | string> {
+  if (item.question === null || item.situation === null || item.action === null || item.result === null) return 'ITEM_MISSING'
+  const approved = await approvedProfile(item.competencyId)
   if (!approved) return 'NO_APPROVED_PROFILE'
   const answer = { situation: item.situation, action: item.action, result: item.result, shortfall: item.shortfall ?? '' }
   return {
@@ -133,23 +139,23 @@ async function responseInput(responseId: string, competencyId: string): Promise<
   }
 }
 
-/** A model error is retried once; the second failure is the item's error. */
-async function withOneRetry(attempt: () => Promise<ScoredOnce>): Promise<ScoredOnce> {
+/** A model error is retried once while the budget lasts; the second failure is the item's error. */
+async function withOneRetry(attempt: () => Promise<ScoredOnce>, canRetry: () => boolean): Promise<ScoredOnce> {
   try {
     return await attempt()
   } catch (error) {
-    if (error instanceof ModelError && error.retryable) return attempt()
+    if (error instanceof ModelError && error.retryable && canRetry()) return attempt()
     throw error
   }
 }
 
-async function outcomeFor(result: WeeklyCalibrationResult, model: StructuredModel): Promise<Outcome> {
+async function outcomeFor(result: WeeklyCalibrationResult, model: StructuredModel, canRetry: () => boolean): Promise<Outcome> {
   const prepared = result.itemId
-    ? await itemInput(result.itemId, result.competencyId)
+    ? await itemInput(result)
     : result.responseId ? await responseInput(result.responseId, result.competencyId) : 'NOTHING_TO_SCORE'
   if (typeof prepared === 'string') return { error: prepared }
   try {
-    const { final, usage, latencyMs } = await withOneRetry(() => scoreOnce(model, prepared.input, prepared.systemFlags))
+    const { final, usage, latencyMs } = await withOneRetry(() => scoreOnce(model, prepared.input, prepared.systemFlags), canRetry)
     return {
       sufficiency: final.sufficiency, score: final.score, confidence: final.confidence, rationale: final.rationale,
       flags: toJson(final.flags), evidenceQuotes: toJson(final.evidenceQuotes), profileId: prepared.profileId,
@@ -196,15 +202,18 @@ async function progressOf(runId: string): Promise<CalibrationProgress> {
 /**
  * Scores the run's pending items, CALIBRATION_CONCURRENCY at a time, until none are left or the budget is spent.
  * One worker at a time: the lease is taken with a guarded update, so the after() started with the run, HR's "Continue"
- * and the daily job never score the same item twice.
+ * and the daily job never score the same item twice. The lease outlasts the budget by a call and its retry, and a worker
+ * releases only its own lease, so a late worker never frees one another worker holds.
  */
 export async function advanceCalibrationRun(runId: string, budgetMs: number, options: AdvanceOptions = {}): Promise<CalibrationProgress> {
   const clock = options.clock ?? (() => new Date())
   const started = Date.now()
   const now = clock()
+  const leaseUntil = new Date(now.getTime() + budgetMs + 2 * MODEL_TIMEOUT_MS + CALIBRATION_LEASE_MARGIN_MS)
+  const canRetry = () => Date.now() - started < budgetMs
   const claimed = await prisma.weeklyCalibrationRun.updateMany({
     where: { id: runId, status: 'RUNNING', OR: [{ leaseUntil: null }, { leaseUntil: { lt: now } }] },
-    data: { leaseUntil: new Date(now.getTime() + budgetMs + MODEL_TIMEOUT_MS) },
+    data: { leaseUntil },
   })
   if (claimed.count === 0) {
     const progress = await progressOf(runId)
@@ -221,14 +230,14 @@ export async function advanceCalibrationRun(runId: string, budgetMs: number, opt
       const pending = await prisma.weeklyCalibrationResult.findMany({ where: { runId, completedAt: null }, orderBy: { id: 'asc' }, take: CALIBRATION_CONCURRENCY })
       if (pending.length === 0) break
       await Promise.all(pending.map(async (result) => {
-        const outcome = await outcomeFor(result, model)
+        const outcome = await outcomeFor(result, model, canRetry)
         await prisma.weeklyCalibrationResult.updateMany({ where: { id: result.id, completedAt: null }, data: { ...outcome, completedAt: clock() } })
       }))
     }
     if ((await prisma.weeklyCalibrationResult.count({ where: { runId, completedAt: null } })) === 0) await finish(run, clock(), null)
     return await progressOf(runId)
   } finally {
-    await prisma.weeklyCalibrationRun.updateMany({ where: { id: runId, status: 'RUNNING' }, data: { leaseUntil: null } })
+    await prisma.weeklyCalibrationRun.updateMany({ where: { id: runId, status: 'RUNNING', leaseUntil }, data: { leaseUntil: null } })
   }
 }
 
