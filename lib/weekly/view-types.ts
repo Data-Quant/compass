@@ -150,6 +150,8 @@ export interface ReviewAnswerView {
   basedOn: { aiScoreId: string | null; reviewId: string | null }
   autoAcceptAt: string | null
   jobError: string | null
+  /** The calibration item copied from this answer, if HR added it to the set. */
+  calibrationItemId: string | null
 }
 export interface ReviewQueueResponse { cycleId: string; filter: ReviewFilter; counts: Record<ReviewFilter, number>; total: number; items: ReviewAnswerView[] }
 
@@ -224,3 +226,24 @@ export interface AiSettingsResponse {
   updatedAt: string | null
   updatedBy: string | null
 }
+
+export type SufficiencyValue = 'SUFFICIENT' | 'INSUFFICIENT'
+export interface CalibrationTopicOption { id: string; name: string; perspective: Perspective }
+export interface CalibrationItemView {
+  id: string
+  competencyId: string
+  topic: string
+  perspective: Perspective
+  question: string
+  situation: string
+  action: string
+  result: string
+  shortfall: string | null
+  hrSufficiency: SufficiencyValue
+  hrScore: number | null
+  note: string | null
+  fromAnswer: boolean
+  archived: boolean
+  updatedAt: string
+}
+export interface CalibrationItemsResponse { items: CalibrationItemView[]; active: number; needed: number; topics: CalibrationTopicOption[] }

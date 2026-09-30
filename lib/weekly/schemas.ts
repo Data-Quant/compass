@@ -111,3 +111,40 @@ export const aiSettingsSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('remove-price'), model: z.string().trim().min(1).max(200) }).strict(),
 ])
 export type AiSettingsInput = z.infer<typeof aiSettingsSchema>
+
+type JudgementLike = { hrSufficiency: 'SUFFICIENT' | 'INSUFFICIENT'; hrScore: number | null }
+function judgementMatches(value: JudgementLike, ctx: z.RefinementCtx): void {
+  if (value.hrSufficiency === 'SUFFICIENT' && value.hrScore === null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['hrScore'], message: 'Give your score (1–4)' })
+  if (value.hrSufficiency === 'INSUFFICIENT' && value.hrScore !== null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['hrScore'], message: 'An answer without enough evidence has no score' })
+}
+const itemBox = z.string().trim().min(1, 'Required').max(MAX_FIELD_CHARS)
+const itemFields = {
+  competencyId: z.string().min(1),
+  question: z.string().trim().min(10, 'Write the question').max(600),
+  situation: itemBox,
+  action: itemBox,
+  result: itemBox,
+  shortfall: z.string().trim().max(MAX_FIELD_CHARS).nullable().optional(),
+}
+const judgementFields = {
+  hrSufficiency: z.enum(['SUFFICIENT', 'INSUFFICIENT']),
+  hrScore: z.number().int().min(1).max(4).nullable(),
+  note: z.string().trim().max(1000).nullable().optional(),
+}
+export const calibrationItemSchema = z
+  .discriminatedUnion('source', [
+    z.object({ source: z.literal('answer'), responseId: z.string().min(1), ...judgementFields }).strict(),
+    z.object({ source: z.literal('manual'), ...itemFields, ...judgementFields }).strict(),
+  ])
+  .superRefine(judgementMatches)
+export type CalibrationItemInput = z.infer<typeof calibrationItemSchema>
+export const calibrationItemUpdateSchema = z
+  .discriminatedUnion('op', [
+    z.object({ op: z.literal('edit'), ...itemFields, ...judgementFields }).strict(),
+    z.object({ op: z.literal('archive') }).strict(),
+    z.object({ op: z.literal('restore') }).strict(),
+  ])
+  .superRefine((value, ctx) => {
+    if (value.op === 'edit') judgementMatches(value, ctx)
+  })
+export type CalibrationItemUpdate = z.infer<typeof calibrationItemUpdateSchema>

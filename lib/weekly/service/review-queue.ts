@@ -42,6 +42,10 @@ export async function reviewViews(records: readonly AnswerRecord[]): Promise<Rev
   const byId = new Map(responses.map((r) => [r.id, r]))
   const profileIds = records.flatMap((r) => (r.aiScore ? [r.aiScore.profileId] : []))
   const versions = new Map((await prisma.weeklyProfile.findMany({ where: { id: { in: profileIds } }, select: { id: true, version: true } })).map((p) => [p.id, p.version]))
+  const inSet = new Map(
+    (await prisma.weeklyCalibrationItem.findMany({ where: { sourceResponseId: { in: records.map((r) => r.responseId) } }, select: { id: true, sourceResponseId: true } }))
+      .flatMap((item) => (item.sourceResponseId ? [[item.sourceResponseId, item.id] as const] : [])),
+  )
   const reviewerIds = records.flatMap((r) => (r.latestReview?.reviewerId ? [r.latestReview.reviewerId] : []))
   const people = await loadPeople([...records.flatMap((r) => [r.evaluatorId, r.evaluateeId]), ...reviewerIds])
   return records.flatMap((record): ReviewAnswerView[] => {
@@ -61,6 +65,7 @@ export async function reviewViews(records: readonly AnswerRecord[]): Promise<Rev
       basedOn: { aiScoreId: record.aiScore?.id ?? null, reviewId: review?.id ?? null },
       autoAcceptAt: record.state === 'AUTO_ACCEPT_PENDING' && record.aiScore ? new Date(record.aiScore.createdAt.getTime() + AUTO_ACCEPT_MS).toISOString() : null,
       jobError: record.state === 'FAILED' ? record.job?.error ?? null : null,
+      calibrationItemId: inSet.get(record.responseId) ?? null,
     }]
   })
 }
