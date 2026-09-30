@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { WeeklyMeResponse } from '@/lib/weekly/view-types'
 import { weeklyRequest } from '../weekly-api'
+import { AiModelTab } from './AiModelTab'
 import { ChallengesTab } from './ChallengesTab'
 import { CloseTab } from './CloseTab'
 import { ContentTab } from './ContentTab'
@@ -13,7 +14,7 @@ import { ReviewTab } from './ReviewTab'
 import { SetupTab } from './SetupTab'
 import { TestToolsTab } from './TestToolsTab'
 
-const TABS = ['setup', 'content', 'people', 'review', 'dashboard', 'close', 'challenges', 'test'] as const
+const TABS = ['setup', 'content', 'people', 'review', 'dashboard', 'ai', 'close', 'challenges', 'test'] as const
 type Tab = (typeof TABS)[number]
 const isTab = (value: string | null): value is Tab => value !== null && (TABS as readonly string[]).includes(value)
 
@@ -39,6 +40,7 @@ export function AdminWeeklyWorkspace() {
           <TabsTrigger value="people">People</TabsTrigger>
           <TabsTrigger value="review">Review</TabsTrigger>
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+          <TabsTrigger value="ai">AI model</TabsTrigger>
           <TabsTrigger value="close">Close quarter</TabsTrigger>
           <TabsTrigger value="challenges">Challenges</TabsTrigger>
           {testTools && <TabsTrigger value="test">Test tools</TabsTrigger>}
@@ -48,6 +50,7 @@ export function AdminWeeklyWorkspace() {
         <TabsContent value="people"><PeopleTab /></TabsContent>
         <TabsContent value="review"><ReviewTab /></TabsContent>
         <TabsContent value="dashboard"><DashboardTab /></TabsContent>
+        <TabsContent value="ai"><AiModelTab /></TabsContent>
         <TabsContent value="close"><CloseTab /></TabsContent>
         <TabsContent value="challenges"><ChallengesTab /></TabsContent>
         {testTools && <TabsContent value="test"><TestToolsTab /></TabsContent>}

@@ -12,6 +12,7 @@ import { ANSWER_STATE_LABELS, REVIEW_REASON_LABELS } from '@/lib/weekly/review-r
 import type { DecisionView, ReviewAnswerView } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest } from '../weekly-api'
 import { CorrectionDialog, DecisionDialog, type DecisionMode } from './ReviewDialogs'
+import { AddToCalibrationDialog } from './AddToCalibrationDialog'
 
 const ACTION_LABELS: Record<DecisionView['action'], string> = {
   ACCEPTED: 'Accepted', ADJUSTED: 'Score changed', MARKED_INSUFFICIENT: 'Asked for more detail', EXCLUDED: 'Excluded',
@@ -50,6 +51,7 @@ function List({ label, items }: { label: string; items: string[] }) {
 export function ReviewCard({ item, onChanged }: { item: ReviewAnswerView; onChanged: () => Promise<void> }) {
   const [mode, setMode] = useState<DecisionMode | null>(null)
   const [correcting, setCorrecting] = useState(false)
+  const [calibrating, setCalibrating] = useState(false)
   const [busy, setBusy] = useState(false)
   const ai = item.ai
   const canAccept = ai?.sufficiency === 'SUFFICIENT' && ai.score !== null && item.state !== 'DECIDED'
@@ -71,6 +73,7 @@ export function ReviewCard({ item, onChanged }: { item: ReviewAnswerView; onChan
   const done = async () => {
     setMode(null)
     setCorrecting(false)
+    setCalibrating(false)
     await onChanged()
   }
 
@@ -128,6 +131,11 @@ export function ReviewCard({ item, onChanged }: { item: ReviewAnswerView; onChan
             {item.state === 'FAILED' && (
               <Button size="sm" variant="outline" disabled={busy} onClick={() => void post(`/api/admin/weekly/review/${item.responseId}/retry`, {}, 'Scoring again')}>Retry scoring</Button>
             )}
+            {item.calibrationItemId ? (
+              <Badge variant="outline">In the calibration set</Badge>
+            ) : (
+              <Button size="sm" variant="ghost" disabled={busy || locked} onClick={() => setCalibrating(true)}>Add to calibration set</Button>
+            )}
             <Button size="sm" variant="ghost" disabled={busy || locked} onClick={() => setCorrecting(true)}>Correct text</Button>
             <Button size="sm" variant="outline" disabled={busy || locked} onClick={() => setMode('EXCLUDE')}>Exclude</Button>
             <Button size="sm" variant="outline" disabled={busy || locked} onClick={() => setMode('ASK_FOR_DETAIL')}>Ask for more detail</Button>
@@ -140,6 +148,7 @@ export function ReviewCard({ item, onChanged }: { item: ReviewAnswerView; onChan
       </Card>
       {mode && <DecisionDialog item={item} mode={mode} onClose={() => setMode(null)} onDone={done} />}
       {correcting && <CorrectionDialog item={item} onClose={() => setCorrecting(false)} onDone={done} />}
+      {calibrating && <AddToCalibrationDialog item={item} onClose={() => setCalibrating(false)} onDone={done} />}
     </article>
   )
 }
