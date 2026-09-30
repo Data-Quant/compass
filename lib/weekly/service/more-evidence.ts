@@ -20,7 +20,7 @@ const pairKey = (s: { evaluatorId: string; evaluateeId: string; relationshipType
 export async function requestMoreEvidence(
   actor: WeeklyActor,
   cycleId: string,
-  input: { evaluateeId: string; perspective: Perspective },
+  input: { evaluateeId: string; perspective: Perspective; /** Narrows the group to one evaluator (the preview's "Ask this pair now"). */ evaluatorId?: string },
   now: Date,
   send: WeeklySendMail,
   appUrl: string,
@@ -36,7 +36,10 @@ export async function requestMoreEvidence(
     const [row] = await tx.$queryRaw<Array<{ status: string }>>`SELECT status::text AS status FROM "WeeklyCycle" WHERE id = ${cycleId} FOR UPDATE`
     if (row?.status !== 'RUNNING') throw new WeeklyError(NOT_RUNNING, 409)
     const slots = (await tx.weeklySlot.findMany({
-      where: { cycleId, evaluateeId: input.evaluateeId, competency: { perspective: input.perspective }, status: { notIn: ['CANCELLED', 'SATISFIED'] } },
+      where: {
+        cycleId, evaluateeId: input.evaluateeId, ...(input.evaluatorId ? { evaluatorId: input.evaluatorId } : {}),
+        competency: { perspective: input.perspective }, status: { notIn: ['CANCELLED', 'SATISFIED'] },
+      },
       include: { competency: { include: { prompts: { where: { isActive: true }, orderBy: { variant: 'asc' } } } } },
       orderBy: { id: 'asc' },
     })).filter((slot) => live.has(pairKey(slot)))

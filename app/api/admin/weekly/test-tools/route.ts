@@ -3,7 +3,8 @@ import { guardWeeklyMutation, requireWeeklySession } from '@/lib/weekly/http'
 import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
 import { testToolSchema } from '@/lib/weekly/schemas'
 import { actorFromUser } from '@/lib/weekly/service/context'
-import { acceptDueNow, approveAllDrafts, fillSynthetic, releaseNextWeek, resetCycle, scoreNow, settleForClose } from '@/lib/weekly/service/test-tools'
+import { sendMail } from '@/lib/email'
+import { acceptDueNow, approveAllDrafts, askPairNow, fillSynthetic, releaseNextWeek, resetCycle, scoreNow, settleForClose } from '@/lib/weekly/service/test-tools'
 
 export const runtime = 'nodejs'
 // "Score now" runs for up to SCORE_NOW_BUDGET_MS plus one model call.
@@ -32,6 +33,10 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true, ...(await acceptDueNow(actor, input.cycleId, now)) })
       case 'settle-for-close':
         return NextResponse.json({ success: true, ...(await settleForClose(actor, input.cycleId, now)) })
+      case 'ask-pair': {
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || request.nextUrl.origin
+        return NextResponse.json({ success: true, ...(await askPairNow(actor, input.cycleId, { evaluatorId: input.evaluatorId, evaluateeId: input.evaluateeId }, now, sendMail, appUrl)) })
+      }
     }
   } catch (error) {
     return weeklyErrorResponse(error)

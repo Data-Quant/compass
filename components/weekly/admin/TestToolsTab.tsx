@@ -18,6 +18,7 @@ export function TestToolsTab() {
   const { cycles, cycleId, setCycleId } = useCycles()
   const [people, setPeople] = useState<ParticipantRow[]>([])
   const [personId, setPersonId] = useState('')
+  const [pair, setPair] = useState({ evaluatorId: '', evaluateeId: '' })
   const [busy, setBusy] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
   const [scoreModel, setScoreModel] = useState<'configured' | 'stand-in'>('configured')
@@ -85,6 +86,27 @@ export function TestToolsTab() {
           {cycles.length === 0 && <p className="text-sm text-muted-foreground">Create a cycle in Setup to release weeks and fill answers.</p>}
         </CardContent>
       </Card>
+      {cycleId && (
+        <Card>
+          <CardContent className="space-y-3 p-4">
+            <div>
+              <p className="font-semibold">Ask a pair now</p>
+              <p className="text-sm text-muted-foreground">For a live demo: the evaluator gets a question now on every topic about the person (they must be mapped). Watch the answers being scored on Live scores.</p>
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              <Select value={pair.evaluatorId} onValueChange={(evaluatorId) => setPair({ ...pair, evaluatorId })}>
+                <SelectTrigger className="w-60" aria-label="Evaluator"><SelectValue placeholder="Who answers" /></SelectTrigger>
+                <SelectContent>{people.map((p) => <SelectItem key={p.person.id} value={p.person.id}>{p.person.name}</SelectItem>)}</SelectContent>
+              </Select>
+              <Select value={pair.evaluateeId} onValueChange={(evaluateeId) => setPair({ ...pair, evaluateeId })}>
+                <SelectTrigger className="w-60" aria-label="About"><SelectValue placeholder="About whom" /></SelectTrigger>
+                <SelectContent>{people.map((p) => <SelectItem key={p.person.id} value={p.person.id}>{p.person.name}</SelectItem>)}</SelectContent>
+              </Select>
+              <Button disabled={busy || !pair.evaluatorId || !pair.evaluateeId} onClick={() => void run({ action: 'ask-pair', cycleId, ...pair }, (r) => `${String(r.prompts)} questions asked`)}>Ask this pair now</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       {cycleId && (
         <Card>
           <CardContent className="space-y-4 p-4">

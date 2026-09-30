@@ -13,7 +13,10 @@ import { loadCycle } from './cycles'
 import { autoAcceptDue, decideAnswer } from './decisions'
 import { WeeklyError } from './errors'
 import { submitAnswer } from './inbox'
-import { releaseWeek, type ReleaseSummary } from './release'
+import { requestMoreEvidence } from './more-evidence'
+import type { WeeklySendMail } from './notifications'
+import { releaseWeek, syncSlots, type ReleaseSummary } from './release'
+import { perspectiveOf, type Perspective } from '../perspectives'
 import { runScoring, type ScoringRunSummary } from './scoring'
 
 /** Preview-only: refuses unless WEEKLY_TEST_TOOLS is on, and only for HR. */
@@ -123,4 +126,29 @@ export async function settleForClose(actor: WeeklyActor, cycleId: string, now: D
   }
   await recordAudit(prisma, { cycleId, actorId: actor.id, actorRole: 'HR', action: 'TEST_SETTLE', objectType: 'WeeklyCycle', objectId: cycleId, after: { scored: scoring.scored, accepted, scoredByHand } })
   return { scored: scoring.scored, accepted, scoredByHand }
+}
+
+/**
+ * For live demos: gives one evaluator a question now on every topic about one person (both must be mapped), beyond
+ * the weekly cap. It is "Ask again" narrowed to a single pair; questions already open are not asked twice.
+ */
+export async function askPairNow(
+  actor: WeeklyActor,
+  cycleId: string,
+  pair: { evaluatorId: string; evaluateeId: string },
+  now: Date,
+  send: WeeklySendMail = async () => undefined,
+  appUrl = '',
+): Promise<{ prompts: number }> {
+  assertTestTools(actor)
+  const cycle = await loadCycle(cycleId)
+  const mapped = (await syncSlots(cycle, now)).pairs.filter((p) => p.evaluatorId === pair.evaluatorId && p.evaluateeId === pair.evaluateeId)
+  const perspectives = [...new Set(mapped.flatMap((p) => perspectiveOf(p.relationshipType) ?? []))] as Perspective[]
+  if (perspectives.length === 0) throw new WeeklyError('These two are not paired for weekly questions in this quarter', 409)
+  let prompts = 0
+  for (const perspective of perspectives) {
+    prompts += (await requestMoreEvidence(actor, cycleId, { ...pair, perspective }, now, send, appUrl)).prompts
+  }
+  await recordAudit(prisma, { cycleId, actorId: actor.id, actorRole: 'HR', action: 'TEST_ASK_PAIR', objectType: 'User', objectId: pair.evaluateeId, after: { ...pair, prompts } })
+  return { prompts }
 }
