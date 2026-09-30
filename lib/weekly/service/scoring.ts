@@ -3,17 +3,14 @@ import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { configuredModel } from '../ai/configured'
 import { ModelError, type ModelResult, type StructuredModel } from '../ai/model'
-import {
-  buildScoringMessages, DEFAULT_FOLLOW_UP, finalizeScore, SCORING_JSON_SCHEMA, SCORING_PROMPT_VERSION, SCORING_SCHEMA_NAME,
-  scoringOutputSchema, type FinalScore, type ScoreFlag,
-} from '../ai/scoring-prompt'
+import { scoreOnce } from '../ai/score-once'
+import { DEFAULT_FOLLOW_UP, SCORING_PROMPT_VERSION, type FinalScore, type ScoreFlag } from '../ai/scoring-prompt'
 import { perspectiveOf } from '../perspectives'
 import { parseProfileLevels } from '../profile'
-import { redactNames } from '../redact'
 import { isSensitive } from '../review-rules'
 import { looksSensitive } from '../sensitive'
 import { isNearDuplicate } from '../similarity'
-import { loadPeople } from './context'
+import { redactorFor } from './anonymise'
 import { lockResponse, toJson } from './db'
 import { requestFollowUp } from './follow-ups'
 
@@ -148,31 +145,21 @@ export async function scoreClaimedJob(job: ClaimedJob, model: StructuredModel | 
     const levels = profile ? parseProfileLevels(profile.levels) : null
     if (!profile || !levels) return await finish(job, now, { status: 'FAILED', error: 'NO_APPROVED_PROFILE' }, 'FAILED')
     if (!model) return await finish(job, now, { status: 'FAILED', error: 'NOT_CONFIGURED' }, 'FAILED')
-    const people = await loadPeople([prompt.evaluatorId, prompt.evaluateeId])
-    const evaluatee = people.get(prompt.evaluateeId)
-    const names = [
-      { name: people.get(prompt.evaluatorId)?.name ?? '', placeholder: 'the evaluator' },
-      { name: evaluatee?.name ?? '', placeholder: 'the person' },
-    ].filter((n) => n.name.trim())
-    const redact = (text: string) => redactNames(text, names)
+    const { redact, evaluatee } = await redactorFor(prompt.evaluatorId, prompt.evaluateeId)
     const answer = { situation: redact(response.situation), action: redact(response.action), result: redact(response.result), shortfall: redact(response.shortfall ?? '') }
     const others = await otherAnswers(prompt.cycleId, prompt.evaluatorId, response.id)
     const systemFlags: ScoreFlag[] = [
       ...(others.some((other) => isNearDuplicate(coreText(response), other)) ? (['POSSIBLE_COPY'] as const) : []),
       ...(looksSensitive(fullText(response)) ? (['SENSITIVE_CONTENT'] as const) : []),
     ]
-    const messages = buildScoringMessages({
+    const { final, usage } = await scoreOnce(model, {
       topic: { name: competency.name, definition: competency.definition },
       perspective: perspectiveOf(prompt.relationshipType) ?? competency.perspective,
       profile: { levels, insufficientDefinition: profile.insufficientDefinition },
       question: redact(prompt.textSnapshot),
       answer,
       evaluatee: { position: evaluatee?.position ?? null, department: evaluatee?.department ?? null },
-    })
-    const usage = await model.complete({ ...messages, schemaName: SCORING_SCHEMA_NAME, schema: SCORING_JSON_SCHEMA })
-    const parsed = scoringOutputSchema.safeParse(usage.value)
-    if (!parsed.success) throw new ModelError('INVALID_OUTPUT')
-    const final = finalizeScore(parsed.data, fullText(answer), systemFlags)
+    }, systemFlags)
     return await saveScore(job, { responseId: response.id, promptId: prompt.id, profileId: profile.id, model: model.name, final, usage }, now)
   } catch (error) {
     if (error instanceof LostLease) return 'LOST_LEASE'
