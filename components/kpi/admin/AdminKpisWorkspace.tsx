@@ -7,6 +7,7 @@ import { MonthsTab } from './MonthsTab'
 import { OverviewTab } from './OverviewTab'
 import { ResultsTab } from './ResultsTab'
 import { SettersTab } from './SettersTab'
+import { LeadHistoryTab } from './LeadHistoryTab'
 
 export function AdminKpisWorkspace() {
   return (
@@ -19,6 +20,7 @@ export function AdminKpisWorkspace() {
         <TabsList>
           <TabsTrigger value="months">Months</TabsTrigger>
           <TabsTrigger value="results">Results</TabsTrigger>
+          <TabsTrigger value="lead-history">Lead history</TabsTrigger>
           <TabsTrigger value="setters">Setters</TabsTrigger>
           <TabsTrigger value="roles">Roles</TabsTrigger>
           <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -26,6 +28,7 @@ export function AdminKpisWorkspace() {
         </TabsList>
         <TabsContent value="months"><MonthsTab /></TabsContent>
         <TabsContent value="results"><ResultsTab /></TabsContent>
+        <TabsContent value="lead-history"><LeadHistoryTab /></TabsContent>
         <TabsContent value="setters"><SettersTab /></TabsContent>
         <TabsContent value="roles"><GrantsTab /></TabsContent>
         <TabsContent value="overview"><OverviewTab /></TabsContent>

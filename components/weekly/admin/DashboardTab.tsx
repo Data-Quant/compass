@@ -8,6 +8,9 @@ import { Card, CardContent } from '@/components/ui/card'
 import { PERSPECTIVE_LABELS, PERSPECTIVE_ORDER } from '@/lib/weekly/perspectives'
 import type { CoverageView, DashboardResponse } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest } from '../weekly-api'
+import { GateBadge } from './ActiveModelCard'
+import { AskAgainButton } from './AskAgainButton'
+import { AiCostSection, StandardsSection } from './DashboardExtras'
 import { CyclePicker, useCycles } from './PeopleTab'
 
 const percent = (value: number | null) => (value === null ? '—' : `${Math.round(value * 100)}%`)
@@ -32,11 +35,11 @@ function Stat({ label, value }: { label: string; value: ReactNode }) {
   )
 }
 
-function CoverageTable({ rows }: { rows: CoverageView[] }) {
+function CoverageTable({ rows, askAgain }: { rows: CoverageView[]; askAgain?: { cycleId: string; onDone: () => Promise<void> } }) {
   if (rows.length === 0) return <p className="text-sm text-muted-foreground">Nobody.</p>
   return (
     <table className="w-full text-sm">
-      <thead><tr className="text-left text-muted-foreground"><th className="py-1">Person</th><th>Group</th><th>Topics with accepted evidence</th><th>Evaluators contributing</th></tr></thead>
+      <thead><tr className="text-left text-muted-foreground"><th className="py-1">Person</th><th>Group</th><th>Topics with accepted evidence</th><th>Evaluators contributing</th>{askAgain && <th />}</tr></thead>
       <tbody>
         {rows.map((r) => (
           <tr key={`${r.evaluatee.id}-${r.perspective}`} className="border-t">
@@ -44,6 +47,7 @@ function CoverageTable({ rows }: { rows: CoverageView[] }) {
             <td>{PERSPECTIVE_LABELS[r.perspective]}</td>
             <td>{r.satisfied} of {r.total} ({percent(r.share)})</td>
             <td>{r.evaluatorsContributing}</td>
+            {askAgain && <td className="text-right"><AskAgainButton cycleId={askAgain.cycleId} evaluatee={r.evaluatee} perspective={r.perspective} onDone={askAgain.onDone} /></td>}
           </tr>
         ))}
       </tbody>
@@ -88,6 +92,9 @@ export function DashboardTab() {
         <Stat label="Decided" value={data.queue.DECIDED} />
       </div>
       <Section title="AI quality">
+        <p className="text-sm">
+          Scoring model: {data.gate ? <><span className="font-mono">{data.gate.model}</span> <GateBadge gate={data.gate} /></> : 'none available'}
+        </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Stat label="Answers scored" value={q.scored} />
           <Stat label="Reviewed by HR" value={`${q.reviewedByHuman} (${percent(q.scored ? q.reviewedByHuman / q.scored : null)})`} />
@@ -107,9 +114,10 @@ export function DashboardTab() {
           <p className="text-sm">HR changed the AI’s score most on: {q.adjustmentsByTopic.slice(0, 5).map((t) => `${t.topic} (${t.adjusted} of ${t.reviewed})`).join(', ')}</p>
         )}
       </Section>
+      <AiCostSection cost={data.aiCost} />
       <Section title="Low evidence">
         <p className="text-sm text-muted-foreground">Under 60% of a group’s topics have accepted evidence. HR is emailed this list in week {Math.max(1, data.cycle.questionWeeks - 1)}.</p>
-        <CoverageTable rows={low} />
+        <CoverageTable rows={low} askAgain={data.cycle.status === 'RUNNING' ? { cycleId, onDone: load } : undefined} />
       </Section>
       <Section title="Evaluators">
         <table className="w-full text-sm">
@@ -136,6 +144,7 @@ export function DashboardTab() {
           </ul>
         )}
       </Section>
+      <StandardsSection standards={data.standards} />
       <details className="rounded-md border p-3">
         <summary className="cursor-pointer text-sm font-medium">Coverage for everyone</summary>
         <div className="mt-3"><CoverageTable rows={data.coverage} /></div>

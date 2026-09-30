@@ -44,6 +44,13 @@ export function QueueTab() {
                   Claimed by {item.claimedBy?.name ?? 'unknown'}
                   {item.claimedAt ? ` on ${formatKarachiDate(item.claimedAt)}` : ''} · {item.claimerStats.claims} claims, {item.claimerStats.rejections} rejected
                 </p>
+                <p className="text-xs text-muted-foreground">
+                  {item.setter.name}’s claims:{' '}
+                  {item.setterHistory.decided === 0
+                    ? 'none decided in the last three months'
+                    : `${Math.round((item.setterHistory.rejectionRate ?? 0) * 100)}% rejected at first decision (${item.setterHistory.decided} decided, last three months)`}
+                  {item.setterHistory.flagged && <Badge variant="destructive" className="ml-2">High rejection rate</Badge>}
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 <KpiStatusBadge status={item.status} />
