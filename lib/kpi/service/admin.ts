@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client'
+import { pickablePeople } from '../scope'
 import { prisma } from '@/lib/db'
 import { formatMonthKey, formatQuarterKey, parseQuarterKey, quarterMonths } from '../calendar'
 import { computeKpiPercent } from '../kpi-percent'
@@ -40,7 +41,7 @@ export async function settersOverview(): Promise<SettersResponse> {
     })),
     membersWithoutSetter: ctx.scope.membersWithoutSetter.map((id) => personRef(ctx, id)),
     members: [...ctx.scope.setterIdsByEmployee.keys()].map((id) => personRef(ctx, id)).sort(byName),
-    people: [...ctx.usersById.values()].filter((user) => user.payrollActive).map((user) => personRef(ctx, user.id)).sort(byName),
+    people: pickablePeople(ctx.usersById.values()).map((user) => personRef(ctx, user.id)).sort(byName),
   }
 }
 
@@ -78,7 +79,7 @@ export async function grantsOverview(): Promise<GrantsResponse> {
   const grants = await prisma.kpiRoleGrant.findMany({ orderBy: { createdAt: 'asc' } })
   return {
     grants: grants.map((grant) => ({ id: grant.id, user: personRef(ctx, grant.userId), role: grant.role, createdAt: grant.createdAt.toISOString() })),
-    people: [...ctx.usersById.values()].filter((user) => user.payrollActive).map((user) => personRef(ctx, user.id)).sort(byName),
+    people: pickablePeople(ctx.usersById.values()).map((user) => personRef(ctx, user.id)).sort(byName),
   }
 }
 

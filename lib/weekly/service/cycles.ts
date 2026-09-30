@@ -2,7 +2,7 @@ import type { WeeklyCycle } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import { effectiveWeek, parseWeekOneMonday, questionWeekCount, totalWeeks } from '../calendar'
-import { evaluateeExclusion } from '../eligibility'
+import { evaluateeExclusion, isOutsideRedesign } from '../eligibility'
 import { isWeeklyRelationshipType } from '../perspectives'
 import type { CreateCycleInput, UpdateCycleInput } from '../schemas'
 import type { AdminCyclesResponse, CycleSummary, ParticipantsResponse } from '../view-types'
@@ -146,7 +146,7 @@ export async function participantsView(actor: WeeklyActor, cycleId: string, now:
   ])
   const optIns = new Map(overrides.map((o) => [o.userId, o]))
   const total = totalWeeks(cycle.weekOneStartsOn, cycle.period.endDate)
-  const rows = [...people.values()].map((person) => {
+  const rows = [...people.values()].filter((person) => !isOutsideRedesign(person)).map((person) => {
     const optIn = optIns.get(person.id)
     return {
       person: personRef(people, person.id),

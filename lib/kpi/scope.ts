@@ -1,3 +1,4 @@
+import { isThreeEDepartment } from '@/lib/company-branding'
 import { normalizeDepartmentPoolKey } from '@/lib/dept-evaluation-pool'
 import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
 import { isLeadTitle } from '@/lib/pre-evaluation'
@@ -44,6 +45,11 @@ function appendTo(map: Map<string, string[]>, key: string, value: string): void 
   map.set(key, [...(map.get(key) ?? []), value])
 }
 
+/** People HR can pick in KPI admin (setters, roles): active, and never 3E, which is outside the redesign. */
+export function pickablePeople<T extends Pick<ScopeUser, 'payrollActive' | 'department'>>(users: Iterable<T>): T[] {
+  return [...users].filter((user) => user.payrollActive && !isThreeEDepartment(user.department))
+}
+
 export function buildKpiScope(
   users: readonly ScopeUser[],
   mappings: readonly ScopeMapping[],
@@ -56,14 +62,15 @@ export function buildKpiScope(
   const overrides = new Map<string, string[]>()
   for (const row of assignments) {
     // A setter who has left no longer counts, so their people surface as "without a setter".
-    if (row.setterId !== row.employeeId && byId.get(row.setterId)?.payrollActive) appendTo(overrides, row.employeeId, row.setterId)
+    const setter = byId.get(row.setterId)
+    if (row.setterId !== row.employeeId && setter?.payrollActive && !isThreeEDepartment(setter.department)) appendTo(overrides, row.employeeId, row.setterId)
   }
 
   const defaults = new Map<string, string[]>()
   for (const mapping of mappings) {
     if (mapping.relationshipType !== 'TEAM_LEAD' || mapping.evaluatorId === mapping.evaluateeId) continue
     const lead = byId.get(mapping.evaluatorId)
-    if (lead?.payrollActive && isLeadTitle(lead.position)) appendTo(defaults, mapping.evaluateeId, mapping.evaluatorId)
+    if (lead?.payrollActive && isLeadTitle(lead.position) && !isThreeEDepartment(lead.department)) appendTo(defaults, mapping.evaluateeId, mapping.evaluatorId)
   }
 
   const setterIdsByEmployee = new Map<string, string[]>()

@@ -1,3 +1,4 @@
+import { isThreeEDepartment } from '../company-branding'
 import { shouldReceiveConstantEvaluations } from '../evaluation-profile-rules'
 import { joinedTooLate } from './calendar'
 
@@ -14,7 +15,7 @@ export interface PersonFacts {
 export type ExclusionReason = 'NOT_EVALUATED' | 'INACTIVE' | 'LEFT' | 'JOINED_LATE'
 
 export const EXCLUSION_LABELS: Record<ExclusionReason, string> = {
-  NOT_EVALUATED: 'Not evaluated (named leader, Partner or 3E)',
+  NOT_EVALUATED: 'Not evaluated (named leader or Partner)',
   INACTIVE: 'No longer active',
   LEFT: 'Has left',
   JOINED_LATE: 'Joined with fewer than 6 weeks left',
@@ -26,7 +27,13 @@ function leftReason(person: PersonFacts, now: Date): ExclusionReason | null {
   return null
 }
 
+/** 3E is not part of the PE redesign: its people are never asked about, never asked, and never listed. */
+export function isOutsideRedesign(person: Pick<PersonFacts, 'department'>): boolean {
+  return isThreeEDepartment(person.department)
+}
+
 export function evaluatorExclusion(person: PersonFacts, now: Date): ExclusionReason | null {
+  if (isOutsideRedesign(person)) return 'NOT_EVALUATED'
   return leftReason(person, now)
 }
 

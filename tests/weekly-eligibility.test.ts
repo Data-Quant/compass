@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { evaluateeExclusion, evaluatorExclusion, type PersonFacts } from '../lib/weekly/eligibility'
+import { EXCLUSION_LABELS, evaluateeExclusion, evaluatorExclusion, isOutsideRedesign, type PersonFacts } from '../lib/weekly/eligibility'
 import { NO_INCOMING_EVALUATION_NAMES } from '../lib/evaluation-profile-rules'
 import { bankForPerspective, isFormRelationshipType, perspectiveForBank, perspectiveOf } from '../lib/weekly/perspectives'
 
@@ -45,4 +45,13 @@ test('late joiners are left out unless HR opts them in', () => {
   const late = person({ joiningDate: new Date('2026-11-16T05:00:00.000Z') })
   assert.equal(evaluateeExclusion(late, ctx), 'JOINED_LATE')
   assert.equal(evaluateeExclusion(late, { ...ctx, optedIn: true }), null)
+})
+
+test('3E is outside the redesign entirely: never asked, never asking, never listed', () => {
+  const threeE = person({ department: '3E' })
+  assert.equal(isOutsideRedesign(threeE), true)
+  assert.equal(isOutsideRedesign(person({ department: ' 3e ' })), true)
+  assert.equal(isOutsideRedesign(person()), false)
+  assert.equal(evaluatorExclusion(threeE, now), 'NOT_EVALUATED')
+  assert.equal(EXCLUSION_LABELS.NOT_EVALUATED.includes('3E'), false)
 })

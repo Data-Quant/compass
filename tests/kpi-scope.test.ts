@@ -1,7 +1,7 @@
 import test from 'node:test'
 import { NO_INCOMING_EVALUATION_NAMES } from '../lib/evaluation-profile-rules'
 import assert from 'node:assert/strict'
-import { buildKpiScope, departmentKeyOf, isInScheme, type ScopeUser } from '../lib/kpi/scope'
+import { buildKpiScope, departmentKeyOf, isInScheme, pickablePeople, type ScopeUser } from '../lib/kpi/scope'
 
 const user = (id: string, position: string | null, department: string | null, extra: Partial<ScopeUser> = {}): ScopeUser => ({
   id, name: id.toUpperCase(), position, department, payrollActive: true, exitDate: null, ...extra,
@@ -89,4 +89,14 @@ test('setters who have left no longer count, so their reports need a new setter'
   assert.deepEqual(scope.setterIdsByEmployee.get('b'), [])
   assert.deepEqual(scope.membersWithoutSetter, ['a', 'b'])
   assert.equal(scope.teamBySetter.has('lead'), false)
+})
+
+test('a 3E lead never sets anyone’s KPIs', () => {
+  const scope = buildKpiScope([...users, user('e3lead', 'Lead', '3E')], [...mappings, tl('e3lead', 'c')], [{ employeeId: 'a', setterId: 'e3lead' }])
+  assert.deepEqual(scope.setterIdsByEmployee.get('c'), [])
+  assert.deepEqual(scope.setterIdsByEmployee.get('a'), ['lead'])
+})
+
+test('KPI pickers list active people outside 3E only', () => {
+  assert.deepEqual(pickablePeople(users).map((u) => u.id).sort(), ['a', 'b', 'c', 'jp', 'lead', 'mgr', 'named', 'partner', 'senior'])
 })
