@@ -3,7 +3,8 @@ import { formatMonthKey } from '../calendar'
 import { canVerify, isVerifierEligible, type KpiActor, type KpiRef } from '../permissions'
 import type { DecideInput } from '../schemas'
 import { transition, type KpiAction } from '../state-machine'
-import type { ClaimerStats, KpiStatusValue, VerificationQueueResponse } from '../view-types'
+import type { ClaimerStats, KpiStatusValue, LeadClaimStats, SetterRejectionView, VerificationQueueResponse } from '../view-types'
+import { setterRejectionStats } from './lead-history'
 import type { KpiActionResult } from './claims'
 import { byName, departmentLabel, loadKpiContext, personRef } from './context'
 import { KpiError } from './errors'
@@ -73,6 +74,8 @@ export async function claimerStats(claimerIds: readonly string[]): Promise<Map<s
   )
 }
 
+const setterView = (stats: LeadClaimStats | undefined): SetterRejectionView => ({ rejectionRate: stats?.rejectionRate ?? null, decided: stats?.decided ?? 0, flagged: stats?.flagged ?? false })
+
 export async function verificationQueue(actor: KpiActor, now: Date = new Date()): Promise<VerificationQueueResponse> {
   if (!isVerifierEligible(actor)) throw new KpiError('Verifier access required', 403)
   const ctx = await loadKpiContext()
@@ -82,6 +85,7 @@ export async function verificationQueue(actor: KpiActor, now: Date = new Date())
     orderBy: { claimedAt: 'asc' },
   })
   const stats = await claimerStats(rows.flatMap((row) => (row.claimedById ? [row.claimedById] : [])))
+  const setters = await setterRejectionStats([...new Set(rows.map((row) => row.goal.setterId))], now)
   return {
     items: rows.map((row) => {
       const month = row.goal.kpiMonth
@@ -108,6 +112,7 @@ export async function verificationQueue(actor: KpiActor, now: Date = new Date())
         overdue: now > dueAt,
         canDecide: canVerify(actor, ref),
         claimerStats: (row.claimedById && stats.get(row.claimedById)) || { claims: 0, rejections: 0 },
+        setterHistory: setterView(setters.get(row.goal.setterId)),
       }
     }),
   }

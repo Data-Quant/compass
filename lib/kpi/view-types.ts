@@ -191,6 +191,8 @@ export interface VerificationQueueItem {
   overdue: boolean
   canDecide: boolean
   claimerStats: ClaimerStats
+  /** The setting lead's first-decision rejection rate over the last three months. */
+  setterHistory: SetterRejectionView
 }
 export interface VerificationQueueResponse { items: VerificationQueueItem[] }
 
@@ -237,3 +239,25 @@ export interface AuditRow {
   toStatus: string | null
   reason: string | null
 }
+
+/** Spec 10.3: a lead's KPI claims over a window of months. */
+export interface LeadClaimStats {
+  locked: number
+  claimedDone: number
+  claimedNotDone: number
+  verified: number
+  needsInfo: number
+  rejectedAtFirstDecision: number
+  /** Claims with at least one verifier decision. */
+  decided: number
+  appealed: number
+  finallyNotVerified: number
+  /** claimed done ÷ locked */
+  claimRate: number | null
+  /** rejected at first decision ÷ claims decided */
+  rejectionRate: number | null
+  flagged: boolean
+}
+export interface LeadHistoryRow extends LeadClaimStats { lead: PersonRef }
+export interface LeadHistoryResponse { fromMonth: string; toMonth: string; rows: LeadHistoryRow[] }
+export interface SetterRejectionView { rejectionRate: number | null; decided: number; flagged: boolean }
