@@ -7,6 +7,7 @@ import { currentMonthKey, monthLabel, shiftMonth } from '@/lib/kpi/format'
 import type { TeamViewResponse } from '@/lib/kpi/view-types'
 import { DeadlineBanner } from './DeadlineBanner'
 import { GoalEditor } from './GoalEditor'
+import { NextMonthPrompt } from './NextMonthPrompt'
 import { PeriodSwitcher } from './PeriodSwitcher'
 import { errorMessage, kpiRequest } from './kpi-api'
 
@@ -51,6 +52,7 @@ export function TeamKpisPanel() {
         )}
       </div>
       <DeadlineBanner month={data.month} />
+      {setter && data.month.locked && <NextMonthPrompt monthKey={monthKey} onOpen={setMonthKey} />}
       {setter ? (
         <>
           <Card>

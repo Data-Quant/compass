@@ -182,3 +182,14 @@ test('HR sees each lead’s claim history with their first-decision rejection ra
   // Earlier in this file E2E Lead's "Signed proposals" was rejected at its first decision, then verified on appeal.
   await expect(page.getByRole('row', { name: /E2E Lead/ })).toContainText('1 of 1 (100%)')
 })
+
+test('a lead on a locked month is pointed at the next month to set KPIs', async ({ page }) => {
+  await login(page, 'kpie-lead')
+  await page.goto('/kpis')
+  await page.getByRole('tab', { name: 'Team' }).click()
+  // Last month is locked in the seed: no New goal there, but a way forward.
+  await page.getByRole('button', { name: 'Previous' }).click()
+  await expect(page.getByRole('button', { name: 'New goal' })).toHaveCount(0)
+  await page.getByRole('button', { name: /^Set KPIs for / }).click()
+  await expect(page.getByRole('button', { name: 'New goal' })).toBeVisible()
+})

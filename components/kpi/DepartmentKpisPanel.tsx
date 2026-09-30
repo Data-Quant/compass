@@ -7,6 +7,7 @@ import { currentMonthKey, monthLabel, shiftMonth } from '@/lib/kpi/format'
 import type { DepartmentViewResponse } from '@/lib/kpi/view-types'
 import { DeadlineBanner } from './DeadlineBanner'
 import { GoalEditor } from './GoalEditor'
+import { NextMonthPrompt } from './NextMonthPrompt'
 import { PeriodSwitcher } from './PeriodSwitcher'
 import { errorMessage, kpiRequest } from './kpi-api'
 
@@ -51,6 +52,7 @@ export function DepartmentKpisPanel({ allowPicker }: { allowPicker: boolean }) {
         )}
       </div>
       <DeadlineBanner month={data.month} />
+      {data.canEdit && data.month.locked && <NextMonthPrompt monthKey={monthKey} onOpen={setMonthKey} />}
       <Card>
         <CardContent className="p-4 text-sm">
           <span className="font-medium">{`${department.label} leads and JPs: `}</span>
