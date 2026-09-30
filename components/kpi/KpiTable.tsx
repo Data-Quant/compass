@@ -27,7 +27,7 @@ const HEADERS = ['Goal', 'KPI', 'Deadline', 'Notes', 'Completed', 'Verified', ''
 function GoalCell({ goal, span }: { goal: KpiTableGoal; span: number }) {
   return (
     <td rowSpan={span} className="w-56 space-y-1 border-r p-3 align-top">
-      <p className="font-semibold">{goal.title}</p>
+      <h3 className="font-semibold">{goal.title}</h3>
       {goal.description && <p className="text-xs text-muted-foreground">{goal.description}</p>}
       {goal.subtitle && <p className="text-xs text-muted-foreground">{goal.subtitle}</p>}
       {goal.actions && <div className="flex flex-wrap gap-2 pt-1">{goal.actions}</div>}

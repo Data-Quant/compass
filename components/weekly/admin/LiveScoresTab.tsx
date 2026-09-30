@@ -10,6 +10,8 @@ import { CyclePicker, useCycles } from './PeopleTab'
 
 /** Refreshes while the tab is open, so an AI score shows up seconds after the evaluator submits. */
 const REFRESH_MS = 5_000
+/** Remembered while the page is open, so switching to Review to accept an answer and back keeps the same person. */
+let rememberedPersonId = ''
 const time = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—')
 
 function AiCell({ answer }: { answer: PersonScoreAnswer }) {
@@ -52,7 +54,11 @@ function ScoreCard({ data }: { data: PersonScoreView }) {
 export function LiveScoresTab() {
   const { cycles, cycleId, setCycleId } = useCycles()
   const [people, setPeople] = useState<Array<{ id: string; name: string }>>([])
-  const [personId, setPersonId] = useState('')
+  const [personId, setPersonIdState] = useState(rememberedPersonId)
+  const setPersonId = (id: string) => {
+    rememberedPersonId = id
+    setPersonIdState(id)
+  }
   const [data, setData] = useState<PersonScoreView | null>(null)
   const [error, setError] = useState<string | null>(null)
 

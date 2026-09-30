@@ -31,9 +31,14 @@ test('a lead sets a team KPI and its owner sees it', async ({ page, browser }) =
   await page.getByRole('tab', { name: 'Team' }).click()
   await addGoalAndKpi(page, 'Grow the pipeline', 'Qualified outreach', 'Send 40 qualified outreach emails')
   await page.getByRole('checkbox', { name: 'E2E Member' }).check()
+  // Its own deadline: the 28th of the current month (Karachi).
+  const month = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 7)
+  await page.getByLabel('Deadline').fill(`${month}-28`)
   await page.getByRole('button', { name: 'Save KPI' }).click()
   await expect(page.getByText('Qualified outreach', { exact: true })).toBeVisible()
   await expect(page.getByText('Draft', { exact: true })).toBeVisible()
+  for (const header of ['Goal', 'KPI', 'Deadline', 'Notes', 'Completed', 'Verified']) await expect(page.getByRole('columnheader', { name: header, exact: true })).toBeVisible()
+  await expect(page.getByRole('row', { name: /Qualified outreach/ })).toContainText('28 ')
 
   const context = await browser.newContext({ baseURL: base })
   const member = await context.newPage()
@@ -41,7 +46,16 @@ test('a lead sets a team KPI and its owner sees it', async ({ page, browser }) =
   await member.goto('/kpis')
   await expect(member.getByText('Qualified outreach', { exact: true })).toBeVisible()
   await expect(member.getByText('Target: Send 40 qualified outreach emails')).toBeVisible()
+  await member.getByRole('button', { name: 'Comments on Qualified outreach' }).click()
+  await member.getByLabel('Add a comment').fill('I will share the tracker on Friday.')
+  await member.getByRole('button', { name: 'Post comment' }).click()
+  // Posted once the box clears and the comment shows in the thread.
+  await expect(member.getByLabel('Add a comment')).toHaveValue('')
+  await expect(member.getByRole('listitem').filter({ hasText: 'I will share the tracker on Friday.' })).toBeVisible()
   await context.close()
+  await page.reload()
+  await page.getByRole('tab', { name: 'Team' }).click()
+  await expect(page.getByRole('button', { name: 'Comments on Qualified outreach' })).toContainText('Comments (1)')
 })
 
 test('a Partner sets department KPIs owned by the department’s leads and JPs', async ({ page }) => {
