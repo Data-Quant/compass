@@ -12,6 +12,7 @@ test('routes that call the model allow for their scoring budget plus one model c
   const { DAILY_SCORING_BUDGET_MS } = await import('../lib/weekly/service/daily-job')
   const { INLINE_BUDGET_MS } = await import('../lib/weekly/service/scoring')
   const { SCORE_NOW_BUDGET_MS } = await import('../lib/weekly/service/test-tools')
+  const { CALIBRATION_BUDGET_MS, CALIBRATION_DAILY_BUDGET_MS } = await import('../lib/weekly/service/calibration-runs')
   // A run checks its budget only before claiming work, so one model call may still be in flight when it runs out.
   const needs = (budgetMs: number) => (budgetMs + Number(MODEL_TIMEOUT_MS)) / 1000
   const limits: Array<[string, string, number]> = [
@@ -20,7 +21,10 @@ test('routes that call the model allow for their scoring budget plus one model c
     ['correction (re-scores after the response)', '../app/api/admin/weekly/responses/[responseId]/route', needs(INLINE_BUDGET_MS)],
     ['test tools (score now)', '../app/api/admin/weekly/test-tools/route', needs(SCORE_NOW_BUDGET_MS)],
     ['AI drafting', '../app/api/admin/weekly/competencies/[id]/ai-draft/route', needs(0)],
-    ['daily cron', '../app/api/cron/weekly-evaluations/route', needs(DAILY_SCORING_BUDGET_MS)],
+    // Live scoring and calibration runs each keep their own budget, each with one model call possibly still in flight.
+    ['daily cron', '../app/api/cron/weekly-evaluations/route', needs(DAILY_SCORING_BUDGET_MS) + needs(CALIBRATION_DAILY_BUDGET_MS)],
+    ['calibration run start (scores after the response)', '../app/api/admin/weekly/calibration/runs/route', needs(CALIBRATION_BUDGET_MS)],
+    ['calibration run continue', '../app/api/admin/weekly/calibration/runs/[id]/route', needs(CALIBRATION_BUDGET_MS)],
   ]
   for (const [name, path, required] of limits) {
     const limit = (await route(path)).maxDuration

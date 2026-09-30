@@ -6,6 +6,7 @@ import { closeCycle, closeView, publishResults, reopenCycle } from '@/lib/weekly
 import { actorFromUser } from '@/lib/weekly/service/context'
 import { WeeklyError } from '@/lib/weekly/service/errors'
 import { openForms } from '@/lib/weekly/service/forms'
+import { setClassicForm } from '@/lib/weekly/service/classic-form'
 
 export const dynamic = 'force-dynamic'
 // Closing aggregates the whole quarter in one transaction.
@@ -40,6 +41,8 @@ export async function POST(request: NextRequest) {
       case 'open-forms':
         await openForms(actor, input.cycleId, now)
         return NextResponse.json({ success: true })
+      case 'classic-form':
+        return NextResponse.json({ success: true, ...(await setClassicForm(actor, input.cycleId, input.open, now)) })
     }
   } catch (error) {
     return weeklyErrorResponse(error)
