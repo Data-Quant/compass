@@ -1,22 +1,22 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  afterNotObserved, answerProblem, answerWordCount, canEditSubmitted, commentProblem, countWords, evaluatorStatus, MIN_ANSWER_WORDS,
+  afterNotObserved, answerProblem, answerWordCount, canEditSubmitted, commentProblem, countWords, evaluatorStatus,
 } from '../lib/weekly/answer-rules'
 import { isConfirmedAction, latestByResponse } from '../lib/weekly/reviews'
 import { syntheticAnswer, syntheticComment } from '../lib/weekly/content/synthetic'
 
 const words = (n: number) => Array.from({ length: n }, (_, i) => `w${i}`).join(' ')
 
-test('answers need all three boxes and 40 words between them', () => {
+test('answers need all three boxes, with no minimum number of words', () => {
   assert.equal(countWords('  one  two\nthree '), 3)
   assert.equal(countWords(null), 0)
   assert.equal(answerProblem({ situation: '', action: 'x', result: 'y' }), 'Describe the situation')
   assert.equal(answerProblem({ situation: 'x', action: ' ', result: 'y' }), 'Add what they did')
   assert.equal(answerProblem({ situation: 'x', action: 'y', result: '' }), 'Add what happened as a result')
-  assert.match(answerProblem({ situation: words(10), action: words(10), result: words(10) }) ?? '', /at least 40 words.*30 so far/)
-  assert.equal(answerProblem({ situation: words(20), action: words(10), result: words(10) }), null)
-  assert.equal(answerWordCount({ situation: words(20), action: words(10), result: words(10), shortfall: words(50) }), MIN_ANSWER_WORDS)
+  assert.equal(answerProblem({ situation: 'a', action: 'b', result: 'c' }), null)
+  assert.equal(answerProblem({ situation: words(10), action: words(10), result: words(10) }), null)
+  assert.equal(answerWordCount({ situation: words(20), action: words(10), result: words(10), shortfall: words(50) }), 40)
 })
 
 test('comments are optional but cannot be submitted empty', () => {

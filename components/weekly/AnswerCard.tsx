@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { answerProblem, answerWordCount, commentProblem, MIN_ANSWER_WORDS } from '@/lib/weekly/answer-rules'
+import { answerProblem, answerWordCount, commentProblem } from '@/lib/weekly/answer-rules'
 import { formatKarachiDateTime } from '@/lib/weekly/format'
 import type { InboxPrompt } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest, withActingAs } from './weekly-api'
@@ -27,11 +27,13 @@ export function AnswerCard({ prompt, actingAs, onChanged }: AnswerCardProps) {
   const [fields, setFields] = useState<Fields>(() => initialFields(prompt))
   const [editing, setEditing] = useState(prompt.status !== 'SUBMITTED')
   const [saving, setSaving] = useState(false)
+  // Shown as submitted the moment the server accepts it; the inbox refreshes behind it.
+  const [justSubmitted, setJustSubmitted] = useState(false)
   const [savedAt, setSavedAt] = useState<string | null>(null)
   const [confirmSkip, setConfirmSkip] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latest = useRef(fields)
-  const submitted = prompt.status === 'SUBMITTED'
+  const submitted = justSubmitted || prompt.status === 'SUBMITTED'
   const comment = prompt.kind === 'COMMENT'
   const answerUrl = withActingAs(`/api/weekly/prompts/${prompt.id}/answer`, actingAs)
 
@@ -68,13 +70,16 @@ export function AnswerCard({ prompt, actingAs, onChanged }: AnswerCardProps) {
     setSaving(true)
     try {
       await weeklyRequest(answerUrl, { method: 'POST', body: payload(latest.current) })
-      toast.success(submitted ? 'Answer updated' : 'Answer submitted')
-      await onChanged()
     } catch (e) {
       toast.error(errorMessage(e, 'Could not submit the answer'))
-    } finally {
       setSaving(false)
+      return
     }
+    toast.success(submitted ? 'Answer updated' : 'Answer submitted')
+    setJustSubmitted(true)
+    setEditing(false)
+    setSaving(false)
+    void onChanged()
   }
 
   async function skip() {
@@ -92,7 +97,7 @@ export function AnswerCard({ prompt, actingAs, onChanged }: AnswerCardProps) {
   const problem = comment ? commentProblem(fields.commentText) : answerProblem(fields)
   const words = answerWordCount(fields)
   const status = [
-    comment ? 'Optional and not scored' : `${words} of ${MIN_ANSWER_WORDS} words`,
+    comment ? 'Optional and not scored' : `${words} word${words === 1 ? '' : 's'}`,
     problem && editing ? problem : null,
     savedAt && !submitted ? `Saved ${formatKarachiDateTime(savedAt)}` : null,
     submitted && prompt.canEdit && prompt.editableUntil ? `Editable until ${formatKarachiDateTime(prompt.editableUntil)}` : null,
@@ -129,7 +134,7 @@ export function AnswerCard({ prompt, actingAs, onChanged }: AnswerCardProps) {
             {submitted && prompt.canEdit && !editing && <Button variant="outline" size="sm" onClick={() => setEditing(true)}>Edit</Button>}
             {editing && (
               <Button size="sm" disabled={saving || problem !== null} onClick={() => void submit()}>
-                {saving ? 'Saving…' : submitted ? 'Resubmit' : 'Submit'}
+                {saving ? 'Submitting…' : submitted ? 'Resubmit' : 'Submit'}
               </Button>
             )}
           </div>

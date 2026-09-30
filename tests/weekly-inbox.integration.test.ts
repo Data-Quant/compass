@@ -50,7 +50,6 @@ test('drafts autosave; a complete answer is submitted and queued for scoring', W
   await saveDraft(lead, leadSubject, promptId, { ...GOOD, result: '' }, at(1))
   assert.equal((await inboxView(W.lead.id, at(1))).prompts[0].status, 'DRAFT')
   await assert.rejects(submitAnswer(lead, leadSubject, promptId, { ...GOOD, result: '' }, at(1)), /as a result/)
-  await assert.rejects(submitAnswer(lead, leadSubject, promptId, { situation: 'a', action: 'b', result: 'c' }, at(1)), /at least 40 words/)
   assert.deepEqual(await submitAnswer(lead, leadSubject, promptId, GOOD, at(1)), { status: 'SUBMITTED', revision: 1 })
   const jobs = await prisma.weeklyScoringJob.findMany()
   assert.deepEqual(jobs.map((j) => `${j.revision}:${j.status}`), ['1:PENDING'])

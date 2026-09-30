@@ -14,7 +14,7 @@ export interface CompetencyContent {
 export interface CompetencyDraft extends CompetencyContent {
   key: string
   perspective: Perspective
-  /** Live question titles this draft replaces. */
+  /** Live question titles this draft replaces: the original short titles, then HR's rewritten bank questions (Sep 2026). */
   titles: string[]
 }
 
@@ -55,7 +55,7 @@ const level = (behaviours: string, consistency: string, outcome: string, ...evid
 
 export const DRAFTS: readonly CompetencyDraft[] = [
   {
-    key: 'LEAD.QUALITY_OF_WORK', perspective: 'LEAD', titles: ['Quality of Work'], name: 'Quality of Work',
+    key: 'LEAD.QUALITY_OF_WORK', perspective: 'LEAD', titles: ['Quality of Work', "Does this team member's output reflect careful thinking, attention to details, and a standard they would be proud to put their name on, or does their work require frequent correction and follow-up?"], name: 'Quality of Work',
     definition: 'Accuracy, completeness and standard of delivered work.',
     prompts: {
       A: 'Pick one piece of work they delivered in the last two weeks. What was asked, what did they hand over, and how much rework did it need?',
@@ -70,7 +70,7 @@ export const DRAFTS: readonly CompetencyDraft[] = [
     incomplete: false,
   },
   {
-    key: 'LEAD.INITIATIVE', perspective: 'LEAD', titles: ['Initiative & Proactivity'], name: 'Initiative & Proactivity',
+    key: 'LEAD.INITIATIVE', perspective: 'LEAD', titles: ['Initiative & Proactivity', "When this team member commits to a deadline, does the team feel confident it will be met, and if something changes, do they own it proactively?"], name: 'Initiative & Proactivity',
     definition: 'Acting without being asked; spotting and solving problems early.',
     prompts: {
       A: 'Describe something they started or fixed without being asked. What triggered it and what changed?',
@@ -85,7 +85,7 @@ export const DRAFTS: readonly CompetencyDraft[] = [
     incomplete: false,
   },
   {
-    key: 'LEAD.TEAM_COLLABORATION', perspective: 'LEAD', titles: ['Team Collaboration'], name: 'Team Collaboration',
+    key: 'LEAD.TEAM_COLLABORATION', perspective: 'LEAD', titles: ['Team Collaboration', "Does this team member make the people around them more effective or do gaps in communication create friction, confusion, or extra work for others?"], name: 'Team Collaboration',
     definition: 'How they work with and strengthen the team.',
     prompts: {
       A: 'Describe a recent piece of work that depended on others. How did they coordinate, and how did the others experience it?',
@@ -100,7 +100,7 @@ export const DRAFTS: readonly CompetencyDraft[] = [
     incomplete: false,
   },
   {
-    key: 'UPWARD.CLARITY', perspective: 'UPWARD', titles: ['Clarity in Communication'], name: 'Clarity in Communication',
+    key: 'UPWARD.CLARITY', perspective: 'UPWARD', titles: ['Clarity in Communication', "When your lead assigns you a task or project, do they give you what you need to execute it well and make it meaningful?"], name: 'Clarity in Communication',
     definition: 'Clear direction, priorities and expectations.',
     prompts: {
       A: 'Think of a recent task your lead assigned. How clear were the goal, deadline and standard? What happened as a result?',
@@ -115,7 +115,7 @@ export const DRAFTS: readonly CompetencyDraft[] = [
     incomplete: false,
   },
   {
-    key: 'UPWARD.GROWTH_SUPPORT', perspective: 'UPWARD', titles: ['Support for Professional Growth'], name: 'Support for Professional Growth',
+    key: 'UPWARD.GROWTH_SUPPORT', perspective: 'UPWARD', titles: ['Support for Professional Growth', "Has your lead ever pushed you toward something out of your comfort zone because they believed in your potential?"], name: 'Support for Professional Growth',
     definition: 'Coaching, feedback and stretch opportunities.',
     prompts: {
       A: 'Describe a specific piece of feedback or coaching your lead gave you this month. What did you do with it?',
@@ -130,7 +130,7 @@ export const DRAFTS: readonly CompetencyDraft[] = [
     incomplete: false,
   },
   {
-    key: 'UPWARD.RECOGNITION', perspective: 'UPWARD', titles: ['Recognition & Appreciation'], name: 'Recognition & Appreciation',
+    key: 'UPWARD.RECOGNITION', perspective: 'UPWARD', titles: ['Recognition & Appreciation', "Does your lead create an environment where you feel both supported and challenged?"], name: 'Recognition & Appreciation',
     definition: 'Fair, specific acknowledgement of contributions.',
     prompts: {
       A: 'Describe a time your lead acknowledged someone’s work. What was said, to whom, and was it specific?',
@@ -145,7 +145,7 @@ export const DRAFTS: readonly CompetencyDraft[] = [
     incomplete: false,
   },
   {
-    key: 'UPWARD.LEADERSHIP', perspective: 'UPWARD', titles: ['Leadership & Problem Solving'], name: 'Leadership & Problem Solving',
+    key: 'UPWARD.LEADERSHIP', perspective: 'UPWARD', titles: ['Leadership & Problem Solving', "When things go wrong, a missed target, a team conflict, an impossible deadline does your lead make the situation better or do they become part of the problem?"], name: 'Leadership & Problem Solving',
     definition: 'Decisions, unblocking and handling pressure.',
     prompts: {
       A: 'Describe a problem the team hit recently. What did your lead do, and what was the outcome?',
@@ -160,7 +160,7 @@ export const DRAFTS: readonly CompetencyDraft[] = [
     incomplete: false,
   },
   {
-    key: 'PEER.COLLABORATION', perspective: 'PEER', titles: ['Collaboration & Teamwork'], name: 'Collaboration & Teamwork',
+    key: 'PEER.COLLABORATION', perspective: 'PEER', titles: ['Collaboration & Teamwork', "When your peer hands something over, a document, a deliverable, a response, do you trust that it's been thought through, or do you find yourself checking their work?"], name: 'Collaboration & Teamwork',
     definition: 'Shared work, helping and handoffs.',
     prompts: {
       A: 'Describe a piece of work you did with them recently. What did they contribute and how did working together go?',
@@ -175,7 +175,7 @@ export const DRAFTS: readonly CompetencyDraft[] = [
     incomplete: false,
   },
   {
-    key: 'PEER.COMMUNICATION', perspective: 'PEER', titles: ['Communication'], name: 'Communication',
+    key: 'PEER.COMMUNICATION', perspective: 'PEER', titles: ['Communication', "When there's a disagreement or tension between you, does your peer handle it in a way that makes the working relationship stronger?"], name: 'Communication',
     definition: 'Timely, clear and respectful communication.',
     prompts: {
       A: 'Describe a recent exchange (message, meeting, handoff) with them. Was the information clear and timely, and what happened next?',
@@ -190,7 +190,7 @@ export const DRAFTS: readonly CompetencyDraft[] = [
     incomplete: false,
   },
   {
-    key: 'PEER.RELIABILITY', perspective: 'PEER', titles: ['Reliability'], name: 'Reliability',
+    key: 'PEER.RELIABILITY', perspective: 'PEER', titles: ['Reliability', "When you needed your peer to show up, on a deadline, in a tough moment, or on a shared commitment, did they, and what did that tell you about working with them?"], name: 'Reliability',
     definition: 'Doing what they say, on time.',
     prompts: {
       A: 'Describe something they committed to delivering to you. Did it arrive as agreed? What was the effect?',

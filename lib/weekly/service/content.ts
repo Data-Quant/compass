@@ -48,11 +48,17 @@ export async function syncFromQuestionBank(actor: WeeklyActor, db: Db = prisma):
   })
   let created = 0
   let relinked = 0
+  let replaced = 0
   for (const question of questions) {
     const perspective = perspectiveForBank(question.relationshipType)
     if (!perspective) continue
     const draft = findDraft(perspective, question.questionText)
     const key = draft?.key ?? `${perspective}.Q_${question.id}`
+    if (draft) {
+      // A spec topic now covers this question: retire the generic topic an earlier sync made for its old wording.
+      const retired = await db.weeklyCompetency.updateMany({ where: { sourceQuestionId: question.id, key: { not: key }, isActive: true }, data: { isActive: false } })
+      replaced += retired.count
+    }
     const existing = await db.weeklyCompetency.findUnique({ where: { key } })
     if (existing) {
       if (existing.sourceQuestionId !== question.id || !existing.isActive) {
@@ -69,8 +75,8 @@ export async function syncFromQuestionBank(actor: WeeklyActor, db: Db = prisma):
     where: { sourceLeadQuestionId: null, isActive: true, sourceQuestionId: { notIn: questions.map((q) => q.id) } },
     data: { isActive: false },
   })
-  await recordAudit(db, { actorId: actor.id, actorRole: 'HR', action: 'CONTENT_SYNC', objectType: 'WeeklyCompetency', after: { created, relinked, deactivated: stale.count } })
-  return { created, relinked, deactivated: stale.count }
+  await recordAudit(db, { actorId: actor.id, actorRole: 'HR', action: 'CONTENT_SYNC', objectType: 'WeeklyCompetency', after: { created, relinked, deactivated: stale.count + replaced } })
+  return { created, relinked, deactivated: stale.count + replaced }
 }
 
 function profileView(profile: WeeklyProfile | undefined): ProfileView | null {

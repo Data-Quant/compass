@@ -1,4 +1,3 @@
-export const MIN_ANSWER_WORDS = 40
 export const MAX_FIELD_CHARS = 4000
 export const EDIT_WINDOW_MS = 24 * 60 * 60 * 1000
 export const NOT_OBSERVED_SNOOZE_WEEKS = 3
@@ -10,7 +9,7 @@ export function countWords(text: string | null | undefined): number {
   return trimmed ? trimmed.split(/\s+/).length : 0
 }
 
-/** The three required boxes; the optional shortfall box does not count toward the minimum. */
+/** Words in the three required boxes (the optional shortfall box is left out); used for the length-bias check. */
 export function answerWordCount(fields: AnswerFields): number {
   return countWords(fields.situation) + countWords(fields.action) + countWords(fields.result)
 }
@@ -20,8 +19,7 @@ export function answerProblem(fields: AnswerFields): string | null {
   if (!fields.situation.trim()) return 'Describe the situation'
   if (!fields.action.trim()) return 'Add what they did'
   if (!fields.result.trim()) return 'Add what happened as a result'
-  const words = answerWordCount(fields)
-  if (words < MIN_ANSWER_WORDS) return `Write at least ${MIN_ANSWER_WORDS} words across the three boxes (${words} so far)`
+  // No minimum length: a thin answer is caught by the AI as not enough evidence and gets a follow-up.
   return null
 }
 

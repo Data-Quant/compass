@@ -93,3 +93,20 @@ test('leads’ custom questions become draft topics for that quarter', WEEKLY_DB
   assert.equal(custom.find((c) => c.name === 'Mentors juniors')?.profiles[0].incomplete, true)
   assert.equal(custom.find((c) => c.name === 'Owns client escalations')?.profiles[0].incomplete, false)
 })
+
+test('the rewritten bank questions get the spec topic, and the generic topic made for them earlier is retired', WEEKLY_DB_TEST, async () => {
+  const question = await prisma.evaluationQuestion.findFirstOrThrow({ where: { questionText: 'Quality of Work' } })
+  const rewritten = "Does this team member's output reflect careful thinking, attention to details, and a standard they would be proud to put their name on, or does their work require frequent correction and follow-up?"
+  await prisma.evaluationQuestion.update({ where: { id: question.id }, data: { questionText: rewritten } })
+  // What an earlier sync made before the spec knew this wording: a generic topic keyed by the question.
+  await prisma.weeklyCompetency.create({
+    data: {
+      key: `LEAD.Q_${question.id}`, perspective: 'LEAD', name: rewritten, definition: rewritten, sourceQuestionId: question.id,
+      prompts: { create: [{ variant: 'A', text: 'Generic A' }, { variant: 'B', text: 'Generic B' }] },
+    },
+  })
+  await syncFromQuestionBank(hr)
+  const active = await prisma.weeklyCompetency.findMany({ where: { sourceQuestionId: question.id, isActive: true }, include: { prompts: true } })
+  assert.deepEqual(active.map((t) => [t.key, t.name]), [['LEAD.QUALITY_OF_WORK', 'Quality of Work']])
+  assert.match(active[0].prompts.find((p) => p.variant === 'A')!.text, /^Pick one piece of work they delivered/)
+})
