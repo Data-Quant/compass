@@ -139,3 +139,19 @@ test('the live demo: HR asks a pair now, the lead answers, the AI scores it and 
   // The running score ("3.00 / 4") appears once an accepted answer counts; the page refreshes itself.
   await expect(page.getByText(/^[1-4]\.\d\d \/ 4$/)).toBeVisible({ timeout: 15000 })
 })
+
+test('HR adds a question to a topic and removes it again', async ({ page }) => {
+  await login(page, 'wkle-hr')
+  await ensureRunningCycle(page)
+  await page.goto('/admin/weekly')
+  await page.getByRole('tab', { name: 'Topics and profiles' }).click()
+  const text = 'Describe a handover they owned this month. What did the next person still need to ask?'
+  await page.getByLabel('New question for Quality of Work').fill(text)
+  await page.getByRole('button', { name: 'Add question' }).click()
+  await expect(page.getByText('Question added')).toBeVisible()
+  await expect(page.getByLabel('Question C', { exact: true })).toHaveValue(text)
+  await page.getByRole('button', { name: 'Remove question C' }).click()
+  await page.getByRole('button', { name: 'Remove', exact: true }).last().click()
+  await expect(page.getByText('Question removed')).toBeVisible()
+  await expect(page.getByLabel('Question C', { exact: true })).toHaveCount(0)
+})

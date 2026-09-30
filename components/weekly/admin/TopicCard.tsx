@@ -12,6 +12,7 @@ import { LEVEL_KEYS, LEVEL_LABELS } from '@/lib/weekly/profile'
 import type { ContentCompetency, ContentPrompt, ProfileView } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest } from '../weekly-api'
 import { ProfileEditorDialog } from './ProfileEditorDialog'
+import { AddQuestion, RemoveQuestion, RemoveTopic } from './QuestionBankControls'
 
 export function TopicCard({ topic, onChanged }: { topic: ContentCompetency; onChanged: () => Promise<void> }) {
   const [editing, setEditing] = useState(false)
@@ -63,9 +64,11 @@ export function TopicCard({ topic, onChanged }: { topic: ContentCompetency; onCh
         </div>
         <div className="space-y-2">
           {topic.prompts.map((prompt) => <PromptEditor key={`${prompt.id}-${prompt.text}`} prompt={prompt} onChanged={onChanged} />)}
+          <AddQuestion topicId={topic.id} topicName={topic.name} onChanged={onChanged} />
         </div>
         {shown && <ProfileSummary profile={shown} />}
         <div className="flex flex-wrap justify-end gap-2">
+          <RemoveTopic topicId={topic.id} topicName={topic.name} onChanged={onChanged} />
           <Button variant="ghost" size="sm" disabled={drafting} onClick={() => setConfirmDraft(true)}>{drafting ? 'Drafting…' : 'Draft with AI'}</Button>
           <Button variant="outline" size="sm" onClick={() => setEditing(true)}>{topic.draft ? 'Edit draft' : 'Edit profile'}</Button>
           {topic.draft && <Button size="sm" aria-label={`Approve ${topic.name}`} onClick={() => setApproving(true)}>Approve</Button>}
@@ -129,10 +132,13 @@ function PromptEditor({ prompt, onChanged }: { prompt: ContentPrompt; onChanged:
     <div className="space-y-1 rounded-md border p-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-medium text-muted-foreground">Question {prompt.variant}</p>
+        <div className="flex items-center gap-2">
+        <RemoveQuestion prompt={prompt} onChanged={onChanged} />
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
           Active
           <Switch checked={prompt.isActive} disabled={saving} onCheckedChange={(checked) => void save({ isActive: checked })} aria-label={`Question ${prompt.variant} active`} />
         </label>
+        </div>
       </div>
       <Textarea value={text} rows={2} maxLength={600} aria-label={`Question ${prompt.variant}`} onChange={(e) => setText(e.target.value)} />
       {text !== prompt.text && (

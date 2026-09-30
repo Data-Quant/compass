@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { PERSPECTIVE_ORDER, type Perspective } from '@/lib/weekly/perspectives'
 import type { ContentResponse } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest } from '../weekly-api'
+import { RemovedTopics } from './QuestionBankControls'
 import { TopicCard } from './TopicCard'
 
 const SECTION_TITLES: Record<Perspective, string> = {
@@ -64,6 +65,7 @@ export function ContentTab() {
           </section>
         )
       })}
+      <RemovedTopics topics={data.removed ?? []} onChanged={load} />
     </div>
   )
 }

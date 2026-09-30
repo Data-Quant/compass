@@ -86,7 +86,8 @@ export interface ContentCompetency {
   draft: ProfileView | null
   hrDescriptions: Record<LevelKey, string | null>
 }
-export interface ContentResponse { competencies: ContentCompetency[] }
+export interface RemovedTopic { id: string; perspective: string; name: string; removedAt: string }
+export interface ContentResponse { competencies: ContentCompetency[]; removed: RemovedTopic[] }
 
 export interface ParticipantRow {
   person: PersonRef

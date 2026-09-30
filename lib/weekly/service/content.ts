@@ -61,6 +61,8 @@ export async function syncFromQuestionBank(actor: WeeklyActor, db: Db = prisma):
     }
     const existing = await db.weeklyCompetency.findUnique({ where: { key } })
     if (existing) {
+      // A topic HR removed stays off until HR restores it.
+      if (existing.removedAt) continue
       if (existing.sourceQuestionId !== question.id || !existing.isActive) {
         await db.weeklyCompetency.update({ where: { id: existing.id }, data: { sourceQuestionId: question.id, isActive: true } })
         relinked += 1
@@ -109,7 +111,7 @@ export async function contentView(actor: WeeklyActor): Promise<ContentResponse> 
   assertHr(actor)
   const competencies = await prisma.weeklyCompetency.findMany({
     where: { isActive: true },
-    include: { prompts: { orderBy: { variant: 'asc' } }, profiles: { orderBy: { version: 'desc' } } },
+    include: { prompts: { where: { archivedAt: null }, orderBy: { variant: 'asc' } }, profiles: { orderBy: { version: 'desc' } } },
     orderBy: [{ perspective: 'asc' }, { key: 'asc' }],
   })
   const [questions, leadQuestions, people] = await Promise.all([
@@ -119,7 +121,11 @@ export async function contentView(actor: WeeklyActor): Promise<ContentResponse> 
   ])
   const descriptions = new Map([...questions, ...leadQuestions].map((q) => [q.id, descriptionsOf(q)]))
   const leadNames = new Map([...people.values()].map((p) => [p.id, p.name]))
-  return { competencies: competencies.map((c) => toContentCompetency(c, descriptions, leadNames)) }
+  const removed = await prisma.weeklyCompetency.findMany({ where: { removedAt: { not: null } }, orderBy: [{ perspective: 'asc' }, { name: 'asc' }] })
+  return {
+    competencies: competencies.map((c) => toContentCompetency(c, descriptions, leadNames)),
+    removed: removed.map((c) => ({ id: c.id, perspective: c.perspective, name: c.name, removedAt: (c.removedAt as Date).toISOString() })),
+  }
 }
 
 export async function updatePrompt(actor: WeeklyActor, promptId: string, input: { text?: string; isActive?: boolean }): Promise<void> {
