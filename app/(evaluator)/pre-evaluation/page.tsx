@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { EvaluatorChangeRequests } from '@/components/pre-evaluation/EvaluatorChangeRequests'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { motion } from 'framer-motion'
@@ -12,7 +13,7 @@ import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/composed/EmptyState'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
-import { ClipboardList, Save, Send, AlertTriangle, ArrowRight } from 'lucide-react'
+import { ClipboardList, Save, Send, AlertTriangle } from 'lucide-react'
 import {
   createEmptyRatingDescriptions,
   normalizeRatingDescriptions,
@@ -307,21 +308,7 @@ export default function PreEvaluationPage() {
         </CardContent>
       </Card>
 
-      <Card className="border-blue-500/20">
-        <CardContent className="p-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="font-medium text-foreground">Evaluator change requests now live in Evaluations.</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Use the evaluations page to suggest peer or cross-department evaluator changes for yourself or your team members for HR review.
-            </p>
-          </div>
-          <Button variant="outline" asChild>
-            <Link href="/evaluations" className="gap-1.5">
-              Open Evaluations <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </Button>
-        </CardContent>
-      </Card>
+      <EvaluatorChangeRequests />
 
       {prep.status === 'COMPLETED' && prep.questionsSubmittedAt && (
         <Card className="border-emerald-500/30 bg-emerald-500/5">
@@ -329,11 +316,11 @@ export default function PreEvaluationPage() {
             <div>
               <p className="font-medium text-foreground">Pre-evaluation onboarding completed.</p>
               <p className="text-sm text-muted-foreground">
-                Your question set is in. Optional evaluator change requests can still be managed from the evaluations page while the window is open.
+                Your question set is in. You can still manage evaluator change requests above while the window is open.
               </p>
             </div>
             <Button variant="outline" asChild>
-              <Link href="/evaluations">Back to evaluations</Link>
+              <Link href="/evaluations/weekly">Go to evaluations</Link>
             </Button>
           </CardContent>
         </Card>

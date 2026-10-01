@@ -15,7 +15,7 @@ import { ADMIN_INSIGHTS_NAV_ITEMS } from '../lib/admin-insights-navigation'
 const EMPLOYEE_NAV_ITEMS = [
   { label: 'Home', href: '/dashboard' },
   { label: 'My Tasks', href: '/my-tasks' },
-  { label: 'Evaluations', href: '/evaluations' },
+  { label: 'Evaluations', href: '/evaluations/weekly' },
   { label: 'Leave', href: '/leave' },
   { label: 'Projects', href: '/projects' },
   { label: 'Device Support', href: '/device-support' },

@@ -43,10 +43,6 @@ export function getDeptPoolDisplayName(department: string | null | undefined) {
   return normalized && normalized.length > 0 ? `${normalized} Department` : 'Unassigned Department'
 }
 
-export function getDeptPoolMemberLabel(memberCount: number) {
-  return `${memberCount} team member${memberCount === 1 ? '' : 's'}`
-}
-
 export function getDeptPoolKey(
   evaluatorId: string,
   department: string | null | undefined

@@ -183,7 +183,7 @@ export function SidebarLayout({
       ? effectiveSidebarConfig
       : isAdminConsole
         ? withGroupItem(effectiveSidebarConfig, 'Performance', { label: 'KPIs', href: '/admin/kpis', icon: Target, ...(kpiPending > 0 ? { badge: kpiPending } : {}) })
-        : withItemAfter(effectiveSidebarConfig, { label: 'KPIs', href: '/kpis', icon: Target, ...(kpiPending > 0 ? { badge: kpiPending } : {}) }, '/evaluations')
+        : withItemAfter(effectiveSidebarConfig, { label: 'KPIs', href: '/kpis', icon: Target, ...(kpiPending > 0 ? { badge: kpiPending } : {}) }, '/evaluations/weekly')
 
   const weeklyBadge = weeklyMe.openCount > 0 ? { badge: weeklyMe.openCount } : {}
   const sidebarConfigWithWeekly =
@@ -191,10 +191,7 @@ export function SidebarLayout({
       ? sidebarConfigWithKpis
       : isAdminConsole
         ? withGroupItem(sidebarConfigWithKpis, 'Performance', { label: 'Weekly evaluations', href: '/admin/weekly', icon: CalendarCheck })
-        : weeklyMe.cycleActive
-          ? // One Evaluations item: it opens the weekly questions and stays highlighted on the quarterly page.
-            withItemPatched(sidebarConfigWithKpis, '/evaluations', { href: '/evaluations/weekly', activePrefix: '/evaluations', ...weeklyBadge })
-          : sidebarConfigWithKpis
+        : withItemPatched(sidebarConfigWithKpis, '/evaluations/weekly', weeklyBadge)
 
   return (
     <LayoutUserContext.Provider value={user}>

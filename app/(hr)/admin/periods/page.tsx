@@ -13,7 +13,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Calendar, Plus, Edit2, Trash2, Lock, Unlock, Bell, CheckCircle, Clock, Sparkles, ArrowRight } from 'lucide-react'
+import { Calendar, Plus, Edit2, Trash2, Lock, Unlock, CheckCircle, Clock, Sparkles, ArrowRight } from 'lucide-react'
 
 interface Period {
   id: string; name: string; startDate: string; endDate: string; reviewStartDate: string; isActive: boolean; isLocked?: boolean; reminderSent?: boolean; createdAt: string
@@ -39,7 +39,6 @@ export default function PeriodsPage() {
   const [periodToDelete, setPeriodToDelete] = useState<Period | null>(null)
   const [formData, setFormData] = useState({ name: '', startDate: '', endDate: '', reviewStartDate: '', isActive: false, isLocked: false })
   const [saving, setSaving] = useState(false)
-  const [sendingReminders, setSendingReminders] = useState<string | null>(null)
   const [triggeringPreEvaluation, setTriggeringPreEvaluation] = useState<string | null>(null)
 
   useEffect(() => { loadPeriods() }, [])
@@ -100,17 +99,6 @@ export default function PeriodsPage() {
       if (data.error) toast.error(data.error)
       else { toast.success(period.isLocked ? 'Period unlocked' : 'Period locked'); loadPeriods() }
     } catch { toast.error('Failed to update') }
-  }
-
-  const handleSendReminders = async (periodId: string) => {
-    setSendingReminders(periodId)
-    try {
-      const res = await fetch('/api/admin/reminders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ periodId }) })
-      const data = await res.json()
-      if (data.error) toast.error(data.error)
-      else { toast.success(`Sent ${data.sent} reminders`); loadPeriods() }
-    } catch { toast.error('Failed to send reminders') }
-    finally { setSendingReminders(null) }
   }
 
   const handleTriggerPreEvaluation = async (periodId: string) => {
@@ -218,9 +206,6 @@ export default function PeriodsPage() {
                     </Button>
                     <Button variant="ghost" size="icon" onClick={() => handleToggleLock(period)} className={period.isLocked ? 'text-red-500 hover:bg-red-500/10' : 'text-muted-foreground hover:text-foreground'} title={period.isLocked ? 'Unlock' : 'Lock'}>
                       {period.isLocked ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => handleSendReminders(period.id)} disabled={sendingReminders === period.id} className="text-muted-foreground hover:text-primary hover:bg-primary/10" title="Send Reminders">
-                      <Bell className="w-4 h-4" />
                     </Button>
                     <Button variant="ghost" size="icon" onClick={() => { setPeriodToDelete(period); setIsDeleteDialogOpen(true) }} className="text-muted-foreground hover:text-red-500 hover:bg-red-500/10" title="Delete">
                       <Trash2 className="w-4 h-4" />

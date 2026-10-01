@@ -2,7 +2,6 @@ import test, { after, afterEach, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { prisma } from '../lib/db'
 import { WeeklyError } from '../lib/weekly/service/errors'
-import { weeklyCycleIdForPeriod } from '../lib/weekly/service/legacy'
 import { approveAllDrafts, fillSynthetic, releaseNextWeek, resetCycle } from '../lib/weekly/service/test-tools'
 import { syncFromQuestionBank } from '../lib/weekly/service/content'
 import { at, HR_ACTOR, startedCycle } from './helpers/weekly-fixtures'
@@ -63,8 +62,3 @@ test('the tools refuse without the flag or for non-HR', WEEKLY_DB_TEST, async ()
   await assert.rejects(releaseNextWeek(HR_ACTOR, cycleId, at(1)), isStatus(404))
 })
 
-test('a period with a weekly cycle closes the classic questionnaire only while the module is on', WEEKLY_DB_TEST, async () => {
-  assert.equal(await weeklyCycleIdForPeriod(periodId), cycleId)
-  process.env.WEEKLY_EVALUATIONS_ENABLED = 'false'
-  assert.equal(await weeklyCycleIdForPeriod(periodId), null)
-})

@@ -54,15 +54,6 @@ test('GET /api/users returns list or requires auth', async () => {
 
 // ─── Evaluation APIs ─────────────────────────────────────────────────────────
 
-test('GET /api/evaluations/dashboard requires auth', async () => {
-  const { status, data } = await fetchJSON('/api/evaluations/dashboard?periodId=active')
-  // Should be 401 when no session cookie
-  assert.ok(
-    status === 401 || status === 200,
-    `Unexpected status ${status}`
-  )
-})
-
 test('GET /api/admin/questions returns questions (or auth error)', async () => {
   const { status, data } = await fetchJSON('/api/admin/questions')
   assert.ok(

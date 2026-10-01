@@ -80,18 +80,10 @@ test('an evaluator answers their own question and sees it in their history', asy
   await expect(page.getByText(/[1-9] of \d+ topics answered/).first()).toBeVisible()
 })
 
-test('HR fills the rest with synthetic answers, and the classic form refuses this quarter', async ({ page }) => {
+test('HR fills the rest with synthetic answers', async ({ page }) => {
   await login(page, 'wkle-hr')
   await page.goto('/admin/weekly')
   await page.getByRole('tab', { name: 'Test tools' }).click()
   await page.getByRole('button', { name: 'Fill synthetic answers' }).click()
   await expect(page.getByText(/answers written$/)).toBeVisible()
-  const cycles = await (await page.request.get('/api/admin/weekly/cycles')).json()
-  const periodId = cycles.cycles[0].periodId as string
-  const classic = await page.request.post('/api/evaluations', {
-    headers: { origin: base },
-    data: { evaluateeId: 'wkle-lead', periodId, responses: [{ questionId: 'any', questionSource: 'GLOBAL', ratingValue: 3 }] },
-  })
-  expect(classic.status()).toBe(409)
-  expect((await classic.json()).weekly).toBe(true)
 })

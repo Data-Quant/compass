@@ -1,10 +1,11 @@
 ﻿'use client'
 
 import { useEffect, useState } from 'react'
+import { PERSPECTIVE_LABELS } from '@/lib/weekly/perspectives'
+import type { InboxResponse } from '@/lib/weekly/view-types'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
-import { RELATIONSHIP_TYPE_LABELS } from '@/types'
 import { useLayoutUser } from '@/components/layout/SidebarLayout'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -22,8 +23,6 @@ import {
   FolderKanban,
   Monitor,
   ArrowRight,
-  CheckCircle2,
-  Clock,
   Target,
   Sun,
   Thermometer,
@@ -37,16 +36,6 @@ import {
 } from 'lucide-react'
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-interface Mapping {
-  id: string
-  evaluatee: { id: string; name: string; department: string | null; position: string | null }
-  relationshipType: string
-  questionsCount: number
-  completedCount: number
-  isComplete: boolean
-  isClosedByPool?: boolean
-}
 
 interface LeaveBalance {
   casualDays: number; casualUsed: number
@@ -149,8 +138,7 @@ const formatLeaveValue = (value: number) => (Number.isInteger(value) ? String(va
 
 export default function DashboardPage() {
   const user = useLayoutUser()
-  const [mappings, setMappings] = useState<Record<string, Mapping[]>>({})
-  const [period, setPeriod] = useState<any>(null)
+  const [weekly, setWeekly] = useState<InboxResponse | null>(null)
   const [leaveBalance, setLeaveBalance] = useState<LeaveBalance | null>(null)
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [activeProjectCount, setActiveProjectCount] = useState(0)
@@ -166,7 +154,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!user) return
     const tasks: Promise<void>[] = [
-      loadEvaluations(),
+      loadWeekly(),
       loadLeaveBalance(),
       loadProjects(),
       loadUpcomingTeamLeaves(),
@@ -189,12 +177,11 @@ export default function DashboardPage() {
     Promise.all(tasks).finally(() => setLoading(false))
   }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadEvaluations = async () => {
+  const loadWeekly = async () => {
     try {
-      const res = await fetch('/api/evaluations/dashboard?periodId=active')
-      const data = await res.json()
-      if (data.mappings) { setMappings(data.mappings); setPeriod(data.period) }
-    } catch { /* silent */ }
+      const res = await fetch('/api/weekly/inbox', { cache: 'no-store' })
+      if (res.ok) setWeekly(await res.json())
+    } catch { /* the weekly card simply stays empty */ }
   }
 
   const loadLeaveBalance = async () => {
@@ -292,11 +279,12 @@ export default function DashboardPage() {
 
   // â”€â”€â”€ Computed stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  const allMappings = Object.values(mappings).flat()
-  const totalEvaluations = allMappings.length
-  const completedEvaluations = allMappings.filter(m => m.isComplete).length
-  const evaluationPercent = totalEvaluations > 0
-    ? Math.round((completedEvaluations / totalEvaluations) * 100)
+  const weeklyProgress = weekly?.progress ?? []
+  const openQuestions = (weekly?.prompts ?? []).filter((p) => p.status !== 'SUBMITTED').length
+  const topicsTotal = weeklyProgress.reduce((sum, row) => sum + row.total, 0)
+  const topicsAnswered = weeklyProgress.reduce((sum, row) => sum + row.answered, 0)
+  const evaluationPercent = topicsTotal > 0
+    ? Math.round((topicsAnswered / topicsTotal) * 100)
     : 0
 
   const totalLeaveRemaining = leaveBalance
@@ -326,7 +314,7 @@ export default function DashboardPage() {
           Welcome back, <span className="gradient-text">{user?.name?.split(' ')[0] || 'there'}</span>
         </h1>
         <p className="text-muted-foreground mt-1">
-          {period ? `${period.name} evaluation period` : 'Here\u2019s your overview'}
+          {weekly?.cycle ? `${weekly.cycle.periodName} weekly evaluations` : 'Here\u2019s your overview'}
         </p>
       </motion.div>
 
@@ -387,9 +375,8 @@ export default function DashboardPage() {
       >
         <motion.div variants={stagger.item}>
           <StatsCard
-            title="Evaluations"
-            value={completedEvaluations}
-            suffix={`/${totalEvaluations}`}
+            title="Questions to answer"
+            value={openQuestions}
             icon={<ClipboardCheck className="w-5 h-5" />}
           />
         </motion.div>
@@ -411,7 +398,7 @@ export default function DashboardPage() {
         </motion.div>
         <motion.div variants={stagger.item}>
           <StatsCard
-            title="Completion"
+            title="Topics answered"
             value={evaluationPercent}
             suffix="%"
             icon={<Target className="w-5 h-5" />}
@@ -635,13 +622,13 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <ClipboardCheck className="h-5 w-5 text-primary" />
-                  <h2 className="text-lg font-semibold text-foreground">Performance Evaluations</h2>
+                  <h2 className="text-lg font-semibold text-foreground">Weekly evaluations</h2>
                 </div>
-                <Badge variant="secondary">{period?.name || 'No period'}</Badge>
+                <Badge variant="secondary">{weekly?.cycle ? weekly.cycle.periodName : 'Not running'}</Badge>
               </div>
 
-              {totalEvaluations === 0 ? (
-                <p className="text-sm text-muted-foreground">No evaluations assigned yet.</p>
+              {weeklyProgress.length === 0 ? (
+                <p className="text-sm text-muted-foreground">You have nobody to evaluate this quarter.</p>
               ) : (
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
@@ -652,37 +639,27 @@ export default function DashboardPage() {
                   </div>
 
                   <div className="space-y-2 max-h-[200px] overflow-y-auto">
-                    {allMappings.slice(0, 6).map((m) => (
+                    {weeklyProgress.slice(0, 6).map((row) => (
                       <Link
-                        key={m.id}
-                        href={`/evaluate/${m.evaluatee.id}`}
+                        key={`${row.evaluatee.id}-${row.perspective}`}
+                        href="/evaluations/weekly"
                         className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-muted transition-colors group"
                       >
                         <div className="flex items-center gap-2.5">
-                          <UserAvatar name={m.evaluatee.name} size="xs" />
+                          <UserAvatar name={row.evaluatee.name} size="xs" />
                           <div>
-                            <p className="text-sm font-medium text-foreground">{m.evaluatee.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {RELATIONSHIP_TYPE_LABELS[m.relationshipType as keyof typeof RELATIONSHIP_TYPE_LABELS] || m.relationshipType}
-                            </p>
+                            <p className="text-sm font-medium text-foreground">{row.evaluatee.name}</p>
+                            <p className="text-xs text-muted-foreground">{PERSPECTIVE_LABELS[row.perspective]}</p>
                           </div>
                         </div>
-                        {m.isComplete ? (
-                          <CheckCircle2
-                            className={`h-4 w-4 shrink-0 ${
-                              m.isClosedByPool ? 'text-slate-500' : 'text-emerald-500'
-                            }`}
-                          />
-                        ) : (
-                          <Clock className="h-4 w-4 text-muted-foreground shrink-0 group-hover:text-primary transition-colors" />
-                        )}
+                        <span className="text-xs text-muted-foreground shrink-0">{row.answered} of {row.total} topics</span>
                       </Link>
                     ))}
                   </div>
 
-                  {totalEvaluations > 6 && (
+                  {weeklyProgress.length > 6 && (
                     <p className="text-xs text-muted-foreground text-center">
-                      +{totalEvaluations - 6} more evaluations
+                      +{weeklyProgress.length - 6} more people
                     </p>
                   )}
                 </div>

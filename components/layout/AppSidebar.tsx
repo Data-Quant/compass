@@ -72,7 +72,7 @@ export const EMPLOYEE_SIDEBAR: SidebarConfig = {
   items: [
     { label: 'Home', href: '/dashboard', icon: Home },
     { label: 'My Tasks', href: '/my-tasks', icon: CheckSquare },
-    { label: 'Evaluations', href: '/evaluations', icon: ClipboardCheck },
+    { label: 'Evaluations', href: '/evaluations/weekly', icon: ClipboardCheck, activePrefix: '/evaluations' },
     { label: 'Leave', href: '/leave', icon: Calendar },
     { label: 'Projects', href: '/projects', icon: FolderKanban },
     { label: 'Device Support', href: '/device-support', icon: Monitor },
