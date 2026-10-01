@@ -1,9 +1,8 @@
 import type { Prisma } from '@prisma/client'
-import { buildAggregateRows, type AggregateRow, type AggregationCounts, type CommentAnswer, type ConfirmedScore } from '../aggregation'
+import { buildAggregateRows, type AggregationCounts, type CommentAnswer, type ConfirmedScore } from '../aggregation'
 import type { Perspective } from '../perspectives'
 import { isConfirmedAction } from '../reviews'
 import { loadAnswerRecords } from './answer-states'
-import { classicPairKeys } from './classic-form'
 import { loadPeople } from './context'
 import type { CycleWithPeriod } from './cycles'
 import { toJson } from './db'
@@ -14,21 +13,6 @@ export interface AggregationResult { runId: string; counts: AggregationCounts }
 /** Left by `cutoff`: by the exit date when payroll has one; otherwise an inactive payroll profile counts as left. */
 export function hasLeftBy(person: { payrollActive: boolean; exitDate: Date | null }, cutoff: Date): boolean {
   return person.exitDate !== null ? person.exitDate <= cutoff : !person.payrollActive
-}
-
-const rowKey = (r: { evaluatorId: string; evaluateeId: string; questionId: string | null; leadQuestionId: string | null }) =>
-  `${r.evaluatorId}|${r.evaluateeId}|${r.questionId ?? ''}|${r.leadQuestionId ?? ''}`
-
-/** Unsubmitted classic drafts on a weekly row's question. A submitted one would have made the pair keep its classic rows. */
-async function draftsUnder(tx: Prisma.TransactionClient, periodId: string, rows: readonly AggregateRow[]): Promise<string[]> {
-  const evaluateeIds = [...new Set(rows.map((r) => r.evaluateeId))]
-  if (evaluateeIds.length === 0) return []
-  const keys = new Set(rows.map(rowKey))
-  const drafts = await tx.evaluation.findMany({
-    where: { periodId, evaluateeId: { in: evaluateeIds }, source: 'MANUAL', submittedAt: null },
-    select: { id: true, evaluatorId: true, evaluateeId: true, questionId: true, leadQuestionId: true },
-  })
-  return drafts.filter((d) => keys.has(rowKey(d))).map((d) => d.id)
 }
 
 /**
@@ -63,13 +47,9 @@ export async function aggregateCycle(
   // Spec 10: people who left before the close get no rows. A challenge re-aggregates after the close, so it uses the close's date.
   const leaverCutoff = cycle.closedAt ?? input.now
   const left = new Set([...people.values()].filter((p) => hasLeftBy(p, leaverCutoff)).map((p) => p.id))
-  // Spec 13.3: a pair with a submitted classic answer in the weekly banks keeps its classic rows; its weekly evidence is not written.
-  const manualPairs = await classicPairKeys(tx, cycle.periodId)
-  const { rows, counts } = buildAggregateRows({ scores, comments, excludedEvaluateeIds: left, manualPairs })
+  const { rows, counts } = buildAggregateRows({ scores, comments, excludedEvaluateeIds: left })
   const run = await tx.weeklyAggregationRun.create({ data: { cycleId: cycle.id, runById: input.runById, counts: toJson(counts), drops: toJson(input.drops) } })
   await tx.evaluation.deleteMany({ where: { periodId: cycle.periodId, source: 'AI_WEEKLY', ...(scope ? { evaluateeId: { in: [...scope] } } : {}) } })
-  const drafts = await draftsUnder(tx, cycle.periodId, rows)
-  if (drafts.length > 0) await tx.evaluation.deleteMany({ where: { id: { in: drafts } } })
   if (rows.length > 0) {
     await tx.evaluation.createMany({
       data: rows.map((r) => ({
@@ -78,7 +58,5 @@ export async function aggregateCycle(
       })),
     })
   }
-  const finalCounts: AggregationCounts = { ...counts, clearedClassicDrafts: drafts.length }
-  await tx.weeklyAggregationRun.update({ where: { id: run.id }, data: { counts: toJson(finalCounts) } })
-  return { runId: run.id, counts: finalCounts }
+  return { runId: run.id, counts }
 }

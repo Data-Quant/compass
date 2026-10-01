@@ -50,7 +50,7 @@ export function SetupTab() {
     setRemoving(null)
     try {
       await weeklyRequest(`/api/admin/weekly/cycles/${cycle.id}`, { method: 'DELETE' })
-      toast.success(`${cycle.periodName} is back on the classic questionnaire`)
+      toast.success(`${cycle.periodName} cycle removed`)
       await load()
     } catch (e) {
       toast.error(errorMessage(e, 'Could not remove the cycle'))
@@ -104,7 +104,7 @@ export function SetupTab() {
           if (removing) void remove(removing)
         }}
         title="Remove this cycle?"
-        message="The quarter goes back to the classic questionnaire. Nothing has been sent yet."
+        message="The cycle is deleted. Nothing has been sent yet."
         confirmText="Remove cycle"
         variant="danger"
       />
@@ -159,8 +159,8 @@ function NewCycleForm({ periods, onCreated }: { periods: AdminPeriodRow[]; onCre
           </div>
           <p className={`text-sm ${chosen?.isActive ? 'font-medium text-destructive' : 'text-muted-foreground'}`}>
             {chosen?.isActive
-              ? `${chosen.name} is the active period: creating the cycle closes its classic questionnaire for everyone straight away.`
-              : 'Creating the cycle closes the classic questionnaire for this quarter straight away. You can remove the cycle until it starts.'}
+              ? `${chosen.name} is the active period. You can remove the cycle until it starts.`
+              : 'You can remove the cycle until it starts.'}
           </p>
           <div className="flex justify-end">
             <Button type="submit" disabled={saving || !periodId || !weekOne}>{saving ? 'Creating…' : 'Create cycle'}</Button>

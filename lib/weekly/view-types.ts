@@ -209,8 +209,6 @@ export interface CloseViewResponse {
   lowCoverage: CoverageView[]
   lastRun: AggregationRunView | null
   canClose: boolean
-  /** Spec 13.3: `pairs` have submitted classic answers and keep them at close. */
-  classicForm: { open: boolean; openedAt: string | null; pairs: number }
 }
 
 export type ChallengeStatusValue = 'OPEN' | 'UPHELD' | 'NOT_UPHELD'

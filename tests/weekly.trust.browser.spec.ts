@@ -87,7 +87,7 @@ test('HR runs the calibration set with the stand-in and reads why it has not pas
   await expect(page.getByText(/Not passed: Only 2 items were scored; at least 40 are needed/)).toBeVisible()
 })
 
-test('HR sees cost and standards, asks a low-evidence group again, and reopens then closes the classic questionnaire', async ({ page }) => {
+test('HR sees cost and standards and asks a low-evidence group again', async ({ page }) => {
   await login(page, 'wkle-hr')
   await page.goto('/admin/weekly?tab=dashboard')
   await expect(page.getByRole('heading', { name: 'AI cost this quarter' })).toBeVisible()
@@ -95,12 +95,6 @@ test('HR sees cost and standards, asks a low-evidence group again, and reopens t
   await page.getByRole('button', { name: /^Ask again about / }).first().click()
   await page.getByRole('button', { name: 'Ask again', exact: true }).click()
   await expect(page.getByText(/^Asked again: /)).toBeVisible()
-  await page.getByRole('tab', { name: 'Close quarter' }).click()
-  await page.getByRole('button', { name: 'Reopen the classic questionnaire for this quarter' }).click()
-  await page.getByRole('button', { name: 'Reopen classic questionnaire', exact: true }).click()
-  await expect(page.getByText('The classic questionnaire is open for this quarter')).toBeVisible()
-  await page.getByRole('button', { name: 'Close it again' }).click()
-  await expect(page.getByText('The classic questionnaire is closed again')).toBeVisible()
 })
 
 test('the live demo: HR asks a pair now, the lead answers, the AI scores it and the running score moves', async ({ page }) => {

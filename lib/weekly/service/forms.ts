@@ -1,5 +1,4 @@
-// Spec 9: the C-Level, Department and HR forms, rebuilt inside the weekly module. Same questions and rules
-// as the classic form; the classic route itself is left untouched for Q3.
+// Spec 9: the C-Level, Department and HR forms, kept end-of-quarter inside the weekly module.
 import { getDeptEvaluationPoolContext, groupDeptAssignmentsByDepartment, pickRepresentativeDeptAssignment } from '@/lib/dept-evaluation-pool'
 import { prisma } from '@/lib/db'
 import { getResolvedEvaluationAssignmentForPair, getResolvedEvaluationAssignments, type ResolvedEvaluationAssignment } from '@/lib/evaluation-assignments'

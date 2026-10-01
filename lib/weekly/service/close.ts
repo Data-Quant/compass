@@ -9,7 +9,6 @@ import { aggregateCycle, hasLeftBy, type DropRecord } from './aggregate'
 import { loadAnswerRecords, type AnswerRecord } from './answer-states'
 import { recordAudit } from './audit'
 import { challengeDeadlineFor } from './challenge-window'
-import { classicPairKeys } from './classic-form'
 import { assertHr, byName, loadPeople, personRef, type WeeklyActor } from './context'
 import { cycleSummary, loadCycle, type CycleWithPeriod } from './cycles'
 import { coverageRows } from './dashboard'
@@ -64,13 +63,12 @@ export async function closeView(actor: WeeklyActor, cycleId: string, now: Date):
   const blockers = closeBlockers(records.map((r) => r.state))
   const categories = running ? await weeklyCategories(cycle, now) : new Map<string, Category>()
   const candidates = dropCandidates([...categories.values()], confirmedCounts(records))
-  const [people, openPrompts, progress, coverage, lastRun, classicPairs] = await Promise.all([
+  const [people, openPrompts, progress, coverage, lastRun] = await Promise.all([
     loadPeople(candidates.map((c) => c.evaluateeId)),
     prisma.weeklyPrompt.count({ where: { cycleId, status: { in: ['OPEN', 'DRAFT'] } } }),
     formsProgress(cycle.periodId),
     running ? coverageRows(cycleId) : Promise.resolve([]),
     prisma.weeklyAggregationRun.findFirst({ where: { cycleId }, orderBy: { createdAt: 'desc' } }),
-    classicPairKeys(prisma, cycle.periodId),
   ])
   const runner = lastRun ? (await loadPeople([lastRun.runById])).get(lastRun.runById) : undefined
   const formEvaluators = await loadPeople(progress.pendingEvaluatorIds)
@@ -94,7 +92,6 @@ export async function closeView(actor: WeeklyActor, cycleId: string, now: Date):
       counts: lastRun.counts as unknown as AggregationCounts, drops: Array.isArray(lastRun.drops) ? lastRun.drops.length : 0,
     },
     canClose: running && !period.isLocked && !hasBlockers(blockers),
-    classicForm: { open: cycle.classicFormOpen, openedAt: cycle.classicFormOpenedAt?.toISOString() ?? null, pairs: classicPairs.size },
   }
 }
 
@@ -142,8 +139,7 @@ export async function closeCycle(
         drops.push({ evaluateeId: drop.evaluateeId, perspective: drop.perspective, overrides: assignments.length })
       }
       const result = await aggregateCycle(tx, cycle, { runById: actor.id, now, drops })
-      // A closed quarter takes no more answers, classic ones included.
-      await tx.weeklyCycle.update({ where: { id: cycleId }, data: { status: 'CLOSED', closedAt: now, classicFormOpen: false, classicFormOpenedAt: null } })
+      await tx.weeklyCycle.update({ where: { id: cycleId }, data: { status: 'CLOSED', closedAt: now } })
       await recordAudit(tx, { cycleId, actorId: actor.id, actorRole: 'HR', action: 'CYCLE_CLOSE', objectType: 'WeeklyCycle', objectId: cycleId, after: { counts: result.counts, drops } })
       return { ...result, drops }
     },

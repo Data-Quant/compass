@@ -11,7 +11,6 @@ import { PERSPECTIVE_LABELS } from '@/lib/weekly/perspectives'
 import type { CloseViewResponse } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest } from '../weekly-api'
 import { AskAgainButton } from './AskAgainButton'
-import { ClassicFormCard } from './ClassicFormCard'
 import { CyclePicker, useCycles } from './PeopleTab'
 
 type Pending = 'close' | 'reopen' | 'publish' | null
@@ -87,7 +86,6 @@ export function CloseTab() {
 
       {running && (
         <>
-          <ClassicFormCard cycleId={cycleId} classic={data.classicForm} onChanged={load} />
           <Card>
             <CardContent className="space-y-2 p-4">
               <h2 className="font-semibold">Before closing</h2>
@@ -150,7 +148,7 @@ export function CloseTab() {
             {data.closedAt && <p className="text-sm">Closed {formatKarachiDateTime(data.closedAt)}.</p>}
             {data.lastRun && (
               <p className="text-sm text-muted-foreground">
-                Last aggregation by {data.lastRun.runBy}: {data.lastRun.counts.ratingRows} scores and {data.lastRun.counts.commentRows} comments for {data.lastRun.counts.evaluatees} people; {data.lastRun.drops} groups dropped; {data.lastRun.counts.excludedEvaluatees} leavers left out; {data.lastRun.counts.skippedManualPairs ?? 0} pairs kept their classic answers.
+                Last aggregation by {data.lastRun.runBy}: {data.lastRun.counts.ratingRows} scores and {data.lastRun.counts.commentRows} comments for {data.lastRun.counts.evaluatees} people; {data.lastRun.drops} groups dropped; {data.lastRun.counts.excludedEvaluatees} leavers left out.
               </p>
             )}
             {data.resultsPublishedAt ? (

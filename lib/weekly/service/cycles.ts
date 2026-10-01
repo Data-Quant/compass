@@ -119,7 +119,7 @@ export async function updateCycle(actor: WeeklyActor, cycleId: string, input: Up
 
 const NOT_REMOVABLE = 'Only a cycle that has not started can be removed'
 
-/** Removing a cycle still in setup gives its period back to the classic questionnaire. */
+/** A cycle can be removed until it starts. */
 export async function deleteCycle(actor: WeeklyActor, cycleId: string): Promise<void> {
   assertHr(actor)
   const cycle = await loadCycle(cycleId)

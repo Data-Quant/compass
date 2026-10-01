@@ -95,7 +95,6 @@ export const closeActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('reopen'), cycleId: z.string().min(1) }).strict(),
   z.object({ action: z.literal('publish'), cycleId: z.string().min(1) }).strict(),
   z.object({ action: z.literal('open-forms'), cycleId: z.string().min(1) }).strict(),
-  z.object({ action: z.literal('classic-form'), cycleId: z.string().min(1), open: z.boolean() }).strict(),
 ])
 export type CloseActionInput = z.infer<typeof closeActionSchema>
 

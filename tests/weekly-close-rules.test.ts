@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildAggregateRows, pairKey } from '../lib/weekly/aggregation'
+import { buildAggregateRows } from '../lib/weekly/aggregation'
 import { categoryKey, closeBlockers, dropCandidates, formsAreOpen, hasBlockers, RELATIONSHIP_TYPES_BY_PERSPECTIVE } from '../lib/weekly/close-rules'
 import { addWorkingDays } from '../lib/weekly/working-days'
 
@@ -51,26 +51,12 @@ test('aggregation: one row per evaluator, person and question with the mean scor
       { evaluatorId: 'lead', evaluateeId: 'ana', questionId: 't2', text: '   ' },
     ],
     excludedEvaluateeIds: new Set(['gone']),
-    manualPairs: new Set(),
   })
   assert.deepEqual(rows, [
     { evaluatorId: 'lead', evaluateeId: 'ana', questionId: 'q1', leadQuestionId: null, ratingValue: 3.5, textResponse: null },
     { evaluatorId: 'lead', evaluateeId: 'ana', questionId: null, leadQuestionId: 'lq', ratingValue: 2, textResponse: null },
     { evaluatorId: 'lead', evaluateeId: 'ana', questionId: 't1', leadQuestionId: null, ratingValue: null, textResponse: 'Keep sharing plans early.' },
   ])
-  assert.deepEqual(counts, { ratingRows: 2, commentRows: 1, evaluatees: 1, skippedNoQuestion: 1, excludedEvaluatees: 1, skippedManualPairs: 0, clearedClassicDrafts: 0 })
+  assert.deepEqual(counts, { ratingRows: 2, commentRows: 1, evaluatees: 1, skippedNoQuestion: 1, excludedEvaluatees: 1 })
 })
 
-test('a pair with classic answers keeps them: its weekly scores and comments are skipped; other pairs are written', () => {
-  const { rows, counts } = buildAggregateRows({
-    scores: [
-      { evaluatorId: 'lead', evaluateeId: 'ana', questionId: 'q1', leadQuestionId: null, score: 3 },
-      { evaluatorId: 'ben', evaluateeId: 'ana', questionId: 'q2', leadQuestionId: null, score: 2 },
-    ],
-    comments: [{ evaluatorId: 'lead', evaluateeId: 'ana', questionId: 't1', text: 'A strong quarter.' }],
-    excludedEvaluateeIds: new Set(),
-    manualPairs: new Set([pairKey({ evaluatorId: 'lead', evaluateeId: 'ana' })]),
-  })
-  assert.deepEqual(rows.map((r) => `${r.evaluatorId}>${r.evaluateeId}:${r.questionId}`), ['ben>ana:q2'])
-  assert.deepEqual([counts.skippedManualPairs, counts.ratingRows, counts.commentRows], [1, 1, 0])
-})

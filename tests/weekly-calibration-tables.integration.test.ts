@@ -22,9 +22,7 @@ const counts = () => Promise.all([
   prisma.weeklyAiSettings.count(), prisma.weeklyCalibrationItem.count(), prisma.weeklyCalibrationRun.count(), prisma.weeklyCalibrationResult.count(),
 ])
 
-test('the calibration tables exist, a cycle starts with the classic questionnaire closed, and the test reset clears them', WEEKLY_DB_TEST, async () => {
-  const cycle = await prisma.weeklyCycle.findUniqueOrThrow({ where: { id: cycleId } })
-  assert.deepEqual([cycle.classicFormOpen, cycle.classicFormOpenedAt], [false, null])
+test('the calibration tables exist and the test reset clears them', WEEKLY_DB_TEST, async () => {
   const competency = await prisma.weeklyCompetency.findFirstOrThrow()
   const settings = await prisma.weeklyAiSettings.create({ data: { updatedAt: new Date('2026-10-05T04:00:00.000Z') } })
   assert.deepEqual([settings.id, settings.activeModel, settings.prices], ['default', null, {}])

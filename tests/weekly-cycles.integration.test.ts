@@ -69,7 +69,7 @@ test('HR sees who is excluded and can opt a late joiner in', WEEKLY_DB_TEST, asy
   assert.deepEqual(names, [W.ana.id, W.ben.id, W.lead.id].sort())
 })
 
-test('HR can remove a cycle that has not started, which reopens the classic questionnaire for its period', WEEKLY_DB_TEST, async () => {
+test('HR can remove a cycle that has not started', WEEKLY_DB_TEST, async () => {
   const cycle = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY, weeklyCap: 5 })
   await setOptIn(HR_ACTOR, { cycleId: cycle.id, userId: W.ben.id, reason: 'Transferred from a partner firm' })
   await assert.rejects(deleteCycle(weeklyActor(W.ana), cycle.id), isStatus(403))
