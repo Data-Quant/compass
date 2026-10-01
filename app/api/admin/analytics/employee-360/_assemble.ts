@@ -21,7 +21,6 @@ import {
   type Employee360PeriodRef,
   type EmployeeDossier,
   type EvidencePayload,
-  type StructuredEvidenceResponse,
 } from '@/lib/analytics/employee-360-contracts'
 import type { EmployeePeriodScore } from '@/lib/analytics/period-score-matrix'
 import type { RelationshipType } from '@/types'
@@ -832,88 +831,10 @@ export function assembleDossier(params: {
   })
 }
 
-function asStructuredSelfResponse(answer: unknown): {
-  questionId: string
-  prompt: string
-  response: string | null
-  structured: StructuredEvidenceResponse
-} | null {
-  if (!answer || typeof answer !== 'object') return null
-  const row = answer as {
-    questionId?: unknown
-    prompt?: unknown
-    section?: unknown
-    type?: unknown
-    value?: unknown
-  }
-  if (typeof row.questionId !== 'string' || typeof row.prompt !== 'string') return null
-  const section = typeof row.section === 'string' ? row.section : null
-
-  if (row.type === 'TEXT' && typeof row.value === 'string') {
-    return {
-      questionId: row.questionId,
-      prompt: row.prompt,
-      response: row.value || null,
-      structured: { type: 'TEXT', section, value: row.value },
-    }
-  }
-  if (
-    row.type === 'LIST' &&
-    Array.isArray(row.value) &&
-    row.value.every((item) => typeof item === 'string')
-  ) {
-    return {
-      questionId: row.questionId,
-      prompt: row.prompt,
-      response: row.value.join('\n') || null,
-      structured: { type: 'LIST', section, value: row.value },
-    }
-  }
-  if (row.type === 'GOAL_TABLE' && Array.isArray(row.value)) {
-    const goals = row.value.flatMap((value) => {
-      if (!value || typeof value !== 'object') return []
-      const goal = value as {
-        goal?: unknown
-        status?: unknown
-        comments?: unknown
-      }
-      if (
-        typeof goal.goal !== 'string' ||
-        !['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED', 'EXCEEDED'].includes(
-          String(goal.status)
-        ) ||
-        typeof goal.comments !== 'string'
-      ) {
-        return []
-      }
-      return [
-        {
-          goal: goal.goal,
-          status: goal.status as
-            | 'NOT_STARTED'
-            | 'IN_PROGRESS'
-            | 'COMPLETED'
-            | 'EXCEEDED',
-          comments: goal.comments,
-        },
-      ]
-    })
-    return {
-      questionId: row.questionId,
-      prompt: row.prompt,
-      response:
-        goals.map((goal) => `${goal.goal} — ${goal.status}`).join('\n') || null,
-      structured: { type: 'GOAL_TABLE', section, value: goals },
-    }
-  }
-  return null
-}
-
 export function assembleEvidencePayload(params: {
   generatedAt: Date
   period: ScorablePeriod
   rows: EvidenceRows
-  domain: 'EVALUATION' | 'SELF_EVALUATION'
   lens: RelationshipType | null
   revealEvaluator: boolean
 }): EvidencePayload {
@@ -924,98 +845,55 @@ export function assembleEvidencePayload(params: {
       relationshipType: assignment.relationshipType as RelationshipType,
     }))
   )
-  let items: EvidencePayload['items'] = []
-
-  if (params.domain === 'EVALUATION') {
-    items = params.rows.evaluationRows.flatMap((row) => {
-      const lens = resolveEvaluationRelationshipTypeForRow({
-        evaluation: {
-          evaluatorId: row.evaluatorId,
-          evaluateeId: row.evaluateeId,
-          question: row.question
-            ? {
-                relationshipType: row.question
-                  .relationshipType as RelationshipType,
-              }
-            : null,
-          leadQuestionId: row.leadQuestionId,
-        },
-        assignmentLookup,
-      })
-      if (!lens || (params.lens !== null && lens !== params.lens)) return []
-      const question = row.question?.questionText ?? row.leadQuestion?.questionText
-      if (!question) return []
-      const response = row.textResponse?.trim() || null
-      if (row.ratingValue === null && response === null) return []
-      const canReveal = row.evaluatorId !== row.evaluateeId
-      const isRevealed = canReveal && params.revealEvaluator
-      return [
-        {
-          id: row.id,
-          lens,
-          question,
-          response,
-          structuredResponse: null,
-          rating: row.ratingValue,
-          evaluator: {
-            raterKey: opaqueRaterKey({
-              employeeId: row.evaluateeId,
-              evaluatorId: row.evaluatorId,
-              periodId: params.period.id,
-            }),
-            canReveal,
-            isRevealed,
-            name: isRevealed ? row.evaluator.name : null,
-          },
-          provenance: {
-            source: 'EVALUATION' as const,
-            recordId: row.id,
-            submittedAt: (row.submittedAt ?? row.updatedAt).toISOString(),
-            periodId: params.period.id,
-            periodName: params.period.name,
-          },
-        },
-      ]
+  const items: EvidencePayload['items'] = params.rows.evaluationRows.flatMap((row) => {
+    const lens = resolveEvaluationRelationshipTypeForRow({
+      evaluation: {
+        evaluatorId: row.evaluatorId,
+        evaluateeId: row.evaluateeId,
+        question: row.question
+          ? {
+              relationshipType: row.question
+                .relationshipType as RelationshipType,
+            }
+          : null,
+        leadQuestionId: row.leadQuestionId,
+      },
+      assignmentLookup,
     })
-  } else if (
-    params.rows.selfEvaluation?.status === 'SUBMITTED' &&
-    params.rows.selfEvaluation.submittedAt
-  ) {
-    const rawAnswers = Array.isArray(params.rows.selfEvaluation.answers)
-      ? params.rows.selfEvaluation.answers
-      : []
-    items = rawAnswers.flatMap((raw) => {
-      const answer = asStructuredSelfResponse(raw)
-      if (!answer) return []
-      return [
-        {
-          id: `${params.rows.selfEvaluation!.id}:${answer.questionId}`,
-          lens: 'SELF' as const,
-          question: answer.prompt,
-          response: answer.response,
-          structuredResponse: answer.structured,
-          rating: null,
-          evaluator: {
-            raterKey: opaqueRaterKey({
-              employeeId: params.rows.employee.id,
-              evaluatorId: params.rows.employee.id,
-              periodId: params.period.id,
-            }),
-            canReveal: false,
-            isRevealed: false,
-            name: null,
-          },
-          provenance: {
-            source: 'SELF_EVALUATION' as const,
-            recordId: params.rows.selfEvaluation!.id,
-            submittedAt: params.rows.selfEvaluation!.submittedAt!.toISOString(),
+    if (!lens || (params.lens !== null && lens !== params.lens)) return []
+    const question = row.question?.questionText ?? row.leadQuestion?.questionText
+    if (!question) return []
+    const response = row.textResponse?.trim() || null
+    if (row.ratingValue === null && response === null) return []
+    const canReveal = row.evaluatorId !== row.evaluateeId
+    const isRevealed = canReveal && params.revealEvaluator
+    return [
+      {
+        id: row.id,
+        lens,
+        question,
+        response,
+        rating: row.ratingValue,
+        evaluator: {
+          raterKey: opaqueRaterKey({
+            employeeId: row.evaluateeId,
+            evaluatorId: row.evaluatorId,
             periodId: params.period.id,
-            periodName: params.period.name,
-          },
+          }),
+          canReveal,
+          isRevealed,
+          name: isRevealed ? row.evaluator.name : null,
         },
-      ]
-    })
-  }
+        provenance: {
+          source: 'EVALUATION' as const,
+          recordId: row.id,
+          submittedAt: (row.submittedAt ?? row.updatedAt).toISOString(),
+          periodId: params.period.id,
+          periodName: params.period.name,
+        },
+      },
+    ]
+  })
 
   items.sort(
     (a, b) =>
@@ -1028,7 +906,6 @@ export function assembleEvidencePayload(params: {
     generatedAt: params.generatedAt.toISOString(),
     employeeId: params.rows.employee.id,
     period: toPeriodRef(params.period),
-    domain: params.domain,
     lens: params.lens,
     items,
   })

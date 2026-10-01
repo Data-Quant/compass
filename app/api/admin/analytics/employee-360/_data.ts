@@ -356,7 +356,6 @@ export async function loadDossierRows(employeeIds: readonly string[]) {
     openTasks,
     completedTasks,
     leaveRequests,
-    selfEvaluations,
   ] = await Promise.all([
     prisma.user.findMany({
       where: { id: { in: uniqueIds } },
@@ -532,18 +531,6 @@ export async function loadDossierRows(employeeIds: readonly string[]) {
       },
       orderBy: { startDate: 'desc' },
     }),
-    prisma.selfEvaluation.findMany({
-      where: {
-        employeeId: { in: uniqueIds },
-        status: 'SUBMITTED',
-      },
-      select: {
-        id: true,
-        employeeId: true,
-        periodId: true,
-        submittedAt: true,
-      },
-    }),
   ])
 
   const userById = new Map(users.map((user) => [user.id, user]))
@@ -571,7 +558,6 @@ export async function loadDossierRows(employeeIds: readonly string[]) {
     openTasks,
     completedTasks,
     leaveRequests,
-    selfEvaluations,
   }
 }
 
@@ -579,7 +565,7 @@ export async function loadEvidenceRows(params: {
   employeeId: string
   periodId: string
 }) {
-  const [employee, assignments, evaluationRows, selfEvaluation] =
+  const [employee, assignments, evaluationRows] =
     await Promise.all([
       prisma.user.findUnique({
         where: { id: params.employeeId },
@@ -633,21 +619,6 @@ export async function loadEvidenceRows(params: {
         },
         orderBy: [{ evaluatorId: 'asc' }, { createdAt: 'asc' }],
       }),
-      prisma.selfEvaluation.findUnique({
-        where: {
-          periodId_employeeId: {
-            periodId: params.periodId,
-            employeeId: params.employeeId,
-          },
-        },
-        select: {
-          id: true,
-          status: true,
-          answers: true,
-          submittedAt: true,
-          updatedAt: true,
-        },
-      }),
     ])
 
   if (!employee || !isEmployee360Eligible(employee)) {
@@ -658,6 +629,5 @@ export async function loadEvidenceRows(params: {
     employee,
     assignments,
     evaluationRows,
-    selfEvaluation,
   }
 }

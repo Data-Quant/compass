@@ -201,58 +201,11 @@ test('profile period cannot label a dossier assembled from an older period', () 
   assert.equal(result.success, false)
 })
 
-test('evidence preserves typed self-evaluation answers and provenance', () => {
-  const evidence = evidencePayloadSchema.parse({
-    generatedAt: now,
-    employeeId: 'employee-1',
-    period,
-    domain: 'SELF_EVALUATION',
-    lens: 'SELF',
-    items: [
-      {
-        id: 'self-answer-1',
-        lens: 'SELF',
-        question: 'What goals did you own?',
-        response: null,
-        structuredResponse: {
-          type: 'GOAL_TABLE',
-          section: 'Goals',
-          value: [
-            {
-              goal: 'Ship the cockpit',
-              status: 'COMPLETED',
-              comments: 'Released with tests',
-            },
-          ],
-        },
-        rating: null,
-        evaluator: {
-          raterKey: 'self',
-          canReveal: false,
-          isRevealed: false,
-          name: null,
-        },
-        provenance: {
-          source: 'SELF_EVALUATION',
-          recordId: 'self-evaluation-1',
-          submittedAt: now,
-          periodId: period.id,
-          periodName: period.name,
-        },
-      },
-    ],
-  })
-
-  assert.equal(evidence.items[0].structuredResponse?.type, 'GOAL_TABLE')
-  assert.equal(evidence.items[0].provenance.source, 'SELF_EVALUATION')
-})
-
 test('an evaluator name cannot leak before an explicit reveal', () => {
   const result = evidencePayloadSchema.safeParse({
     generatedAt: now,
     employeeId: 'employee-1',
     period,
-    domain: 'EVALUATION',
     lens: 'PEER',
     items: [
       {

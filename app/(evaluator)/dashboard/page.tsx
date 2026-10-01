@@ -13,7 +13,6 @@ import { Button } from '@/components/ui/button'
 import { StatsCard } from '@/components/composed/StatsCard'
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import { EmptyState } from '@/components/composed/EmptyState'
-import { SelfEvaluationPrompt } from '@/components/self-evaluation/SelfEvaluationPrompt'
 import { WeeklyChallengeCard } from '@/components/weekly/WeeklyChallengeCard'
 import { WeeklyQuestionsCard } from '@/components/weekly/WeeklyQuestionsCard'
 import {
@@ -316,7 +315,6 @@ export default function DashboardPage() {
   return (
     <div className="p-6 sm:p-8 max-w-6xl mx-auto">
       <div className="mb-6">
-        <SelfEvaluationPrompt />
       </div>
       {/* Welcome banner */}
       <motion.div

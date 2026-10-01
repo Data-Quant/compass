@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { DEFAULT_WEIGHTS, calculateRedistributedWeights } from '../lib/config'
 
-test('SELF carries zero weight so self-evaluations never affect scores', () => {
+test('the SELF relationship carries zero weight, so self ratings never affect scores', () => {
   assert.equal(DEFAULT_WEIGHTS.SELF, 0)
 })
 

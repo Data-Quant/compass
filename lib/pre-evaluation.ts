@@ -167,8 +167,7 @@ export function deriveLeadRelationships(
 /**
  * Job titles that qualify a person as a team lead for pre-evaluation. Lead
  * status is gated by title, not by whether someone happened to have a report
- * in a quarter's TEAM_LEAD mappings. Matched case-insensitively and trimmed,
- * mirroring SELF_EVAL_EXCLUDED_POSITIONS in lib/self-evaluation.ts.
+ * in a quarter's TEAM_LEAD mappings. Matched case-insensitively and trimmed.
  */
 export const PRE_EVALUATION_LEAD_TITLES: readonly string[] = [
   'Partner',

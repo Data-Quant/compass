@@ -40,7 +40,6 @@ import {
   CheckSquare,
   PackageSearch,
   Building2,
-  UserCheck,
   BookOpen,
   type LucideIcon,
 } from 'lucide-react'
@@ -132,7 +131,6 @@ export const ADMIN_SIDEBAR: SidebarConfig = {
         { label: 'Periods', href: '/admin/periods', icon: CalendarDays },
         { label: 'Pre-Evaluation', href: '/admin/pre-evaluations', icon: ClipboardCheck },
         { label: 'Questions', href: '/admin/questions', icon: HelpCircle },
-        { label: 'Self-Evaluation', href: '/admin/self-evaluation', icon: UserCheck },
         { label: 'Mappings', href: '/admin/mappings', icon: Link2 },
         { label: 'Weightages', href: '/admin/settings', icon: Sliders },
         { label: 'Reports', href: '/admin/reports', icon: FileText },

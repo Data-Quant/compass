@@ -86,17 +86,6 @@ enum PreEvaluationReviewStatus {
   REJECTED
 }
 
-enum SelfEvaluationQuestionType {
-  TEXT
-  LIST
-  GOAL_TABLE
-}
-
-enum SelfEvaluationStatus {
-  DRAFT
-  SUBMITTED
-}
-
 enum PreEvaluationEvaluateeType {
   PRIMARY
   PEER
@@ -394,8 +383,6 @@ model User {
   preEvaluationOverrides  PreEvaluationLeadPrep[] @relation("PreEvaluationOverrideBy")
   preEvaluationResets     PreEvaluationLeadPrep[] @relation("PreEvaluationResetBy")
   preEvaluationTriggeredPeriods EvaluationPeriod[] @relation("PreEvaluationTriggeredBy")
-  selfEvaluations         SelfEvaluation[]   @relation("SelfEvaluationEmployee")
-  selfEvaluationTriggeredPeriods EvaluationPeriod[] @relation("SelfEvaluationTriggeredBy")
   preEvaluationSelectionsAsEvaluatee PreEvaluationEvaluateeSelection[] @relation("PreEvaluationSelectionEvaluatee")
   preEvaluationSelectionsAsSuggestedEvaluator PreEvaluationEvaluateeSelection[] @relation("PreEvaluationSelectionSuggestedEvaluator")
   preEvaluationSelectionsReviewed PreEvaluationEvaluateeSelection[] @relation("PreEvaluationSelectionReviewedBy")
@@ -535,7 +522,6 @@ model EvaluatorMapping {
   evaluatorId      String
   evaluateeId      String
   relationshipType RelationshipType
-  isSelfEvaluation Boolean          @default(false) // Flag for self-evaluations
   createdAt        DateTime         @default(now())
 
   evaluator User @relation("Evaluator", fields: [evaluatorId], references: [id], onDelete: Cascade)
@@ -578,8 +564,6 @@ model EvaluationPeriod {
   preEvaluationTriggeredAt DateTime?
   preEvaluationTriggerSource PreEvaluationTriggerSource?
   preEvaluationTriggeredById String?
-  selfEvaluationTriggeredAt   DateTime?
-  selfEvaluationTriggeredById String?
   createdAt               DateTime                   @default(now())
   updatedAt               DateTime                   @updatedAt
 
@@ -589,8 +573,6 @@ model EvaluationPeriod {
   assignmentOverrides     EvaluationPeriodAssignmentOverride[]
   assignmentSnapshots      EvaluationPeriodAssignmentSnapshot[]
   preEvaluationTriggeredBy User?                    @relation("PreEvaluationTriggeredBy", fields: [preEvaluationTriggeredById], references: [id], onDelete: SetNull)
-  selfEvaluationTriggeredBy User?                   @relation("SelfEvaluationTriggeredBy", fields: [selfEvaluationTriggeredById], references: [id], onDelete: SetNull)
-  selfEvaluations          SelfEvaluation[]
 
   @@index([isActive])
   @@index([startDate])
@@ -776,40 +758,6 @@ model PreEvaluationEvaluateeSelection {
   @@index([evaluateeId])
   @@index([suggestedEvaluatorId])
   @@index([reviewStatus])
-}
-
-model SelfEvaluationQuestion {
-  id         String                     @id @default(cuid())
-  section    String
-  prompt     String
-  helpText   String?
-  type       SelfEvaluationQuestionType @default(TEXT)
-  orderIndex Int
-  isActive   Boolean                    @default(true)
-  createdAt  DateTime                   @default(now())
-  updatedAt  DateTime                   @updatedAt
-
-  @@index([isActive, orderIndex])
-}
-
-model SelfEvaluation {
-  id          String               @id @default(cuid())
-  periodId    String
-  employeeId  String
-  status      SelfEvaluationStatus @default(DRAFT)
-  answers     Json                 @default("[]")
-  startedAt   DateTime?
-  submittedAt DateTime?
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
-
-  period   EvaluationPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
-  employee User             @relation("SelfEvaluationEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
-
-  @@unique([periodId, employeeId])
-  @@index([periodId])
-  @@index([employeeId])
-  @@index([status])
 }
 
 model Weightage {

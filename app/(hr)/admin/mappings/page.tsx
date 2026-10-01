@@ -100,7 +100,7 @@ export default function MappingsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.evaluatorId || !formData.evaluateeId) { toast.error('Select both evaluator and evaluatee'); return }
-    if (formData.evaluatorId === formData.evaluateeId && formData.relationshipType !== 'SELF') { toast.error('Cannot evaluate self (unless self-evaluation)'); return }
+    if (formData.evaluatorId === formData.evaluateeId && formData.relationshipType !== 'SELF') { toast.error('Someone can evaluate themselves only with the Self relationship'); return }
     setSaving(true)
     try {
       if (editingMapping) {
