@@ -6,7 +6,7 @@ import { findRunningCycle } from './cycles'
 import { autoAcceptDue } from './decisions'
 import { formsOpenFor } from './forms'
 import {
-  deliverOnce, followUpMessages, formsOpenMessages, lengthBiasMessages, lowEvidenceMessages, questionRecipients, scoringFailedMessages, sendQuestionEmails,
+  deliverOnce, formsOpenMessages, lengthBiasMessages, lowEvidenceMessages, questionRecipients, scoringFailedMessages, sendQuestionEmails,
   type WeeklySendMail, type WeeklySendResult,
 } from './notifications'
 import { releaseWeek, type ReleaseSummary } from './release'
@@ -83,7 +83,6 @@ export async function runWeeklyDailyJob(
   const { released, emails } = week >= 1 && week <= total ? await releaseAndAnnounce(cycle.id, week, now, send, appUrl) : { released: null, emails: null }
   const scoring = await runScoring({ model, budgetMs: DAILY_SCORING_BUDGET_MS, clock })
   const messages = [
-    ...(await followUpMessages(cycle.id, now, appUrl)),
     ...(await scoringFailedMessages(cycle.id, now, appUrl)),
     ...(week === lowEvidenceWeek(total) ? await lowEvidenceMessages(cycle.id, appUrl) : []),
     ...(formsOpenFor(cycle, now) ? await formsOpenMessages(cycle, appUrl) : []),

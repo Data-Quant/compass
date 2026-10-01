@@ -22,8 +22,8 @@ export function scriptedModel(name: string = SCRIPTED_MODEL): ScriptedModel {
       if (situation.includes('[fail]')) throw new ModelError('PROVIDER_ERROR')
       const level = Number(/\[L([0-4])\]/.exec(situation)?.[1] ?? 2)
       const value = level === 0
-        ? { sufficiency: 'INSUFFICIENT', score: null, confidence: 'HIGH', criteriaMet: [], criteriaNotDemonstrated: ['No example'], evidenceQuotes: [], rationale: 'Not enough.', followUpPrompt: 'Give one example.', flags: [] }
-        : { sufficiency: 'SUFFICIENT', score: level, confidence: 'HIGH', criteriaMet: ['Specific'], criteriaNotDemonstrated: [], evidenceQuotes: [], rationale: `Level ${level}.`, followUpPrompt: null, flags: [] }
+        ? { sufficiency: 'INSUFFICIENT', score: null, confidence: 'HIGH', criteriaMet: [], criteriaNotDemonstrated: ['No example'], evidenceQuotes: [], rationale: 'Not enough.', flags: [] }
+        : { sufficiency: 'SUFFICIENT', score: level, confidence: 'HIGH', criteriaMet: ['Specific'], criteriaNotDemonstrated: [], evidenceQuotes: [], rationale: `Level ${level}.`, flags: [] }
       return { value, ...SCRIPTED_TOKENS }
     },
   }

@@ -80,7 +80,7 @@ test('two decisions made from the same view: the first stands, the second is ref
   assert.equal(await prisma.weeklyScoreReview.count({ where: { responseId } }), 1)
 })
 
-test('HR adjusts, asks for more detail (a follow-up with HR’s text) and excludes; only HR may decide', WEEKLY_DB_TEST, async () => {
+test('HR adjusts, marks not enough evidence (no new question) and excludes; only HR may decide', WEEKLY_DB_TEST, async () => {
   const prompt = await promptOf(W.lead.id)
   const responseId = await answerAs(prompt, 'strong')
   await score()
@@ -88,13 +88,12 @@ test('HR adjusts, asks for more detail (a follow-up with HR’s text) and exclud
   const adjusted = await decideAnswer(HR_ACTOR, responseId, { action: 'SET_SCORE', score: 3, reason: 'One example, not yet a pattern', basedOn: await basedOn(responseId) }, at(1, 3))
   assert.equal(adjusted.action, 'ADJUSTED')
   assert.equal((await slotOf(responseId)).status, 'SATISFIED')
-  const text = 'Could you describe what the client said about the new plan afterwards?'
-  const asked = await decideAnswer(HR_ACTOR, responseId, { action: 'ASK_FOR_DETAIL', followUpText: text, basedOn: await basedOn(responseId) }, at(1, 4))
-  assert.equal(asked.action, 'MARKED_INSUFFICIENT')
+  const prompts = await prisma.weeklyPrompt.count({ where: { cycleId } })
+  const marked = await decideAnswer(HR_ACTOR, responseId, { action: 'NOT_ENOUGH_EVIDENCE', basedOn: await basedOn(responseId) }, at(1, 4))
+  assert.equal(marked.action, 'MARKED_INSUFFICIENT')
   assert.equal((await slotOf(responseId)).status, 'OPEN')
-  const followUp = await prisma.weeklyPrompt.findFirstOrThrow({ where: { slotId: prompt.slotId, kind: 'FOLLOW_UP' } })
-  assert.deepEqual([followUp.textSnapshot, followUp.status], [text, 'OPEN'])
-  assert.equal(await historyStatus(W.lead.id, prompt.id), 'ADD_DETAIL')
+  assert.equal(await prisma.weeklyPrompt.count({ where: { cycleId } }), prompts, 'the evaluator is not asked again')
+  assert.equal(await historyStatus(W.lead.id, prompt.id), 'NOT_USED')
   const excluded = await decideAnswer(HR_ACTOR, responseId, { action: 'EXCLUDE', reason: 'Describes a different person', basedOn: await basedOn(responseId) }, at(1, 5))
   assert.equal(excluded.action, 'EXCLUDED')
   assert.equal(await historyStatus(W.lead.id, prompt.id), 'NOT_USED')
@@ -103,7 +102,7 @@ test('HR adjusts, asks for more detail (a follow-up with HR’s text) and exclud
 test('there is nothing to accept on a thin answer, but HR can score it by hand', WEEKLY_DB_TEST, async () => {
   const responseId = await answerAs(await promptOf(W.ana.id), 'praise')
   await score()
-  assert.equal((await record(responseId)).state, 'INSUFFICIENT')
+  assert.deepEqual((await record(responseId)).reasons, ['NOT_ENOUGH_EVIDENCE'])
   await assert.rejects(decideAnswer(HR_ACTOR, responseId, { action: 'ACCEPT', basedOn: await basedOn(responseId) }, at(1, 3)), isStatus(409))
   const set = await decideAnswer(HR_ACTOR, responseId, { action: 'SET_SCORE', score: 2, reason: 'Known from the project review', basedOn: await basedOn(responseId) }, at(1, 3))
   assert.equal(set.action, 'ADJUSTED')
@@ -161,20 +160,5 @@ test('a slot whose answer awaits a decision is not asked again until it is decid
   await decideAnswer(HR_ACTOR, responseId, { action: 'EXCLUDE', reason: 'Not about this topic', basedOn: await basedOn(responseId) }, at(4, 2))
   await releaseWeek(cycleId, 5, at(5))
   const asked = await prisma.weeklyPrompt.findMany({ where: { cycleId, evaluatorId: W.lead.id, weekIndex: 5 } })
-  assert.deepEqual(asked.map((p) => p.slotId), [prompt.slotId])
-})
-
-test('a thin answer that was followed up does not block the lead’s second sample', WEEKLY_DB_TEST, async () => {
-  const prompt = await promptOf(W.lead.id)
-  await answerAs(prompt, 'praise')
-  await score()
-  const followUp = await prisma.weeklyPrompt.findFirstOrThrow({ where: { slotId: prompt.slotId, kind: 'FOLLOW_UP' } })
-  const detailed = await answerAs(followUp, 'strong')
-  await score()
-  await decideAnswer(HR_ACTOR, detailed, { action: 'ACCEPT', basedOn: await basedOn(detailed) }, at(1, 3))
-  assert.equal((await slotOf(detailed)).status, 'SATISFIED')
-  await prisma.weeklySlot.updateMany({ where: { cycleId, evaluatorId: W.lead.id, id: { not: prompt.slotId! } }, data: { status: 'CLOSED_NOT_OBSERVED' } })
-  await releaseWeek(cycleId, 4, at(4))
-  const asked = await prisma.weeklyPrompt.findMany({ where: { cycleId, evaluatorId: W.lead.id, weekIndex: 4, kind: 'STANDARD' } })
   assert.deepEqual(asked.map((p) => p.slotId), [prompt.slotId])
 })

@@ -7,7 +7,7 @@ import type { LevelKey, ProfileLevels } from './profile'
 import type { AnswerState, ReviewReason } from './review-rules'
 
 export interface PersonRef { id: string; name: string; position: string | null }
-export type PromptKindValue = 'STANDARD' | 'FOLLOW_UP' | 'COMMENT'
+export type PromptKindValue = 'STANDARD' | 'COMMENT'
 
 export interface CycleSummary {
   id: string
@@ -112,7 +112,7 @@ export interface QualityView {
   tokens: number
 }
 
-export type ReviewFilter = 'NEEDS_REVIEW' | 'FAILED' | 'AUTO_ACCEPT' | 'FOLLOW_UP' | 'SCORING' | 'DECIDED'
+export type ReviewFilter = 'NEEDS_REVIEW' | 'FAILED' | 'AUTO_ACCEPT' | 'SCORING' | 'DECIDED'
 export type ReviewActionValue = 'ACCEPTED' | 'ADJUSTED' | 'MARKED_INSUFFICIENT' | 'EXCLUDED' | 'AUTO_ACCEPTED' | 'MANUAL'
 
 export interface AiScoreView {
@@ -124,7 +124,6 @@ export interface AiScoreView {
   criteriaNotDemonstrated: string[]
   evidenceQuotes: string[]
   rationale: string
-  followUpPrompt: string | null
   flags: string[]
   model: string
   profileVersion: number | null

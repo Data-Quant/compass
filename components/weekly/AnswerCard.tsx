@@ -112,7 +112,6 @@ export function AnswerCard({ prompt, actingAs, onChanged }: AnswerCardProps) {
             <p className="font-medium">{prompt.text}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {prompt.kind === 'FOLLOW_UP' && <Badge variant="outline">Follow-up</Badge>}
             {prompt.overdue && !submitted && <Badge variant="secondary">From week {prompt.weekIndex}</Badge>}
             {submitted && <Badge>Submitted</Badge>}
           </div>

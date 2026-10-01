@@ -2,10 +2,10 @@ import { stableHash } from './hash'
 
 export const AUTO_ACCEPT_MS = 72 * 60 * 60 * 1000
 export const SAMPLE_RATE = 0.1
-export const MAX_FOLLOW_UPS = 2
 
-export type ReviewReason = 'EXTREME_SCORE' | 'LOW_CONFIDENCE' | 'FLAGGED' | 'SAMPLED' | 'SCORING_FAILED' | 'CORRECTED' | 'UNCALIBRATED_MODEL'
+export type ReviewReason = 'NOT_ENOUGH_EVIDENCE' | 'EXTREME_SCORE' | 'LOW_CONFIDENCE' | 'FLAGGED' | 'SAMPLED' | 'SCORING_FAILED' | 'CORRECTED' | 'UNCALIBRATED_MODEL'
 export const REVIEW_REASON_LABELS: Record<ReviewReason, string> = {
+  NOT_ENOUGH_EVIDENCE: 'AI found not enough evidence',
   EXTREME_SCORE: 'Proposed 1 or 4',
   LOW_CONFIDENCE: 'Low confidence',
   FLAGGED: 'Flagged',
@@ -15,11 +15,10 @@ export const REVIEW_REASON_LABELS: Record<ReviewReason, string> = {
   UNCALIBRATED_MODEL: 'Model not yet calibrated',
 }
 
-export type AnswerState = 'SCORING' | 'FAILED' | 'INSUFFICIENT' | 'NEEDS_REVIEW' | 'AUTO_ACCEPT_PENDING' | 'DECIDED'
+export type AnswerState = 'SCORING' | 'FAILED' | 'NEEDS_REVIEW' | 'AUTO_ACCEPT_PENDING' | 'DECIDED'
 export const ANSWER_STATE_LABELS: Record<AnswerState, string> = {
   SCORING: 'Being scored',
   FAILED: 'Scoring failed',
-  INSUFFICIENT: 'Waiting for more detail',
   NEEDS_REVIEW: 'Needs review',
   AUTO_ACCEPT_PENDING: 'Accepted automatically after 72 hours',
   DECIDED: 'Decided',
@@ -43,17 +42,17 @@ export function isSampled(responseId: string): boolean {
   return stableHash(responseId) % 1000 < SAMPLE_RATE * 1000
 }
 
-/** Health, harassment or legal matters: HR only, never auto-accepted, and never sent back to the evaluator automatically. */
+/** Health, harassment or legal matters: HR only, never auto-accepted. */
 export function isSensitive(flags: readonly string[]): boolean {
   return flags.includes('SENSITIVE_CONTENT')
 }
 
 /**
- * Why HR must review an AI score; empty means it is auto-accepted after 72 hours. Thin answers get a follow-up
- * instead, unless they disclose something sensitive, which HR sees first.
+ * Why HR must review an AI score; empty means it is auto-accepted after 72 hours. A thin answer always goes to HR,
+ * who scores it by hand, marks it as not enough evidence or excludes it; the evaluator is never asked again.
  */
 export function reviewReasons(score: { sufficiency: string; score: number | null; confidence: string; flags: readonly string[] }, responseId: string): ReviewReason[] {
-  if (score.sufficiency !== 'SUFFICIENT') return isSensitive(score.flags) ? ['FLAGGED'] : []
+  if (score.sufficiency !== 'SUFFICIENT') return ['NOT_ENOUGH_EVIDENCE', ...(isSensitive(score.flags) ? (['FLAGGED'] as const) : [])]
   const reasons: ReviewReason[] = []
   if (score.score === 1 || score.score === 4) reasons.push('EXTREME_SCORE')
   if (score.confidence === 'LOW') reasons.push('LOW_CONFIDENCE')
@@ -68,22 +67,20 @@ export function isAutoAcceptDue(scoredAt: Date, now: Date): boolean {
 
 /**
  * A review decides the AI score it follows. A newer AI score (HR corrected the text) reopens the answer, and
- * because a person already judged or corrected it, it goes back to HR rather than being auto-accepted or
- * waiting for detail. A failed job is decided by a review made after it failed.
+ * because a person already judged or corrected it, it goes back to HR rather than being auto-accepted. A failed job is decided by a review made after it failed.
  */
 export function answerState(input: AnswerStateInput): { state: AnswerState; reasons: ReviewReason[] } {
   const decidedAfter = (instant: Date) => input.latestReview !== null && input.latestReview.createdAt >= instant
   if (input.job && (input.job.status === 'PENDING' || input.job.status === 'RUNNING')) return { state: 'SCORING', reasons: [] }
   if (input.aiScore) {
     if (decidedAfter(input.aiScore.createdAt)) return { state: 'DECIDED', reasons: [] }
-    // A sufficient score from an uncalibrated model is never auto-accepted; a thin answer still gets its follow-up.
+    // A sufficient score from an uncalibrated model is never auto-accepted.
     const uncalibrated = input.aiScore.sufficiency === 'SUFFICIENT' && input.modelTrusted === false
     const reasons: ReviewReason[] = [
       ...reviewReasons(input.aiScore, input.responseId),
       ...(input.humanReviewedBefore ? (['CORRECTED'] as const) : []),
       ...(uncalibrated ? (['UNCALIBRATED_MODEL'] as const) : []),
     ]
-    if (input.aiScore.sufficiency !== 'SUFFICIENT' && reasons.length === 0) return { state: 'INSUFFICIENT', reasons: [] }
     return { state: reasons.length > 0 ? 'NEEDS_REVIEW' : 'AUTO_ACCEPT_PENDING', reasons }
   }
   if (input.job?.status === 'FAILED') {

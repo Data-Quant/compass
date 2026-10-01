@@ -59,15 +59,12 @@ const optionalReason = z.string().trim().max(500).optional()
 export const decisionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('ACCEPT'), basedOn: basedOnSchema, reason: optionalReason }).strict(),
   z.object({ action: z.literal('SET_SCORE'), basedOn: basedOnSchema, score: z.number().int().min(1).max(4), reason: reasonSchema }).strict(),
-  z.object({
-    action: z.literal('ASK_FOR_DETAIL'), basedOn: basedOnSchema, reason: optionalReason,
-    followUpText: z.string().trim().min(20, 'Write at least 20 characters').max(600).optional(),
-  }).strict(),
+  z.object({ action: z.literal('NOT_ENOUGH_EVIDENCE'), basedOn: basedOnSchema, reason: optionalReason }).strict(),
   z.object({ action: z.literal('EXCLUDE'), basedOn: basedOnSchema, reason: reasonSchema }).strict(),
 ])
 export type DecisionInput = z.infer<typeof decisionSchema>
 
-export const reviewFilterSchema = z.enum(['NEEDS_REVIEW', 'FAILED', 'AUTO_ACCEPT', 'FOLLOW_UP', 'SCORING', 'DECIDED'])
+export const reviewFilterSchema = z.enum(['NEEDS_REVIEW', 'FAILED', 'AUTO_ACCEPT', 'SCORING', 'DECIDED'])
 export const correctionSchema = z
   .object({ situation: field, action: field, result: field, shortfall: field.nullable().optional(), reason: reasonSchema })
   .strict()

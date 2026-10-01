@@ -43,7 +43,7 @@ test('asking again reopens closed topics and asks each now, beyond the weekly ca
   assert.equal(slots.length, 4)
   const others = slots.filter((s) => s.id !== prompt.slotId)
   await prisma.weeklySlot.update({ where: { id: others[0].id }, data: { status: 'CLOSED_NOT_OBSERVED', notObservedCount: 2 } })
-  await prisma.weeklySlot.update({ where: { id: others[1].id }, data: { status: 'CLOSED_INSUFFICIENT', followUpCount: 2 } })
+  await prisma.weeklySlot.update({ where: { id: others[1].id }, data: { status: 'CLOSED_NOT_OBSERVED', notObservedCount: 2 } })
   await prisma.weeklySlot.update({ where: { id: others[2].id }, data: { snoozedUntilWeek: 20 } })
   await prisma.weeklyCycle.update({ where: { id: cycleId }, data: { weeklyCap: 1 } })
   const mail = mailbox()

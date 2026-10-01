@@ -6,7 +6,6 @@ import {
 import { effectiveWeek, totalWeeks } from '../calendar'
 import { areWeeklyTestToolsEnabled } from '../flag'
 import { perspectiveOf } from '../perspectives'
-import { isSensitive } from '../review-rules'
 import { latestByResponse } from '../reviews'
 import type { AnswerInput } from '../schemas'
 import type { AnswerView, EvaluateeProgress, HistoryGroup, HistoryResponse, InboxPrompt, InboxResponse } from '../view-types'
@@ -187,26 +186,14 @@ export async function markNotObserved(actor: WeeklyActor, subject: InboxSubject,
   })
 }
 
-async function aiInsufficient(responseIds: string[]): Promise<Set<string>> {
-  if (responseIds.length === 0) return new Set()
-  const scores = await prisma.weeklyAiScore.findMany({
-    where: { responseId: { in: responseIds } }, orderBy: [{ revision: 'desc' }, { createdAt: 'desc' }], select: { responseId: true, sufficiency: true, flags: true },
-  })
-  const latest = new Map<string, (typeof scores)[number]>()
-  for (const score of scores) if (!latest.has(score.responseId)) latest.set(score.responseId, score)
-  // A thin answer with a sensitive disclosure waits for HR, so the evaluator sees "being reviewed", not "please add detail".
-  return new Set([...latest].filter(([, score]) => score.sufficiency === 'INSUFFICIENT' && !isSensitive(jsonStrings(score.flags))).map(([id]) => id))
-}
-
 export async function historyView(evaluatorId: string): Promise<HistoryResponse> {
   const cycle = await findRunningCycle()
   if (!cycle) return { cycle: null, groups: [] }
   const prompts: PromptRow[] = await prisma.weeklyPrompt.findMany({ where: { cycleId: cycle.id, evaluatorId }, include: promptInclude, orderBy: [{ weekIndex: 'desc' }, { createdAt: 'desc' }] })
   const responseIds = prompts.flatMap((p) => (p.response ? [p.response.id] : []))
-  const [people, reviews, insufficient] = await Promise.all([
+  const [people, reviews] = await Promise.all([
     loadPeople(prompts.map((p) => p.evaluateeId)),
     prisma.weeklyScoreReview.findMany({ where: { responseId: { in: responseIds } }, select: { id: true, responseId: true, createdAt: true, action: true } }),
-    aiInsufficient(responseIds),
   ])
   const latest = latestByResponse(reviews)
   const groups = new Map<string, HistoryGroup>()
@@ -220,7 +207,7 @@ export async function historyView(evaluatorId: string): Promise<HistoryResponse>
         ...group.entries,
         {
           id: p.id, weekIndex: p.weekIndex, kind: p.kind, topic: topicOf(p), text: p.textSnapshot,
-          status: evaluatorStatus({ promptStatus: p.status, latestReviewAction: latest.get(responseId)?.action ?? null, aiInsufficient: insufficient.has(responseId) }),
+          status: evaluatorStatus({ promptStatus: p.status, latestReviewAction: latest.get(responseId)?.action ?? null }),
           answer: answerView(p.response), submittedAt: p.response?.submittedAt?.toISOString() ?? null,
         },
       ],

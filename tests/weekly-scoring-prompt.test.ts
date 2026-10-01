@@ -4,7 +4,7 @@ import { DRAFTS } from '../lib/weekly/content/drafts'
 import { buildDraftMessages, DRAFT_SCHEMA_NAME, parseDraftOutput } from '../lib/weekly/ai/drafting'
 import { fakeComplete, fakeScore } from '../lib/weekly/ai/fake-model'
 import {
-  buildScoringMessages, DEFAULT_FOLLOW_UP, finalizeScore, SCORING_SCHEMA_NAME, scoringOutputSchema, type ScoringInput, type ScoringOutput,
+  buildScoringMessages, finalizeScore, SCORING_SCHEMA_NAME, scoringOutputSchema, type ScoringInput, type ScoringOutput,
 } from '../lib/weekly/ai/scoring-prompt'
 import { syntheticAnswer } from '../lib/weekly/content/synthetic'
 
@@ -19,7 +19,7 @@ const input: ScoringInput = {
 }
 const output = (overrides: Partial<ScoringOutput> = {}): ScoringOutput => ({
   sufficiency: 'SUFFICIENT', score: 3, confidence: 'HIGH', criteriaMet: ['Accepted first time'], criteriaNotDemonstrated: [],
-  evidenceQuotes: ['added a comparison slide unasked'], rationale: 'Level 3.', followUpPrompt: null, flags: [], ...overrides,
+  evidenceQuotes: ['added a comparison slide unasked'], rationale: 'Level 3.', flags: [], ...overrides,
 })
 const answerText = [input.answer.situation, input.answer.action, input.answer.result].join('\n')
 
@@ -45,13 +45,12 @@ test('finalizing drops invented quotes (lowering confidence) and never keeps a s
   const invented = finalizeScore(output({ evidenceQuotes: ['added a comparison slide unasked', 'saved the company'] }), answerText, [])
   assert.deepEqual(invented.evidenceQuotes, ['added a comparison slide unasked'])
   assert.equal(invented.confidence, 'LOW')
-  const thin = finalizeScore(output({ sufficiency: 'INSUFFICIENT', score: 2, followUpPrompt: '' }), answerText, [])
-  assert.deepEqual([thin.score, thin.followUpPrompt], [null, DEFAULT_FOLLOW_UP])
+  const thin = finalizeScore(output({ sufficiency: 'INSUFFICIENT', score: 2 }), answerText, [])
+  assert.deepEqual([thin.sufficiency, thin.score], ['INSUFFICIENT', null])
   const noScore = finalizeScore(output({ score: null }), answerText, [])
   assert.equal(noScore.sufficiency, 'INSUFFICIENT')
   const flagged = finalizeScore(output({ flags: ['GENERIC_PRAISE'] }), answerText, ['POSSIBLE_COPY', 'GENERIC_PRAISE'])
   assert.deepEqual(flagged.flags, ['GENERIC_PRAISE', 'POSSIBLE_COPY'])
-  assert.equal(finalizeScore(output(), answerText, []).followUpPrompt, null)
 })
 
 test('the fake model is deterministic and follows the synthetic answers', () => {

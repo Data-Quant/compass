@@ -1,6 +1,5 @@
 import type { Prisma, WeeklyReviewAction } from '@prisma/client'
 import { prisma } from '@/lib/db'
-import { DEFAULT_FOLLOW_UP } from '../ai/scoring-prompt'
 import { isAutoAcceptDue } from '../review-rules'
 import { isConfirmedAction, latestByResponse } from '../reviews'
 import type { DecisionInput } from '../schemas'
@@ -10,13 +9,12 @@ import { assertHr, type WeeklyActor } from './context'
 import { findRunningCycle } from './cycles'
 import { lockResponse } from './db'
 import { WeeklyError } from './errors'
-import { requestFollowUp } from './follow-ups'
 
 export const STALE_DECISION = 'This answer changed or someone else decided it first. Reload to see the latest.'
 
 export interface DecisionResult { reviewId: string; action: WeeklyReviewAction }
 
-/** A slot is satisfied while any of its answers' latest review is a confirmed score; open follow-ups end then. */
+/** A slot is satisfied while any of its answers' latest review is a confirmed score. */
 export async function refreshSlotStatus(tx: Prisma.TransactionClient, slotId: string | null): Promise<void> {
   if (!slotId) return
   const slot = await tx.weeklySlot.findUnique({ where: { id: slotId } })
@@ -26,7 +24,6 @@ export async function refreshSlotStatus(tx: Prisma.TransactionClient, slotId: st
   const confirmed = [...latestByResponse(reviews).values()].some((review) => isConfirmedAction(review.action))
   if (confirmed && slot.status !== 'SATISFIED') {
     await tx.weeklySlot.update({ where: { id: slotId }, data: { status: 'SATISFIED' } })
-    await tx.weeklyPrompt.updateMany({ where: { slotId, kind: 'FOLLOW_UP', status: { in: ['OPEN', 'DRAFT'] } }, data: { status: 'CANCELLED' } })
   } else if (!confirmed && slot.status === 'SATISFIED') {
     await tx.weeklySlot.update({ where: { id: slotId }, data: { status: 'OPEN' } })
   }
@@ -42,7 +39,7 @@ function reviewData(record: AnswerRecord, input: DecisionInput, reviewerId: stri
     }
     case 'SET_SCORE':
       return { ...base, action: record.aiScore ? 'ADJUSTED' : 'MANUAL', finalScore: input.score }
-    case 'ASK_FOR_DETAIL':
+    case 'NOT_ENOUGH_EVIDENCE':
       return { ...base, action: 'MARKED_INSUFFICIENT', finalScore: null }
     case 'EXCLUDE':
       return { ...base, action: 'EXCLUDED', finalScore: null }
@@ -62,11 +59,7 @@ export async function decideAnswer(actor: WeeklyActor, responseId: string, input
     }
     if (record.state === 'SCORING') throw new WeeklyError('This answer is still being scored', 409)
     const review = await tx.weeklyScoreReview.create({ data: reviewData(record, input, actor.id, now) })
-    // Slot first: asking for detail reopens a satisfied slot, and the follow-up needs it open.
     await refreshSlotStatus(tx, record.slotId)
-    if (input.action === 'ASK_FOR_DETAIL') {
-      await requestFollowUp(tx, { promptId: record.promptId, text: input.followUpText ?? record.aiScore?.followUpPrompt ?? DEFAULT_FOLLOW_UP, now })
-    }
     await recordAudit(tx, {
       cycleId: record.cycleId, actorId: actor.id, actorRole: 'HR', action: `REVIEW_${input.action}`, objectType: 'WeeklyResponse', objectId: responseId,
       before: { state: record.state, aiScore: record.aiScore?.score ?? null }, after: { action: review.action, finalScore: review.finalScore }, reason: input.reason ?? null,

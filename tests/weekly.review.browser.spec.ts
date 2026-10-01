@@ -92,7 +92,7 @@ test('the evaluator sees “Accepted”, never the score', async ({ page }) => {
   await expect(page.getByText(/AI proposes|Transforming The Business/)).toHaveCount(0)
 })
 
-test('a thin answer sends the evaluator a follow-up, and HR sees the dashboard', async ({ page }) => {
+test('a thin answer goes to HR as not enough evidence and the evaluator is never asked again', async ({ page }) => {
   await login(page, 'wkle-hr')
   await page.goto('/admin/weekly')
   await page.getByRole('tab', { name: 'Test tools' }).click()
@@ -100,15 +100,21 @@ test('a thin answer sends the evaluator a follow-up, and HR sees the dashboard',
   await page.getByRole('button', { name: 'Score now' }).click()
   await expect(page.getByText(/ scored, /)).toBeVisible({ timeout: 60000 })
   await page.getByRole('tab', { name: 'Review' }).click()
-  await page.getByRole('button', { name: /^Waiting for detail/ }).click()
+  const card = page.locator('article', { hasText: 'Project Osprey' })
   await expect(async () => {
     await page.getByRole('button', { name: 'Refresh' }).click()
-    await expect(page.locator('article', { hasText: 'Project Osprey' })).toBeVisible({ timeout: 2000 })
+    await expect(card).toBeVisible({ timeout: 2000 })
   }).toPass({ timeout: 60000 })
+  await expect(card.getByText('AI found not enough evidence')).toBeVisible()
+  await card.getByRole('button', { name: 'Not enough evidence' }).click()
+  await page.getByRole('button', { name: 'Save decision' }).click()
+  await expect(page.getByText('Decision saved')).toBeVisible()
   await page.getByRole('tab', { name: 'Dashboard' }).click()
   await expect(page.getByRole('heading', { name: 'AI quality' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Low evidence' })).toBeVisible()
   await login(page, 'wkle-ana')
   await page.goto('/evaluations/weekly')
-  await expect(page.getByText('Follow-up').first()).toBeVisible()
+  await page.getByRole('tab', { name: 'History' }).click()
+  await expect(page.getByText('Not used as evidence').first()).toBeVisible()
+  await expect(page.getByText(/Follow-up|add detail/i)).toHaveCount(0)
 })

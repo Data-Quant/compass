@@ -11,9 +11,9 @@ import { lockResponse } from './db'
 import { WeeklyError } from './errors'
 
 export const REVIEW_PAGE_SIZE = 50
-export const REVIEW_FILTERS: readonly ReviewFilter[] = ['NEEDS_REVIEW', 'FAILED', 'AUTO_ACCEPT', 'FOLLOW_UP', 'SCORING', 'DECIDED']
+export const REVIEW_FILTERS: readonly ReviewFilter[] = ['NEEDS_REVIEW', 'FAILED', 'AUTO_ACCEPT', 'SCORING', 'DECIDED']
 const FILTER_BY_STATE: Record<AnswerState, ReviewFilter> = {
-  NEEDS_REVIEW: 'NEEDS_REVIEW', FAILED: 'FAILED', AUTO_ACCEPT_PENDING: 'AUTO_ACCEPT', INSUFFICIENT: 'FOLLOW_UP', SCORING: 'SCORING', DECIDED: 'DECIDED',
+  NEEDS_REVIEW: 'NEEDS_REVIEW', FAILED: 'FAILED', AUTO_ACCEPT_PENDING: 'AUTO_ACCEPT', SCORING: 'SCORING', DECIDED: 'DECIDED',
 }
 
 export function filterOf(state: AnswerState): ReviewFilter {
@@ -28,7 +28,7 @@ function aiView(record: AnswerRecord, versions: ReadonlyMap<string, number>): Ai
   return {
     id: ai.id, sufficiency: ai.sufficiency as AiScoreView['sufficiency'], score: ai.score, confidence: ai.confidence as AiScoreView['confidence'],
     criteriaMet: jsonStrings(ai.criteriaMet), criteriaNotDemonstrated: jsonStrings(ai.criteriaNotDemonstrated), evidenceQuotes: jsonStrings(ai.evidenceQuotes),
-    rationale: ai.rationale, followUpPrompt: ai.followUpPrompt, flags: jsonStrings(ai.flags), model: ai.model,
+    rationale: ai.rationale, flags: jsonStrings(ai.flags), model: ai.model,
     profileVersion: versions.get(ai.profileId) ?? null, createdAt: ai.createdAt.toISOString(),
   }
 }

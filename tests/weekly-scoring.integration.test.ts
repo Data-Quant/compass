@@ -38,7 +38,7 @@ test('an answer is scored against the approved profile, with both names removed 
   const ai = await aiScoreFor(responseId)
   const slot = await prisma.weeklySlot.findUniqueOrThrow({ where: { id: prompt.slotId! } })
   const approved = await prisma.weeklyProfile.findFirstOrThrow({ where: { competencyId: slot.competencyId, status: 'APPROVED' } })
-  assert.deepEqual([ai.score, ai.sufficiency, ai.profileId, ai.model, ai.promptVersion, ai.revision], [4, 'SUFFICIENT', approved.id, 'spy', 'weekly-1', 1])
+  assert.deepEqual([ai.score, ai.sufficiency, ai.profileId, ai.model, ai.promptVersion, ai.revision], [4, 'SUFFICIENT', approved.id, 'spy', 'weekly-2', 1])
   assert.equal(ai.createdAt.getTime(), scoringClock().getTime())
   assert.equal((await prisma.weeklyScoringJob.findFirstOrThrow({ where: { responseId } })).status, 'DONE')
   const sent = spy.requests[0].user
@@ -50,27 +50,18 @@ test('an answer is scored against the approved profile, with both names removed 
   assert.equal(JSON.parse(sent).personRole.jobTitle, evaluatee.position)
 })
 
-test('a thin answer asks the evaluator for more detail, at most twice, then closes the slot', WEEKLY_DB_TEST, async () => {
+test('a thin answer goes to HR as not enough evidence; the evaluator is never asked again', WEEKLY_DB_TEST, async () => {
   const first = await leadPrompt()
-  const firstResponse = await answerAs(first, 'praise')
+  const before = await prisma.weeklyPrompt.count({ where: { cycleId } })
+  const responseId = await answerAs(first, 'praise')
   assert.equal((await score()).insufficient, 1)
-  assert.equal((await aiScoreFor(firstResponse)).score, null)
-  const followUps = () => prisma.weeklyPrompt.findMany({ where: { slotId: first.slotId, kind: 'FOLLOW_UP' }, orderBy: { createdAt: 'asc' } })
-  const [followUp] = await followUps()
-  assert.deepEqual([followUp.evaluatorId, followUp.evaluateeId, followUp.status, followUp.weekIndex], [W.lead.id, first.evaluateeId, 'OPEN', 1])
-  assert.match(followUp.textSnapshot, /specific recent example/)
+  assert.equal((await aiScoreFor(responseId)).score, null)
+  assert.equal(await prisma.weeklyPrompt.count({ where: { cycleId } }), before, 'no new question')
+  const [record] = await loadAnswerRecords({ responseIds: [responseId] })
+  assert.deepEqual([record.state, record.reasons], ['NEEDS_REVIEW', ['NOT_ENOUGH_EVIDENCE']])
   const history = await historyView(W.lead.id)
-  assert.ok(history.groups.flatMap((g) => g.entries).some((e) => e.id === first.id && e.status === 'ADD_DETAIL'))
-
-  await answerAs(followUp, 'praise')
-  await score()
-  const second = (await followUps())[1]
-  assert.ok(second, 'a second follow-up is asked')
-  await answerAs(second, 'praise')
-  await score()
-  assert.equal((await followUps()).length, 2)
-  const slot = await prisma.weeklySlot.findUniqueOrThrow({ where: { id: first.slotId! } })
-  assert.deepEqual([slot.status, slot.followUpCount], ['CLOSED_INSUFFICIENT', 2])
+  assert.equal(history.groups.flatMap((g) => g.entries).find((e) => e.id === first.id)?.status, 'BEING_REVIEWED')
+  assert.equal((await prisma.weeklySlot.findUniqueOrThrow({ where: { id: first.slotId! } })).status, 'OPEN')
 })
 
 test('copied answers and sensitive details are flagged by the system even when the model does not flag them', WEEKLY_DB_TEST, async () => {
@@ -81,7 +72,7 @@ test('copied answers and sensitive details are flagged by the system even when t
   await releaseWeek(cycleId, 2, at(2))
   const weekTwo = await prisma.weeklyPrompt.findFirstOrThrow({ where: { cycleId, evaluatorId: W.lead.id, weekIndex: 2, kind: 'STANDARD' } })
   const copyId = await answerAs(weekTwo, text, at(2, 2))
-  const plain = { sufficiency: 'SUFFICIENT', score: 2, confidence: 'HIGH', criteriaMet: [], criteriaNotDemonstrated: [], evidenceQuotes: [], rationale: 'Meets.', followUpPrompt: null, flags: [] }
+  const plain = { sufficiency: 'SUFFICIENT', score: 2, confidence: 'HIGH', criteriaMet: [], criteriaNotDemonstrated: [], evidenceQuotes: [], rationale: 'Meets.', flags: [] }
   await score(spyModel(plain))
   assert.deepEqual((await aiScoreFor(copyId)).flags, ['POSSIBLE_COPY'])
 
@@ -96,7 +87,7 @@ test('quotes that are not in the answer are dropped and the score is marked low 
   const responseId = await answerAs(prompt, 'solid')
   const invented = {
     sufficiency: 'SUFFICIENT', score: 3, confidence: 'HIGH', criteriaMet: ['Goes beyond'], criteriaNotDemonstrated: [],
-    evidenceQuotes: ['raised one data question with me', 'saved the whole account single-handedly'], rationale: 'Level 3.', followUpPrompt: null, flags: [],
+    evidenceQuotes: ['raised one data question with me', 'saved the whole account single-handedly'], rationale: 'Level 3.', flags: [],
   }
   await score(spyModel(invented))
   const ai = await aiScoreFor(responseId)
@@ -109,9 +100,9 @@ test('a thin answer that discloses something sensitive goes to HR, not back to t
   const thin = answerFor('praise', prompt)
   const responseId = await answerAs(prompt, { ...thin, action: `They told me about a serious health condition this month. ${thin.action}` })
   assert.equal((await score()).insufficient, 1)
-  assert.equal(await prisma.weeklyPrompt.count({ where: { slotId: prompt.slotId, kind: 'FOLLOW_UP' } }), 0)
+  assert.equal(await prisma.weeklyPrompt.count({ where: { slotId: prompt.slotId } }), 1)
   const [record] = await loadAnswerRecords({ responseIds: [responseId] })
-  assert.deepEqual([record.state, record.reasons], ['NEEDS_REVIEW', ['FLAGGED']])
+  assert.deepEqual([record.state, record.reasons], ['NEEDS_REVIEW', ['NOT_ENOUGH_EVIDENCE', 'FLAGGED']])
   const history = await historyView(W.lead.id)
   assert.equal(history.groups.flatMap((g) => g.entries).find((e) => e.id === prompt.id)?.status, 'BEING_REVIEWED')
 })

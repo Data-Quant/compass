@@ -17,7 +17,7 @@ test('answer states follow the job, the latest AI score and the reviews made aft
   assert.equal(answerState({ ...base, latestReview: { createdAt: t(2) } }).state, 'DECIDED')
   assert.equal(answerState({ ...base, latestReview: { createdAt: t(0) } }).state, 'AUTO_ACCEPT_PENDING')
   assert.deepEqual(answerState({ ...base, aiScore: { ...ai({ score: 4 }), createdAt: t(1) } }), { state: 'NEEDS_REVIEW', reasons: ['EXTREME_SCORE'] })
-  assert.equal(answerState({ ...base, aiScore: { ...ai({ sufficiency: 'INSUFFICIENT', score: null }), createdAt: t(1) } }).state, 'INSUFFICIENT')
+  assert.deepEqual(answerState({ ...base, aiScore: { ...ai({ sufficiency: 'INSUFFICIENT', score: null }), createdAt: t(1) } }), { state: 'NEEDS_REVIEW', reasons: ['NOT_ENOUGH_EVIDENCE'] })
   const failed: AnswerStateInput = { ...base, job: { status: 'FAILED', updatedAt: t(5) }, aiScore: null }
   assert.deepEqual(answerState(failed), { state: 'FAILED', reasons: ['SCORING_FAILED'] })
   assert.equal(answerState({ ...failed, latestReview: { createdAt: t(4) } }).state, 'FAILED')
@@ -26,11 +26,11 @@ test('answer states follow the job, the latest AI score and the reviews made aft
   assert.equal(answerState({ ...base, job: null, aiScore: null }).state, 'SCORING')
 })
 
-test('HR reviews 1s, 4s, low confidence and any flag; thin answers skip review', () => {
+test('HR reviews 1s, 4s, low confidence, any flag and every thin answer', () => {
   assert.deepEqual(reviewReasons(ai({ score: 4 }), unsampled), ['EXTREME_SCORE'])
   assert.deepEqual(reviewReasons(ai({ score: 1, confidence: 'LOW', flags: ['OFF_TOPIC'] }), unsampled), ['EXTREME_SCORE', 'LOW_CONFIDENCE', 'FLAGGED'])
   assert.deepEqual(reviewReasons(ai(), unsampled), [])
-  assert.deepEqual(reviewReasons(ai({ sufficiency: 'INSUFFICIENT', score: null }), unsampled), [])
+  assert.deepEqual(reviewReasons(ai({ sufficiency: 'INSUFFICIENT', score: null }), unsampled), ['NOT_ENOUGH_EVIDENCE'])
 })
 
 test('about one in ten of the rest is sampled, the same way every time', () => {
@@ -88,21 +88,21 @@ test('quality: agreement, adjustments, length bias, flags, 4s and drift', () => 
   assert.deepEqual(evaluatorDrift([{ evaluatorId: 'solo', perspective: 'LEAD', finalScore: 4 }, { evaluatorId: 'solo', perspective: 'LEAD', finalScore: 4 }, { evaluatorId: 'solo', perspective: 'LEAD', finalScore: 4 }]), [])
 })
 
-test('a sensitive thin answer goes to HR instead of a follow-up; a corrected answer comes back to HR whatever its new score', () => {
+test('a thin answer goes to HR, never back to the evaluator; a corrected answer comes back to HR whatever its new score', () => {
   const base: AnswerStateInput = { responseId: unsampled, job: { status: 'DONE', updatedAt: t(1) }, aiScore: null, latestReview: null, humanReviewedBefore: false }
   const thinSensitive = { ...ai({ sufficiency: 'INSUFFICIENT', score: null, flags: ['GENERIC_PRAISE', 'SENSITIVE_CONTENT'] }), createdAt: t(1) }
-  assert.deepEqual(reviewReasons(thinSensitive, unsampled), ['FLAGGED'])
-  assert.deepEqual(answerState({ ...base, aiScore: thinSensitive }), { state: 'NEEDS_REVIEW', reasons: ['FLAGGED'] })
+  assert.deepEqual(reviewReasons(thinSensitive, unsampled), ['NOT_ENOUGH_EVIDENCE', 'FLAGGED'])
+  assert.deepEqual(answerState({ ...base, aiScore: thinSensitive }), { state: 'NEEDS_REVIEW', reasons: ['NOT_ENOUGH_EVIDENCE', 'FLAGGED'] })
   const thinPraise = { ...ai({ sufficiency: 'INSUFFICIENT', score: null, flags: ['GENERIC_PRAISE'] }), createdAt: t(1) }
-  assert.deepEqual(answerState({ ...base, aiScore: thinPraise }), { state: 'INSUFFICIENT', reasons: [] })
-  assert.deepEqual(answerState({ ...base, aiScore: thinPraise, humanReviewedBefore: true }), { state: 'NEEDS_REVIEW', reasons: ['CORRECTED'] })
+  assert.deepEqual(answerState({ ...base, aiScore: thinPraise }), { state: 'NEEDS_REVIEW', reasons: ['NOT_ENOUGH_EVIDENCE'] })
+  assert.deepEqual(answerState({ ...base, aiScore: thinPraise, humanReviewedBefore: true }), { state: 'NEEDS_REVIEW', reasons: ['NOT_ENOUGH_EVIDENCE', 'CORRECTED'] })
 })
 
-test('a sufficient score from a model that has not passed calibration always goes to HR; thin answers still get their follow-up', () => {
+test('a sufficient score from a model that has not passed calibration always goes to HR', () => {
   const base: AnswerStateInput = { responseId: unsampled, job: { status: 'DONE', updatedAt: t(1) }, aiScore: { ...ai(), createdAt: t(1) }, latestReview: null, humanReviewedBefore: false }
   assert.deepEqual(answerState({ ...base, modelTrusted: false }), { state: 'NEEDS_REVIEW', reasons: ['UNCALIBRATED_MODEL'] })
   assert.deepEqual(answerState({ ...base, modelTrusted: true }), { state: 'AUTO_ACCEPT_PENDING', reasons: [] })
-  assert.equal(answerState({ ...base, modelTrusted: false, aiScore: { ...ai({ sufficiency: 'INSUFFICIENT', score: null }), createdAt: t(1) } }).state, 'INSUFFICIENT')
+  assert.deepEqual(answerState({ ...base, modelTrusted: false, aiScore: { ...ai({ sufficiency: 'INSUFFICIENT', score: null }), createdAt: t(1) } }).reasons, ['NOT_ENOUGH_EVIDENCE'])
   assert.deepEqual(answerState({ ...base, modelTrusted: false, aiScore: { ...ai({ score: 4 }), createdAt: t(1) } }).reasons, ['EXTREME_SCORE', 'UNCALIBRATED_MODEL'])
   assert.equal(answerState({ ...base, modelTrusted: false, latestReview: { createdAt: t(2) } }).state, 'DECIDED')
 })

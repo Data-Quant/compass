@@ -56,7 +56,7 @@ test('an edit made while the old text is being scored makes that job stale; only
   assert.equal((await run(fakeModel(), 62)).scored, 1)
   const ai = await prisma.weeklyAiScore.findFirstOrThrow({ where: { responseId } })
   assert.deepEqual([ai.revision, ai.score], [2, 4])
-  assert.equal(await prisma.weeklyPrompt.count({ where: { slotId: prompt.slotId, kind: 'FOLLOW_UP' } }), 0)
+  assert.equal(await prisma.weeklyPrompt.count({ where: { slotId: prompt.slotId } }), 1)
 })
 
 test('provider errors are retried twice with a pause, then the job fails into the manual queue', WEEKLY_DB_TEST, async () => {

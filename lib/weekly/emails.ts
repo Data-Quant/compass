@@ -29,17 +29,6 @@ function layout(name: string, paragraphs: string[], link: string, button: string
 }
 const base = (appUrl: string) => appUrl.replace(/\/$/, '')
 
-/** Daily digest: the AI (or HR) asked for more detail on some of this person's answers. The score is never mentioned (D13). */
-export function renderFollowUpEmail(input: { name: string; count: number; appUrl: string }): { subject: string; html: string } {
-  return {
-    subject: `Please add detail to ${plural(input.count, 'evaluation answer')}`,
-    html: layout(input.name, [
-      escapeHtml(`We need a little more detail on ${input.count === 1 ? 'one of your recent answers' : `${input.count} of your recent answers`}.`),
-      'Each follow-up asks for one specific example: what was going on, what the person did, and what happened.',
-    ], `${base(input.appUrl)}/evaluations/weekly`, 'Add detail'),
-  }
-}
-
 export function renderScoringFailedEmail(input: { name: string; count: number; appUrl: string }): { subject: string; html: string } {
   const answers = plural(input.count, 'weekly answer')
   return {

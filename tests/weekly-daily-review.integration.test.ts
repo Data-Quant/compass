@@ -45,17 +45,16 @@ test('each day the job scores waiting answers and accepts those scored more than
   assert.equal(saturday.autoAccepted, isSampled(lead) ? 0 : 1)
 })
 
-test('evaluators get one follow-up email a day and HR hears about answers the AI could not score', WEEKLY_DB_TEST, async () => {
+test('a thin answer sends the evaluator nothing, and HR hears about answers the AI could not score', WEEKLY_DB_TEST, async () => {
   const prompts = new Map((await releaseWeekOne(cycleId)).map((p) => [p.evaluatorId, p]))
   await answerAs(prompts.get(W.ana.id)!, 'praise')
   const mail = mailbox()
   await runWeeklyDailyJob(mail.send, APP, at(1, 3), { model: fakeModel() })
-  assert.ok(mail.sent.some((m) => m.to === 'wkt-ana@example.test' && m.subject === 'Please add detail to 1 evaluation answer'))
+  assert.ok(!mail.sent.some((m) => m.to === 'wkt-ana@example.test'), 'no follow-up email')
   await answerAs(prompts.get(W.ben.id)!, 'solid')
   const later = mailbox()
   await runWeeklyDailyJob(later.send, APP, at(1, 3, 15), { model: null })
   assert.ok(later.sent.some((m) => m.to === 'wkt-hr@example.test' && m.subject === '1 weekly answer could not be scored'))
-  assert.ok(!later.sent.some((m) => m.to === 'wkt-ana@example.test'), 'the follow-up email is sent once a day')
 })
 
 test('in week 10 HR gets the low-evidence list, once', WEEKLY_DB_TEST, async () => {

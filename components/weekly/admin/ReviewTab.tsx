@@ -12,7 +12,6 @@ const FILTERS: ReadonlyArray<{ value: ReviewFilter; label: string }> = [
   { value: 'NEEDS_REVIEW', label: 'Needs review' },
   { value: 'FAILED', label: 'Scoring failed' },
   { value: 'AUTO_ACCEPT', label: 'Accepting in 72 hours' },
-  { value: 'FOLLOW_UP', label: 'Waiting for detail' },
   { value: 'SCORING', label: 'Being scored' },
   { value: 'DECIDED', label: 'Decided' },
 ]

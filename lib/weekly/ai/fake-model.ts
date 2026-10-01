@@ -13,14 +13,13 @@ export function fakeScore(answerText: string): ScoringOutput {
     return {
       sufficiency: 'INSUFFICIENT', score: null, confidence: 'HIGH', criteriaMet: [], criteriaNotDemonstrated: ['No specific situation, action or result'],
       evidenceQuotes: [], rationale: 'Praise without a concrete example.', flags: ['GENERIC_PRAISE'],
-      followUpPrompt: 'Could you describe one specific recent example of what they did and what happened?',
     }
   }
   const score = /other teams|now the standard|adopted/.test(text) ? 4 : /\bchase|slipped|\brebuil|\bredo\b|\blate\b/.test(text) ? 1 : /without being asked|went beyond/.test(text) ? 3 : 2
   const quote = firstSentence(answerText)
   return {
     sufficiency: 'SUFFICIENT', score, confidence: score === 2 ? 'HIGH' : 'MEDIUM', criteriaMet: ['Describes a specific situation and its result'],
-    criteriaNotDemonstrated: [], evidenceQuotes: quote ? [quote] : [], rationale: `Stand-in model: level ${score}.`, followUpPrompt: null,
+    criteriaNotDemonstrated: [], evidenceQuotes: quote ? [quote] : [], rationale: `Stand-in model: level ${score}.`,
     flags: /health|hospital|medical/.test(text) ? ['SENSITIVE_CONTENT'] : [],
   }
 }

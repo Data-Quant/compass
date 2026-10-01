@@ -9,7 +9,7 @@ import type { HistoryEntry, HistoryResponse } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest, withActingAs } from './weekly-api'
 
 const TONE: Record<EvaluatorAnswerStatus, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  OPEN: 'outline', DRAFT: 'outline', BEING_REVIEWED: 'secondary', ACCEPTED: 'default', ADD_DETAIL: 'destructive',
+  OPEN: 'outline', DRAFT: 'outline', BEING_REVIEWED: 'secondary', ACCEPTED: 'default',
   NOT_USED: 'outline', NOT_OBSERVED: 'outline', EXPIRED: 'outline', CANCELLED: 'outline',
 }
 

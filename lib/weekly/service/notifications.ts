@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db'
 import { formatCalendarDate, formatMonthKey, karachiCalendarDate, monthKeyOf } from '../../kpi/calendar'
-import { renderFollowUpEmail, renderFormsOpenEmail, renderLengthBiasEmail, renderLowEvidenceEmail, renderQuestionsEmail, renderScoringFailedEmail } from '../emails'
+import { renderFormsOpenEmail, renderLengthBiasEmail, renderLowEvidenceEmail, renderQuestionsEmail, renderScoringFailedEmail } from '../emails'
 import { LENGTH_ALERT_THRESHOLD } from '../quality'
 import { areWeeklyEmailsEnabled } from '../flag'
 import { PERSPECTIVE_LABELS } from '../perspectives'
@@ -13,7 +13,7 @@ import { lengthCorrelation } from './reporting'
 
 export type WeeklySendMail = (to: string, subject: string, html: string) => Promise<unknown>
 export type WeeklyEmailKind =
-  | 'weekly-questions' | 'weekly-reminder' | 'weekly-follow-up' | 'weekly-scoring-failed' | 'weekly-low-evidence'
+  | 'weekly-questions' | 'weekly-reminder' | 'weekly-scoring-failed' | 'weekly-low-evidence'
   | 'weekly-challenge-new' | 'weekly-challenge-resolved' | 'weekly-forms-open' | 'weekly-more-evidence' | 'weekly-length-bias'
 export interface QuestionRecipient { userId: string; newCount: number; openCount: number }
 export interface WeeklySendResult { sent: number; recorded: number; skipped: number; failed: number }
@@ -131,19 +131,6 @@ export async function deliverOnce(messages: readonly WeeklyEmailMessage[], send:
 
 export async function hrUserIds(): Promise<string[]> {
   return (await prisma.user.findMany({ where: { role: 'HR' }, select: { id: true } })).map((u) => u.id)
-}
-
-/** Evaluators with follow-up questions released in the last day. */
-export async function followUpMessages(cycleId: string, now: Date, appUrl: string): Promise<WeeklyEmailMessage[]> {
-  const rows = await prisma.weeklyPrompt.groupBy({
-    by: ['evaluatorId'],
-    where: { cycleId, kind: 'FOLLOW_UP', status: { in: ['OPEN', 'DRAFT'] }, releasedAt: { gt: new Date(now.getTime() - DAY_MS) } },
-    _count: { _all: true },
-  })
-  return rows.map((row) => ({
-    userId: row.evaluatorId, kind: 'weekly-follow-up' as const, dedupeKey: weeklyDedupeKey('weekly-follow-up', row.evaluatorId, now),
-    render: (name: string) => renderFollowUpEmail({ name, count: row._count._all, appUrl }),
-  }))
 }
 
 /** HR hears about answers whose scoring failed in the last day. */

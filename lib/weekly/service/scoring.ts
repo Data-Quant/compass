@@ -3,16 +3,14 @@ import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { ModelError, type ModelResult, type StructuredModel } from '../ai/model'
 import { scoreOnce } from '../ai/score-once'
-import { DEFAULT_FOLLOW_UP, SCORING_PROMPT_VERSION, type FinalScore, type ScoreFlag } from '../ai/scoring-prompt'
+import { SCORING_PROMPT_VERSION, type FinalScore, type ScoreFlag } from '../ai/scoring-prompt'
 import { perspectiveOf } from '../perspectives'
 import { parseProfileLevels } from '../profile'
-import { isSensitive } from '../review-rules'
 import { looksSensitive } from '../sensitive'
 import { isNearDuplicate } from '../similarity'
 import { resolveActiveModel } from './ai-settings'
 import { redactorFor } from './anonymise'
 import { lockResponse, toJson } from './db'
-import { requestFollowUp } from './follow-ups'
 
 export const MAX_ATTEMPTS = 3
 export const LEASE_MS = 2 * 60 * 1000
@@ -123,12 +121,10 @@ function saveScore(job: ClaimedJob, input: ScoreToSave, now: Date): Promise<JobO
         data: {
           ...key, sufficiency: final.sufficiency, score: final.score, confidence: final.confidence,
           criteriaMet: toJson(final.criteriaMet), criteriaNotDemonstrated: toJson(final.criteriaNotDemonstrated), evidenceQuotes: toJson(final.evidenceQuotes),
-          rationale: final.rationale, followUpPrompt: final.followUpPrompt, flags: toJson(final.flags),
+          rationale: final.rationale, flags: toJson(final.flags),
           inputTokens: input.usage.inputTokens, outputTokens: input.usage.outputTokens, createdAt: now,
         },
       })
-      // A sensitive disclosure goes to HR first (reviewReasons); HR decides whether to ask the evaluator for more.
-      if (final.sufficiency === 'INSUFFICIENT' && !isSensitive(final.flags)) await requestFollowUp(tx, { promptId: input.promptId, text: final.followUpPrompt ?? DEFAULT_FOLLOW_UP, now })
     }
     return final.sufficiency === 'SUFFICIENT' ? 'SCORED' : 'INSUFFICIENT'
   })

@@ -45,14 +45,14 @@ test('the dashboard shows coverage, response rates, the queue and how the AI com
   await assert.rejects(dashboardView(weeklyActor(W.lead), cycleId, at(2)), (e: unknown) => e instanceof WeeklyError && e.status === 403)
   const view = await dashboardView(HR_ACTOR, cycleId, at(2))
   assert.equal(view.cycle.currentWeek, 2)
-  assert.deepEqual([view.queue.DECIDED, view.queue.FOLLOW_UP], [1, 1])
+  assert.deepEqual([view.queue.DECIDED, view.queue.NEEDS_REVIEW], [1, 1])
   const leadGroup = view.coverage.find((c) => c.evaluatee.id === prompts.get(W.lead.id)!.evaluateeId && c.perspective === 'LEAD')!
   assert.deepEqual([leadGroup.satisfied, leadGroup.total, leadGroup.lowEvidence], [1, 4, true])
   const stats = new Map(view.evaluators.map((e) => [e.evaluator.id, e]))
   assert.deepEqual([stats.get(W.lead.id)!.answered, stats.get(W.lead.id)!.responseRate], [1, 1])
   assert.deepEqual([stats.get(W.ben.id)!.notObserved, stats.get(W.ben.id)!.responseRate], [1, 1])
-  // Ana answered once and has the open follow-up from week 1, which is overdue in week 2.
-  assert.deepEqual([stats.get(W.ana.id)!.answered, stats.get(W.ana.id)!.open, stats.get(W.ana.id)!.overdue, stats.get(W.ana.id)!.responseRate], [1, 1, 1, 0.5])
+  // Ana's thin answer went to HR; she is not asked again.
+  assert.deepEqual([stats.get(W.ana.id)!.answered, stats.get(W.ana.id)!.open, stats.get(W.ana.id)!.overdue, stats.get(W.ana.id)!.responseRate], [1, 0, 0, 1])
   assert.deepEqual([view.quality.scored, view.quality.reviewedByHuman, view.quality.exactAgreement, view.quality.withinOneAgreement], [1, 1, 0, 1])
   assert.equal(view.quality.adjustmentsByTopic[0].adjusted, 1)
   assert.equal(view.quality.flagCounts.GENERIC_PRAISE, 1)

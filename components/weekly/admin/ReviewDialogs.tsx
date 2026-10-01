@@ -11,17 +11,16 @@ import { LEVEL_KEYS, LEVEL_LABELS } from '@/lib/weekly/profile'
 import type { ReviewAnswerView } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest } from '../weekly-api'
 
-export type DecisionMode = 'SET_SCORE' | 'ASK_FOR_DETAIL' | 'EXCLUDE'
+export type DecisionMode = 'SET_SCORE' | 'NOT_ENOUGH_EVIDENCE' | 'EXCLUDE'
 
 function titleFor(mode: DecisionMode, item: ReviewAnswerView): string {
   if (mode === 'SET_SCORE') return item.ai ? 'Set a different score' : 'Score by hand'
-  return mode === 'ASK_FOR_DETAIL' ? 'Ask for more detail' : 'Exclude this answer'
+  return mode === 'NOT_ENOUGH_EVIDENCE' ? 'Not enough evidence' : 'Exclude this answer'
 }
 
 export function DecisionDialog({ item, mode, onClose, onDone }: { item: ReviewAnswerView; mode: DecisionMode; onClose: () => void; onDone: () => Promise<void> }) {
   const [score, setScore] = useState(String(item.ai?.score ?? 2))
   const [reason, setReason] = useState('')
-  const [followUp, setFollowUp] = useState(item.ai?.followUpPrompt ?? '')
   const [saving, setSaving] = useState(false)
 
   async function submit(event: FormEvent) {
@@ -32,7 +31,7 @@ export function DecisionDialog({ item, mode, onClose, onDone }: { item: ReviewAn
         ? { action: mode, basedOn: item.basedOn, score: Number(score), reason }
         : mode === 'EXCLUDE'
           ? { action: mode, basedOn: item.basedOn, reason }
-          : { action: mode, basedOn: item.basedOn, ...(followUp.trim() ? { followUpText: followUp.trim() } : {}), ...(reason.trim() ? { reason: reason.trim() } : {}) }
+          : { action: mode, basedOn: item.basedOn, ...(reason.trim() ? { reason: reason.trim() } : {}) }
     try {
       await weeklyRequest(`/api/admin/weekly/review/${item.responseId}`, { method: 'POST', body })
       toast.success('Decision saved')
@@ -56,16 +55,12 @@ export function DecisionDialog({ item, mode, onClose, onDone }: { item: ReviewAn
             </Select>
           </div>
         )}
-        {mode === 'ASK_FOR_DETAIL' && (
-          <div className="space-y-2">
-            <Label htmlFor="review-follow-up">Follow-up question</Label>
-            <Textarea id="review-follow-up" rows={3} minLength={20} maxLength={600} value={followUp} onChange={(e) => setFollowUp(e.target.value)} />
-            <p className="text-xs text-muted-foreground">Sent to the evaluator as a new question about the same person and topic. They never see a score.</p>
-          </div>
+        {mode === 'NOT_ENOUGH_EVIDENCE' && (
+          <p className="text-sm text-muted-foreground">The answer is kept but not used as evidence, and the topic stays open. The evaluator is not asked again.</p>
         )}
         <div className="space-y-2">
-          <Label htmlFor="review-reason">{mode === 'ASK_FOR_DETAIL' ? 'Note for the audit log (optional)' : 'Reason'}</Label>
-          <Textarea id="review-reason" rows={2} required={mode !== 'ASK_FOR_DETAIL'} minLength={mode === 'ASK_FOR_DETAIL' ? undefined : 3} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />
+          <Label htmlFor="review-reason">{mode === 'NOT_ENOUGH_EVIDENCE' ? 'Note for the audit log (optional)' : 'Reason'}</Label>
+          <Textarea id="review-reason" rows={2} required={mode !== 'NOT_ENOUGH_EVIDENCE'} minLength={mode === 'NOT_ENOUGH_EVIDENCE' ? undefined : 3} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />
         </div>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>

@@ -1,14 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { renderFollowUpEmail, renderLowEvidenceEmail, renderScoringFailedEmail } from '../lib/weekly/emails'
-
-test('the follow-up email counts the answers and links to the weekly page, escaping names', () => {
-  const email = renderFollowUpEmail({ name: '<b>Ana</b>', count: 2, appUrl: 'https://compass.example/' })
-  assert.equal(email.subject, 'Please add detail to 2 evaluation answers')
-  assert.match(email.html, /&lt;b&gt;Ana&lt;\/b&gt;/)
-  assert.match(email.html, /https:\/\/compass\.example\/evaluations\/weekly/)
-  assert.equal(renderFollowUpEmail({ name: 'Ana', count: 1, appUrl: 'x' }).subject, 'Please add detail to 1 evaluation answer')
-})
+import { renderLowEvidenceEmail, renderScoringFailedEmail } from '../lib/weekly/emails'
 
 test('HR emails: failed scoring and the low-evidence list, both escaped and linked to the console', () => {
   const failed = renderScoringFailedEmail({ name: 'Hana', count: 1, appUrl: 'https://compass.example' })

@@ -15,7 +15,7 @@ import { CorrectionDialog, DecisionDialog, type DecisionMode } from './ReviewDia
 import { AddToCalibrationDialog } from './AddToCalibrationDialog'
 
 const ACTION_LABELS: Record<DecisionView['action'], string> = {
-  ACCEPTED: 'Accepted', ADJUSTED: 'Score changed', MARKED_INSUFFICIENT: 'Asked for more detail', EXCLUDED: 'Excluded',
+  ACCEPTED: 'Accepted', ADJUSTED: 'Score changed', MARKED_INSUFFICIENT: 'Not enough evidence', EXCLUDED: 'Excluded',
   AUTO_ACCEPTED: 'Accepted automatically', MANUAL: 'Scored by hand',
 }
 const FLAG_LABELS: Record<string, string> = {
@@ -91,7 +91,6 @@ export function ReviewCard({ item, onChanged }: { item: ReviewAnswerView; onChan
             </div>
             <div className="flex flex-wrap gap-2">
               <Badge variant="outline">{ANSWER_STATE_LABELS[item.state]}</Badge>
-              {item.kind === 'FOLLOW_UP' && <Badge variant="outline">Follow-up</Badge>}
               {item.reasons.map((reason) => <Badge key={reason} variant="secondary">{REVIEW_REASON_LABELS[reason]}</Badge>)}
               {(ai?.flags ?? []).map((flag) => <Badge key={flag} variant={flag === 'SENSITIVE_CONTENT' ? 'destructive' : 'outline'}>{FLAG_LABELS[flag] ?? flag}</Badge>)}
             </div>
@@ -138,7 +137,7 @@ export function ReviewCard({ item, onChanged }: { item: ReviewAnswerView; onChan
             )}
             <Button size="sm" variant="ghost" disabled={busy || locked} onClick={() => setCorrecting(true)}>Correct text</Button>
             <Button size="sm" variant="outline" disabled={busy || locked} onClick={() => setMode('EXCLUDE')}>Exclude</Button>
-            <Button size="sm" variant="outline" disabled={busy || locked} onClick={() => setMode('ASK_FOR_DETAIL')}>Ask for more detail</Button>
+            <Button size="sm" variant="outline" disabled={busy || locked} onClick={() => setMode('NOT_ENOUGH_EVIDENCE')}>Not enough evidence</Button>
             <Button size="sm" variant="outline" disabled={busy || locked} onClick={() => setMode('SET_SCORE')}>{ai ? 'Set score' : 'Score by hand'}</Button>
             {canAccept && (
               <Button size="sm" disabled={busy} onClick={() => void post(`/api/admin/weekly/review/${item.responseId}`, { action: 'ACCEPT', basedOn: item.basedOn }, 'Decision saved')}>Accept</Button>

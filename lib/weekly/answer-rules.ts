@@ -19,7 +19,7 @@ export function answerProblem(fields: AnswerFields): string | null {
   if (!fields.situation.trim()) return 'Describe the situation'
   if (!fields.action.trim()) return 'Add what they did'
   if (!fields.result.trim()) return 'Add what happened as a result'
-  // No minimum length: a thin answer is caught by the AI as not enough evidence and gets a follow-up.
+  // No minimum length: the AI marks a thin answer as not enough evidence and HR decides it.
   return null
 }
 
@@ -47,22 +47,21 @@ export function afterNotObserved(notObservedCount: number, week: number): NotObs
 }
 
 export type EvaluatorAnswerStatus =
-  | 'OPEN' | 'DRAFT' | 'BEING_REVIEWED' | 'ACCEPTED' | 'ADD_DETAIL' | 'NOT_USED' | 'NOT_OBSERVED' | 'EXPIRED' | 'CANCELLED'
+  | 'OPEN' | 'DRAFT' | 'BEING_REVIEWED' | 'ACCEPTED' | 'NOT_USED' | 'NOT_OBSERVED' | 'EXPIRED' | 'CANCELLED'
 
 export const EVALUATOR_STATUS_LABELS: Record<EvaluatorAnswerStatus, string> = {
   OPEN: 'To answer',
   DRAFT: 'Draft',
   BEING_REVIEWED: 'Submitted',
   ACCEPTED: 'Accepted',
-  ADD_DETAIL: 'Please add detail',
   NOT_USED: 'Not used as evidence',
   NOT_OBSERVED: 'Not observed',
   EXPIRED: 'Expired',
   CANCELLED: 'No longer needed',
 }
 
-/** D13: evaluators learn only whether an answer was accepted or needs detail, never its score. */
-export function evaluatorStatus(input: { promptStatus: string; latestReviewAction: string | null; aiInsufficient: boolean }): EvaluatorAnswerStatus {
+/** D13: evaluators learn only whether an answer was used as evidence, never its score. */
+export function evaluatorStatus(input: { promptStatus: string; latestReviewAction: string | null }): EvaluatorAnswerStatus {
   switch (input.promptStatus) {
     case 'OPEN': return 'OPEN'
     case 'DRAFT': return 'DRAFT'
@@ -77,10 +76,9 @@ export function evaluatorStatus(input: { promptStatus: string; latestReviewActio
     case 'MANUAL':
       return 'ACCEPTED'
     case 'MARKED_INSUFFICIENT':
-      return 'ADD_DETAIL'
     case 'EXCLUDED':
       return 'NOT_USED'
     default:
-      return input.aiInsufficient ? 'ADD_DETAIL' : 'BEING_REVIEWED'
+      return 'BEING_REVIEWED'
   }
 }

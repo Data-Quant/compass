@@ -43,8 +43,7 @@ test('the queue sorts answers by state, counts each, and shows HR who wrote what
   await score()
   await assert.rejects(reviewQueue(weeklyActor(W.lead), { cycleId, filter: 'NEEDS_REVIEW' }), isStatus(403))
   const queue = await reviewQueue(HR_ACTOR, { cycleId, filter: 'NEEDS_REVIEW' })
-  assert.equal(queue.counts.FOLLOW_UP, 1)
-  assert.equal(queue.counts.NEEDS_REVIEW + queue.counts.AUTO_ACCEPT, 2)
+  assert.equal(queue.counts.NEEDS_REVIEW + queue.counts.AUTO_ACCEPT, 3)
   const item = queue.items.find((i) => i.responseId === lead)!
   assert.equal(item.evaluator.name, W.lead.name)
   assert.equal(item.evaluatee.id, prompts.get(W.lead.id)!.evaluateeId)

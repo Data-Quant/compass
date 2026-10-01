@@ -2336,13 +2336,11 @@ enum WeeklySlotStatus {
   OPEN
   SATISFIED
   CLOSED_NOT_OBSERVED
-  CLOSED_INSUFFICIENT
   CANCELLED
 }
 
 enum WeeklyPromptKind {
   STANDARD
-  FOLLOW_UP
   COMMENT
 }
 
@@ -2453,7 +2451,6 @@ model WeeklySlot {
   competencyId     String
   status           WeeklySlotStatus @default(OPEN)
   notObservedCount Int              @default(0)
-  followUpCount    Int              @default(0)
   snoozedUntilWeek Int?
   lastAskedWeek    Int?
   createdAt        DateTime         @default(now())
@@ -2550,7 +2547,6 @@ model WeeklyAiScore {
   criteriaNotDemonstrated Json
   evidenceQuotes          Json
   rationale               String
-  followUpPrompt          String?
   flags                   Json
   inputTokens             Int      @default(0)
   outputTokens            Int      @default(0)

@@ -49,7 +49,7 @@ const answering = (value: unknown): StructuredModel => ({ name: 'accounts/test/m
 test('scoreOnce is the live scoring call: schema-checked, invented quotes dropped, system flags merged, latency measured', async () => {
   const output = {
     sufficiency: 'SUFFICIENT', score: 3, confidence: 'HIGH', criteriaMet: [], criteriaNotDemonstrated: [],
-    evidenceQuotes: ['rebuilt the plan', 'saved the account'], rationale: 'Level 3.', followUpPrompt: null, flags: [],
+    evidenceQuotes: ['rebuilt the plan', 'saved the account'], rationale: 'Level 3.', flags: [],
   }
   const scored = await scoreOnce(answering(output), input, ['SENSITIVE_CONTENT'])
   assert.deepEqual([scored.final.score, scored.final.confidence, scored.final.evidenceQuotes, scored.final.flags], [3, 'LOW', ['rebuilt the plan'], ['SENSITIVE_CONTENT']])

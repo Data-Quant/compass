@@ -88,7 +88,6 @@ export function DashboardTab() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Needs review" value={data.queue.NEEDS_REVIEW} />
         <Stat label="Scoring failed" value={data.queue.FAILED} />
-        <Stat label="Waiting for detail" value={data.queue.FOLLOW_UP} />
         <Stat label="Decided" value={data.queue.DECIDED} />
       </div>
       <Section title="AI quality">

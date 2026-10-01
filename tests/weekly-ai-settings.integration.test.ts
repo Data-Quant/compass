@@ -14,7 +14,7 @@ import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST
 const CHOSEN = 'accounts/fireworks/models/chosen-model'
 const ENV_MODEL = 'accounts/fireworks/models/env-model'
 const ENV_KEYS = ['FIREWORKS_API_KEY', 'FIREWORKS_MODEL', 'WEEKLY_TEST_TOOLS', 'WEEKLY_AI_FAKE'] as const
-const PLAIN = { sufficiency: 'SUFFICIENT', score: 2, confidence: 'HIGH', criteriaMet: [], criteriaNotDemonstrated: [], evidenceQuotes: [], rationale: 'Meets.', followUpPrompt: null, flags: [] }
+const PLAIN = { sufficiency: 'SUFFICIENT', score: 2, confidence: 'HIGH', criteriaMet: [], criteriaNotDemonstrated: [], evidenceQuotes: [], rationale: 'Meets.', flags: [] }
 const realFetch = globalThis.fetch
 const isStatus = (status: number) => (e: unknown) => e instanceof WeeklyError && e.status === status
 

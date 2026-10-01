@@ -38,14 +38,13 @@ test('not observed snoozes three weeks, and a second time closes the slot', () =
 })
 
 test('evaluators see only accepted or add-detail, never a score (D13)', () => {
-  assert.equal(evaluatorStatus({ promptStatus: 'OPEN', latestReviewAction: null, aiInsufficient: false }), 'OPEN')
-  assert.equal(evaluatorStatus({ promptStatus: 'SUBMITTED', latestReviewAction: null, aiInsufficient: false }), 'BEING_REVIEWED')
-  assert.equal(evaluatorStatus({ promptStatus: 'SUBMITTED', latestReviewAction: null, aiInsufficient: true }), 'ADD_DETAIL')
-  assert.equal(evaluatorStatus({ promptStatus: 'SUBMITTED', latestReviewAction: 'ADJUSTED', aiInsufficient: false }), 'ACCEPTED')
-  assert.equal(evaluatorStatus({ promptStatus: 'SUBMITTED', latestReviewAction: 'AUTO_ACCEPTED', aiInsufficient: false }), 'ACCEPTED')
-  assert.equal(evaluatorStatus({ promptStatus: 'SUBMITTED', latestReviewAction: 'MARKED_INSUFFICIENT', aiInsufficient: false }), 'ADD_DETAIL')
-  assert.equal(evaluatorStatus({ promptStatus: 'SUBMITTED', latestReviewAction: 'EXCLUDED', aiInsufficient: false }), 'NOT_USED')
-  assert.equal(evaluatorStatus({ promptStatus: 'NOT_OBSERVED', latestReviewAction: null, aiInsufficient: false }), 'NOT_OBSERVED')
+  assert.equal(evaluatorStatus({ promptStatus: 'OPEN', latestReviewAction: null }), 'OPEN')
+  assert.equal(evaluatorStatus({ promptStatus: 'SUBMITTED', latestReviewAction: null }), 'BEING_REVIEWED')
+  assert.equal(evaluatorStatus({ promptStatus: 'SUBMITTED', latestReviewAction: 'ADJUSTED' }), 'ACCEPTED')
+  assert.equal(evaluatorStatus({ promptStatus: 'SUBMITTED', latestReviewAction: 'AUTO_ACCEPTED' }), 'ACCEPTED')
+  assert.equal(evaluatorStatus({ promptStatus: 'SUBMITTED', latestReviewAction: 'MARKED_INSUFFICIENT' }), 'NOT_USED')
+  assert.equal(evaluatorStatus({ promptStatus: 'SUBMITTED', latestReviewAction: 'EXCLUDED' }), 'NOT_USED')
+  assert.equal(evaluatorStatus({ promptStatus: 'NOT_OBSERVED', latestReviewAction: null }), 'NOT_OBSERVED')
 })
 
 test('the latest review per answer decides, and only confirming actions count', () => {
