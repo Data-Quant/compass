@@ -6,7 +6,8 @@ import {
 import { effectiveWeek, totalWeeks } from '../calendar'
 import { areWeeklyTestToolsEnabled } from '../flag'
 import { perspectiveOf } from '../perspectives'
-import { latestByResponse } from '../reviews'
+import { isConfirmedAction, latestByResponse } from '../reviews'
+import { QUESTIONS_PER_PAIR } from '../scheduler'
 import type { AnswerInput } from '../schemas'
 import type { AnswerView, EvaluateeProgress, HistoryGroup, HistoryResponse, InboxPrompt, InboxResponse } from '../view-types'
 import { correctedResponseIds, jsonStrings } from './answer-states'
@@ -50,23 +51,34 @@ async function humanReviewed(responseIds: string[]): Promise<Set<string>> {
   return new Set([...reviews.map((r) => r.responseId), ...(await correctedResponseIds(responseIds))])
 }
 
+/** Per person: of the quarter's five questions, how many are answered (or not observed) and how many were accepted. */
 async function progressFor(cycleId: string, evaluatorId: string): Promise<EvaluateeProgress[]> {
-  const [slots, submitted] = await Promise.all([
-    prisma.weeklySlot.findMany({ where: { cycleId, evaluatorId, status: { not: 'CANCELLED' } }, select: { id: true, evaluateeId: true, relationshipType: true, status: true } }),
-    prisma.weeklyPrompt.findMany({ where: { cycleId, evaluatorId, status: 'SUBMITTED', slotId: { not: null } }, select: { slotId: true } }),
+  const [slots, prompts] = await Promise.all([
+    prisma.weeklySlot.findMany({ where: { cycleId, evaluatorId, status: { not: 'CANCELLED' } }, select: { evaluateeId: true, relationshipType: true } }),
+    prisma.weeklyPrompt.findMany({
+      where: { cycleId, evaluatorId, kind: 'STANDARD', status: { in: ['SUBMITTED', 'NOT_OBSERVED'] } },
+      select: { evaluateeId: true, relationshipType: true, response: { select: { id: true } } },
+    }),
   ])
-  const answeredSlots = new Set(submitted.map((p) => p.slotId))
+  const responseIds = prompts.flatMap((p) => (p.response ? [p.response.id] : []))
+  const reviews = responseIds.length
+    ? await prisma.weeklyScoreReview.findMany({ where: { responseId: { in: responseIds } }, select: { id: true, responseId: true, createdAt: true, action: true } })
+    : []
+  const accepted = new Set([...latestByResponse(reviews).values()].filter((r) => isConfirmedAction(r.action)).map((r) => r.responseId))
   const people = await loadPeople(slots.map((s) => s.evaluateeId))
   const groups = new Map<string, EvaluateeProgress>()
+  const keyOf = (row: { evaluateeId: string; relationshipType: string }) => `${row.evaluateeId}|${row.relationshipType}`
   for (const slot of slots) {
-    const key = `${slot.evaluateeId}|${slot.relationshipType}`
-    const current = groups.get(key) ?? { evaluatee: personRef(people, slot.evaluateeId), perspective: perspectiveOf(slot.relationshipType) ?? 'PEER', answered: 0, satisfied: 0, total: 0 }
-    const satisfied = slot.status === 'SATISFIED'
-    groups.set(key, {
+    if (groups.has(keyOf(slot))) continue
+    groups.set(keyOf(slot), { evaluatee: personRef(people, slot.evaluateeId), perspective: perspectiveOf(slot.relationshipType) ?? 'PEER', answered: 0, satisfied: 0, total: QUESTIONS_PER_PAIR })
+  }
+  for (const prompt of prompts) {
+    const current = groups.get(keyOf(prompt))
+    if (!current) continue
+    groups.set(keyOf(prompt), {
       ...current,
-      total: current.total + 1,
-      satisfied: current.satisfied + (satisfied ? 1 : 0),
-      answered: current.answered + (satisfied || answeredSlots.has(slot.id) ? 1 : 0),
+      answered: Math.min(QUESTIONS_PER_PAIR, current.answered + 1),
+      satisfied: current.satisfied + (prompt.response && accepted.has(prompt.response.id) ? 1 : 0),
     })
   }
   return [...groups.values()].sort((a, b) => byName(a.evaluatee, b.evaluatee))

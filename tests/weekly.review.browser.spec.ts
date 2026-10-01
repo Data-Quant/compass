@@ -40,7 +40,7 @@ async function ensureRunningCycle(page: Page): Promise<void> {
   expect((await page.request.post('/api/admin/weekly/content/sync', { headers })).status()).toBe(200)
   expect((await page.request.post('/api/admin/weekly/test-tools', { headers, data: { action: 'approve-all-drafts' } })).status()).toBe(200)
   const period = cycles.periods.find((p: { name: string }) => p.name === 'Q4 2026 (weekly e2e)')
-  const created = await page.request.post('/api/admin/weekly/cycles', { headers, data: { periodId: period.id, weekOneStartsOn: thisMondayKarachi(), weeklyCap: 5 } })
+  const created = await page.request.post('/api/admin/weekly/cycles', { headers, data: { periodId: period.id, weekOneStartsOn: thisMondayKarachi() } })
   expect(created.status()).toBe(200)
   const { cycleId } = await created.json()
   expect((await page.request.patch(`/api/admin/weekly/cycles/${cycleId}`, { headers, data: { action: 'start' } })).status()).toBe(200)

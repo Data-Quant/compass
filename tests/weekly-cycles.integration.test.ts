@@ -22,43 +22,42 @@ after(async () => {
 })
 
 test('HR creates one cycle per period, starting on a Monday', WEEKLY_DB_TEST, async () => {
-  const cycle = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY, weeklyCap: 5 })
+  const cycle = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY })
   assert.equal(cycle.weekOneStartsOn.toISOString(), '2026-10-04T19:00:00.000Z')
   assert.equal(cycle.status, 'SETUP')
-  await assert.rejects(createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY, weeklyCap: 5 }), isStatus(409))
-  await assert.rejects(createCycle(weeklyActor(W.ana), { periodId, weekOneStartsOn: WEEK_ONE_MONDAY, weeklyCap: 5 }), isStatus(403))
+  await assert.rejects(createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY }), isStatus(409))
+  await assert.rejects(createCycle(weeklyActor(W.ana), { periodId, weekOneStartsOn: WEEK_ONE_MONDAY }), isStatus(403))
   const summary = cycleSummary(await loadCycle(cycle.id), at(2))
   assert.deepEqual([summary.totalWeeks, summary.questionWeeks, summary.currentWeek], [13, 11, 2])
 })
 
 test('week 1 must be a Monday that leaves at least three weeks', WEEKLY_DB_TEST, async () => {
-  await assert.rejects(createCycle(HR_ACTOR, { periodId, weekOneStartsOn: '2026-10-06', weeklyCap: 5 }), /Monday/)
-  await assert.rejects(createCycle(HR_ACTOR, { periodId, weekOneStartsOn: '2026-12-21', weeklyCap: 5 }), /three weeks/)
+  await assert.rejects(createCycle(HR_ACTOR, { periodId, weekOneStartsOn: '2026-10-06' }), /Monday/)
+  await assert.rejects(createCycle(HR_ACTOR, { periodId, weekOneStartsOn: '2026-12-21' }), /three weeks/)
 })
 
 test('a cycle starts only with approved topics, and only one runs at a time', WEEKLY_DB_TEST, async () => {
-  const cycle = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY, weeklyCap: 5 })
+  const cycle = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY })
   await assert.rejects(updateCycle(HR_ACTOR, cycle.id, { action: 'start' }), /Approve/)
   await syncFromQuestionBank(HR_ACTOR)
   await approveAllContent()
   assert.equal((await updateCycle(HR_ACTOR, cycle.id, { action: 'start' })).status, 'RUNNING')
   assert.equal((await findRunningCycle())?.id, cycle.id)
-  await assert.rejects(updateCycle(HR_ACTOR, cycle.id, { action: 'update', weeklyCap: 3 }), isStatus(409))
+  await assert.rejects(updateCycle(HR_ACTOR, cycle.id, { action: 'update', weekOneStartsOn: '2026-10-12' }), isStatus(409))
   const other = await prisma.evaluationPeriod.create({ data: { ...WEEKLY_PERIOD, isActive: false } })
-  const second = await createCycle(HR_ACTOR, { periodId: other.id, weekOneStartsOn: WEEK_ONE_MONDAY, weeklyCap: 5 })
+  const second = await createCycle(HR_ACTOR, { periodId: other.id, weekOneStartsOn: WEEK_ONE_MONDAY })
   await assert.rejects(updateCycle(HR_ACTOR, second.id, { action: 'start' }), /already running/)
 })
 
 test('setup can change week 1 and the weekly cap', WEEKLY_DB_TEST, async () => {
-  const cycle = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY, weeklyCap: 5 })
-  const updated = await updateCycle(HR_ACTOR, cycle.id, { action: 'update', weekOneStartsOn: '2026-10-12', weeklyCap: 3 })
+  const cycle = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY })
+  const updated = await updateCycle(HR_ACTOR, cycle.id, { action: 'update', weekOneStartsOn: '2026-10-12' })
   assert.equal(updated.weekOneStartsOn.toISOString(), '2026-10-11T19:00:00.000Z')
-  assert.equal(updated.weeklyCap, 3)
 })
 
 test('HR sees who is excluded and can opt a late joiner in', WEEKLY_DB_TEST, async () => {
   await prisma.payrollEmployeeProfile.create({ data: { userId: W.ben.id, joiningDate: at(8) } })
-  const cycle = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY, weeklyCap: 5 })
+  const cycle = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY })
   const benRow = async () => (await participantsView(HR_ACTOR, cycle.id, at(8))).rows.find((r) => r.person.id === W.ben.id)
   assert.equal((await benRow())?.exclusion, 'JOINED_LATE')
   await setOptIn(HR_ACTOR, { cycleId: cycle.id, userId: W.ben.id, reason: 'Transferred from a partner firm' })
@@ -70,14 +69,14 @@ test('HR sees who is excluded and can opt a late joiner in', WEEKLY_DB_TEST, asy
 })
 
 test('HR can remove a cycle that has not started', WEEKLY_DB_TEST, async () => {
-  const cycle = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY, weeklyCap: 5 })
+  const cycle = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY })
   await setOptIn(HR_ACTOR, { cycleId: cycle.id, userId: W.ben.id, reason: 'Transferred from a partner firm' })
   await assert.rejects(deleteCycle(weeklyActor(W.ana), cycle.id), isStatus(403))
   await deleteCycle(HR_ACTOR, cycle.id)
   assert.equal(await prisma.weeklyCycle.count({ where: { periodId } }), 0)
   assert.equal(await prisma.weeklyParticipantOverride.count({ where: { cycleId: cycle.id } }), 0)
   assert.equal(await prisma.weeklyAuditEvent.count({ where: { action: 'CYCLE_DELETE', objectId: cycle.id } }), 1)
-  const started = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY, weeklyCap: 5 })
+  const started = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY })
   await syncFromQuestionBank(HR_ACTOR)
   await approveAllContent()
   await updateCycle(HR_ACTOR, started.id, { action: 'start' })

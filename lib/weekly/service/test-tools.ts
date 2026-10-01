@@ -13,10 +13,9 @@ import { loadCycle } from './cycles'
 import { autoAcceptDue, decideAnswer } from './decisions'
 import { WeeklyError } from './errors'
 import { submitAnswer } from './inbox'
-import { requestMoreEvidence } from './more-evidence'
-import type { WeeklySendMail } from './notifications'
 import { releaseWeek, syncSlots, type ReleaseSummary } from './release'
-import { PERSPECTIVE_LABELS, perspectiveOf, type Perspective } from '../perspectives'
+import { PERSPECTIVE_LABELS } from '../perspectives'
+import { nextVariant, pickTopic } from '../scheduler'
 import { runScoring, type ScoringRunSummary } from './scoring'
 
 /** Preview-only: refuses unless WEEKLY_TEST_TOOLS is on, and only for HR. */
@@ -128,29 +127,57 @@ export async function settleForClose(actor: WeeklyActor, cycleId: string, now: D
   return { scored: scoring.scored, accepted, scoredByHand }
 }
 
+function currentWeek(cycle: Awaited<ReturnType<typeof loadCycle>>, now: Date): number {
+  return Math.min(totalWeeks(cycle.weekOneStartsOn, cycle.period.endDate), Math.max(1, effectiveWeek(cycle.weekOneStartsOn, cycle.simulatedWeek, now)))
+}
+
+/** For live demos: releases this week's questions for one evaluator only, as the daily release would. */
+export async function releaseWeekFor(actor: WeeklyActor, cycleId: string, evaluatorId: string, now: Date): Promise<ReleaseSummary> {
+  assertTestTools(actor)
+  const week = currentWeek(await loadCycle(cycleId), now)
+  const summary = await releaseWeek(cycleId, week, now, { evaluatorId })
+  await recordAudit(prisma, { cycleId, actorId: actor.id, actorRole: 'HR', action: 'TEST_RELEASE_FOR', objectType: 'User', objectId: evaluatorId, after: summary })
+  return summary
+}
+
 /**
- * For live demos: gives one evaluator a question now on every topic about one person (both must be mapped), beyond
- * the weekly cap. It is "Ask again" narrowed to a single pair; questions already open are not asked twice.
+ * For live demos: the evaluator's next question about one person, now (both must be mapped), outside the weekly
+ * schedule. One open question per person at a time, as in the schedule.
  */
-export async function askPairNow(
-  actor: WeeklyActor,
-  cycleId: string,
-  pair: { evaluatorId: string; evaluateeId: string },
-  now: Date,
-  send: WeeklySendMail = async () => undefined,
-  appUrl = '',
-): Promise<{ prompts: number }> {
+export async function askPairNow(actor: WeeklyActor, cycleId: string, pair: { evaluatorId: string; evaluateeId: string }, now: Date): Promise<{ prompts: number }> {
   assertTestTools(actor)
   const cycle = await loadCycle(cycleId)
-  const mapped = (await syncSlots(cycle, now)).pairs.filter((p) => p.evaluatorId === pair.evaluatorId && p.evaluateeId === pair.evaluateeId)
-  const perspectives = [...new Set(mapped.flatMap((p) => perspectiveOf(p.relationshipType) ?? []))] as Perspective[]
-  if (perspectives.length === 0) throw new WeeklyError('These two are not paired for weekly questions in this quarter', 409)
-  let prompts = 0
-  for (const perspective of perspectives) {
-    prompts += (await requestMoreEvidence(actor, cycleId, { ...pair, perspective }, now, send, appUrl)).prompts
-  }
-  await recordAudit(prisma, { cycleId, actorId: actor.id, actorRole: 'HR', action: 'TEST_ASK_PAIR', objectType: 'User', objectId: pair.evaluateeId, after: { ...pair, prompts } })
-  return { prompts }
+  if (cycle.status !== 'RUNNING') throw new WeeklyError('Start the cycle before asking questions', 409)
+  const mapped = new Set((await syncSlots(cycle, now)).pairs.filter((p) => p.evaluatorId === pair.evaluatorId && p.evaluateeId === pair.evaluateeId).map((p) => p.relationshipType as string))
+  if (mapped.size === 0) throw new WeeklyError('These two are not paired for weekly questions in this quarter', 409)
+  const week = currentWeek(cycle, now)
+  const [slots, asked] = await Promise.all([
+    prisma.weeklySlot.findMany({
+      where: { cycleId, ...pair, status: { not: 'CANCELLED' } },
+      include: { competency: { include: { prompts: { where: { isActive: true }, orderBy: { variant: 'asc' } } } } },
+    }),
+    prisma.weeklyPrompt.findMany({ where: { cycleId, ...pair, kind: 'STANDARD', status: { not: 'CANCELLED' } }, select: { slotId: true, status: true, promptVariantId: true } }),
+  ])
+  if (asked.some((p) => p.status === 'OPEN' || p.status === 'DRAFT')) throw new WeeklyError('They already have an open question about this person. Answer it first.', 409)
+  const live = slots.filter((s) => mapped.has(s.relationshipType))
+  const topicId = pickTopic(
+    live.map((s) => ({ id: s.id, status: s.status, asked: asked.filter((p) => p.slotId === s.id).length, snoozedUntilWeek: s.snoozedUntilWeek })),
+    week, `${cycleId}|${pair.evaluatorId}`,
+  )
+  const slot = live.find((s) => s.id === topicId)
+  const variant = slot ? nextVariant(slot.competency.prompts, asked.flatMap((p) => (p.slotId === slot.id && p.promptVariantId ? [p.promptVariantId] : []))) : null
+  if (!slot || !variant) throw new WeeklyError('No topic about this person can be asked now', 409)
+  await prisma.$transaction([
+    prisma.weeklyPrompt.create({
+      data: {
+        cycleId, slotId: slot.id, evaluatorId: slot.evaluatorId, evaluateeId: slot.evaluateeId, relationshipType: slot.relationshipType,
+        weekIndex: week, kind: 'STANDARD', promptVariantId: variant.id, textSnapshot: variant.text, releasedAt: now,
+      },
+    }),
+    prisma.weeklySlot.update({ where: { id: slot.id }, data: { lastAskedWeek: week } }),
+  ])
+  await recordAudit(prisma, { cycleId, actorId: actor.id, actorRole: 'HR', action: 'TEST_ASK_PAIR', objectType: 'User', objectId: pair.evaluateeId, after: { ...pair, slotId: slot.id } })
+  return { prompts: 1 }
 }
 
 export interface PairOption { evaluatee: { id: string; name: string }; perspective: string }

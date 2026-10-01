@@ -17,13 +17,12 @@ export const answerSchema = z
 export type AnswerInput = z.infer<typeof answerSchema>
 
 const mondaySchema = z.string().refine((value) => parseWeekOneMonday(value) !== null, 'Choose a Monday (YYYY-MM-DD)')
-const capSchema = z.number().int().min(1).max(10)
 
-export const createCycleSchema = z.object({ periodId: z.string().min(1), weekOneStartsOn: mondaySchema, weeklyCap: capSchema.default(5) }).strict()
+export const createCycleSchema = z.object({ periodId: z.string().min(1), weekOneStartsOn: mondaySchema }).strict()
 export type CreateCycleInput = z.infer<typeof createCycleSchema>
 
 export const updateCycleSchema = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('update'), weekOneStartsOn: mondaySchema.optional(), weeklyCap: capSchema.optional() }).strict(),
+  z.object({ action: z.literal('update'), weekOneStartsOn: mondaySchema }).strict(),
   z.object({ action: z.literal('start') }).strict(),
 ])
 export type UpdateCycleInput = z.infer<typeof updateCycleSchema>
@@ -49,6 +48,7 @@ export const testToolSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('accept-due-now'), cycleId: z.string().min(1) }).strict(),
   z.object({ action: z.literal('settle-for-close'), cycleId: z.string().min(1) }).strict(),
   z.object({ action: z.literal('pairs'), cycleId: z.string().min(1), evaluatorId: z.string().min(1) }).strict(),
+  z.object({ action: z.literal('release-for'), cycleId: z.string().min(1), evaluatorId: z.string().min(1) }).strict(),
   z.object({ action: z.literal('ask-pair'), cycleId: z.string().min(1), evaluatorId: z.string().min(1), evaluateeId: z.string().min(1) }).strict(),
 ])
 export type TestToolInput = z.infer<typeof testToolSchema>

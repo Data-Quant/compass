@@ -15,7 +15,6 @@ export interface CycleSummary {
   periodName: string
   status: 'SETUP' | 'RUNNING' | 'CLOSED'
   weekOneStartsOn: string
-  weeklyCap: number
   totalWeeks: number
   questionWeeks: number
   currentWeek: number

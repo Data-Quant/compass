@@ -20,10 +20,10 @@ export async function approveAllContent(): Promise<void> {
 }
 
 /** Sync and approve every topic, then create and start a cycle whose week 1 is 5 October 2026. */
-export async function startedCycle(periodId: string, weeklyCap = 5): Promise<{ cycleId: string }> {
+export async function startedCycle(periodId: string): Promise<{ cycleId: string }> {
   await syncFromQuestionBank(HR_ACTOR)
   await approveAllContent()
-  const cycle = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY, weeklyCap })
+  const cycle = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY })
   await updateCycle(HR_ACTOR, cycle.id, { action: 'start' })
   return { cycleId: cycle.id }
 }

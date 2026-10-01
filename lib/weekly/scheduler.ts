@@ -1,86 +1,74 @@
-// Spec 7.2: build one evaluator's weekly batch. Pure: the release service supplies the slots.
+// One evaluator's questions for a week. Pure: the release service supplies the pairs and topics.
+//
+// Each person an evaluator evaluates gets QUESTIONS_PER_PAIR questions a quarter, so an evaluator with y people has
+// x = 5y questions, spread evenly over the question weeks (about x / 12 a week). Each week a different, random
+// handful of people comes up, and nobody goes more than MAX_WEEKS_WITHOUT_ASKING weeks without a question.
 import { questionWeekCount } from './calendar'
-import type { Perspective } from './perspectives'
+import { stableHash } from './hash'
 
-export interface SchedulableSlot {
-  id: string
-  evaluateeId: string
-  perspective: Perspective
-  status: 'OPEN' | 'SATISFIED' | 'CLOSED_NOT_OBSERVED' | 'CLOSED_INSUFFICIENT' | 'CANCELLED'
-  /** Confirmed (accepted, adjusted, auto-accepted or manual) answers so far. */
-  confirmedSamples: number
-  /** A standard or follow-up question for this slot is still open or in draft. */
-  hasOpenPrompt: boolean
-  /** A submitted answer for this slot has no review decision yet; asking again would duplicate it. */
-  awaitingDecision: boolean
+export const QUESTIONS_PER_PAIR = 5
+export const MAX_WEEKS_WITHOUT_ASKING = 3
+
+export interface SchedulablePair {
+  key: string
+  /** Questions released about this person this quarter, answered or not (a "not observed" still counts). */
+  asked: number
   lastAskedWeek: number | null
+  /** A question about this person is still open or in draft: one at a time. */
+  hasOpenPrompt: boolean
+  /** At least one topic about this person can still be asked (see pickTopic). */
+  hasAskableTopic: boolean
+}
+
+export interface WeekPlanInput {
+  week: number
+  totalWeeks: number
+  /** Stable per cycle and evaluator, so each evaluator gets their own random order. */
+  seed: string
+  pairs: readonly SchedulablePair[]
+}
+
+const shuffleKey = (seed: string, week: number, key: string) => stableHash(`${seed}|${week}|${key}`)
+
+/** How many questions this evaluator should have been asked by the end of `week`. */
+function cumulativeTarget(quota: number, week: number, totalWeeks: number): number {
+  const questionWeeks = questionWeekCount(totalWeeks)
+  return week >= questionWeeks ? quota : Math.ceil((quota * week) / questionWeeks)
+}
+
+/** The people this evaluator is asked about this week, as pair keys. */
+export function planWeek(input: WeekPlanInput): string[] {
+  if (input.week < 1 || input.week > input.totalWeeks) return []
+  const quota = QUESTIONS_PER_PAIR * input.pairs.length
+  const askedSoFar = input.pairs.reduce((sum, p) => sum + Math.min(p.asked, QUESTIONS_PER_PAIR), 0)
+  const due = cumulativeTarget(quota, input.week, input.totalWeeks) - askedSoFar
+  const candidates = input.pairs.filter((p) => p.asked < QUESTIONS_PER_PAIR && !p.hasOpenPrompt && p.hasAskableTopic)
+  const waited = (p: SchedulablePair) => input.week - (p.lastAskedWeek ?? 0)
+  const overdue = candidates.filter((p) => waited(p) >= MAX_WEEKS_WITHOUT_ASKING).length
+  const count = Math.min(candidates.length, Math.max(due, overdue))
+  return [...candidates]
+    .sort((a, b) => waited(b) - waited(a) || a.asked - b.asked || shuffleKey(input.seed, input.week, a.key) - shuffleKey(input.seed, input.week, b.key) || a.key.localeCompare(b.key))
+    .slice(0, count)
+    .map((p) => p.key)
+}
+
+export interface SchedulableTopic {
+  id: string
+  status: 'OPEN' | 'SATISFIED' | 'CLOSED_NOT_OBSERVED' | 'CANCELLED'
+  /** Questions released on this topic for this pair. */
+  asked: number
   snoozedUntilWeek: number | null
 }
 
-export interface BatchInput {
-  week: number
-  totalWeeks: number
-  cap: number
-  /** Questions this evaluator still has open; they count toward the cap (D7). */
-  openPromptCount: number
-  slots: readonly SchedulableSlot[]
-  /** Evidence gathered so far per evaluatee, across all evaluators. */
-  evidenceByEvaluatee: ReadonlyMap<string, number>
+/** The topic to ask about next: the one asked least, uncovered before covered, then at random. */
+export function pickTopic(topics: readonly SchedulableTopic[], week: number, seed: string): string | null {
+  const askable = topics.filter((t) => (t.status === 'OPEN' || t.status === 'SATISFIED') && (t.snoozedUntilWeek === null || week >= t.snoozedUntilWeek))
+  const covered = (t: SchedulableTopic) => Number(t.status === 'SATISFIED')
+  const [next] = [...askable].sort((a, b) => a.asked - b.asked || covered(a) - covered(b) || shuffleKey(seed, week, a.id) - shuffleKey(seed, week, b.id))
+  return next?.id ?? null
 }
 
-export const MAX_PER_EVALUATEE_PER_BATCH = 2
-export const MIN_WEEKS_BETWEEN_ASKS = 3
-
-type Sample = 'FIRST' | 'SECOND'
-
-function wantedSample(slot: SchedulableSlot): Sample | null {
-  if (slot.awaitingDecision) return null
-  if (slot.status === 'OPEN' && slot.confirmedSamples === 0) return 'FIRST'
-  const leadSecond = slot.perspective === 'LEAD' && slot.confirmedSamples === 1
-  if (leadSecond && (slot.status === 'OPEN' || slot.status === 'SATISFIED')) return 'SECOND'
-  return null
-}
-
-function askableThisWeek(slot: SchedulableSlot, week: number): boolean {
-  if (slot.hasOpenPrompt) return false
-  if (slot.snoozedUntilWeek !== null && week < slot.snoozedUntilWeek) return false
-  return slot.lastAskedWeek === null || week - slot.lastAskedWeek >= MIN_WEEKS_BETWEEN_ASKS
-}
-
-export function planBatch(input: BatchInput): string[] {
-  if (input.week < 1 || input.week > input.totalWeeks) return []
-  const questionWeeks = questionWeekCount(input.totalWeeks)
-  const catchUp = input.week > questionWeeks
-  const weeksLeft = (catchUp ? input.totalWeeks : questionWeeks) - input.week + 1
-  const wanted = input.slots
-    .map((slot) => ({ slot, sample: wantedSample(slot) }))
-    .filter((entry): entry is { slot: SchedulableSlot; sample: Sample } => entry.sample !== null && !(catchUp && entry.sample === 'SECOND'))
-  const target = Math.min(input.cap, Math.ceil(wanted.length / Math.max(1, weeksLeft)))
-  const capacity = target - input.openPromptCount
-  if (capacity <= 0) return []
-  const evidence = (id: string) => input.evidenceByEvaluatee.get(id) ?? 0
-  const ranked = wanted
-    .filter(({ slot }) => askableThisWeek(slot, input.week))
-    .sort((a, b) =>
-      (a.sample === b.sample ? 0 : a.sample === 'FIRST' ? -1 : 1) ||
-      (a.slot.perspective === b.slot.perspective ? 0 : a.slot.perspective === 'LEAD' ? -1 : b.slot.perspective === 'LEAD' ? 1 : 0) ||
-      evidence(a.slot.evaluateeId) - evidence(b.slot.evaluateeId) ||
-      Number(a.slot.lastAskedWeek !== null) - Number(b.slot.lastAskedWeek !== null) ||
-      a.slot.id.localeCompare(b.slot.id),
-    )
-  const perEvaluatee = new Map<string, number>()
-  const batch: string[] = []
-  for (const { slot } of ranked) {
-    if (batch.length >= capacity) break
-    const count = perEvaluatee.get(slot.evaluateeId) ?? 0
-    if (count >= MAX_PER_EVALUATEE_PER_BATCH) continue
-    perEvaluatee.set(slot.evaluateeId, count + 1)
-    batch.push(slot.id)
-  }
-  return batch
-}
-
-/** Rotate A/B: the variant asked least for this slot, ties broken by variant letter. */
+/** Rotate A/B: the variant asked least for this topic, ties broken by variant letter. */
 export function nextVariant<T extends { id: string; variant: string }>(variants: readonly T[], askedVariantIds: readonly string[]): T | null {
   if (variants.length === 0) return null
   const uses = (id: string) => askedVariantIds.filter((asked) => asked === id).length

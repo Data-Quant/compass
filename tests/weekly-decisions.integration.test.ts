@@ -8,7 +8,6 @@ import { loadAnswerRecords } from '../lib/weekly/service/answer-states'
 import { autoAcceptDue, decideAnswer, STALE_DECISION } from '../lib/weekly/service/decisions'
 import { WeeklyError } from '../lib/weekly/service/errors'
 import { historyView } from '../lib/weekly/service/inbox'
-import { releaseWeek } from '../lib/weekly/service/release'
 import { runScoring } from '../lib/weekly/service/scoring'
 import { answerAs, releaseWeekOne, scoringClock } from './helpers/weekly-answers'
 import { at, HR_ACTOR, startedCycle } from './helpers/weekly-fixtures'
@@ -147,18 +146,4 @@ test('auto-accept racing an HR decision on the same answer leaves exactly one de
     decideAnswer(HR_ACTOR, responseId, { action: 'ACCEPT', basedOn: on }, new Date(scoringClock().getTime() + 73 * HOUR)),
   ])
   assert.equal(await prisma.weeklyScoreReview.count({ where: { responseId } }), 1)
-})
-
-test('a slot whose answer awaits a decision is not asked again until it is decided', WEEKLY_DB_TEST, async () => {
-  const prompt = await promptOf(W.lead.id)
-  const responseId = await answerAs(prompt, 'solid')
-  // Leave the answered slot as the lead's only open slot, so nothing else competes for the question.
-  await prisma.weeklySlot.updateMany({ where: { cycleId, evaluatorId: W.lead.id, id: { not: prompt.slotId! } }, data: { status: 'CLOSED_NOT_OBSERVED' } })
-  await releaseWeek(cycleId, 4, at(4))
-  assert.equal(await prisma.weeklyPrompt.count({ where: { cycleId, evaluatorId: W.lead.id, weekIndex: 4 } }), 0)
-  await score()
-  await decideAnswer(HR_ACTOR, responseId, { action: 'EXCLUDE', reason: 'Not about this topic', basedOn: await basedOn(responseId) }, at(4, 2))
-  await releaseWeek(cycleId, 5, at(5))
-  const asked = await prisma.weeklyPrompt.findMany({ where: { cycleId, evaluatorId: W.lead.id, weekIndex: 5 } })
-  assert.deepEqual(asked.map((p) => p.slotId), [prompt.slotId])
 })

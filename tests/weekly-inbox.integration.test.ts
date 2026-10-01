@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { prisma } from '../lib/db'
 import { WeeklyError } from '../lib/weekly/service/errors'
 import { historyView, inboxView, markNotObserved, resolveSubject, saveDraft, submitAnswer } from '../lib/weekly/service/inbox'
+import { QUESTIONS_PER_PAIR } from '../lib/weekly/scheduler'
 import { releaseWeek } from '../lib/weekly/service/release'
 import { at, HR_ACTOR, startedCycle } from './helpers/weekly-fixtures'
 import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST, weeklyActor } from './helpers/weekly-test-db'
@@ -105,12 +106,12 @@ test('HR can act as someone only with the test tools on', WEEKLY_DB_TEST, async 
   assert.deepEqual(await resolveSubject(weeklyActor(W.ana), null), { evaluatorId: W.ana.id, actingAs: false })
 })
 
-test('progress moves as soon as a topic is answered, and shows separately how many were accepted', WEEKLY_DB_TEST, async () => {
+test('progress counts the five questions a quarter about each person, moves on answering, and shows accepted separately', WEEKLY_DB_TEST, async () => {
   const promptId = await leadPromptId()
   const evaluateeId = (await inboxView(W.lead.id, at(1))).prompts[0].evaluatee.id
   const before = (await inboxView(W.lead.id, at(1))).progress.find((p) => p.evaluatee.id === evaluateeId)!
-  assert.deepEqual([before.answered, before.satisfied], [0, 0])
+  assert.deepEqual([before.answered, before.satisfied, before.total], [0, 0, QUESTIONS_PER_PAIR])
   await submitAnswer(lead, leadSubject, promptId, GOOD, at(1))
   const after = (await inboxView(W.lead.id, at(1))).progress.find((p) => p.evaluatee.id === evaluateeId)!
-  assert.deepEqual([after.answered, after.satisfied, after.total], [1, 0, before.total])
+  assert.deepEqual([after.answered, after.satisfied, after.total], [1, 0, QUESTIONS_PER_PAIR])
 })

@@ -30,7 +30,7 @@ export function cycleSummary(cycle: CycleWithPeriod, now: Date): CycleSummary {
   const total = totalWeeks(cycle.weekOneStartsOn, cycle.period.endDate)
   return {
     id: cycle.id, periodId: cycle.periodId, periodName: cycle.period.name, status: cycle.status,
-    weekOneStartsOn: cycle.weekOneStartsOn.toISOString(), weeklyCap: cycle.weeklyCap,
+    weekOneStartsOn: cycle.weekOneStartsOn.toISOString(),
     totalWeeks: total, questionWeeks: questionWeekCount(total),
     currentWeek: Math.min(total, effectiveWeek(cycle.weekOneStartsOn, cycle.simulatedWeek, now)),
     simulatedWeek: cycle.simulatedWeek,
@@ -75,10 +75,10 @@ export async function createCycle(actor: WeeklyActor, input: CreateCycleInput): 
   const weekOneStartsOn = checkWeekOne(input.weekOneStartsOn, period.endDate)
   try {
     return await prisma.$transaction(async (tx) => {
-      const cycle = await tx.weeklyCycle.create({ data: { periodId: period.id, weekOneStartsOn, weeklyCap: input.weeklyCap, createdById: actor.id } })
+      const cycle = await tx.weeklyCycle.create({ data: { periodId: period.id, weekOneStartsOn, createdById: actor.id } })
       await recordAudit(tx, {
         cycleId: cycle.id, actorId: actor.id, actorRole: 'HR', action: 'CYCLE_CREATE', objectType: 'WeeklyCycle', objectId: cycle.id,
-        after: { periodId: period.id, weekOneStartsOn: input.weekOneStartsOn, weeklyCap: input.weeklyCap },
+        after: { periodId: period.id, weekOneStartsOn: input.weekOneStartsOn },
       })
       return cycle
     })
@@ -92,7 +92,7 @@ export async function updateCycle(actor: WeeklyActor, cycleId: string, input: Up
   assertHr(actor)
   const cycle = await loadCycle(cycleId)
   if (cycle.status !== 'SETUP') {
-    throw new WeeklyError(input.action === 'start' ? 'Only a cycle in setup can start' : 'Week 1 and the weekly cap can only change before the cycle starts', 409)
+    throw new WeeklyError(input.action === 'start' ? 'Only a cycle in setup can start' : 'Week 1 can only change before the cycle starts', 409)
   }
   if (input.action === 'start') {
     if ((await prisma.weeklyCycle.count({ where: { status: 'RUNNING' } })) > 0) throw new WeeklyError('Another weekly cycle is already running', 409)
@@ -103,15 +103,15 @@ export async function updateCycle(actor: WeeklyActor, cycleId: string, input: Up
       return started
     })
   }
-  const weekOneStartsOn = input.weekOneStartsOn ? checkWeekOne(input.weekOneStartsOn, cycle.period.endDate) : undefined
+  const weekOneStartsOn = checkWeekOne(input.weekOneStartsOn, cycle.period.endDate)
   return prisma.$transaction(async (tx) => {
     const updated = await tx.weeklyCycle.update({
       where: { id: cycle.id },
-      data: { ...(weekOneStartsOn ? { weekOneStartsOn } : {}), ...(input.weeklyCap !== undefined ? { weeklyCap: input.weeklyCap } : {}) },
+      data: { weekOneStartsOn },
     })
     await recordAudit(tx, {
       cycleId: cycle.id, actorId: actor.id, actorRole: 'HR', action: 'CYCLE_EDIT', objectType: 'WeeklyCycle', objectId: cycle.id,
-      before: { weekOneStartsOn: cycle.weekOneStartsOn.toISOString(), weeklyCap: cycle.weeklyCap }, after: input,
+      before: { weekOneStartsOn: cycle.weekOneStartsOn.toISOString() }, after: input,
     })
     return updated
   })
@@ -131,7 +131,7 @@ export async function deleteCycle(actor: WeeklyActor, cycleId: string): Promise<
     if (removed.count === 0) throw new WeeklyError(NOT_REMOVABLE, 409)
     await recordAudit(tx, {
       cycleId: cycle.id, actorId: actor.id, actorRole: 'HR', action: 'CYCLE_DELETE', objectType: 'WeeklyCycle', objectId: cycle.id,
-      before: { periodId: cycle.periodId, weekOneStartsOn: cycle.weekOneStartsOn.toISOString(), weeklyCap: cycle.weeklyCap },
+      before: { periodId: cycle.periodId, weekOneStartsOn: cycle.weekOneStartsOn.toISOString() },
     })
   })
 }

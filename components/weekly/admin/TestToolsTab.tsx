@@ -85,7 +85,7 @@ export function TestToolsTab() {
                     <SelectItem value="stand-in">Stand-in model (no AI call)</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button disabled={busy} variant="outline" onClick={() => void run({ action: 'score-now', cycleId, model: scoreModel }, (r) => `${String(r.scored)} scored, ${String(r.insufficient)} need detail, ${String(r.failed)} failed, ${String(r.remaining)} still queued`)}>
+                <Button disabled={busy} variant="outline" onClick={() => void run({ action: 'score-now', cycleId, model: scoreModel }, (r) => `${String(r.scored)} scored, ${String(r.insufficient)} without enough evidence, ${String(r.failed)} failed, ${String(r.remaining)} still queued`)}>
                   Score now
                 </Button>
                 <Button disabled={busy} variant="outline" onClick={() => void run({ action: 'accept-due-now', cycleId }, (r) => `${String(r.accepted)} scores accepted`)}>Accept answers due now</Button>
@@ -103,8 +103,8 @@ export function TestToolsTab() {
         <Card>
           <CardContent className="space-y-3 p-4">
             <div>
-              <p className="font-semibold">Ask a pair now</p>
-              <p className="text-sm text-muted-foreground">For a live demo: the evaluator gets a question now on every topic about the person (they must be mapped). Watch the answers being scored on Live scores.</p>
+              <p className="font-semibold">Ask someone now</p>
+              <p className="text-sm text-muted-foreground">For a live demo. “Release this week for them” gives the evaluator this week’s questions, about a random few of the people they evaluate. “Ask this pair now” gives them their next question about one person. Watch the answers being scored on Live scores.</p>
             </div>
             <div className="flex flex-wrap items-end gap-3">
               <Select value={pair.evaluatorId} onValueChange={(evaluatorId) => void chooseEvaluator(evaluatorId)}>
@@ -115,7 +115,8 @@ export function TestToolsTab() {
                 <SelectTrigger className="w-60" aria-label="About"><SelectValue placeholder="About whom" /></SelectTrigger>
                 <SelectContent>{pairOptions.map((o) => <SelectItem key={`${o.evaluatee.id}-${o.perspective}`} value={o.evaluatee.id}>{o.evaluatee.name} · {o.perspective}</SelectItem>)}</SelectContent>
               </Select>
-              <Button disabled={busy || !pair.evaluatorId || !pair.evaluateeId} onClick={() => void run({ action: 'ask-pair', cycleId, ...pair }, (r) => `${String(r.prompts)} questions asked`)}>Ask this pair now</Button>
+              <Button disabled={busy || !pair.evaluatorId} variant="outline" onClick={() => void run({ action: 'release-for', cycleId, evaluatorId: pair.evaluatorId }, (r) => (r.evaluatorsReleased === 0 ? `Week ${String(r.week)} was already released for them` : `Week ${String(r.week)}: ${String(r.promptsCreated)} questions`))}>Release this week for them</Button>
+              <Button disabled={busy || !pair.evaluatorId || !pair.evaluateeId} onClick={() => void run({ action: 'ask-pair', cycleId, ...pair }, () => 'Question asked')}>Ask this pair now</Button>
             </div>
           </CardContent>
         </Card>

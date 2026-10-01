@@ -1,4 +1,4 @@
-// Spec 9.4 option C: HR asks everyone in a low-evidence group again, now, beyond the weekly cap and pacing.
+// Spec 9.4 option C: HR asks everyone in a low-evidence group again, now, outside the weekly schedule.
 import { prisma } from '@/lib/db'
 import { effectiveWeek, totalWeeks } from '../calendar'
 import { renderMoreEvidenceEmail } from '../emails'

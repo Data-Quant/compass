@@ -1,70 +1,97 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { nextVariant, planBatch, type BatchInput, type SchedulableSlot } from '../lib/weekly/scheduler'
+import {
+  MAX_WEEKS_WITHOUT_ASKING, nextVariant, pickTopic, planWeek, QUESTIONS_PER_PAIR,
+  type SchedulablePair, type SchedulableTopic, type WeekPlanInput,
+} from '../lib/weekly/scheduler'
 
-const slot = (id: string, overrides: Partial<SchedulableSlot> = {}): SchedulableSlot => ({
-  id, evaluateeId: `e-${id}`, perspective: 'PEER', status: 'OPEN', confirmedSamples: 0, hasOpenPrompt: false, awaitingDecision: false, lastAskedWeek: null, snoozedUntilWeek: null, ...overrides,
+const pair = (key: string, overrides: Partial<SchedulablePair> = {}): SchedulablePair => ({
+  key, asked: 0, lastAskedWeek: null, hasOpenPrompt: false, hasAskableTopic: true, ...overrides,
 })
-const input = (slots: SchedulableSlot[], overrides: Partial<BatchInput> = {}): BatchInput => ({
-  week: 1, totalWeeks: 13, cap: 5, openPromptCount: 0, slots, evidenceByEvaluatee: new Map(), ...overrides,
-})
-const many = (n: number, overrides: Partial<SchedulableSlot> = {}) => Array.from({ length: n }, (_, i) => slot(`s${String(i).padStart(2, '0')}`, overrides))
+const pairs = (n: number) => Array.from({ length: n }, (_, i) => pair(`p${String(i).padStart(2, '0')}`))
+const input = (list: SchedulablePair[], overrides: Partial<WeekPlanInput> = {}): WeekPlanInput => ({ week: 1, totalWeeks: 14, seed: 'cycle|evaluator', pairs: list, ...overrides })
 
-test('questions are paced across the question weeks, not front-loaded', () => {
-  assert.equal(planBatch(input(many(13))).length, 2) // ceil(13 / 11)
-  assert.equal(planBatch(input(many(3))).length, 1)
-  assert.equal(planBatch(input(many(3), { week: 11 })).length, 3)
+/** Runs a whole quarter for one evaluator who answers every question the week it arrives. */
+function simulate(n: number, totalWeeks = 14, seed = 'cycle|evaluator') {
+  let state = pairs(n)
+  const weeks: string[][] = []
+  for (let week = 1; week <= totalWeeks; week += 1) {
+    const chosen = planWeek({ week, totalWeeks, seed, pairs: state })
+    weeks.push(chosen)
+    state = state.map((p) => (chosen.includes(p.key) ? { ...p, asked: p.asked + 1, lastAskedWeek: week } : p))
+  }
+  const asksOf = (key: string) => weeks.flatMap((chosen, i) => (chosen.includes(key) ? [i + 1] : []))
+  return { weeks, state, asksOf }
+}
+
+test('each pair gets five questions a quarter, spread over the twelve question weeks (5y = x, x / 12 a week)', () => {
+  const { weeks, state } = simulate(7)
+  assert.equal(QUESTIONS_PER_PAIR, 5)
+  assert.ok(state.every((p) => p.asked === 5), 'five each')
+  const perWeek = weeks.slice(0, 12).map((w) => w.length)
+  assert.equal(perWeek.reduce((a, b) => a + b, 0), 35)
+  assert.ok(perWeek.every((count) => count >= 2 && count <= 4), `about 35 / 12 a week, got ${perWeek.join(',')}`)
+  assert.deepEqual(weeks.slice(12), [[], []], 'nothing left for the catch-up weeks')
 })
 
-test('the weekly cap holds, and carried-over questions count toward it', () => {
-  assert.equal(planBatch(input(many(80))).length, 5)
-  assert.equal(planBatch(input(many(13), { openPromptCount: 2 })).length, 0)
-  assert.equal(planBatch(input(many(80), { openPromptCount: 3 })).length, 2)
+test('every person comes up at least once every three weeks', () => {
+  for (const n of [1, 2, 3, 7, 12, 25]) {
+    const { asksOf } = simulate(n)
+    for (const key of pairs(n).map((p) => p.key)) {
+      const asks = asksOf(key)
+      assert.equal(asks.length, 5, `${n} pairs: ${key} asked ${asks.length} times`)
+      const gaps = [asks[0], ...asks.slice(1).map((w, i) => w - asks[i])]
+      assert.ok(gaps.every((gap) => gap <= MAX_WEEKS_WITHOUT_ASKING), `${n} pairs: ${key} asked in weeks ${asks.join(',')}`)
+      assert.ok(12 - asks[4] < MAX_WEEKS_WITHOUT_ASKING, `${n} pairs: ${key} last asked in week ${asks[4]}`)
+    }
+  }
 })
 
-test('nothing is released outside the cycle', () => {
-  assert.deepEqual(planBatch(input(many(5), { week: 0 })), [])
-  assert.deepEqual(planBatch(input(many(5), { week: 14 })), [])
+test('one question about a person per week, and who comes first is random per evaluator', () => {
+  const { weeks } = simulate(7)
+  assert.ok(weeks.every((chosen) => new Set(chosen).size === chosen.length))
+  const firstWeeks = ['a', 'b', 'c', 'd', 'e'].map((seed) => planWeek(input(pairs(7), { seed })).join(','))
+  assert.ok(new Set(firstWeeks).size > 1, 'different evaluators start with different people')
+  assert.deepEqual(planWeek(input(pairs(7))), planWeek(input(pairs(7))), 'the same evaluator gets the same plan every time')
 })
 
-test('at most two questions about one person per batch', () => {
-  const slots = many(6, { evaluateeId: 'same' })
-  assert.equal(planBatch(input(slots, { week: 11 })).length, 2)
+test('people not asked recently come first', () => {
+  // Week 4: ceil(10 * 4 / 12) = 4 due, 3 asked, so one question.
+  const list = [pair('recent', { asked: 2, lastAskedWeek: 3 }), pair('waiting', { asked: 1, lastAskedWeek: 2 })]
+  assert.deepEqual(planWeek(input(list, { week: 4 })), ['waiting'])
 })
 
-test('lead questions first, then the person with the least evidence', () => {
-  const slots = [
-    slot('peer-rich', { evaluateeId: 'rich' }),
-    slot('peer-poor', { evaluateeId: 'poor' }),
-    slot('lead', { evaluateeId: 'rich', perspective: 'LEAD' }),
+test('a person not asked for three weeks is asked even when the weekly number is already met', () => {
+  const list = [pair('a', { asked: 2, lastAskedWeek: 3 }), pair('b', { asked: 2, lastAskedWeek: 3 }), pair('c', { asked: 1, lastAskedWeek: 1 })]
+  // Week 4 of 12: ceil(15 * 4 / 12) = 5 questions due, 5 already asked; c's three weeks are up.
+  assert.deepEqual(planWeek(input(list, { week: 4 })), ['c'])
+})
+
+test('a person with an open question, five questions already, or no topic left is not asked', () => {
+  const list = [
+    pair('open', { hasOpenPrompt: true }),
+    pair('done', { asked: QUESTIONS_PER_PAIR, lastAskedWeek: 1 }),
+    pair('no-topic', { hasAskableTopic: false }),
+    pair('ready'),
   ]
-  const evidence = new Map([['rich', 5], ['poor', 0]])
-  assert.deepEqual(planBatch(input(slots, { week: 11, evidenceByEvaluatee: evidence })), ['lead', 'peer-poor', 'peer-rich'])
+  assert.deepEqual(planWeek(input(list, { week: 12 })), ['ready'])
 })
 
-test('snoozed, recently asked, answered-and-open and closed slots are skipped', () => {
-  const slots = [
-    slot('snoozed', { snoozedUntilWeek: 5 }),
-    slot('recent', { lastAskedWeek: 2 }),
-    slot('open', { hasOpenPrompt: true }),
-    slot('closed', { status: 'CLOSED_NOT_OBSERVED' }),
-    slot('cancelled', { status: 'CANCELLED' }),
-    slot('done', { status: 'SATISFIED', confirmedSamples: 1 }),
-    slot('ready'),
-  ]
-  // A short cycle leaves one question week at week 4, so pacing does not limit the batch here.
-  assert.deepEqual(planBatch(input(slots, { week: 4, totalWeeks: 6, cap: 10 })), ['ready'])
-  assert.deepEqual(planBatch(input(slots, { week: 5, totalWeeks: 5, cap: 10 })).sort(), ['ready', 'recent', 'snoozed'])
+test('nothing is released outside the cycle, and catch-up weeks ask what is left', () => {
+  assert.deepEqual(planWeek(input(pairs(3), { week: 0 })), [])
+  assert.deepEqual(planWeek(input(pairs(3), { week: 15 })), [])
+  const behind = pairs(3).map((p) => ({ ...p, asked: 4, lastAskedWeek: 12 }))
+  assert.equal(planWeek(input(behind, { week: 13 })).length, 3)
 })
 
-test('lead slots may take a second sample after the first is confirmed, never in catch-up weeks', () => {
-  const slots = [slot('lead-done', { perspective: 'LEAD', status: 'SATISFIED', confirmedSamples: 1, lastAskedWeek: 1 }), slot('fresh')]
-  assert.deepEqual(planBatch(input(slots, { week: 11, cap: 5 })), ['fresh', 'lead-done'])
-  assert.deepEqual(planBatch(input(slots, { week: 12, cap: 5 })), ['fresh'])
-})
-
-test('catch-up weeks still ask first samples nobody has been asked yet', () => {
-  assert.equal(planBatch(input(many(4), { week: 12 })).length, 2) // ceil(4 / 2 weeks left)
+test('within a person, the topic asked least comes next; closed, cancelled and snoozed topics are skipped', () => {
+  const topic = (id: string, overrides: Partial<SchedulableTopic> = {}): SchedulableTopic => ({ id, status: 'OPEN', asked: 0, snoozedUntilWeek: null, ...overrides })
+  assert.equal(pickTopic([topic('twice', { asked: 2 }), topic('once', { asked: 1 })], 5, 's'), 'once')
+  assert.equal(pickTopic([topic('covered', { status: 'SATISFIED' }), topic('open')], 5, 's'), 'open')
+  assert.equal(pickTopic([topic('covered', { status: 'SATISFIED', asked: 1 })], 5, 's'), 'covered', 'a covered topic can take a second answer')
+  const skipped = [topic('closed', { status: 'CLOSED_NOT_OBSERVED' }), topic('gone', { status: 'CANCELLED' }), topic('snoozed', { snoozedUntilWeek: 6 })]
+  assert.equal(pickTopic(skipped, 5, 's'), null)
+  assert.equal(pickTopic(skipped, 6, 's'), 'snoozed')
 })
 
 test('prompt variants rotate: the least-used variant first, A before B', () => {
@@ -73,12 +100,4 @@ test('prompt variants rotate: the least-used variant first, A before B', () => {
   assert.equal(nextVariant(variants, ['a'])?.id, 'b')
   assert.equal(nextVariant(variants, ['a', 'b'])?.id, 'a')
   assert.equal(nextVariant([], []), null)
-})
-
-test('a slot whose answer still awaits a decision is neither asked again nor counted when pacing', () => {
-  assert.deepEqual(planBatch(input([slot('waiting', { lastAskedWeek: 1, awaitingDecision: true })], { week: 4 })), [])
-  // Week 4 of 13 leaves 8 question weeks: 12 fresh slots pace to ceil(12 / 8) = 2; the 12 answered ones must not add to it.
-  const fresh = many(12)
-  const waiting = Array.from({ length: 12 }, (_, i) => slot(`w${i}`, { lastAskedWeek: 1, awaitingDecision: true }))
-  assert.equal(planBatch(input([...fresh, ...waiting], { week: 4 })).length, 2)
 })

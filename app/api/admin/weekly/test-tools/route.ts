@@ -3,8 +3,7 @@ import { guardWeeklyMutation, requireWeeklySession } from '@/lib/weekly/http'
 import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
 import { testToolSchema } from '@/lib/weekly/schemas'
 import { actorFromUser } from '@/lib/weekly/service/context'
-import { sendMail } from '@/lib/email'
-import { acceptDueNow, approveAllDrafts, askPairNow, fillSynthetic, pairsFor, releaseNextWeek, resetCycle, scoreNow, settleForClose } from '@/lib/weekly/service/test-tools'
+import { acceptDueNow, approveAllDrafts, askPairNow, fillSynthetic, pairsFor, releaseNextWeek, releaseWeekFor, resetCycle, scoreNow, settleForClose } from '@/lib/weekly/service/test-tools'
 
 export const runtime = 'nodejs'
 // "Score now" runs for up to SCORE_NOW_BUDGET_MS plus one model call.
@@ -35,10 +34,10 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true, ...(await settleForClose(actor, input.cycleId, now)) })
       case 'pairs':
         return NextResponse.json({ success: true, pairs: await pairsFor(actor, input.cycleId, input.evaluatorId, now) })
-      case 'ask-pair': {
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || request.nextUrl.origin
-        return NextResponse.json({ success: true, ...(await askPairNow(actor, input.cycleId, { evaluatorId: input.evaluatorId, evaluateeId: input.evaluateeId }, now, sendMail, appUrl)) })
-      }
+      case 'release-for':
+        return NextResponse.json({ success: true, ...(await releaseWeekFor(actor, input.cycleId, input.evaluatorId, now)) })
+      case 'ask-pair':
+        return NextResponse.json({ success: true, ...(await askPairNow(actor, input.cycleId, { evaluatorId: input.evaluatorId, evaluateeId: input.evaluateeId }, now)) })
     }
   } catch (error) {
     return weeklyErrorResponse(error)

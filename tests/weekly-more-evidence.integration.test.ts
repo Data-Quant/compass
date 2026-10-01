@@ -38,14 +38,13 @@ async function leadGroup() {
   return { prompt, slots }
 }
 
-test('asking again reopens closed topics and asks each now, beyond the weekly cap and in a catch-up week', WEEKLY_DB_TEST, async () => {
+test('asking again reopens closed topics and asks each now, outside the schedule and in a catch-up week', WEEKLY_DB_TEST, async () => {
   const { prompt, slots } = await leadGroup()
   assert.equal(slots.length, 4)
   const others = slots.filter((s) => s.id !== prompt.slotId)
   await prisma.weeklySlot.update({ where: { id: others[0].id }, data: { status: 'CLOSED_NOT_OBSERVED', notObservedCount: 2 } })
   await prisma.weeklySlot.update({ where: { id: others[1].id }, data: { status: 'CLOSED_NOT_OBSERVED', notObservedCount: 2 } })
   await prisma.weeklySlot.update({ where: { id: others[2].id }, data: { snoozedUntilWeek: 20 } })
-  await prisma.weeklyCycle.update({ where: { id: cycleId }, data: { weeklyCap: 1 } })
   const mail = mailbox()
   const result = await requestMoreEvidence(HR_ACTOR, cycleId, { evaluateeId: prompt.evaluateeId, perspective: 'LEAD' }, at(12), mail.send, APP)
   assert.deepEqual([result.reopened, result.prompts, result.evaluators], [2, 3, 1])

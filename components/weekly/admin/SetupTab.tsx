@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/ui/modal'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatKarachiDate, weekLabel } from '@/lib/weekly/format'
+import { QUESTIONS_PER_PAIR } from '@/lib/weekly/scheduler'
 import type { AdminCyclesResponse, AdminPeriodRow, CycleSummary } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest } from '../weekly-api'
 
@@ -71,7 +72,7 @@ export function SetupTab() {
                 <Badge variant={cycle.status === 'RUNNING' ? 'default' : 'outline'}>{STATUS_LABELS[cycle.status]}</Badge>
               </div>
               <p className="text-sm text-muted-foreground">
-                Week 1 starts {formatKarachiDate(cycle.weekOneStartsOn)} · {cycle.totalWeeks} weeks ({cycle.questionWeeks} with new questions) · up to {cycle.weeklyCap} a week · {weekLabel(cycle)}
+                Week 1 starts {formatKarachiDate(cycle.weekOneStartsOn)} · {cycle.totalWeeks} weeks ({cycle.questionWeeks} with new questions) · {QUESTIONS_PER_PAIR} questions per pair a quarter · {weekLabel(cycle)}
               </p>
             </div>
             {cycle.status === 'SETUP' && (
@@ -115,7 +116,6 @@ export function SetupTab() {
 function NewCycleForm({ periods, onCreated }: { periods: AdminPeriodRow[]; onCreated: () => Promise<void> }) {
   const [periodId, setPeriodId] = useState('')
   const [weekOne, setWeekOne] = useState('')
-  const [cap, setCap] = useState('5')
   const [saving, setSaving] = useState(false)
   const chosen = periods.find((p) => p.id === periodId)
 
@@ -123,7 +123,7 @@ function NewCycleForm({ periods, onCreated }: { periods: AdminPeriodRow[]; onCre
     event.preventDefault()
     setSaving(true)
     try {
-      await weeklyRequest('/api/admin/weekly/cycles', { method: 'POST', body: { periodId, weekOneStartsOn: weekOne, weeklyCap: Number(cap) } })
+      await weeklyRequest('/api/admin/weekly/cycles', { method: 'POST', body: { periodId, weekOneStartsOn: weekOne } })
       toast.success('Cycle created')
       setPeriodId('')
       setWeekOne('')
@@ -140,7 +140,7 @@ function NewCycleForm({ periods, onCreated }: { periods: AdminPeriodRow[]; onCre
       <CardContent className="p-4">
         <form onSubmit={submit} className="space-y-4">
           <h3 className="font-semibold">Run a quarter on weekly evaluations</h3>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="cycle-period">Quarter</Label>
               <Select value={periodId} onValueChange={setPeriodId}>
@@ -151,10 +151,6 @@ function NewCycleForm({ periods, onCreated }: { periods: AdminPeriodRow[]; onCre
             <div className="space-y-2">
               <Label htmlFor="cycle-week-one">Week 1 starts (a Monday)</Label>
               <Input id="cycle-week-one" type="date" value={weekOne} onChange={(e) => setWeekOne(e.target.value)} required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="cycle-cap">Questions per person per week</Label>
-              <Input id="cycle-cap" type="number" min={1} max={10} value={cap} onChange={(e) => setCap(e.target.value)} required />
             </div>
           </div>
           <p className={`text-sm ${chosen?.isActive ? 'font-medium text-destructive' : 'text-muted-foreground'}`}>
@@ -173,14 +169,13 @@ function NewCycleForm({ periods, onCreated }: { periods: AdminPeriodRow[]; onCre
 
 function EditCycleDialog({ cycle, onClose, onSaved }: { cycle: CycleSummary; onClose: () => void; onSaved: () => Promise<void> }) {
   const [weekOne, setWeekOne] = useState(karachiDateInput(cycle.weekOneStartsOn))
-  const [cap, setCap] = useState(String(cycle.weeklyCap))
   const [saving, setSaving] = useState(false)
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSaving(true)
     try {
-      await weeklyRequest(`/api/admin/weekly/cycles/${cycle.id}`, { method: 'PATCH', body: { action: 'update', weekOneStartsOn: weekOne, weeklyCap: Number(cap) } })
+      await weeklyRequest(`/api/admin/weekly/cycles/${cycle.id}`, { method: 'PATCH', body: { action: 'update', weekOneStartsOn: weekOne } })
       toast.success('Cycle updated')
       onClose()
       await onSaved()
@@ -197,10 +192,6 @@ function EditCycleDialog({ cycle, onClose, onSaved }: { cycle: CycleSummary; onC
         <div className="space-y-2">
           <Label htmlFor="edit-week-one">Week 1 starts (a Monday)</Label>
           <Input id="edit-week-one" type="date" value={weekOne} onChange={(e) => setWeekOne(e.target.value)} required />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="edit-cap">Questions per person per week</Label>
-          <Input id="edit-cap" type="number" min={1} max={10} value={cap} onChange={(e) => setCap(e.target.value)} required />
         </div>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
