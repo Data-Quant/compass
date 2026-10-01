@@ -52,6 +52,8 @@ export interface NavItem {
   href: string
   icon: LucideIcon
   badge?: string | number
+  /** Highlight for every path under this prefix, when it differs from href. */
+  activePrefix?: string
 }
 
 export interface NavGroup {
@@ -193,7 +195,7 @@ function SidebarNavItem({
         ? pathname === '/dashboard'
         : item.href === '/security'
           ? pathname === '/security'
-        : pathname.startsWith(item.href)
+        : pathname.startsWith(item.activePrefix ?? item.href)
 
   const Icon = item.icon
 

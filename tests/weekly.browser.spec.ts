@@ -68,10 +68,16 @@ test('an evaluator answers their own question and sees it in their history', asy
   await page.goto('/dashboard')
   await expect(page.getByText('This week’s evaluation questions')).toBeVisible()
   await page.goto('/evaluations/weekly')
-  await expect(page.getByRole('link', { name: /Weekly evaluations/ })).toBeVisible()
+  // One Evaluations item in the sidebar opens the weekly questions; a switcher reaches the quarterly evaluations.
+  await expect(page.getByRole('link', { name: /^Weekly evaluations/ })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: /^Evaluations/ }).first()).toHaveAttribute('href', '/evaluations/weekly')
+  await expect(page.getByRole('navigation', { name: 'Evaluations' }).getByRole('link', { name: 'Quarterly evaluations' })).toBeVisible()
   await answerFirstCard(page)
   await page.getByRole('tab', { name: 'History' }).click()
   await expect(page.getByText('Submitted').first()).toBeVisible()
+  // Progress moves on submitting, before HR accepts anything.
+  await page.getByRole('tab', { name: 'Progress' }).click()
+  await expect(page.getByText(/[1-9] of \d+ topics answered/).first()).toBeVisible()
 })
 
 test('HR fills the rest with synthetic answers, and the classic form refuses this quarter', async ({ page }) => {

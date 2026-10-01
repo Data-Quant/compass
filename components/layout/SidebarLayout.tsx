@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import { CalendarCheck, Handshake, Target } from 'lucide-react'
-import { withGroupItem, withItemAfter } from '@/components/layout/sidebar-nav'
+import { withGroupItem, withItemAfter, withItemPatched } from '@/components/layout/sidebar-nav'
 
 // Context so child pages can access user info
 interface LayoutUser {
@@ -192,7 +192,8 @@ export function SidebarLayout({
       : isAdminConsole
         ? withGroupItem(sidebarConfigWithKpis, 'Performance', { label: 'Weekly evaluations', href: '/admin/weekly', icon: CalendarCheck })
         : weeklyMe.cycleActive
-          ? withItemAfter(sidebarConfigWithKpis, { label: 'Weekly evaluations', href: '/evaluations/weekly', icon: CalendarCheck, ...weeklyBadge }, '/evaluations')
+          ? // One Evaluations item: it opens the weekly questions and stays highlighted on the quarterly page.
+            withItemPatched(sidebarConfigWithKpis, '/evaluations', { href: '/evaluations/weekly', activePrefix: '/evaluations', ...weeklyBadge })
           : sidebarConfigWithKpis
 
   return (

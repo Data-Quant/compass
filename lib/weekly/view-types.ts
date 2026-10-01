@@ -42,7 +42,8 @@ export interface InboxPrompt {
   overdue: boolean
 }
 
-export interface EvaluateeProgress { evaluatee: PersonRef; perspective: Perspective; satisfied: number; total: number }
+/** Per person: topics answered (submitted), of which accepted (satisfied), out of all topics to cover. */
+export interface EvaluateeProgress { evaluatee: PersonRef; perspective: Perspective; answered: number; satisfied: number; total: number }
 
 export interface InboxResponse { cycle: CycleSummary | null; prompts: InboxPrompt[]; progress: EvaluateeProgress[] }
 

@@ -10,9 +10,9 @@ export function WeeklyProgress({ progress }: { progress: EvaluateeProgress[] }) 
         <li key={`${row.evaluatee.id}-${row.perspective}`} className="space-y-1">
           <div className="flex flex-wrap justify-between gap-2 text-sm">
             <span>{row.evaluatee.name} <span className="text-muted-foreground">· {PERSPECTIVE_LABELS[row.perspective]}</span></span>
-            <span className="text-muted-foreground">{row.satisfied} of {row.total} topics covered</span>
+            <span className="text-muted-foreground">{row.answered} of {row.total} topics answered{row.satisfied > 0 ? ` · ${row.satisfied} accepted` : ''}</span>
           </div>
-          <Progress value={row.total ? Math.round((row.satisfied / row.total) * 100) : 0} className="h-2" />
+          <Progress value={row.total ? Math.round((row.answered / row.total) * 100) : 0} className="h-2" />
         </li>
       ))}
     </ul>

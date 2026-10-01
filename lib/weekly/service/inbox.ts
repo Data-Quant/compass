@@ -52,13 +52,23 @@ async function humanReviewed(responseIds: string[]): Promise<Set<string>> {
 }
 
 async function progressFor(cycleId: string, evaluatorId: string): Promise<EvaluateeProgress[]> {
-  const slots = await prisma.weeklySlot.findMany({ where: { cycleId, evaluatorId, status: { not: 'CANCELLED' } }, select: { evaluateeId: true, relationshipType: true, status: true } })
+  const [slots, submitted] = await Promise.all([
+    prisma.weeklySlot.findMany({ where: { cycleId, evaluatorId, status: { not: 'CANCELLED' } }, select: { id: true, evaluateeId: true, relationshipType: true, status: true } }),
+    prisma.weeklyPrompt.findMany({ where: { cycleId, evaluatorId, status: 'SUBMITTED', slotId: { not: null } }, select: { slotId: true } }),
+  ])
+  const answeredSlots = new Set(submitted.map((p) => p.slotId))
   const people = await loadPeople(slots.map((s) => s.evaluateeId))
   const groups = new Map<string, EvaluateeProgress>()
   for (const slot of slots) {
     const key = `${slot.evaluateeId}|${slot.relationshipType}`
-    const current = groups.get(key) ?? { evaluatee: personRef(people, slot.evaluateeId), perspective: perspectiveOf(slot.relationshipType) ?? 'PEER', satisfied: 0, total: 0 }
-    groups.set(key, { ...current, total: current.total + 1, satisfied: current.satisfied + (slot.status === 'SATISFIED' ? 1 : 0) })
+    const current = groups.get(key) ?? { evaluatee: personRef(people, slot.evaluateeId), perspective: perspectiveOf(slot.relationshipType) ?? 'PEER', answered: 0, satisfied: 0, total: 0 }
+    const satisfied = slot.status === 'SATISFIED'
+    groups.set(key, {
+      ...current,
+      total: current.total + 1,
+      satisfied: current.satisfied + (satisfied ? 1 : 0),
+      answered: current.answered + (satisfied || answeredSlots.has(slot.id) ? 1 : 0),
+    })
   }
   return [...groups.values()].sort((a, b) => byName(a.evaluatee, b.evaluatee))
 }
