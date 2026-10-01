@@ -341,46 +341,6 @@ export function calculateWeightedEvaluationCompletion(params: {
   }
 }
 
-export function collapseAssignmentRequirementsByPool(
-  requirements: Array<
-    AssignmentLike & {
-      questionsCount: number
-      isComplete: boolean
-    }
-  >
-) {
-  const collapsed = new Map<
-    string,
-    {
-      evaluateeId: string
-      questionsCount: number
-      isComplete: boolean
-    }
-  >()
-
-  for (const requirement of requirements) {
-    const key = getEffectiveEvaluationSlotKey(requirement)
-    const existing = collapsed.get(key)
-
-    if (!existing) {
-      collapsed.set(key, {
-        evaluateeId: requirement.evaluateeId,
-        questionsCount: requirement.questionsCount,
-        isComplete: requirement.isComplete,
-      })
-      continue
-    }
-
-    collapsed.set(key, {
-      evaluateeId: existing.evaluateeId,
-      questionsCount: Math.max(existing.questionsCount, requirement.questionsCount),
-      isComplete: existing.isComplete || requirement.isComplete,
-    })
-  }
-
-  return [...collapsed.values()]
-}
-
 export function getAuthoritativeHrEvaluatorId(
   evaluations: EvaluationLike[]
 ) {
