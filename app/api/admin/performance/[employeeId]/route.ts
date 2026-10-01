@@ -17,6 +17,7 @@ import {
   getEvaluationQuestionMeta,
   getResolvedEvaluationQuestions,
 } from '@/lib/pre-evaluation'
+import { weeklyPairTopics, type PairTopics } from '@/lib/weekly/service/overview-progress'
 
 type EvaluationWithQuestionMeta = Prisma.EvaluationGetPayload<{
   include: {
@@ -49,6 +50,8 @@ async function buildAssignmentDetail(params: {
   hrPoolClosedPairKeys: ReadonlySet<string>
   submittedCounts: ReadonlyMap<string, number>
   direction: 'incoming' | 'outgoing'
+  /** While a weekly quarter runs, the pair's topics stand in for its (not yet written) results. */
+  weeklyTopics?: PairTopics
 }) {
   const { assignment, pairEvaluations, periodId } = params
   const resolvedQuestions = await getResolvedEvaluationQuestions({
@@ -135,8 +138,11 @@ async function buildAssignmentDetail(params: {
     pairEvaluations.map((evaluation) => (hasSavedInput(evaluation) ? evaluation.updatedAt : null))
   )
 
+  const weekly = params.weeklyTopics
   let status: 'NOT_STARTED' | 'IN_PROGRESS' | 'SUBMITTED' | 'CLOSED_BY_POOL' = 'NOT_STARTED'
-  if (completionState.isClosedByPool) {
+  if (weekly) {
+    status = weekly.total > 0 && weekly.covered >= weekly.total ? 'SUBMITTED' : weekly.answered > 0 ? 'IN_PROGRESS' : 'NOT_STARTED'
+  } else if (completionState.isClosedByPool) {
     status = 'CLOSED_BY_POOL'
   } else if (completionState.isComplete) {
     status = 'SUBMITTED'
@@ -158,10 +164,10 @@ async function buildAssignmentDetail(params: {
       params.direction === 'outgoing'
         ? assignment.evaluatee
         : assignment.evaluator,
-    questionsCount: questionCount,
-    savedResponseCount,
-    submittedResponseCount: completionState.rawCompletedCount,
-    completedResponseCount: completionState.completedCount,
+    questionsCount: weekly ? weekly.total : questionCount,
+    savedResponseCount: weekly ? weekly.answered : savedResponseCount,
+    submittedResponseCount: weekly ? weekly.answered : completionState.rawCompletedCount,
+    completedResponseCount: weekly ? weekly.covered : completionState.completedCount,
     status,
     isClosedByPool: completionState.isClosedByPool,
     submittedAt,
@@ -323,6 +329,10 @@ export async function GET(
       deriveSubmittedHrPairKeys(submittedCounts)
     )
 
+    const weeklyPairs = await weeklyPairTopics(period.id)
+    const weeklyTopicsFor = (a: { evaluatorId: string; evaluateeId: string; relationshipType: string }) =>
+      weeklyPairs?.get(`${a.evaluatorId}|${a.evaluateeId}|${a.relationshipType}`)
+
     const evaluationsByPair = evaluations.reduce<Map<string, EvaluationWithQuestionMeta[]>>(
       (map, evaluation) => {
         const key = buildEvaluationPairKey(evaluation.evaluatorId, evaluation.evaluateeId)
@@ -358,6 +368,7 @@ export async function GET(
             hrPoolClosedPairKeys,
             submittedCounts,
             direction: 'outgoing',
+            weeklyTopics: weeklyTopicsFor(assignment),
           })
         )
       ),
@@ -373,6 +384,7 @@ export async function GET(
             hrPoolClosedPairKeys,
             submittedCounts,
             direction: 'incoming',
+            weeklyTopics: weeklyTopicsFor(assignment),
           })
         )
       ),

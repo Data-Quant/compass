@@ -2,19 +2,17 @@ import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
-import type { RelationshipType } from '@/types'
-import { getResolvedQuestionCount } from '@/lib/pre-evaluation'
-import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import { isThreeEDepartment } from '@/lib/company-branding'
 import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
-import {
-  buildSubmittedCountMap,
-  collapseAssignmentRequirementsByPool,
-  deriveSubmittedHrPairKeys,
-  getAssignmentCompletionState,
-  getHrPoolClosedPairKeys,
-} from '@/lib/evaluation-completion'
+import { weeklyOverviewProgress } from '@/lib/weekly/service/overview-progress'
 
+const percent = (done: number, total: number) => (total > 0 ? Math.round((done / total) * 100) : 0)
+const average = (values: number[]) => (values.length > 0 ? Math.round(values.reduce((sum, v) => sum + v, 0) / values.length) : 0)
+
+/**
+ * HR's Performance Overview for the active period, from its weekly evaluations: topics with accepted evidence
+ * about each person, topics each person has answered about others, and whether their report has been generated.
+ */
 export async function GET() {
   try {
     const user = await getSession()
@@ -22,185 +20,52 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const period = await prisma.evaluationPeriod.findFirst({
-      where: { isActive: true },
-    })
-
+    const period = await prisma.evaluationPeriod.findFirst({ where: { isActive: true } })
     if (!period) {
       return NextResponse.json({ error: 'No active period found' }, { status: 404 })
     }
 
-    const [allTeamMembers, allMappings, submittedEvaluationRows, allReports] =
-      await Promise.all([
-        prisma.user.findMany({
-          select: { id: true, name: true, department: true, position: true },
-        }),
-        getResolvedEvaluationAssignments(period.id),
-        prisma.evaluation.findMany({
-          where: { periodId: period.id, submittedAt: { not: null } },
-          select: {
-            evaluatorId: true,
-            evaluateeId: true,
-            submittedAt: true,
-            leadQuestionId: true,
-            question: { select: { relationshipType: true } },
-            source: true,
-          },
-        }),
-        prisma.report.findMany({
-          where: { periodId: period.id },
-          select: { employeeId: true },
-        }),
-      ])
+    const [people, weekly, reports] = await Promise.all([
+      prisma.user.findMany({ select: { id: true, name: true, department: true, position: true } }),
+      weeklyOverviewProgress(period.id),
+      prisma.report.findMany({ where: { periodId: period.id }, select: { employeeId: true } }),
+    ])
+    const reportSet = new Set(reports.map((r) => r.employeeId))
 
-    const teamMembers = allTeamMembers.filter(
-      (member) => !isThreeEDepartment(member.department)
-    )
-
-    const questionCounts = await Promise.all(
-      allMappings.map(async (mapping) => ({
-        evaluatorId: mapping.evaluatorId,
-        evaluateeId: mapping.evaluateeId,
-        relationshipType: mapping.relationshipType,
-        total: await getResolvedQuestionCount({
-          relationshipType: mapping.relationshipType as RelationshipType,
-          periodId: period.id,
-          evaluatorId: mapping.evaluatorId,
-          evaluateeId: mapping.evaluateeId,
-        }),
-      }))
-    )
-
-    const submittedPairCounts = buildSubmittedCountMap(submittedEvaluationRows, allMappings)
-    const hrPoolClosedPairKeys = getHrPoolClosedPairKeys(
-      allMappings,
-      deriveSubmittedHrPairKeys(submittedPairCounts)
-    )
-
-    const inboundEvaluatorCountMap = new Map<string, number>()
-    const inboundTotalNeededMap = new Map<string, number>()
-    const inboundCompletedNeededMap = new Map<string, number>()
-    const outboundEvaluateeCountMap = new Map<string, number>()
-    const outboundTotalNeededMap = new Map<string, number>()
-    const outboundCompletedNeededMap = new Map<string, number>()
-    const assignmentRequirements = questionCounts.map((entry) => {
-      const assignment = {
-        evaluatorId: entry.evaluatorId,
-        evaluateeId: entry.evaluateeId,
-        relationshipType: entry.relationshipType as RelationshipType,
-      }
-      const completionState = getAssignmentCompletionState({
-        assignment,
-        questionsCount: entry.total,
-        submittedCounts: submittedPairCounts,
-        hrPoolClosedPairKeys,
+    const employees = people
+      .filter((member) => !isThreeEDepartment(member.department))
+      .map((member) => {
+        const p = weekly?.get(member.id)
+        const inboundTopics = p?.topics ?? 0
+        const outboundTopics = p?.topicsToAnswer ?? 0
+        const reportEligible = shouldReceiveConstantEvaluations(member) && inboundTopics > 0
+        return {
+          ...member,
+          inboundEvaluatorCount: p?.evaluators ?? 0,
+          inboundCoveredTopics: p?.coveredTopics ?? 0,
+          inboundTopics,
+          inboundCompletionRate: percent(p?.coveredTopics ?? 0, inboundTopics),
+          outboundEvaluateeCount: p?.evaluatees ?? 0,
+          outboundAnsweredTopics: p?.answeredTopics ?? 0,
+          outboundTopics,
+          outboundCompletionRate: percent(p?.answeredTopics ?? 0, outboundTopics),
+          reportEligible,
+          reportPersisted: reportSet.has(member.id),
+          reportStatus: !reportEligible ? 'NOT_APPLICABLE' : reportSet.has(member.id) ? 'READY' : 'PENDING',
+        }
       })
-
-      return {
-        ...assignment,
-        questionsCount: entry.total,
-        isComplete: completionState.isComplete,
-      }
-    })
-    const collapsedRequirements = collapseAssignmentRequirementsByPool(assignmentRequirements)
-
-    for (const entry of collapsedRequirements) {
-      inboundEvaluatorCountMap.set(
-        entry.evaluateeId,
-        (inboundEvaluatorCountMap.get(entry.evaluateeId) || 0) + 1
-      )
-      inboundTotalNeededMap.set(
-        entry.evaluateeId,
-        (inboundTotalNeededMap.get(entry.evaluateeId) || 0) + entry.questionsCount
-      )
-      inboundCompletedNeededMap.set(
-        entry.evaluateeId,
-        (inboundCompletedNeededMap.get(entry.evaluateeId) || 0) + (entry.isComplete ? entry.questionsCount : 0)
-      )
-    }
-
-    for (const entry of assignmentRequirements) {
-      outboundEvaluateeCountMap.set(
-        entry.evaluatorId,
-        (outboundEvaluateeCountMap.get(entry.evaluatorId) || 0) + 1
-      )
-      outboundTotalNeededMap.set(
-        entry.evaluatorId,
-        (outboundTotalNeededMap.get(entry.evaluatorId) || 0) + entry.questionsCount
-      )
-      outboundCompletedNeededMap.set(
-        entry.evaluatorId,
-        (outboundCompletedNeededMap.get(entry.evaluatorId) || 0) + (entry.isComplete ? entry.questionsCount : 0)
-      )
-    }
-    const reportSet = new Set(allReports.map((r) => r.employeeId))
-
-    const statusData = teamMembers.map((member) => {
-      const inboundEvaluatorCount = inboundEvaluatorCountMap.get(member.id) || 0
-      const inboundCompletedQuestions = inboundCompletedNeededMap.get(member.id) || 0
-      const inboundTotalQuestions = inboundTotalNeededMap.get(member.id) || 0
-      const inboundCompletionRate =
-        inboundTotalQuestions > 0 ? (inboundCompletedQuestions / inboundTotalQuestions) * 100 : 0
-      const outboundEvaluateeCount = outboundEvaluateeCountMap.get(member.id) || 0
-      const outboundCompletedQuestions = outboundCompletedNeededMap.get(member.id) || 0
-      const outboundTotalQuestions = outboundTotalNeededMap.get(member.id) || 0
-      const outboundCompletionRate =
-        outboundTotalQuestions > 0 ? (outboundCompletedQuestions / outboundTotalQuestions) * 100 : 0
-      const reportEligible =
-        shouldReceiveConstantEvaluations(member) && inboundTotalQuestions > 0
-      const reportReady =
-        reportEligible && (inboundCompletionRate >= 99.5 || reportSet.has(member.id))
-      const reportStatus = reportEligible ? (reportReady ? 'READY' : 'PENDING') : 'NOT_APPLICABLE'
-
-      return {
-        ...member,
-        totalEvaluators: inboundEvaluatorCount,
-        completedEvaluations: inboundCompletedQuestions,
-        totalNeeded: inboundTotalQuestions,
-        completionRate: Math.round(inboundCompletionRate),
-        inboundEvaluatorCount,
-        inboundCompletedQuestions,
-        inboundTotalQuestions,
-        inboundCompletionRate: Math.round(inboundCompletionRate),
-        outboundEvaluateeCount,
-        outboundCompletedQuestions,
-        outboundTotalQuestions,
-        outboundCompletionRate: Math.round(outboundCompletionRate),
-        reportEligible,
-        reportGenerated: reportReady,
-        reportPersisted: reportSet.has(member.id),
-        reportStatus,
-      }
-    })
-
-    const totalTeamMembers = teamMembers.length
-    const reportEligibleCount = statusData.filter((s) => s.reportEligible).length
-    const employeesWithReports = statusData.filter((s) => s.reportStatus === 'READY').length
-    const inboundAveragePopulation = statusData.filter((s) => s.inboundTotalQuestions > 0)
-    const outboundAveragePopulation = statusData.filter((s) => s.outboundTotalQuestions > 0)
-    const averageInboundCompletion =
-      inboundAveragePopulation.length > 0
-        ? inboundAveragePopulation.reduce((sum, s) => sum + s.completionRate, 0) /
-          inboundAveragePopulation.length
-        : 0
-    const averageOutboundCompletion =
-      outboundAveragePopulation.length > 0
-        ? outboundAveragePopulation.reduce((sum, s) => sum + s.outboundCompletionRate, 0) /
-          outboundAveragePopulation.length
-        : 0
 
     return NextResponse.json({
       period,
+      weekly: weekly !== null,
       summary: {
-        totalTeamMembers,
-        totalEmployees: totalTeamMembers,
-        employeesWithReports,
-        reportEligibleCount,
-        averageCompletion: Math.round(averageInboundCompletion),
-        averageInboundCompletion: Math.round(averageInboundCompletion),
-        averageOutboundCompletion: Math.round(averageOutboundCompletion),
+        totalTeamMembers: employees.length,
+        employeesWithReports: employees.filter((e) => e.reportStatus === 'READY').length,
+        reportEligibleCount: employees.filter((e) => e.reportEligible).length,
+        averageInboundCompletion: average(employees.filter((e) => e.inboundTopics > 0).map((e) => e.inboundCompletionRate)),
+        averageOutboundCompletion: average(employees.filter((e) => e.outboundTopics > 0).map((e) => e.outboundCompletionRate)),
       },
-      employees: statusData,
+      employees,
     })
   } catch (error) {
     console.error('Failed to fetch admin data:', error)

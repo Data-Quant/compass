@@ -64,19 +64,15 @@ type EmployeeRow = {
   name: string
   department: string | null
   position: string | null
-  inboundCompletionRate?: number
-  completionRate?: number
-  inboundCompletedQuestions?: number
-  completedEvaluations?: number
-  inboundTotalQuestions?: number
-  totalNeeded?: number
-  outboundCompletionRate?: number
-  outboundCompletedQuestions?: number
-  outboundTotalQuestions?: number
-  reportEligible?: boolean
-  reportGenerated?: boolean
-  reportPersisted?: boolean
-  reportStatus?: 'READY' | 'PENDING' | 'NOT_APPLICABLE'
+  inboundCompletionRate: number
+  inboundCoveredTopics: number
+  inboundTopics: number
+  outboundCompletionRate: number
+  outboundAnsweredTopics: number
+  outboundTopics: number
+  reportEligible: boolean
+  reportPersisted: boolean
+  reportStatus: 'READY' | 'PENDING' | 'NOT_APPLICABLE'
 }
 
 type ActivityResponse = {
@@ -498,10 +494,13 @@ function ProgressCell({
   value,
   completed,
   total,
+  noun,
 }: {
   value: number
   completed: number
   total: number
+  /** e.g. "topics covered" or "topics answered". */
+  noun: string
 }) {
   return (
     <div className="space-y-1.5">
@@ -510,7 +509,7 @@ function ProgressCell({
         <span className="text-sm font-medium text-foreground w-10">{value}%</span>
       </div>
       <p className="text-xs text-muted-foreground">
-        {completed}/{total} questions completed
+        {completed}/{total} {noun}
       </p>
     </div>
   )
@@ -922,14 +921,14 @@ export default function AdminPerformanceOverviewPage() {
             <motion.div variants={stagger.item}>
               <StatsCard
                 title="Team Members"
-                value={dashboardData.summary.totalTeamMembers ?? dashboardData.summary.totalEmployees}
+                value={dashboardData.summary.totalTeamMembers}
                 icon={<Users className="w-5 h-5" />}
               />
             </motion.div>
             <motion.div variants={stagger.item}>
               <StatsCard
                 title="Avg Being Evaluated"
-                value={dashboardData.summary.averageInboundCompletion ?? dashboardData.summary.averageCompletion}
+                value={dashboardData.summary.averageInboundCompletion}
                 suffix="%"
                 icon={<Clock className="w-5 h-5" />}
               />
@@ -937,7 +936,7 @@ export default function AdminPerformanceOverviewPage() {
             <motion.div variants={stagger.item}>
               <StatsCard
                 title="Avg Evaluating Others"
-                value={dashboardData.summary.averageOutboundCompletion ?? 0}
+                value={dashboardData.summary.averageOutboundCompletion}
                 suffix="%"
                 icon={<ClipboardList className="w-5 h-5" />}
               />
@@ -946,7 +945,7 @@ export default function AdminPerformanceOverviewPage() {
               <StatsCard
                 title="Reports Ready"
                 value={dashboardData.summary.employeesWithReports}
-                suffix={`/${dashboardData.summary.reportEligibleCount ?? dashboardData.summary.totalTeamMembers ?? dashboardData.summary.totalEmployees}`}
+                suffix={`/${dashboardData.summary.reportEligibleCount}`}
                 icon={<FileText className="w-5 h-5" />}
               />
             </motion.div>
@@ -989,7 +988,7 @@ export default function AdminPerformanceOverviewPage() {
                 <div>
                   <h2 className="text-lg font-display font-semibold text-foreground">Employee Progress</h2>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Track both how much of each employee&apos;s inbound review set is complete and how much of their own evaluator workload they have finished.
+                    From this quarter&apos;s weekly evaluations: topics about each person with accepted evidence, and topics each person has answered about others.
                   </p>
                 </div>
                 <Button
@@ -1038,24 +1037,26 @@ export default function AdminPerformanceOverviewPage() {
                     </TableCell>
                     <TableCell className="px-6 py-4 whitespace-nowrap align-top">
                       <ProgressCell
-                        value={employee.inboundCompletionRate ?? employee.completionRate ?? 0}
-                        completed={employee.inboundCompletedQuestions ?? employee.completedEvaluations ?? 0}
-                        total={employee.inboundTotalQuestions ?? employee.totalNeeded ?? 0}
+                        value={employee.inboundCompletionRate}
+                        completed={employee.inboundCoveredTopics}
+                        total={employee.inboundTopics}
+                        noun="topics covered"
                       />
                     </TableCell>
                     <TableCell className="px-6 py-4 whitespace-nowrap align-top">
                       <ProgressCell
-                        value={employee.outboundCompletionRate ?? 0}
-                        completed={employee.outboundCompletedQuestions ?? 0}
-                        total={employee.outboundTotalQuestions ?? 0}
+                        value={employee.outboundCompletionRate}
+                        completed={employee.outboundAnsweredTopics}
+                        total={employee.outboundTopics}
+                        noun="topics answered"
                       />
                     </TableCell>
                     <TableCell className="px-6 py-4 whitespace-nowrap">
-                      {employee.reportStatus === 'NOT_APPLICABLE' || employee.reportEligible === false ? (
+                      {employee.reportStatus === 'NOT_APPLICABLE' ? (
                         <Badge variant="secondary" className="bg-muted text-muted-foreground">
                           N/A
                         </Badge>
-                      ) : employee.reportStatus === 'READY' || employee.reportGenerated ? (
+                      ) : employee.reportStatus === 'READY' ? (
                         <Badge variant="secondary" className="bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500/20">
                           <CheckCircle2 className="w-3 h-3 mr-1" /> Ready
                         </Badge>

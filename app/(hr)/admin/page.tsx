@@ -194,7 +194,7 @@ export default function AdminDashboardPage() {
       >
         <StatsCard
           title="Team Members"
-          value={dashboardData?.summary?.totalTeamMembers ?? dashboardData?.summary?.totalEmployees ?? 0}
+          value={dashboardData?.summary?.totalTeamMembers ?? 0}
           icon={<Users className="w-5 h-5" />}
         />
         <StatsCard

@@ -3,17 +3,10 @@ import { getSession } from '@/lib/auth'
 import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
 import type { RelationshipType } from '@/types'
-import { getResolvedQuestionCount } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import { shouldReceiveConstantEvaluations } from '@/lib/evaluation-profile-rules'
 import { generateDetailedReport } from '@/lib/reports'
-import {
-  buildSubmittedCountMap,
-  collapseAssignmentRequirementsByPool,
-  deriveSubmittedHrPairKeys,
-  getAssignmentCompletionState,
-  getHrPoolClosedPairKeys,
-} from '@/lib/evaluation-completion'
+import { weeklyOverviewProgress } from '@/lib/weekly/service/overview-progress'
 
 const RELATIONSHIP_TYPES: RelationshipType[] = [
   'C_LEVEL',
@@ -85,64 +78,15 @@ export async function GET(request: NextRequest) {
     )
     const analyticsMemberIds = new Set(analyticsMembers.map((member) => member.id))
 
-    const questionCounts = await Promise.all(
-      allMappings.map(async (mapping) => ({
-        evaluatorId: mapping.evaluatorId,
-        evaluateeId: mapping.evaluateeId,
-        relationshipType: mapping.relationshipType as RelationshipType,
-        total: await getResolvedQuestionCount({
-          relationshipType: mapping.relationshipType as RelationshipType,
-          periodId: period.id,
-          evaluatorId: mapping.evaluatorId,
-          evaluateeId: mapping.evaluateeId,
-        }),
-      }))
-    )
-
-    const submittedPairCounts = buildSubmittedCountMap(submittedEvaluationRows, allMappings)
-    const hrPoolClosedPairKeys = getHrPoolClosedPairKeys(
-      allMappings,
-      deriveSubmittedHrPairKeys(submittedPairCounts)
-    )
-    const assignmentRequirements = questionCounts.map((entry) => {
-      const assignment = {
-        evaluatorId: entry.evaluatorId,
-        evaluateeId: entry.evaluateeId,
-        relationshipType: entry.relationshipType,
-      }
-      const completionState = getAssignmentCompletionState({
-        assignment,
-        questionsCount: entry.total,
-        submittedCounts: submittedPairCounts,
-        hrPoolClosedPairKeys,
+    // Completion is the weekly coverage: topics about each person with accepted evidence. Quarters that did not run on
+    // weekly evaluations have no completion figure.
+    const weekly = await weeklyOverviewProgress(period.id)
+    const completionByEmployee = new Map<string, number | null>(
+      analyticsMembers.map((member) => {
+        const p = weekly?.get(member.id)
+        return [member.id, weekly && p && p.topics > 0 ? (p.coveredTopics / p.topics) * 100 : weekly ? 0 : null]
       })
-
-      return {
-        ...assignment,
-        questionsCount: entry.total,
-        isComplete: completionState.isComplete,
-      }
-    })
-    const collapsedRequirements = collapseAssignmentRequirementsByPool(assignmentRequirements)
-
-    const completionByEmployee = new Map<
-      string,
-      { totalQuestions: number; completedQuestions: number; completionRate: number }
-    >()
-    for (const member of analyticsMembers) {
-      const entries = collapsedRequirements.filter((entry) => entry.evaluateeId === member.id)
-      const totalQuestions = entries.reduce((sum, entry) => sum + entry.questionsCount, 0)
-      const completedQuestions = entries.reduce(
-        (sum, entry) => sum + (entry.isComplete ? entry.questionsCount : 0),
-        0
-      )
-      const completionRate = totalQuestions > 0 ? (completedQuestions / totalQuestions) * 100 : 0
-      completionByEmployee.set(member.id, {
-        totalQuestions,
-        completedQuestions,
-        completionRate,
-      })
-    }
+    )
 
     const generatedReports = (
       await Promise.all(
@@ -183,7 +127,7 @@ export async function GET(request: NextRequest) {
         departmentStats[dept] = { total: 0, completed: 0, completionSum: 0, scores: [] }
       }
 
-      const completion = completionByEmployee.get(member.id)?.completionRate || 0
+      const completion = completionByEmployee.get(member.id) ?? 0
       departmentStats[dept].total++
       departmentStats[dept].completionSum += completion
       if (completion >= 99.5) {
@@ -202,7 +146,7 @@ export async function GET(request: NextRequest) {
         employees: stats.total,
         completed: stats.completed,
         completionRate:
-          stats.total > 0 ? Math.round((stats.completionSum / stats.total) * 100) / 100 : 0,
+          weekly && stats.total > 0 ? Math.round((stats.completionSum / stats.total) * 100) / 100 : null,
         avgScore:
           stats.scores.length > 0
             ? Math.round((stats.scores.reduce((a, b) => a + b, 0) / stats.scores.length) * 100) /
@@ -265,27 +209,22 @@ export async function GET(request: NextRequest) {
               100
           ) / 100
         : 0
-    const employeesComplete = analyticsMembers.filter(
-      (member) => (completionByEmployee.get(member.id)?.completionRate || 0) >= 99.5
-    ).length
+    const employeesComplete = weekly
+      ? analyticsMembers.filter((member) => (completionByEmployee.get(member.id) ?? 0) >= 99.5).length
+      : null
     const averageCompletion =
-      totalTeamMembers > 0
+      weekly && totalTeamMembers > 0
         ? Math.round(
-            (analyticsMembers.reduce(
-              (sum, member) => sum + (completionByEmployee.get(member.id)?.completionRate || 0),
-              0
-            ) /
+            (analyticsMembers.reduce((sum, member) => sum + (completionByEmployee.get(member.id) ?? 0), 0) /
               totalTeamMembers) *
               100
           ) / 100
-        : 0
+        : null
 
     return NextResponse.json({
       period,
       summary: {
         totalTeamMembers,
-        totalEmployees: totalTeamMembers,
-        employeesWithEvaluations: employeesComplete,
         employeesComplete,
         totalEvaluations,
         totalReports,

@@ -68,10 +68,10 @@ test('an evaluator answers their own question and sees it in their history', asy
   await page.goto('/dashboard')
   await expect(page.getByText('This week’s evaluation questions')).toBeVisible()
   await page.goto('/evaluations/weekly')
-  // One Evaluations item in the sidebar opens the weekly questions; a switcher reaches the quarterly evaluations.
+  // One Evaluations item in the sidebar opens the weekly questions; the classic questionnaire is gone.
   await expect(page.getByRole('link', { name: /^Weekly evaluations/ })).toHaveCount(0)
   await expect(page.getByRole('link', { name: /^Evaluations/ }).first()).toHaveAttribute('href', '/evaluations/weekly')
-  await expect(page.getByRole('navigation', { name: 'Evaluations' }).getByRole('link', { name: 'Quarterly evaluations' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Quarterly evaluations' })).toHaveCount(0)
   await answerFirstCard(page)
   await page.getByRole('tab', { name: 'History' }).click()
   await expect(page.getByText('Submitted').first()).toBeVisible()

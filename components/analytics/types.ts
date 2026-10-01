@@ -6,20 +6,19 @@ import type { CalibrationResult } from '@/lib/analytics/calibration'
 export interface Analytics {
   period: { id: string; name: string; startDate: string; endDate: string }
   summary: {
-    totalTeamMembers?: number
-    totalEmployees: number
-    employeesWithEvaluations: number
-    employeesComplete?: number
+    totalTeamMembers: number
+    /** Null for quarters that did not run on weekly evaluations. */
+    employeesComplete: number | null
     totalEvaluations: number
     totalReports: number
     avgOverallScore: number
-    completionRate: number
+    completionRate: number | null
   }
   departmentData: Array<{
     name: string
     employees: number
     completed: number
-    completionRate: number
+    completionRate: number | null
     avgScore: number
   }>
   scoreDistribution: Array<{ range: string; count: number }>
