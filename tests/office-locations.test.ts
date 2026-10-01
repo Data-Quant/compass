@@ -40,3 +40,13 @@ test('getOfficeLocationValuesForFilter includes canonical city plus legacy varia
   assert.deepEqual(getOfficeLocationValuesForFilter('Jakarta'), ['Jakarta'])
   assert.deepEqual(getOfficeLocationValuesForFilter('Nowhere'), [])
 })
+
+test('Ecuador cities are valid office locations', () => {
+  const ecuador = OFFICE_LOCATIONS.find((group) => group.country === 'Ecuador')
+  assert.ok(ecuador, 'Ecuador group should exist')
+  assert.ok(ecuador!.cities.length >= 10)
+  for (const city of ['Quito', 'Guayaquil', 'Cuenca']) {
+    assert.equal(isOfficeLocation(city), true, `${city} should validate`)
+    assert.equal(normalizeOfficeLocation(city.toLowerCase()), city)
+  }
+})

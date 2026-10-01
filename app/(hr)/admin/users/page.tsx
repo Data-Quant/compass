@@ -37,6 +37,7 @@ type TeamTagValue =
   | 'MOROCCO'
   | 'COLOMBIA'
   | 'INDONESIA'
+  | 'ECUADOR'
   | 'NOBLE'
   | 'THREE_E_PAKISTAN'
   | 'THREE_E_MOROCCO'
@@ -47,6 +48,7 @@ const TEAM_TAG_OPTIONS: { value: TeamTagValue; label: string }[] = [
   { value: 'MOROCCO', label: 'Morocco Team' },
   { value: 'COLOMBIA', label: 'Colombia Team' },
   { value: 'INDONESIA', label: 'Indonesia Team' },
+  { value: 'ECUADOR', label: 'Ecuador Team' },
   { value: 'NOBLE', label: 'Noble Team' },
   { value: 'THREE_E_PAKISTAN', label: '3E Pakistan Team' },
   { value: 'THREE_E_MOROCCO', label: '3E Morocco Team' },

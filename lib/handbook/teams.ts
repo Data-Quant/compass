@@ -6,6 +6,7 @@ export const ALL_TEAMS: readonly TeamTag[] = [
   'MOROCCO',
   'COLOMBIA',
   'INDONESIA',
+  'ECUADOR',
   'NOBLE',
   'THREE_E_PAKISTAN',
   'THREE_E_MOROCCO',
@@ -17,6 +18,7 @@ export const INTERNAL_TEAMS: readonly TeamTag[] = [
   'MOROCCO',
   'COLOMBIA',
   'INDONESIA',
+  'ECUADOR',
   'NOBLE',
 ] as const
 
@@ -41,6 +43,7 @@ export const TEAM_LABELS: Record<TeamTag, string> = {
   MOROCCO: 'Morocco Team',
   COLOMBIA: 'Colombia Team',
   INDONESIA: 'Indonesia Team',
+  ECUADOR: 'Ecuador Team',
   NOBLE: 'Noble Team',
   THREE_E_PAKISTAN: '3E Pakistan Team',
   THREE_E_MOROCCO: '3E Morocco Team',

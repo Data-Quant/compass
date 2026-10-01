@@ -18,6 +18,7 @@ export type SafeUser = {
     | 'MOROCCO'
     | 'COLOMBIA'
     | 'INDONESIA'
+    | 'ECUADOR'
     | 'NOBLE'
     | 'THREE_E_PAKISTAN'
     | 'THREE_E_MOROCCO'
