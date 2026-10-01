@@ -560,7 +560,6 @@ model EvaluationPeriod {
   reviewStartDate         DateTime
   isActive                Boolean                    @default(true)
   isLocked                Boolean                    @default(false) // Prevents new submissions when locked
-  reminderSent            Boolean                    @default(false) // Track if deadline reminder was sent
   preEvaluationTriggeredAt DateTime?
   preEvaluationTriggerSource PreEvaluationTriggerSource?
   preEvaluationTriggeredById String?

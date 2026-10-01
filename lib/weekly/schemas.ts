@@ -48,6 +48,7 @@ export const testToolSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('score-now'), cycleId: z.string().min(1), model: z.enum(['configured', 'stand-in']).default('configured') }).strict(),
   z.object({ action: z.literal('accept-due-now'), cycleId: z.string().min(1) }).strict(),
   z.object({ action: z.literal('settle-for-close'), cycleId: z.string().min(1) }).strict(),
+  z.object({ action: z.literal('classic-data'), apply: z.boolean() }).strict(),
   z.object({ action: z.literal('pairs'), cycleId: z.string().min(1), evaluatorId: z.string().min(1) }).strict(),
   z.object({ action: z.literal('ask-pair'), cycleId: z.string().min(1), evaluatorId: z.string().min(1), evaluateeId: z.string().min(1) }).strict(),
 ])

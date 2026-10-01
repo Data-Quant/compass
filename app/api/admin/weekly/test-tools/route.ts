@@ -4,6 +4,7 @@ import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
 import { testToolSchema } from '@/lib/weekly/schemas'
 import { actorFromUser } from '@/lib/weekly/service/context'
 import { sendMail } from '@/lib/email'
+import { classicDataReport, purgeClassicData } from '@/lib/weekly/service/classic-cleanup'
 import { acceptDueNow, approveAllDrafts, askPairNow, fillSynthetic, pairsFor, releaseNextWeek, resetCycle, scoreNow, settleForClose } from '@/lib/weekly/service/test-tools'
 
 export const runtime = 'nodejs'
@@ -33,6 +34,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true, ...(await acceptDueNow(actor, input.cycleId, now)) })
       case 'settle-for-close':
         return NextResponse.json({ success: true, ...(await settleForClose(actor, input.cycleId, now)) })
+      case 'classic-data':
+        return NextResponse.json({ success: true, ...(input.apply ? await purgeClassicData(actor) : { periods: await classicDataReport(actor) }) })
       case 'pairs':
         return NextResponse.json({ success: true, pairs: await pairsFor(actor, input.cycleId, input.evaluatorId, now) })
       case 'ask-pair': {

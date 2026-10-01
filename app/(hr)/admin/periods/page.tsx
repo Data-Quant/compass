@@ -16,7 +16,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Calendar, Plus, Edit2, Trash2, Lock, Unlock, CheckCircle, Clock, Sparkles, ArrowRight } from 'lucide-react'
 
 interface Period {
-  id: string; name: string; startDate: string; endDate: string; reviewStartDate: string; isActive: boolean; isLocked?: boolean; reminderSent?: boolean; createdAt: string
+  id: string; name: string; startDate: string; endDate: string; reviewStartDate: string; isActive: boolean; isLocked?: boolean; createdAt: string
   preEvaluationTriggeredAt?: string | null
   preEvaluationTriggerSource?: 'AUTO' | 'MANUAL' | null
   _count?: { evaluations: number; reports: number }
