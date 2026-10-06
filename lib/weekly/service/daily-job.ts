@@ -24,7 +24,6 @@ export interface WeeklyDailyResult {
 }
 
 const MONDAY = 1
-const THURSDAY = 4
 /**
  * The cron has 300 s: live scoring gets 120 s with one model call (45 s) possibly still in flight, then the digests go
  * out; calibration runs come last with 45 s, so a slow model can only cut calibration short, never the day's emails.
@@ -44,17 +43,21 @@ async function releaseAndAnnounce(cycleId: string, week: number, now: Date, send
   const released = await releaseWeek(cycleId, week, now)
   const weekday = karachiWeekday(now)
   const catchingUp = weekday !== MONDAY && released.promptsCreated > 0
-  if (weekday === MONDAY || catchingUp) {
-    const recipients = await questionRecipients(cycleId, week)
-    // Monday tells everyone with open questions; a later catch-up release tells only the people who just got new ones.
+  const recipients = await questionRecipients(cycleId, week)
+  if (weekday === MONDAY) {
     // The key spans the cycle week, so nobody gets this week's questions email twice.
-    const emails = await sendQuestionEmails(
-      'weekly-questions', catchingUp ? recipients.filter((r) => r.newCount > 0) : recipients, now, send, appUrl, undefined, `${cycleId}:week-${week}`,
-    )
-    return { released, emails }
+    return { released, emails: await sendQuestionEmails('weekly-questions', recipients, now, send, appUrl, undefined, `${cycleId}:week-${week}`) }
   }
-  if (weekday === THURSDAY) return { released, emails: await sendQuestionEmails('weekly-reminder', await questionRecipients(cycleId, week), now, send, appUrl) }
-  return { released, emails: null }
+  // Every other day: anyone with unanswered questions gets one reminder a day. A catch-up release tells the people who
+  // just got new questions with the questions email instead.
+  const fresh = catchingUp ? recipients.filter((r) => r.newCount > 0) : []
+  const questions = fresh.length ? await sendQuestionEmails('weekly-questions', fresh, now, send, appUrl, undefined, `${cycleId}:week-${week}`) : null
+  const reminders = await sendQuestionEmails('weekly-reminder', recipients.filter((r) => !fresh.includes(r)), now, send, appUrl)
+  return { released, emails: questions ? addResults(questions, reminders) : reminders }
+}
+
+function addResults(a: WeeklySendResult, b: WeeklySendResult): WeeklySendResult {
+  return { sent: a.sent + b.sent, recorded: a.recorded + b.recorded, skipped: a.skipped + b.skipped, failed: a.failed + b.failed }
 }
 
 /**
@@ -85,7 +88,7 @@ export async function runWeeklyDailyJob(
   const messages = [
     ...(await scoringFailedMessages(cycle.id, now, appUrl)),
     ...(week === lowEvidenceWeek(total) ? await lowEvidenceMessages(cycle.id, appUrl) : []),
-    ...(formsOpenFor(cycle, now) ? await formsOpenMessages(cycle, appUrl) : []),
+    ...(formsOpenFor(cycle, now) ? await formsOpenMessages(cycle, now, appUrl) : []),
     ...(await lengthBiasMessages(cycle, now, appUrl)),
   ]
   const digests = messages.length > 0 ? await deliverOnce(messages, send) : null

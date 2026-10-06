@@ -48,19 +48,23 @@ test('with emails off, notifications are recorded and nothing is sent', WEEKLY_D
   assert.equal(await prisma.weeklyNotification.count({ where: { delivered: false } }), 3)
 })
 
-test('Thursday reminds only people with open questions; other weekdays do nothing', WEEKLY_DB_TEST, async () => {
+test('every day after Monday reminds people with open questions, once a day, until they answer', WEEKLY_DB_TEST, async () => {
   process.env.WEEKLY_SEND_EMAILS = 'true'
   await runWeeklyDailyJob(mailbox().send, APP, at(1))
   const [prompt] = (await inboxView(W.lead.id, at(1))).prompts
   const answer = { situation: `The client moved the launch ${words(10)}`, action: `They rebuilt the plan ${words(15)}`, result: `We delivered on time ${words(15)}` }
   await submitAnswer(weeklyActor(W.lead), { evaluatorId: W.lead.id, actingAs: false }, prompt.id, answer, at(1, 2))
-  const mail = mailbox()
-  await runWeeklyDailyJob(mail.send, APP, at(1, 4), { model: fakeModel() })
-  assert.deepEqual(mail.sent.map((m) => m.to).sort(), ['wkt-ana@example.test', 'wkt-ben@example.test'])
-  assert.equal(mail.sent[0].subject, 'Reminder: 1 evaluation question is waiting')
-  const tuesday = await runWeeklyDailyJob(mailbox().send, APP, at(1, 2))
-  // Later days re-run the release, which finds nothing new once Monday has released the week, and send nothing.
-  assert.deepEqual([tuesday.released?.promptsCreated, tuesday.emails], [0, null])
+  const tuesday = mailbox()
+  const result = await runWeeklyDailyJob(tuesday.send, APP, at(1, 2), { model: fakeModel() })
+  assert.equal(result.released?.promptsCreated, 0)
+  assert.deepEqual(tuesday.sent.map((m) => m.to).sort(), ['wkt-ana@example.test', 'wkt-ben@example.test'])
+  assert.equal(tuesday.sent[0].subject, 'Reminder: 1 evaluation question is waiting')
+  const laterTuesday = mailbox()
+  await runWeeklyDailyJob(laterTuesday.send, APP, at(1, 2, 15), { model: fakeModel() })
+  assert.equal(laterTuesday.sent.length, 0, 'once a day')
+  const wednesday = mailbox()
+  await runWeeklyDailyJob(wednesday.send, APP, at(1, 3), { model: fakeModel() })
+  assert.deepEqual(wednesday.sent.map((m) => m.to).sort(), ['wkt-ana@example.test', 'wkt-ben@example.test'])
 })
 
 test('a failed email is retried on the next run', WEEKLY_DB_TEST, async () => {
@@ -91,6 +95,8 @@ test('a week the Monday run missed is released and announced on the next daily r
   assert.deepEqual(mail.sent.map((m) => m.to).sort(), ['wkt-ana@example.test', 'wkt-ben@example.test', 'wkt-lead@example.test'])
   assert.equal(mail.sent[0].subject, 'Your evaluation questions for this week')
   const wednesday = await runWeeklyDailyJob(mail.send, APP, at(1, 3))
-  assert.deepEqual([wednesday.released?.promptsCreated, wednesday.emails], [0, null])
-  assert.equal(mail.sent.length, 3)
+  assert.equal(wednesday.released?.promptsCreated, 0)
+  // Nothing new on Wednesday: the three unanswered questions get the daily reminder instead.
+  assert.equal(mail.sent.length, 6)
+  assert.ok(mail.sent.slice(3).every((m) => /^Reminder/.test(m.subject)))
 })

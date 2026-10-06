@@ -32,7 +32,7 @@ after(async () => {
   await prisma.$disconnect()
 })
 
-test('when the forms open, each form evaluator with a form to fill is emailed once', WEEKLY_DB_TEST, async () => {
+test('once the forms open, each form evaluator with a form to fill is emailed once a day', WEEKLY_DB_TEST, async () => {
   const before = mailbox()
   await runWeeklyDailyJob(before.send, APP, at(11), { model: fakeModel() })
   assert.deepEqual(formsEmails(before), [])
@@ -40,6 +40,9 @@ test('when the forms open, each form evaluator with a form to fill is emailed on
   await runWeeklyDailyJob(opening.send, APP, at(12), { model: fakeModel() })
   assert.deepEqual(formsEmails(opening), ['wkt-chief@example.test', 'wkt-hr2@example.test', 'wkt-hr@example.test'])
   const again = mailbox()
-  await runWeeklyDailyJob(again.send, APP, at(12, 2), { model: fakeModel() })
-  assert.deepEqual(formsEmails(again), [])
+  await runWeeklyDailyJob(again.send, APP, at(12, 1, 15), { model: fakeModel() })
+  assert.deepEqual(formsEmails(again), [], 'once a day')
+  const nextDay = mailbox()
+  await runWeeklyDailyJob(nextDay.send, APP, at(12, 2), { model: fakeModel() })
+  assert.deepEqual(formsEmails(nextDay), ['wkt-chief@example.test', 'wkt-hr2@example.test', 'wkt-hr@example.test'])
 })

@@ -153,11 +153,11 @@ export async function lowEvidenceMessages(cycleId: string, appUrl: string): Prom
   }))
 }
 
-/** Spec 12: Hamiz and HR hear once per quarter that their forms are open. */
-export async function formsOpenMessages(cycle: CycleWithPeriod, appUrl: string): Promise<WeeklyEmailMessage[]> {
+/** Once the forms are open, everyone with an unfinished form hears about it once a day until they finish. */
+export async function formsOpenMessages(cycle: CycleWithPeriod, now: Date, appUrl: string): Promise<WeeklyEmailMessage[]> {
   const { pendingEvaluatorIds } = await formsProgress(cycle.periodId)
   return pendingEvaluatorIds.map((userId) => ({
-    userId, kind: 'weekly-forms-open' as const, dedupeKey: `weekly-forms-open:${userId}:${cycle.id}`,
+    userId, kind: 'weekly-forms-open' as const, dedupeKey: weeklyDedupeKey('weekly-forms-open', userId, now),
     render: (name: string) => renderFormsOpenEmail({ name, appUrl }),
   }))
 }

@@ -10,7 +10,7 @@ test('the Monday email counts new and open questions and links to the inbox', ()
   assert.match(email.html, /href="https:\/\/compass\.example\/evaluations\/weekly"/)
 })
 
-test('the Thursday reminder uses singular wording for one question', () => {
+test('the daily reminder uses singular wording for one question', () => {
   const email = renderQuestionsEmail({ name: 'Ana', newCount: 0, openCount: 1, appUrl: 'https://compass.example', reminder: true })
   assert.equal(email.subject, 'Reminder: 1 evaluation question is waiting')
 })

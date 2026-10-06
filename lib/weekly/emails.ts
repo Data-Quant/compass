@@ -2,7 +2,7 @@ import { escapeHtml } from '../sanitize'
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`
 
-/** Monday's questions email and Thursday's reminder. Every interpolated value is escaped. */
+/** Monday's questions email and the daily reminder. Every interpolated value is escaped. */
 export function renderQuestionsEmail(input: { name: string; newCount: number; openCount: number; appUrl: string; reminder: boolean }): { subject: string; html: string } {
   const link = `${input.appUrl.replace(/\/$/, '')}/evaluations/weekly`
   const subject = input.reminder
