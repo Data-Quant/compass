@@ -1,0 +1,31 @@
+import { NextResponse, type NextRequest } from 'next/server'
+import { sendMail } from '@/lib/email'
+import { guardWeeklyMutation, requireWeeklySession } from '@/lib/weekly/http'
+import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
+import { peerDecisionSchema } from '@/lib/weekly/schemas'
+import { actorFromUser } from '@/lib/weekly/service/context'
+import { adminPeerRequests, decidePeerRequest } from '@/lib/weekly/service/peer-requests'
+
+export const dynamic = 'force-dynamic'
+
+export async function GET() {
+  try {
+    const user = await requireWeeklySession({ admin: true })
+    return NextResponse.json(await adminPeerRequests(actorFromUser(user)))
+  } catch (error) {
+    return weeklyErrorResponse(error)
+  }
+}
+
+/** HR approves or rejects a peer request outright, whatever the votes so far. */
+export async function POST(request: NextRequest) {
+  try {
+    const user = await requireWeeklySession({ admin: true })
+    await guardWeeklyMutation(request, user.id)
+    const input = peerDecisionSchema.parse(await request.json())
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || request.nextUrl.origin
+    return NextResponse.json({ success: true, ...(await decidePeerRequest(actorFromUser(user), input.requestId, input.decision, new Date(), sendMail, appUrl)) })
+  } catch (error) {
+    return weeklyErrorResponse(error)
+  }
+}

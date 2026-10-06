@@ -96,6 +96,10 @@ export const pairWindowSchema = z.object({
   relationshipType: z.enum(['TEAM_LEAD', 'DIRECT_REPORT', 'PEER', 'CROSS_DEPARTMENT']),
   startWeek: z.number().int().min(1).max(26), weeks: z.number().int().min(1).max(26),
 }).strict()
+export const peerRequestSchema = z.object({ peerId: z.string().min(1), action: z.enum(['ADD', 'REMOVE']), reason: z.string().trim().max(500).optional() }).strict()
+export const cancelPeerRequestSchema = z.object({ requestId: z.string().min(1) }).strict()
+export const peerVoteSchema = z.object({ decision: z.enum(['APPROVE', 'REJECT']) }).strict()
+export const peerDecisionSchema = z.object({ requestId: z.string().min(1), decision: z.enum(['APPROVE', 'REJECT']) }).strict()
 export const formQuerySchema = z.object({ relationshipType: formRelationshipTypeSchema, evaluateeId: z.string().min(1) })
 
 export const closeActionSchema = z.discriminatedUnion('action', [

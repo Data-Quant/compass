@@ -66,6 +66,7 @@ export async function resetWeeklyTestData(db: PrismaClient): Promise<void> {
   await db.weeklyCompetencyPrompt.deleteMany()
   await db.weeklyCompetency.deleteMany()
   await db.weeklyPairWindow.deleteMany()
+  await db.peerChangeRequest.deleteMany()
   await db.weeklyParticipantOverride.deleteMany()
   await db.weeklyNotification.deleteMany()
   await db.weeklyAuditEvent.deleteMany()

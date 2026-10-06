@@ -2606,6 +2606,51 @@ model WeeklyParticipantOverride {
   @@unique([cycleId, userId])
 }
 
+enum PeerChangeAction {
+  ADD
+  REMOVE
+}
+
+enum PeerChangeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum PeerChangeVote {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// An employee asks to add or remove a peer for a quarter. It takes effect once the peer and the employee's lead both
+/// approve (each by a one-click link in an email), or HR decides it. Tokens are stored hashed.
+model PeerChangeRequest {
+  id                String           @id @default(cuid())
+  periodId          String
+  requesterId       String
+  peerId            String
+  action            PeerChangeAction
+  reason            String?
+  status            PeerChangeStatus @default(PENDING)
+  peerVote          PeerChangeVote   @default(PENDING)
+  peerVotedAt       DateTime?
+  peerTokenHash     String           @unique
+  /// The requester's lead; null when they have none, and HR decides.
+  approverId        String?
+  approverVote      PeerChangeVote   @default(PENDING)
+  approverVotedAt   DateTime?
+  approverTokenHash String?          @unique
+  decidedById       String?
+  decidedAt         DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([periodId, status])
+  @@index([requesterId])
+}
+
 /// A pair added after the quarter started: its five questions are spread over these weeks. HR can change them.
 model WeeklyPairWindow {
   id               String           @id @default(cuid())

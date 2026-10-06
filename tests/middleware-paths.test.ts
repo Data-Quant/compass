@@ -17,3 +17,10 @@ test('existing public paths are unchanged', () => {
     assert.equal(bypassesSessionCheck(path), true, path)
   }
 })
+
+test('the one-click peer approval page and its API work without signing in', () => {
+  assert.equal(bypassesSessionCheck('/peer-requests/abc123'), true)
+  assert.equal(bypassesSessionCheck('/api/peer-requests/abc123'), true)
+  assert.equal(bypassesSessionCheck('/api/peer-requestsx'), false)
+  assert.equal(bypassesSessionCheck('/api/weekly/mapping'), false)
+})

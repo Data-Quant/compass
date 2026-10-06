@@ -15,7 +15,6 @@ import {
   hasSubmittedLeadQuestionSet,
   isPrepEligibleForCarryForward,
   resolvePrepQuestionPrefill,
-  validatePreEvaluationSelections,
 } from '../lib/pre-evaluation'
 
 const CARRIED_AT = new Date('2026-07-01T00:00:00.000Z')
@@ -366,51 +365,6 @@ test('derivePreEvaluationStatus completes once lead questions are submitted', ()
   })
 
   assert.equal(status, 'COMPLETED')
-})
-
-test('validatePreEvaluationSelections allows change requests for self and direct reports', () => {
-  const error = validatePreEvaluationSelections(
-    [
-      {
-        type: 'PEER',
-        evaluateeId: 'lead-a',
-        suggestedEvaluatorId: 'peer-a',
-      },
-      {
-        type: 'CROSS_DEPARTMENT',
-        evaluateeId: 'report-a',
-        suggestedEvaluatorId: 'peer-b',
-      },
-      {
-        type: 'PRIMARY',
-        evaluateeId: 'report-a',
-      },
-    ],
-    {
-      directReportIds: new Set(['report-a']),
-      allowedEvaluateeIds: new Set(['lead-a', 'report-a']),
-    }
-  )
-
-  assert.equal(error, null)
-})
-
-test('validatePreEvaluationSelections rejects change requests outside self or direct reports', () => {
-  const error = validatePreEvaluationSelections(
-    [
-      {
-        type: 'PEER',
-        evaluateeId: 'employee-x',
-        suggestedEvaluatorId: 'peer-a',
-      },
-    ],
-    {
-      directReportIds: new Set(['report-a']),
-      allowedEvaluateeIds: new Set(['lead-a', 'report-a']),
-    }
-  )
-
-  assert.equal(error, 'Evaluator change requests are only allowed for you or your direct reports')
 })
 
 test('isLeadTitle recognizes curated lead titles case-insensitively', () => {

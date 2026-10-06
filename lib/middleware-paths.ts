@@ -8,6 +8,9 @@ export const PUBLIC_PATHS: readonly string[] = [
   '/_next',
   '/favicon.ico',
   '/images',
+  // One-click peer approvals from email: the unguessable token in the link is the credential.
+  '/peer-requests/',
+  '/api/peer-requests/',
 ]
 
 // Vercel cron requests carry no session cookie. Every route under this prefix

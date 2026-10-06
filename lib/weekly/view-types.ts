@@ -371,3 +371,39 @@ export interface PersonScoreView {
 }
 
 export interface PairWindowView { evaluator: PersonRef; evaluatee: PersonRef; relationshipType: string; startWeek: number; weeks: number }
+
+export type PeerChangeActionValue = 'ADD' | 'REMOVE'
+export type PeerChangeStatusValue = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
+export type PeerChangeVoteValue = 'PENDING' | 'APPROVED' | 'REJECTED'
+export interface PeerRequestView {
+  id: string
+  action: PeerChangeActionValue
+  status: PeerChangeStatusValue
+  reason: string | null
+  createdAt: string
+  requester: PersonRef
+  peer: PersonRef
+  /** The requester's lead; null when HR decides. */
+  approver: PersonRef | null
+  peerVote: PeerChangeVoteValue
+  approverVote: PeerChangeVoteValue
+}
+export interface MyMappingResponse {
+  period: { id: string; name: string; locked: boolean }
+  leads: PersonRef[]
+  reports: PersonRef[]
+  peers: PersonRef[]
+  requests: PeerRequestView[]
+  /** People who could be added as a peer. */
+  candidates: PersonRef[]
+}
+export interface PeerRequestTokenView {
+  requester: PersonRef
+  peer: PersonRef
+  action: PeerChangeActionValue
+  role: 'PEER' | 'LEAD'
+  status: PeerChangeStatusValue
+  vote: PeerChangeVoteValue
+  periodName: string
+  reason: string | null
+}

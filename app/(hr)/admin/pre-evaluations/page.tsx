@@ -31,6 +31,7 @@ import {
   type RatingDescriptions,
 } from '@/lib/rating-descriptions'
 import { RATING_LABELS } from '@/types'
+import { PeerRequestsAdminCard } from '@/components/weekly/mapping/PeerRequestsAdminCard'
 import {
   ArrowRight,
   Bell,
@@ -473,6 +474,8 @@ export default function AdminPreEvaluationsPage() {
           </div>
         </div>
       </motion.div>
+
+      <PeerRequestsAdminCard />
 
       {period && (
         <Card className={period.preEvaluationTriggeredAt ? 'border-blue-500/20' : 'border-amber-500/20'}>

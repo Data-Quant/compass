@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { EvaluatorChangeRequests } from '@/components/pre-evaluation/EvaluatorChangeRequests'
+import { MyMappingCard } from '@/components/weekly/mapping/MyMappingCard'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { motion } from 'framer-motion'
@@ -159,11 +159,12 @@ export default function PreEvaluationPage() {
 
   if (!prep) {
     return (
-      <div className="p-6 sm:p-8 max-w-4xl mx-auto">
+      <div className="p-6 sm:p-8 max-w-4xl mx-auto space-y-6">
+        <MyMappingCard />
         <EmptyState
           icon={<ClipboardList className="h-12 w-12" />}
-          title="No pre-evaluation task"
-          description="There is no active pre-evaluation onboarding assigned to you right now."
+          title="No lead questions to write"
+          description="Leads write their own questions for their team here before the quarter starts."
         />
       </div>
     )
@@ -173,6 +174,7 @@ export default function PreEvaluationPage() {
 
   return (
     <div className="p-6 sm:p-8 max-w-4xl mx-auto space-y-6">
+      <MyMappingCard />
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -308,7 +310,6 @@ export default function PreEvaluationPage() {
         </CardContent>
       </Card>
 
-      <EvaluatorChangeRequests />
 
       {prep.status === 'COMPLETED' && prep.questionsSubmittedAt && (
         <Card className="border-emerald-500/30 bg-emerald-500/5">
@@ -316,7 +317,7 @@ export default function PreEvaluationPage() {
             <div>
               <p className="font-medium text-foreground">Pre-evaluation onboarding completed.</p>
               <p className="text-sm text-muted-foreground">
-                Your question set is in. You can still manage evaluator change requests above while the window is open.
+                Your question set is in. You can still ask for peer changes above while the quarter is open.
               </p>
             </div>
             <Button variant="outline" asChild>

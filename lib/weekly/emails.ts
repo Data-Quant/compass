@@ -104,3 +104,42 @@ export function renderLengthBiasEmail(input: { name: string; periodName: string;
     ], `${base(input.appUrl)}/admin/weekly?tab=dashboard`, 'Open the dashboard'),
   }
 }
+
+const ACTION_WORDS = { ADD: 'add', REMOVE: 'remove' } as const
+
+/** A peer change needs this person's approval: one click on the page the link opens. Every value is escaped. */
+export function renderPeerRequestEmail(input: { name: string; requesterName: string; peerName: string; action: 'ADD' | 'REMOVE'; role: 'PEER' | 'LEAD'; periodName: string; link: string }): { subject: string; html: string } {
+  const change = input.action === 'ADD' ? 'add' : 'remove'
+  const about = input.role === 'PEER' ? 'you' : input.peerName
+  const verb = input.action === 'ADD' ? 'as a peer' : 'from their peers'
+  return {
+    subject: `${input.requesterName} asked to ${change} ${input.role === 'PEER' ? 'you' : 'a peer'} for ${input.periodName}`,
+    html: layout(input.name, [
+      escapeHtml(`${input.requesterName} asked to ${change} ${about} ${verb} for ${input.periodName}. Peers evaluate each other during the quarter.`),
+      escapeHtml(`The change happens once ${input.role === 'PEER' ? 'you and their lead' : `you and ${input.peerName}`} both approve.`),
+    ], input.link, 'Approve or decline'),
+  }
+}
+
+export function renderPeerOutcomeEmail(input: { name: string; peerName: string; action: 'ADD' | 'REMOVE'; approved: boolean; appUrl: string }): { subject: string; html: string } {
+  const change = `${ACTION_WORDS[input.action]} ${input.peerName} ${input.action === 'ADD' ? 'as a peer' : 'from your peers'}`
+  return {
+    subject: input.approved ? `Approved: ${change}` : `Not approved: ${change}`,
+    html: layout(input.name, [escapeHtml(input.approved ? `Your request to ${change} was approved.` : `Your request to ${change} was not approved.`)], `${base(input.appUrl)}/pre-evaluation`, 'See your mapping'),
+  }
+}
+
+/** Pre-evaluation: who someone works with for the quarter, and how to ask for a peer change. */
+export function renderMappingEmail(input: { name: string; periodName: string; leads: string[]; reports: string[]; peers: string[]; appUrl: string }): { subject: string; html: string } {
+  const list = (names: string[]) => (names.length ? names.map(escapeHtml).join(', ') : 'None')
+  return {
+    subject: `Your evaluation mapping for ${input.periodName}`,
+    html: layout(input.name, [
+      escapeHtml(`Here is who you work with for ${input.periodName}. You will answer short weekly questions about these people, and they about you.`),
+      `<strong>Your lead:</strong> ${list(input.leads)}`,
+      `<strong>Your reporting team members:</strong> ${list(input.reports)}`,
+      `<strong>Your peers:</strong> ${list(input.peers)}`,
+      escapeHtml('If a peer is wrong or missing, you can ask to remove or add one. The change happens once that peer and your lead approve. For a change to your lead or team, contact HR.'),
+    ], `${base(input.appUrl)}/pre-evaluation`, 'Review your peers'),
+  }
+}

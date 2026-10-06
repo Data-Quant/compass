@@ -15,6 +15,7 @@ export type WeeklySendMail = (to: string, subject: string, html: string) => Prom
 export type WeeklyEmailKind =
   | 'weekly-questions' | 'weekly-reminder' | 'weekly-scoring-failed' | 'weekly-low-evidence'
   | 'weekly-challenge-new' | 'weekly-challenge-resolved' | 'weekly-forms-open' | 'weekly-more-evidence' | 'weekly-length-bias'
+  | 'peer-request' | 'peer-request-outcome' | 'weekly-mapping'
 export interface QuestionRecipient { userId: string; newCount: number; openCount: number }
 export interface WeeklySendResult { sent: number; recorded: number; skipped: number; failed: number }
 
