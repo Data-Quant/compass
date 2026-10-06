@@ -6,6 +6,7 @@ import { buildDepartmentEvaluationResponseKey, buildEvaluationResponseKey, getEv
 import { getResolvedEvaluationQuestions } from '@/lib/pre-evaluation'
 import { cycleWeeks, effectiveWeek, questionWeekCount, weekStartsAt } from '../calendar'
 import { formsAreOpen } from '../close-rules'
+import { isHrFilledPartner } from '../partners'
 import { isFormRelationshipType, type FormRelationshipType } from '../perspectives'
 import type { FormDetailResponse, FormQuestionView, FormStatusValue, FormsResponse, FormSummaryView } from '../view-types'
 import { recordAudit } from './audit'
@@ -80,10 +81,13 @@ function summaryOf(unit: FormUnit, status: FormStatusValue): FormSummaryView {
   }
 }
 
+/** HR fills in its own HR forms, and every partner's evaluations, in the quarter-end tables instead. */
+const OWN_FORM_TYPES = (a: { relationshipType: string }) => a.relationshipType !== 'HR'
+
 export async function formsView(actor: WeeklyActor, now: Date): Promise<FormsResponse> {
   const cycle = await findRunningCycle()
-  if (!cycle) return { cycle: null, open: false, opensAt: null, forms: [] }
-  const units = formUnits(await getResolvedEvaluationAssignments(cycle.periodId, { evaluatorId: actor.id, includeUsers: true }))
+  if (!cycle || isHrFilledPartner(actor.name)) return { cycle: cycle ? cycleSummary(cycle, now) : null, open: false, opensAt: null, forms: [] }
+  const units = formUnits((await getResolvedEvaluationAssignments(cycle.periodId, { evaluatorId: actor.id, includeUsers: true })).filter(OWN_FORM_TYPES))
   const statuses = await formStatuses(cycle.periodId, actor.id, units)
   return {
     cycle: cycleSummary(cycle, now), open: formsOpenFor(cycle, now), opensAt: formsOpenDate(cycle).toISOString(),
@@ -95,6 +99,7 @@ export async function formsView(actor: WeeklyActor, now: Date): Promise<FormsRes
 export async function loadForm(actor: WeeklyActor, relationshipType: FormRelationshipType, evaluateeId: string): Promise<{ cycle: CycleWithPeriod; unit: FormUnit }> {
   const cycle = await findRunningCycle()
   if (!cycle) throw new WeeklyError('There is no weekly quarter running', 409)
+  if (relationshipType === 'HR' || isHrFilledPartner(actor.name)) throw new WeeklyError('Form not found', 404)
   const assignment = await getResolvedEvaluationAssignmentForPair(cycle.periodId, actor.id, evaluateeId, relationshipType)
   if (!assignment) throw new WeeklyError('Form not found', 404)
   const pool = relationshipType === 'DEPT' ? await getDeptEvaluationPoolContext({ periodId: cycle.periodId, evaluatorId: actor.id, evaluateeId }) : null
@@ -163,22 +168,4 @@ export async function openForms(actor: WeeklyActor, cycleId: string, now: Date):
   if (formsOpenFor(cycle, now)) return
   await prisma.weeklyCycle.update({ where: { id: cycleId }, data: { formsOpenAt: now } })
   await recordAudit(prisma, { cycleId, actorId: actor.id, actorRole: 'HR', action: 'FORMS_OPEN', objectType: 'WeeklyCycle', objectId: cycleId })
-}
-
-/** Every form evaluator's progress: for the close screen and the "forms are open" email. */
-export async function formsProgress(periodId: string): Promise<{ total: number; done: number; pendingEvaluatorIds: string[] }> {
-  const assignments = (await getResolvedEvaluationAssignments(periodId, { includeUsers: true })).filter((a) => isFormRelationshipType(a.relationshipType))
-  const evaluatorIds = [...new Set(assignments.map((a) => a.evaluatorId))]
-  let total = 0
-  let done = 0
-  const pending: string[] = []
-  for (const evaluatorId of evaluatorIds) {
-    const units = formUnits(assignments.filter((a) => a.evaluatorId === evaluatorId))
-    const statuses = [...(await formStatuses(periodId, evaluatorId, units)).values()]
-    const finished = statuses.filter((s) => s === 'SUBMITTED' || s === 'CLOSED_BY_OTHER').length
-    total += units.length
-    done += finished
-    if (finished < units.length) pending.push(evaluatorId)
-  }
-  return { total, done, pendingEvaluatorIds: pending }
 }

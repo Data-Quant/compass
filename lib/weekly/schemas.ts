@@ -82,6 +82,15 @@ export const formResponseSchema = z
   .strict()
 export const formInputSchema = z.object({ relationshipType: formRelationshipTypeSchema, evaluateeId: z.string().min(1), responses: z.array(formResponseSchema).max(200) }).strict()
 export type FormInput = z.infer<typeof formInputSchema>
+export const formTableKindSchema = z.enum(['HR', 'PARTNER'])
+export const formTableRowSchema = z.object({
+  kind: formTableKindSchema,
+  evaluatorId: z.string().min(1),
+  relationshipType: z.enum(['C_LEVEL', 'DEPT', 'HR', 'TEAM_LEAD', 'DIRECT_REPORT', 'PEER', 'CROSS_DEPARTMENT']),
+  evaluateeId: z.string().min(1),
+  ratings: z.array(z.object({ questionId: z.string().min(1), ratingValue: z.number().int().min(1).max(4).nullable() }).strict()).max(50),
+  submit: z.boolean(),
+}).strict()
 export const formQuerySchema = z.object({ relationshipType: formRelationshipTypeSchema, evaluateeId: z.string().min(1) })
 
 export const closeActionSchema = z.discriminatedUnion('action', [

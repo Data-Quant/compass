@@ -1,6 +1,7 @@
 import { isThreeEDepartment } from '../company-branding'
 import { shouldReceiveConstantEvaluations } from '../evaluation-profile-rules'
 import { joinedTooLate } from './calendar'
+import { isHrFilledPartner } from './partners'
 
 export interface PersonFacts {
   id: string
@@ -12,10 +13,11 @@ export interface PersonFacts {
   joiningDate: Date | null
 }
 
-export type ExclusionReason = 'NOT_EVALUATED' | 'INACTIVE' | 'LEFT' | 'JOINED_LATE'
+export type ExclusionReason = 'NOT_EVALUATED' | 'FILLED_BY_HR' | 'INACTIVE' | 'LEFT' | 'JOINED_LATE'
 
 export const EXCLUSION_LABELS: Record<ExclusionReason, string> = {
   NOT_EVALUATED: 'Not evaluated (named leader or Partner)',
+  FILLED_BY_HR: 'Partner: HR fills in their evaluations',
   INACTIVE: 'No longer active',
   LEFT: 'Has left',
   JOINED_LATE: 'Joined with fewer than 6 weeks left',
@@ -34,6 +36,8 @@ export function isOutsideRedesign(person: Pick<PersonFacts, 'department'>): bool
 
 export function evaluatorExclusion(person: PersonFacts, now: Date): ExclusionReason | null {
   if (isOutsideRedesign(person)) return 'NOT_EVALUATED'
+  // Their evaluations are filled in by HR at the end of the quarter, so they get no weekly questions.
+  if (isHrFilledPartner(person.name)) return 'FILLED_BY_HR'
   return leftReason(person, now)
 }
 

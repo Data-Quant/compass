@@ -31,7 +31,8 @@ test('each form evaluator sees their own forms; a department is one form for all
   assert.deepEqual(summary((await formsView(chief, at(12))).forms), [
     `C_LEVEL:${W.ana.id}:1:NOT_STARTED`, `C_LEVEL:${W.ben.id}:1:NOT_STARTED`, `DEPT:${W.ana.id}:2:NOT_STARTED`,
   ])
-  assert.deepEqual(summary((await formsView(HR_ACTOR, at(12))).forms), [`HR:${W.ana.id}:1:NOT_STARTED`])
+  // HR's own HR forms are filled in on the quarter-end table page instead.
+  assert.deepEqual((await formsView(HR_ACTOR, at(12))).forms, [])
   assert.deepEqual((await formsView(weeklyActor(W.lead), at(12))).forms, [])
 })
 
@@ -53,6 +54,6 @@ test('a form shows its questions, ratings first, and the evaluator’s allowance
     'RATING:Strategic contribution', 'RATING:Ownership', 'RATING:Client impact', 'TEXT:Comments for the person',
   ])
   assert.deepEqual([detail.status, detail.open, detail.fourRatings], ['NOT_STARTED', true, { max: 1, used: 0 }])
-  assert.equal((await formDetail(HR_ACTOR, { relationshipType: 'HR', evaluateeId: W.ana.id }, at(12))).fourRatings, null)
+  await assert.rejects(formDetail(HR_ACTOR, { relationshipType: 'HR', evaluateeId: W.ana.id }, at(12)), isStatus(404))
   await assert.rejects(formDetail(chief, { relationshipType: 'HR', evaluateeId: W.ana.id }, at(12)), isStatus(404))
 })

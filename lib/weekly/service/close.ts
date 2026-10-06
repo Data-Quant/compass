@@ -14,7 +14,8 @@ import { cycleSummary, loadCycle, type CycleWithPeriod } from './cycles'
 import { coverageRows } from './dashboard'
 import { autoAcceptDue } from './decisions'
 import { WeeklyError } from './errors'
-import { formsOpenDate, formsOpenFor, formsProgress } from './forms'
+import { formsProgress } from './form-tables'
+import { formsOpenDate, formsOpenFor } from './forms'
 
 export const DROP_NOTE = 'Weekly evaluations: no accepted evidence in this group, dropped at quarter close'
 

@@ -9,6 +9,7 @@ import { closeCycle } from '../lib/weekly/service/close'
 import { ensureLeadCustomCompetencies } from '../lib/weekly/service/content'
 import { decideAnswer } from '../lib/weekly/service/decisions'
 import { submitForm } from '../lib/weekly/service/form-submit'
+import { formTables, saveTableRow } from '../lib/weekly/service/form-tables'
 import { formDetail, openForms } from '../lib/weekly/service/forms'
 import { requestMoreEvidence } from '../lib/weekly/service/more-evidence'
 import { releaseWeek } from '../lib/weekly/service/release'
@@ -85,7 +86,7 @@ async function questionTextByTopic(): Promise<Map<string, string>> {
 /** The C-Level, Department and HR forms, as the chief and HR fill them in the catch-up weeks. */
 async function submitForms(): Promise<void> {
   await openForms(HR_ACTOR, cycleId, at(1, 4))
-  const fill = async (actor: ReturnType<typeof weeklyActor>, relationshipType: 'C_LEVEL' | 'DEPT' | 'HR') => {
+  const fill = async (actor: ReturnType<typeof weeklyActor>, relationshipType: 'C_LEVEL' | 'DEPT') => {
     const { questions } = await formDetail(actor, { relationshipType, evaluateeId: AMINA }, at(1, 4))
     const responses = questions.map((q) => {
       if (q.type === 'TEXT') return { questionId: q.id, questionSource: q.source, textResponse: null }
@@ -97,7 +98,14 @@ async function submitForms(): Promise<void> {
   }
   await fill(weeklyActor(F.chief), 'C_LEVEL')
   await fill(weeklyActor(F.chief), 'DEPT')
-  await fill(HR_ACTOR, 'HR')
+  // HR scores its own HR evaluations in the quarter-end table.
+  const [hrTable] = (await formTables(HR_ACTOR, 'HR', at(1, 4))).tables
+  const ratings = hrTable.questions.map((q) => {
+    const rating = FORMS.HR[q.text]
+    assert.ok(rating !== undefined, `Unexpected HR question “${q.text}”: the test database holds another HR question`)
+    return { questionId: q.id, ratingValue: rating }
+  })
+  await saveTableRow(HR_ACTOR, { kind: 'HR', evaluatorId: HR_ACTOR.id, relationshipType: 'HR', evaluateeId: AMINA, ratings, submit: true }, at(1, 4))
 }
 
 test('Amina’s quarter from the spec scores 63.8% through the unchanged scorer', WEEKLY_DB_TEST, async () => {

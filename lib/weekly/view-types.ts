@@ -93,7 +93,7 @@ export interface ContentResponse { competencies: ContentCompetency[]; removed: R
 export interface ParticipantRow {
   person: PersonRef
   department: string | null
-  exclusion: 'NOT_EVALUATED' | 'INACTIVE' | 'LEFT' | 'JOINED_LATE' | null
+  exclusion: 'NOT_EVALUATED' | 'FILLED_BY_HR' | 'INACTIVE' | 'LEFT' | 'JOINED_LATE' | null
   optedIn: boolean
   optInReason: string | null
 }
@@ -187,6 +187,26 @@ export interface FormQuestionView {
   ratingValue: number | null
   textResponse: string | null
 }
+export type FormTableKind = 'HR' | 'PARTNER'
+export type TableRelationshipTypeValue = 'C_LEVEL' | 'DEPT' | 'HR' | 'TEAM_LEAD' | 'DIRECT_REPORT' | 'PEER' | 'CROSS_DEPARTMENT' | 'SELF'
+export interface FormTableRow {
+  /** The person, or a department's representative member. */
+  evaluateeId: string
+  name: string
+  designation: string | null
+  department: string | null
+  memberCount: number
+  status: FormStatusValue
+  ratings: Record<string, number | null>
+  total: number | null
+}
+export interface FormTableView {
+  evaluator: PersonRef
+  relationshipType: TableRelationshipTypeValue
+  questions: Array<{ id: string; text: string; ratingDescriptions: Record<'1' | '2' | '3' | '4', string | null> }>
+  rows: FormTableRow[]
+}
+export interface FormTablesResponse { cycle: CycleSummary | null; open: boolean; opensAt: string | null; tables: FormTableView[] }
 export interface FormDetailResponse extends FormSummaryView { open: boolean; questions: FormQuestionView[]; fourRatings: { max: number; used: number } | null }
 
 export interface DropCandidateView { evaluatee: PersonRef; perspective: Perspective; assignments: number }

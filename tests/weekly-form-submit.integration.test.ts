@@ -4,6 +4,7 @@ import { prisma } from '../lib/db'
 import type { FormInput } from '../lib/weekly/schemas'
 import { WeeklyError } from '../lib/weekly/service/errors'
 import { HR_SLOT_CLOSED, saveFormDraft, submitForm } from '../lib/weekly/service/form-submit'
+import { formTables, saveTableRow } from '../lib/weekly/service/form-tables'
 import { formDetail, formsView } from '../lib/weekly/service/forms'
 import type { FormQuestionView } from '../lib/weekly/view-types'
 import { F, seedFormFixtures } from './helpers/weekly-form-fixtures'
@@ -72,13 +73,16 @@ test('the department form is written once for every member of the department', W
 test('the first HR submission counts, even when two HR evaluators submit at the same moment', WEEKLY_DB_TEST, async () => {
   const hr = weeklyActor(W.hr)
   const hr2 = weeklyActor(F.hr2)
-  const input: FormInput = { relationshipType: 'HR', evaluateeId: W.ana.id, responses: responses(await questionsFor(hr, 'HR', W.ana.id), [3, 2]) }
-  const results = await Promise.allSettled([submitForm(hr, input, NOW), submitForm(hr2, input, NOW)])
+  const ratings = (await prisma.evaluationQuestion.findMany({ where: { relationshipType: 'HR', questionType: 'RATING', orderIndex: { gte: 950 } } })).map((q) => ({ questionId: q.id, ratingValue: 3 }))
+  const row = (actor: typeof hr) => saveTableRow(actor, { kind: 'HR', evaluatorId: actor.id, relationshipType: 'HR', evaluateeId: W.ana.id, ratings, submit: true }, NOW)
+  const results = await Promise.allSettled([row(hr), row(hr2)])
   assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1)
   const loserIndex = results.findIndex((r) => r.status === 'rejected')
   assert.ok(isError(409, new RegExp(HR_SLOT_CLOSED.slice(0, 20)))((results[loserIndex] as PromiseRejectedResult).reason))
   const loser = loserIndex === 0 ? hr : hr2
-  assert.equal((await formsView(loser, NOW)).forms[0].status, 'CLOSED_BY_OTHER')
+  assert.equal((await formTables(loser, 'HR', NOW)).tables[0].rows[0].status, 'CLOSED_BY_OTHER')
+  // The old one-form-at-a-time path no longer takes HR forms.
+  await assert.rejects(submitForm(hr, { relationshipType: 'HR', evaluateeId: W.ana.id, responses: [] }, NOW), isError(404))
 })
 
 test('a draft keeps partial answers for later', WEEKLY_DB_TEST, async () => {

@@ -8,7 +8,7 @@ import { loadAnswerRecords } from './answer-states'
 import type { CycleWithPeriod } from './cycles'
 import { lowEvidenceRows } from './dashboard'
 import { isUniqueViolation } from './db'
-import { formsProgress } from './forms'
+import { formsProgress } from './form-tables'
 import { lengthCorrelation } from './reporting'
 
 export type WeeklySendMail = (to: string, subject: string, html: string) => Promise<unknown>

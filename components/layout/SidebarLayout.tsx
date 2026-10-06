@@ -11,7 +11,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
-import { CalendarCheck, Handshake, Target } from 'lucide-react'
+import { CalendarCheck, ClipboardList, Handshake, Target } from 'lucide-react'
 import { withGroupItem, withItemAfter, withItemPatched } from '@/components/layout/sidebar-nav'
 
 // Context so child pages can access user info
@@ -190,7 +190,11 @@ export function SidebarLayout({
     !weeklyMe.enabled || baseSidebarConfig === onboardingSidebarConfig
       ? sidebarConfigWithKpis
       : isAdminConsole
-        ? withGroupItem(sidebarConfigWithKpis, 'Performance', { label: 'Weekly evaluations', href: '/admin/weekly', icon: CalendarCheck })
+        ? withGroupItem(
+            withGroupItem(sidebarConfigWithKpis, 'Performance', { label: 'Weekly evaluations', href: '/admin/weekly', icon: CalendarCheck }),
+            'Performance',
+            { label: 'Quarter-end evaluations', href: '/admin/quarter-evaluations', icon: ClipboardList },
+          )
         : withItemPatched(sidebarConfigWithKpis, '/evaluations/weekly', weeklyBadge)
 
   return (

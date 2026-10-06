@@ -100,7 +100,7 @@ test('only answers whose scoring failed can be retried; a retry scores them', WE
   await assert.rejects(retryScoring(HR_ACTOR, ben, at(1, 3)), isStatus(409))
 })
 
-test('a correction made before any review comes back to HR whatever the new score, and the evaluator can no longer edit it', WEEKLY_DB_TEST, async () => {
+test('a correction made before any review comes back to HR whatever the new score, and stays with HR if the evaluator edits it again', WEEKLY_DB_TEST, async () => {
   const { prompts, ben } = await answered()
   await score()
   const benPrompt = prompts.get(W.ben.id)!
@@ -112,8 +112,10 @@ test('a correction made before any review comes back to HR whatever the new scor
   assert.equal(record.state, 'NEEDS_REVIEW')
   assert.ok(record.reasons.includes('CORRECTED'), `reasons: ${record.reasons.join(', ')}`)
   assert.equal((await autoAcceptDue(new Date(at(1, 2, 11).getTime() + 100 * 60 * 60 * 1000), { cycleId })).accepted, 0)
-  await assert.rejects(
-    submitAnswer(weeklyActor(W.ben), { evaluatorId: W.ben.id, actingAs: false }, benPrompt.id, solid, at(1, 2, 12)),
-    isStatus(409),
-  )
+  // Answers stay editable until the quarter is locked; the edit is scored again and still goes to HR.
+  await submitAnswer(weeklyActor(W.ben), { evaluatorId: W.ben.id, actingAs: false }, benPrompt.id, solid, at(1, 2, 12))
+  await score(fakeModel(), at(1, 2, 13))
+  const [edited] = await loadAnswerRecords({ responseIds: [ben] })
+  assert.equal(edited.state, 'NEEDS_REVIEW')
+  assert.ok(edited.reasons.includes('CORRECTED'))
 })

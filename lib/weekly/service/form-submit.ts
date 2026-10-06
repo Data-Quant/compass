@@ -34,7 +34,7 @@ async function prepare(actor: WeeklyActor, input: FormInput, now: Date) {
 }
 
 /** Same row shape as the classic form; a department form is written for every member of the pool. */
-async function write(tx: Prisma.TransactionClient, evaluatorId: string, cycle: CycleWithPeriod, unit: FormUnit, responses: Responses, submittedAt: Date | null): Promise<void> {
+export async function writeFormRows(tx: Prisma.TransactionClient, evaluatorId: string, cycle: CycleWithPeriod, unit: Pick<FormUnit, 'evaluateeIds'>, responses: Responses, submittedAt: Date | null): Promise<void> {
   for (const evaluateeId of unit.evaluateeIds) {
     for (const response of responses) {
       const where = {
@@ -55,11 +55,11 @@ export async function saveFormDraft(actor: WeeklyActor, input: FormInput, now: D
   const status = (await formStatuses(cycle.periodId, actor.id, [unit])).get(formKey(unit.relationshipType, unit.evaluateeId))
   if (status === 'SUBMITTED') throw new WeeklyError('This form was submitted. Submit it again to change it.', 409)
   if (status === 'CLOSED_BY_OTHER') throw new WeeklyError(HR_SLOT_CLOSED, 409)
-  await prisma.$transaction((tx) => write(tx, actor.id, cycle, unit, input.responses, null))
+  await prisma.$transaction((tx) => writeFormRows(tx, actor.id, cycle, unit, input.responses, null))
   return { savedAt: now.toISOString() }
 }
 
-async function assertFourRatingQuota(evaluatorId: string, periodId: string, unit: FormUnit & { relationshipType: 'C_LEVEL' | 'DEPT' }, responses: Responses): Promise<void> {
+export async function assertFourRatingQuota(evaluatorId: string, periodId: string, unit: FormUnit & { relationshipType: 'C_LEVEL' | 'DEPT' }, responses: Responses): Promise<void> {
   const keys = new Set(
     responses.map((r) =>
       unit.relationshipType === 'DEPT'
@@ -103,7 +103,7 @@ export async function submitForm(actor: WeeklyActor, input: FormInput, now: Date
       } else {
         await assertFourRatingQuota(actor.id, cycle.periodId, { ...unit, relationshipType: unit.relationshipType }, input.responses)
       }
-      await write(tx, actor.id, cycle, unit, input.responses, now)
+      await writeFormRows(tx, actor.id, cycle, unit, input.responses, now)
       return { submitted: input.responses.length }
     },
     { timeout: 30_000 },

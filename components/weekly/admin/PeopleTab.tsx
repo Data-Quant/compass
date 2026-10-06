@@ -13,6 +13,7 @@ import { errorMessage, weeklyRequest } from '../weekly-api'
 
 const EXCLUSION_LABELS: Record<NonNullable<ParticipantRow['exclusion']>, string> = {
   NOT_EVALUATED: 'Not evaluated (named leader or Partner)',
+  FILLED_BY_HR: 'Partner: HR fills in their evaluations',
   INACTIVE: 'No longer active',
   LEFT: 'Has left',
   JOINED_LATE: 'Joined with fewer than 6 weeks left',
