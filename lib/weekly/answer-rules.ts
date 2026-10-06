@@ -1,5 +1,6 @@
 export const MAX_FIELD_CHARS = 4000
-export const EDIT_WINDOW_MS = 24 * 60 * 60 * 1000
+/** The inbox keeps a submitted answer in view for a day; after that it is in History. */
+export const RECENTLY_SUBMITTED_MS = 24 * 60 * 60 * 1000
 export const NOT_OBSERVED_SNOOZE_WEEKS = 3
 
 export interface AnswerFields { situation: string; action: string; result: string; shortfall?: string | null }
@@ -27,12 +28,9 @@ export function commentProblem(text: string | null | undefined): string | null {
   return (text ?? '').trim() ? null : 'Write a comment, or skip it'
 }
 
-export function editableUntil(submittedAt: Date): Date {
-  return new Date(submittedAt.getTime() + EDIT_WINDOW_MS)
-}
-
-export function canEditSubmitted(input: { submittedAt: Date | null; reviewedByHuman: boolean; now: Date }): boolean {
-  return input.submittedAt !== null && !input.reviewedByHuman && input.now <= editableUntil(input.submittedAt)
+/** A submitted answer stays editable until HR locks the quarter; an edit is scored again and goes back to HR. */
+export function canEditSubmitted(input: { submittedAt: Date | null; periodLocked: boolean }): boolean {
+  return input.submittedAt !== null && !input.periodLocked
 }
 
 export type NotObservedOutcome =

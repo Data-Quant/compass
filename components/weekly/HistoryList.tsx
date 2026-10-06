@@ -1,11 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { EVALUATOR_STATUS_LABELS, type EvaluatorAnswerStatus } from '@/lib/weekly/answer-rules'
 import { formatKarachiDateTime } from '@/lib/weekly/format'
 import { PERSPECTIVE_LABELS } from '@/lib/weekly/perspectives'
-import type { HistoryEntry, HistoryResponse } from '@/lib/weekly/view-types'
+import type { HistoryEntry, HistoryGroup, HistoryResponse, InboxPrompt } from '@/lib/weekly/view-types'
+import { AnswerCard } from './AnswerCard'
 import { errorMessage, weeklyRequest, withActingAs } from './weekly-api'
 
 const TONE: Record<EvaluatorAnswerStatus, 'default' | 'secondary' | 'destructive' | 'outline'> = {
@@ -16,20 +18,19 @@ const TONE: Record<EvaluatorAnswerStatus, 'default' | 'secondary' | 'destructive
 export function HistoryList({ actingAs }: { actingAs?: string }) {
   const [data, setData] = useState<HistoryResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
-  useEffect(() => {
-    let active = true
-    weeklyRequest<HistoryResponse>(withActingAs('/api/weekly/history', actingAs))
-      .then((value) => {
-        if (active) setData(value)
-      })
-      .catch((e: unknown) => {
-        if (active) setError(errorMessage(e, 'Could not load your answers'))
-      })
-    return () => {
-      active = false
+  const load = useCallback(async () => {
+    try {
+      setData(await weeklyRequest<HistoryResponse>(withActingAs('/api/weekly/history', actingAs)))
+    } catch (e) {
+      setError(errorMessage(e, 'Could not load your answers'))
     }
   }, [actingAs])
+
+  useEffect(() => {
+    void load()
+  }, [load])
 
   if (error) return <p className="text-sm text-destructive">{error}</p>
   if (!data) return <p className="text-sm text-muted-foreground">Loading your answers…</p>
@@ -48,8 +49,22 @@ export function HistoryList({ actingAs }: { actingAs?: string }) {
                   <p className="text-sm font-medium">Week {entry.weekIndex} · {entry.topic}</p>
                   <Badge variant={TONE[entry.status]}>{EVALUATOR_STATUS_LABELS[entry.status]}</Badge>
                 </div>
-                <p className="text-sm text-muted-foreground">{entry.text}</p>
-                <AnswerDetails entry={entry} />
+                {editingId === entry.id ? (
+                  <AnswerCard
+                    prompt={asPrompt(entry, group)}
+                    actingAs={actingAs}
+                    onChanged={async () => {
+                      setEditingId(null)
+                      await load()
+                    }}
+                  />
+                ) : (
+                  <>
+                    <p className="text-sm text-muted-foreground">{entry.text}</p>
+                    <AnswerDetails entry={entry} />
+                    {entry.canEdit && <Button size="sm" variant="outline" onClick={() => setEditingId(entry.id)}>Edit answer</Button>}
+                  </>
+                )}
               </li>
             ))}
           </ul>
@@ -57,6 +72,14 @@ export function HistoryList({ actingAs }: { actingAs?: string }) {
       ))}
     </div>
   )
+}
+
+/** A submitted history entry, opened for editing in the same card as the inbox. */
+function asPrompt(entry: HistoryEntry, group: HistoryGroup): InboxPrompt {
+  return {
+    id: entry.id, weekIndex: entry.weekIndex, kind: entry.kind, status: 'SUBMITTED', text: entry.text, topic: entry.topic,
+    perspective: group.perspective, evaluatee: group.evaluatee, answer: entry.answer, submittedAt: entry.submittedAt, canEdit: true, overdue: false,
+  }
 }
 
 function AnswerDetails({ entry }: { entry: HistoryEntry }) {

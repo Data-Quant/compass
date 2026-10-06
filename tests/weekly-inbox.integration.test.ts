@@ -4,7 +4,11 @@ import { prisma } from '../lib/db'
 import { WeeklyError } from '../lib/weekly/service/errors'
 import { historyView, inboxView, markNotObserved, resolveSubject, saveDraft, submitAnswer } from '../lib/weekly/service/inbox'
 import { QUESTIONS_PER_PAIR } from '../lib/weekly/scheduler'
+import { fakeModel } from '../lib/weekly/ai/model'
+import { loadAnswerRecords } from '../lib/weekly/service/answer-states'
+import { decideAnswer } from '../lib/weekly/service/decisions'
 import { releaseWeek } from '../lib/weekly/service/release'
+import { runScoring } from '../lib/weekly/service/scoring'
 import { at, HR_ACTOR, startedCycle } from './helpers/weekly-fixtures'
 import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST, weeklyActor } from './helpers/weekly-test-db'
 
@@ -65,13 +69,32 @@ test('a late autosave after submitting changes nothing', WEEKLY_DB_TEST, async (
   assert.equal((await prisma.weeklyPrompt.findUniqueOrThrow({ where: { id: promptId } })).status, 'SUBMITTED')
 })
 
-test('an answer can be edited for 24 hours; each edit re-queues scoring', WEEKLY_DB_TEST, async () => {
+test('an answer can be edited any time until HR locks the quarter; each edit re-queues scoring', WEEKLY_DB_TEST, async () => {
   const promptId = await leadPromptId()
   await submitAnswer(lead, leadSubject, promptId, GOOD, at(1))
   assert.equal((await submitAnswer(lead, leadSubject, promptId, { ...GOOD, result: `${GOOD.result} more detail` }, at(1, 1, 20))).revision, 2)
   const jobs = await prisma.weeklyScoringJob.findMany({ orderBy: { revision: 'asc' } })
   assert.deepEqual(jobs.map((j) => `${j.revision}:${j.status}`), ['1:CANCELLED', '2:PENDING'])
-  await assert.rejects(submitAnswer(lead, leadSubject, promptId, GOOD, at(1, 3, 9)), /no longer be edited/)
+  assert.equal((await submitAnswer(lead, leadSubject, promptId, GOOD, at(9))).revision, 3, 'weeks later')
+  const entry = (await historyView(W.lead.id)).groups.flatMap((g) => g.entries).find((e) => e.id === promptId)
+  assert.equal(entry?.canEdit, true)
+  await prisma.evaluationPeriod.updateMany({ data: { isLocked: true } })
+  await assert.rejects(submitAnswer(lead, leadSubject, promptId, GOOD, at(10)), /locked/)
+  assert.equal((await historyView(W.lead.id)).groups.flatMap((g) => g.entries).find((e) => e.id === promptId)?.canEdit, false)
+})
+
+test('an answer HR already decided can still be edited: it is scored again and goes back to HR', WEEKLY_DB_TEST, async () => {
+  const promptId = await leadPromptId()
+  await submitAnswer(lead, leadSubject, promptId, GOOD, at(1))
+  await runScoring({ model: fakeModel(), budgetMs: 30_000, clock: () => at(1, 2) })
+  const response = await prisma.weeklyResponse.findUniqueOrThrow({ where: { promptId } })
+  const [first] = await loadAnswerRecords({ responseIds: [response.id] })
+  await decideAnswer(HR_ACTOR, response.id, { action: 'SET_SCORE', score: 3, reason: 'Seen it myself', basedOn: { aiScoreId: first.aiScore?.id ?? null, reviewId: null } }, at(1, 3))
+  assert.equal((await submitAnswer(lead, leadSubject, promptId, { ...GOOD, action: `${GOOD.action} and briefed the client` }, at(3))).revision, 2)
+  await runScoring({ model: fakeModel(), budgetMs: 30_000, clock: () => at(3, 1) })
+  const [after] = await loadAnswerRecords({ responseIds: [response.id] })
+  assert.equal(after.state, 'NEEDS_REVIEW')
+  assert.ok(after.reasons.includes('CORRECTED'))
 })
 
 test('not observed snoozes the topic three weeks; a second time closes it', WEEKLY_DB_TEST, async () => {

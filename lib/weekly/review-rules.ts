@@ -11,7 +11,7 @@ export const REVIEW_REASON_LABELS: Record<ReviewReason, string> = {
   FLAGGED: 'Flagged',
   SAMPLED: 'Random check',
   SCORING_FAILED: 'Scoring failed — score by hand',
-  CORRECTED: 'Re-scored after an HR correction',
+  CORRECTED: 'Changed after a review: scored again',
   UNCALIBRATED_MODEL: 'Model not yet calibrated',
 }
 

@@ -36,7 +36,6 @@ export interface InboxPrompt {
   evaluatee: PersonRef
   answer: AnswerView | null
   submittedAt: string | null
-  editableUntil: string | null
   canEdit: boolean
   overdue: boolean
 }
@@ -55,6 +54,8 @@ export interface HistoryEntry {
   status: EvaluatorAnswerStatus
   answer: AnswerView | null
   submittedAt: string | null
+  /** Submitted and the quarter is not locked. */
+  canEdit: boolean
 }
 export interface HistoryGroup { evaluatee: PersonRef; perspective: Perspective; entries: HistoryEntry[] }
 export interface HistoryResponse { cycle: CycleSummary | null; groups: HistoryGroup[] }

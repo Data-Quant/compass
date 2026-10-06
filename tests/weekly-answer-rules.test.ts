@@ -24,12 +24,11 @@ test('comments are optional but cannot be submitted empty', () => {
   assert.equal(commentProblem('Keep going.'), null)
 })
 
-test('a submitted answer can be edited for 24 hours unless HR already reviewed it', () => {
+test('a submitted answer can be edited until HR locks the quarter', () => {
   const submittedAt = new Date('2026-10-06T08:00:00.000Z')
-  assert.equal(canEditSubmitted({ submittedAt, reviewedByHuman: false, now: new Date('2026-10-07T07:59:00.000Z') }), true)
-  assert.equal(canEditSubmitted({ submittedAt, reviewedByHuman: false, now: new Date('2026-10-07T08:01:00.000Z') }), false)
-  assert.equal(canEditSubmitted({ submittedAt, reviewedByHuman: true, now: new Date('2026-10-06T09:00:00.000Z') }), false)
-  assert.equal(canEditSubmitted({ submittedAt: null, reviewedByHuman: false, now: submittedAt }), false)
+  assert.equal(canEditSubmitted({ submittedAt, periodLocked: false }), true)
+  assert.equal(canEditSubmitted({ submittedAt, periodLocked: true }), false)
+  assert.equal(canEditSubmitted({ submittedAt: null, periodLocked: false }), false)
 })
 
 test('not observed snoozes three weeks, and a second time closes the slot', () => {

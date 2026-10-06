@@ -100,7 +100,7 @@ export function AnswerCard({ prompt, actingAs, onChanged }: AnswerCardProps) {
     comment ? 'Optional and not scored' : `${words} word${words === 1 ? '' : 's'}`,
     problem && editing ? problem : null,
     savedAt && !submitted ? `Saved ${formatKarachiDateTime(savedAt)}` : null,
-    submitted && prompt.canEdit && prompt.editableUntil ? `Editable until ${formatKarachiDateTime(prompt.editableUntil)}` : null,
+    submitted && prompt.canEdit ? 'You can edit this until HR locks the quarter' : null,
   ].filter(Boolean).join(' · ')
 
   return (

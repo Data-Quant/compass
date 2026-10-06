@@ -1,7 +1,7 @@
 import type { Prisma, WeeklyPrompt, WeeklyResponse } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import {
-  afterNotObserved, answerProblem, canEditSubmitted, commentProblem, EDIT_WINDOW_MS, editableUntil, evaluatorStatus,
+  afterNotObserved, answerProblem, canEditSubmitted, commentProblem, evaluatorStatus, RECENTLY_SUBMITTED_MS,
 } from '../answer-rules'
 import { cycleWeeks, effectiveWeek } from '../calendar'
 import { areWeeklyTestToolsEnabled } from '../flag'
@@ -10,7 +10,6 @@ import { isConfirmedAction, latestByResponse } from '../reviews'
 import { QUESTIONS_PER_PAIR } from '../scheduler'
 import type { AnswerInput } from '../schemas'
 import type { AnswerView, EvaluateeProgress, HistoryGroup, HistoryResponse, InboxPrompt, InboxResponse } from '../view-types'
-import { correctedResponseIds, jsonStrings } from './answer-states'
 import { recordAudit } from './audit'
 import { byName, isHrActor, loadPeople, personRef, type WeeklyActor } from './context'
 import { cycleSummary, findRunningCycle, loadCycle } from './cycles'
@@ -44,11 +43,10 @@ function topicOf(prompt: PromptRow): string {
   return prompt.kind === 'COMMENT' ? 'Comment (optional)' : prompt.slot?.competency.name ?? 'Question'
 }
 
-/** Answers a person has reviewed or corrected: the evaluator can no longer edit them. */
-async function humanReviewed(responseIds: string[]): Promise<Set<string>> {
-  if (responseIds.length === 0) return new Set()
-  const reviews = await prisma.weeklyScoreReview.findMany({ where: { responseId: { in: responseIds }, reviewerId: { not: null } }, select: { responseId: true } })
-  return new Set([...reviews.map((r) => r.responseId), ...(await correctedResponseIds(responseIds))])
+const LOCKED = 'This quarter is locked, so answers can no longer change'
+
+async function periodLocked(periodId: string): Promise<boolean> {
+  return (await prisma.evaluationPeriod.findUnique({ where: { id: periodId }, select: { isLocked: true } }))?.isLocked ?? false
 }
 
 /** Per person: of the quarter's five questions, how many are answered (or not observed) and how many were accepted. */
@@ -91,14 +89,14 @@ export async function inboxView(evaluatorId: string, now: Date): Promise<InboxRe
   const prompts: PromptRow[] = await prisma.weeklyPrompt.findMany({
     where: {
       cycleId: cycle.id, evaluatorId,
-      OR: [{ status: { in: ['OPEN', 'DRAFT'] } }, { status: 'SUBMITTED', response: { submittedAt: { gte: new Date(now.getTime() - EDIT_WINDOW_MS) } } }],
+      OR: [{ status: { in: ['OPEN', 'DRAFT'] } }, { status: 'SUBMITTED', response: { submittedAt: { gte: new Date(now.getTime() - RECENTLY_SUBMITTED_MS) } } }],
     },
     include: promptInclude,
     orderBy: [{ weekIndex: 'asc' }, { createdAt: 'asc' }],
   })
-  const [people, reviewed, progress] = await Promise.all([
+  const [people, locked, progress] = await Promise.all([
     loadPeople(prompts.map((p) => p.evaluateeId)),
-    humanReviewed(prompts.flatMap((p) => (p.response ? [p.response.id] : []))),
+    periodLocked(cycle.periodId),
     progressFor(cycle.id, evaluatorId),
   ])
   const view: InboxPrompt[] = prompts.map((p) => {
@@ -107,8 +105,7 @@ export async function inboxView(evaluatorId: string, now: Date): Promise<InboxRe
       id: p.id, weekIndex: p.weekIndex, kind: p.kind, status: p.status as InboxPrompt['status'], text: p.textSnapshot, topic: topicOf(p),
       perspective: perspectiveOf(p.relationshipType) ?? 'PEER', evaluatee: personRef(people, p.evaluateeId), answer: answerView(p.response),
       submittedAt: submittedAt?.toISOString() ?? null,
-      editableUntil: submittedAt ? editableUntil(submittedAt).toISOString() : null,
-      canEdit: p.status === 'SUBMITTED' ? canEditSubmitted({ submittedAt, reviewedByHuman: reviewed.has(p.response?.id ?? ''), now }) : true,
+      canEdit: p.status === 'SUBMITTED' ? canEditSubmitted({ submittedAt, periodLocked: locked }) : !locked,
       overdue: p.weekIndex < summary.currentWeek,
     }
   })
@@ -116,9 +113,10 @@ export async function inboxView(evaluatorId: string, now: Date): Promise<InboxRe
 }
 
 async function ownPrompt(evaluatorId: string, promptId: string) {
-  const prompt = await prisma.weeklyPrompt.findUnique({ where: { id: promptId }, include: { response: true, cycle: { select: { status: true } } } })
+  const prompt = await prisma.weeklyPrompt.findUnique({ where: { id: promptId }, include: { response: true, cycle: { select: { status: true, periodId: true } } } })
   if (!prompt || prompt.evaluatorId !== evaluatorId) throw new WeeklyError('Question not found', 404)
   if (prompt.cycle.status !== 'RUNNING') throw new WeeklyError('This quarter’s weekly evaluations are closed', 409)
+  if (await periodLocked(prompt.cycle.periodId)) throw new WeeklyError(LOCKED, 409)
   return prompt
 }
 
@@ -154,9 +152,8 @@ export async function submitAnswer(actor: WeeklyActor, subject: InboxSubject, pr
       revision = (prompt.response?.revision ?? 0) + 1
       await tx.weeklyResponse.upsert({ where: { promptId }, create: { promptId, ...data, revision, submittedAt: now }, update: { ...data, revision, submittedAt: now } })
     } else if (prompt.status === 'SUBMITTED' && prompt.response) {
-      const reviewed = await tx.weeklyScoreReview.count({ where: { responseId: prompt.response.id, reviewerId: { not: null } } })
-      const corrected = (await correctedResponseIds([prompt.response.id], tx)).size
-      if (!canEditSubmitted({ submittedAt: prompt.response.submittedAt, reviewedByHuman: reviewed + corrected > 0, now })) throw new WeeklyError('This answer can no longer be edited', 409)
+      // Editable until the quarter is locked (checked above). An answer HR already decided is scored again and, because
+      // a person judged it, comes back to HR rather than being accepted automatically.
       const updated = await tx.weeklyResponse.updateMany({ where: { id: prompt.response.id, revision: prompt.response.revision }, data: { ...data, revision: { increment: 1 } } })
       if (updated.count === 0) throw new WeeklyError('This answer changed since you opened it; reload and try again', 409)
       revision = prompt.response.revision + 1
@@ -203,8 +200,9 @@ export async function historyView(evaluatorId: string): Promise<HistoryResponse>
   if (!cycle) return { cycle: null, groups: [] }
   const prompts: PromptRow[] = await prisma.weeklyPrompt.findMany({ where: { cycleId: cycle.id, evaluatorId }, include: promptInclude, orderBy: [{ weekIndex: 'desc' }, { createdAt: 'desc' }] })
   const responseIds = prompts.flatMap((p) => (p.response ? [p.response.id] : []))
-  const [people, reviews] = await Promise.all([
+  const [people, locked, reviews] = await Promise.all([
     loadPeople(prompts.map((p) => p.evaluateeId)),
+    periodLocked(cycle.periodId),
     prisma.weeklyScoreReview.findMany({ where: { responseId: { in: responseIds } }, select: { id: true, responseId: true, createdAt: true, action: true } }),
   ])
   const latest = latestByResponse(reviews)
@@ -221,6 +219,7 @@ export async function historyView(evaluatorId: string): Promise<HistoryResponse>
           id: p.id, weekIndex: p.weekIndex, kind: p.kind, topic: topicOf(p), text: p.textSnapshot,
           status: evaluatorStatus({ promptStatus: p.status, latestReviewAction: latest.get(responseId)?.action ?? null }),
           answer: answerView(p.response), submittedAt: p.response?.submittedAt?.toISOString() ?? null,
+          canEdit: p.status === 'SUBMITTED' && canEditSubmitted({ submittedAt: p.response?.submittedAt ?? null, periodLocked: locked }),
         },
       ],
     })
