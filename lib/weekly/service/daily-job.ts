@@ -1,5 +1,5 @@
 import type { StructuredModel } from '../ai/model'
-import { karachiWeekday, questionWeekCount, totalWeeks, weekIndexAt } from '../calendar'
+import { cycleWeeks, karachiWeekday, questionWeekCount, weekIndexAt } from '../calendar'
 import { resolveActiveModel } from './ai-settings'
 import { CALIBRATION_DAILY_BUDGET_MS, continueCalibrationRuns, type CalibrationProgress, type ModelResolver } from './calibration-runs'
 import { findRunningCycle } from './cycles'
@@ -79,7 +79,7 @@ export async function runWeeklyDailyJob(
   const model = options.model !== undefined ? options.model : await resolveActiveModel()
   const { accepted } = await autoAcceptDue(clock(), { cycleId: cycle.id })
   const week = weekIndexAt(cycle.weekOneStartsOn, now)
-  const total = totalWeeks(cycle.weekOneStartsOn, cycle.period.endDate)
+  const total = cycleWeeks(cycle)
   const { released, emails } = week >= 1 && week <= total ? await releaseAndAnnounce(cycle.id, week, now, send, appUrl) : { released: null, emails: null }
   const scoring = await runScoring({ model, budgetMs: DAILY_SCORING_BUDGET_MS, clock })
   const messages = [

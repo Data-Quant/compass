@@ -49,10 +49,23 @@ test('a cycle starts only with approved topics, and only one runs at a time', WE
   await assert.rejects(updateCycle(HR_ACTOR, second.id, { action: 'start' }), /already running/)
 })
 
-test('setup can change week 1 and the weekly cap', WEEKLY_DB_TEST, async () => {
+test('setup can change week 1 and the number of question weeks', WEEKLY_DB_TEST, async () => {
   const cycle = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY })
-  const updated = await updateCycle(HR_ACTOR, cycle.id, { action: 'update', weekOneStartsOn: '2026-10-12' })
+  const updated = await updateCycle(HR_ACTOR, cycle.id, { action: 'update', weekOneStartsOn: '2026-10-12', questionWeeks: 8 })
   assert.equal(updated.weekOneStartsOn.toISOString(), '2026-10-11T19:00:00.000Z')
+  assert.equal(updated.questionWeeks, 8)
+})
+
+test('HR sets the question weeks; by default they fill the quarter less the two catch-up weeks', WEEKLY_DB_TEST, async () => {
+  const set = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY, questionWeeks: 9 })
+  const summary = cycleSummary(await loadCycle(set.id), at(2))
+  assert.deepEqual([summary.questionWeeks, summary.totalWeeks], [9, 11])
+  await deleteCycle(HR_ACTOR, set.id)
+  const byDefault = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY })
+  assert.equal(byDefault.questionWeeks, 11)
+  await deleteCycle(HR_ACTOR, byDefault.id)
+  // 13 weeks to the period end leave room for at most 11 question weeks.
+  await assert.rejects(createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY, questionWeeks: 12 }), /at most 11/)
 })
 
 test('HR sees who is excluded and can opt a late joiner in', WEEKLY_DB_TEST, async () => {

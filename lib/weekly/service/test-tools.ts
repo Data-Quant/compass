@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/db'
 import type { ModelChoice } from '../ai/configured'
 import { fakeModel } from '../ai/model'
-import { effectiveWeek, totalWeeks } from '../calendar'
+import { cycleWeeks, effectiveWeek } from '../calendar'
 import { syntheticAnswer, syntheticComment } from '../content/synthetic'
 import { areWeeklyTestToolsEnabled } from '../flag'
 import { loadAnswerRecords } from './answer-states'
@@ -27,7 +27,7 @@ export function assertTestTools(actor: WeeklyActor): void {
 export async function releaseNextWeek(actor: WeeklyActor, cycleId: string, now: Date): Promise<ReleaseSummary> {
   assertTestTools(actor)
   const cycle = await loadCycle(cycleId)
-  const total = totalWeeks(cycle.weekOneStartsOn, cycle.period.endDate)
+  const total = cycleWeeks(cycle)
   const last = (await prisma.weeklyRelease.aggregate({ where: { cycleId }, _max: { weekIndex: true } }))._max.weekIndex ?? 0
   const week = last === 0 ? Math.min(total, Math.max(1, effectiveWeek(cycle.weekOneStartsOn, cycle.simulatedWeek, now))) : last + 1
   if (week > total) throw new WeeklyError('Every week of this cycle has been released', 409)
@@ -128,7 +128,7 @@ export async function settleForClose(actor: WeeklyActor, cycleId: string, now: D
 }
 
 function currentWeek(cycle: Awaited<ReturnType<typeof loadCycle>>, now: Date): number {
-  return Math.min(totalWeeks(cycle.weekOneStartsOn, cycle.period.endDate), Math.max(1, effectiveWeek(cycle.weekOneStartsOn, cycle.simulatedWeek, now)))
+  return Math.min(cycleWeeks(cycle), Math.max(1, effectiveWeek(cycle.weekOneStartsOn, cycle.simulatedWeek, now)))
 }
 
 /** For live demos: releases this week's questions for one evaluator only, as the daily release would. */

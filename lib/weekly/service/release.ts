@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
-import { isCatchUpWeek, totalWeeks } from '../calendar'
+import { cycleWeeks, isCatchUpWeek } from '../calendar'
 import { evaluateeExclusion, evaluatorExclusion } from '../eligibility'
 import { bankForPerspective, isWeeklyRelationshipType, perspectiveOf, type Perspective, type WeeklyRelationshipType } from '../perspectives'
 import { nextVariant, pickTopic, planWeek, type SchedulableTopic } from '../scheduler'
@@ -24,7 +24,7 @@ export async function syncSlots(cycle: CycleWithPeriod, now: Date): Promise<{ cr
   const assignments = (await getResolvedEvaluationAssignments(cycle.periodId)).filter((a) => isWeeklyRelationshipType(a.relationshipType))
   const people = await loadPeople(assignments.flatMap((a) => [a.evaluatorId, a.evaluateeId]))
   const optIns = new Set((await prisma.weeklyParticipantOverride.findMany({ where: { cycleId: cycle.id, optIn: true } })).map((o) => o.userId))
-  const total = totalWeeks(cycle.weekOneStartsOn, cycle.period.endDate)
+  const total = cycleWeeks(cycle)
   const pairs: LivePair[] = []
   const desired: SlotKeyed[] = []
   for (const a of assignments) {
@@ -138,7 +138,7 @@ export function planEvaluatorWeek(input: { cycleId: string; evaluatorId: string;
 export async function releaseWeek(cycleId: string, week: number, now: Date, options: { evaluatorId?: string } = {}): Promise<ReleaseSummary> {
   const cycle = await loadCycle(cycleId)
   if (cycle.status !== 'RUNNING') throw new WeeklyError('Start the cycle before releasing questions', 409)
-  const total = totalWeeks(cycle.weekOneStartsOn, cycle.period.endDate)
+  const total = cycleWeeks(cycle)
   if (week < 1 || week > total) throw new WeeklyError(`Week ${week} is outside this cycle (weeks 1 to ${total})`, 409)
   const sync = await syncSlots(cycle, now)
   const livePairs = new Set(sync.pairs.map(pairKey))

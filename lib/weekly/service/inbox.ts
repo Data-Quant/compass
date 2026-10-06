@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db'
 import {
   afterNotObserved, answerProblem, canEditSubmitted, commentProblem, EDIT_WINDOW_MS, editableUntil, evaluatorStatus,
 } from '../answer-rules'
-import { effectiveWeek, totalWeeks } from '../calendar'
+import { cycleWeeks, effectiveWeek } from '../calendar'
 import { areWeeklyTestToolsEnabled } from '../flag'
 import { perspectiveOf } from '../perspectives'
 import { isConfirmedAction, latestByResponse } from '../reviews'
@@ -179,7 +179,7 @@ export async function markNotObserved(actor: WeeklyActor, subject: InboxSubject,
   const prompt = await ownPrompt(subject.evaluatorId, promptId)
   if (prompt.status !== 'OPEN' && prompt.status !== 'DRAFT') throw new WeeklyError(ANSWERED, 409)
   const cycle = await loadCycle(prompt.cycleId)
-  const week = Math.min(totalWeeks(cycle.weekOneStartsOn, cycle.period.endDate), effectiveWeek(cycle.weekOneStartsOn, cycle.simulatedWeek, now))
+  const week = Math.min(cycleWeeks(cycle), effectiveWeek(cycle.weekOneStartsOn, cycle.simulatedWeek, now))
   await prisma.$transaction(async (tx) => {
     const moved = await tx.weeklyPrompt.updateMany({ where: { id: promptId, status: { in: ['OPEN', 'DRAFT'] } }, data: { status: 'NOT_OBSERVED' } })
     if (moved.count === 0) throw new WeeklyError(ANSWERED, 409)

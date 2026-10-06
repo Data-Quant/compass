@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  effectiveWeek, isCatchUpWeek, joinedTooLate, karachiWeekday, parseWeekOneMonday, questionWeekCount, totalWeeks, weekIndexAt, weekStartsAt,
+  cycleWeeks, defaultQuestionWeeks, effectiveWeek, isCatchUpWeek, joinedTooLate, karachiWeekday, parseWeekOneMonday, questionWeekCount, totalWeeks, weekIndexAt, weekStartsAt,
 } from '../lib/weekly/calendar'
 
 const weekOne = new Date('2026-10-04T19:00:00.000Z') // Monday 5 Oct 2026, 00:00 Karachi
@@ -55,4 +55,10 @@ test('in a short cycle, people who were already there when it started are never 
   assert.equal(joinedTooLate(new Date('2021-03-01T00:00:00.000Z'), shortStart, 7), false)
   assert.equal(joinedTooLate(new Date('2026-11-17T05:00:00.000Z'), shortStart, 7), false) // joined during week 1
   assert.equal(joinedTooLate(new Date('2026-11-24T05:00:00.000Z'), shortStart, 7), true) // week 2: 4 of 5 question weeks left
+})
+
+test('HR sets the question weeks; the cycle runs them plus the two catch-up weeks', () => {
+  assert.equal(cycleWeeks({ questionWeeks: 12 }), 14)
+  assert.equal(cycleWeeks({ questionWeeks: 1 }), 3)
+  assert.equal(defaultQuestionWeeks(weekOne, quarterEnd), 11)
 })

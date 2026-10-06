@@ -1,7 +1,7 @@
 import type { WeeklyCycle } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
-import { effectiveWeek, parseWeekOneMonday, questionWeekCount, totalWeeks } from '../calendar'
+import { CATCH_UP_WEEKS, cycleWeeks, defaultQuestionWeeks, effectiveWeek, parseWeekOneMonday, questionWeekCount, totalWeeks } from '../calendar'
 import { evaluateeExclusion, isOutsideRedesign } from '../eligibility'
 import { isWeeklyRelationshipType } from '../perspectives'
 import type { CreateCycleInput, UpdateCycleInput } from '../schemas'
@@ -27,7 +27,7 @@ export async function loadCycle(cycleId: string, db: Db = prisma): Promise<Cycle
 }
 
 export function cycleSummary(cycle: CycleWithPeriod, now: Date): CycleSummary {
-  const total = totalWeeks(cycle.weekOneStartsOn, cycle.period.endDate)
+  const total = cycleWeeks(cycle)
   return {
     id: cycle.id, periodId: cycle.periodId, periodName: cycle.period.name, status: cycle.status,
     weekOneStartsOn: cycle.weekOneStartsOn.toISOString(),
@@ -67,18 +67,27 @@ function checkWeekOne(value: string, periodEnd: Date): Date {
   return weekOne
 }
 
+/** HR's number, or by default every week up to the period end less the catch-up weeks. */
+function checkQuestionWeeks(value: number | undefined, weekOne: Date, periodEnd: Date): number {
+  const most = defaultQuestionWeeks(weekOne, periodEnd)
+  if (value === undefined) return most
+  if (value > most) throw new WeeklyError(`With this week 1 the quarter has room for at most ${most} question weeks (plus ${CATCH_UP_WEEKS} catch-up weeks)`)
+  return value
+}
+
 export async function createCycle(actor: WeeklyActor, input: CreateCycleInput): Promise<WeeklyCycle> {
   assertHr(actor)
   const period = await prisma.evaluationPeriod.findUnique({ where: { id: input.periodId } })
   if (!period) throw new WeeklyError('Evaluation period not found', 404)
   if (period.isLocked) throw new WeeklyError('This period is locked', 409)
   const weekOneStartsOn = checkWeekOne(input.weekOneStartsOn, period.endDate)
+  const questionWeeks = checkQuestionWeeks(input.questionWeeks, weekOneStartsOn, period.endDate)
   try {
     return await prisma.$transaction(async (tx) => {
-      const cycle = await tx.weeklyCycle.create({ data: { periodId: period.id, weekOneStartsOn, createdById: actor.id } })
+      const cycle = await tx.weeklyCycle.create({ data: { periodId: period.id, weekOneStartsOn, questionWeeks, createdById: actor.id } })
       await recordAudit(tx, {
         cycleId: cycle.id, actorId: actor.id, actorRole: 'HR', action: 'CYCLE_CREATE', objectType: 'WeeklyCycle', objectId: cycle.id,
-        after: { periodId: period.id, weekOneStartsOn: input.weekOneStartsOn },
+        after: { periodId: period.id, weekOneStartsOn: input.weekOneStartsOn, questionWeeks },
       })
       return cycle
     })
@@ -92,7 +101,7 @@ export async function updateCycle(actor: WeeklyActor, cycleId: string, input: Up
   assertHr(actor)
   const cycle = await loadCycle(cycleId)
   if (cycle.status !== 'SETUP') {
-    throw new WeeklyError(input.action === 'start' ? 'Only a cycle in setup can start' : 'Week 1 can only change before the cycle starts', 409)
+    throw new WeeklyError(input.action === 'start' ? 'Only a cycle in setup can start' : 'Week 1 and the question weeks can only change before the cycle starts', 409)
   }
   if (input.action === 'start') {
     if ((await prisma.weeklyCycle.count({ where: { status: 'RUNNING' } })) > 0) throw new WeeklyError('Another weekly cycle is already running', 409)
@@ -104,14 +113,15 @@ export async function updateCycle(actor: WeeklyActor, cycleId: string, input: Up
     })
   }
   const weekOneStartsOn = checkWeekOne(input.weekOneStartsOn, cycle.period.endDate)
+  const questionWeeks = checkQuestionWeeks(input.questionWeeks ?? Math.min(cycle.questionWeeks, defaultQuestionWeeks(weekOneStartsOn, cycle.period.endDate)), weekOneStartsOn, cycle.period.endDate)
   return prisma.$transaction(async (tx) => {
     const updated = await tx.weeklyCycle.update({
       where: { id: cycle.id },
-      data: { weekOneStartsOn },
+      data: { weekOneStartsOn, questionWeeks },
     })
     await recordAudit(tx, {
       cycleId: cycle.id, actorId: actor.id, actorRole: 'HR', action: 'CYCLE_EDIT', objectType: 'WeeklyCycle', objectId: cycle.id,
-      before: { weekOneStartsOn: cycle.weekOneStartsOn.toISOString() }, after: input,
+      before: { weekOneStartsOn: cycle.weekOneStartsOn.toISOString(), questionWeeks: cycle.questionWeeks }, after: { ...input, questionWeeks },
     })
     return updated
   })
@@ -145,7 +155,7 @@ export async function participantsView(actor: WeeklyActor, cycleId: string, now:
     prisma.weeklyParticipantOverride.findMany({ where: { cycleId, optIn: true } }),
   ])
   const optIns = new Map(overrides.map((o) => [o.userId, o]))
-  const total = totalWeeks(cycle.weekOneStartsOn, cycle.period.endDate)
+  const total = cycleWeeks(cycle)
   const rows = [...people.values()].filter((person) => !isOutsideRedesign(person)).map((person) => {
     const optIn = optIns.get(person.id)
     return {

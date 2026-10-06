@@ -2372,6 +2372,7 @@ model WeeklyCycle {
   id                 String            @id @default(cuid())
   periodId           String            @unique
   weekOneStartsOn    DateTime
+  questionWeeks      Int
   status             WeeklyCycleStatus @default(SETUP)
   simulatedWeek      Int?
   formsOpenAt        DateTime?

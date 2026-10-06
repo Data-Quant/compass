@@ -18,11 +18,12 @@ export type AnswerInput = z.infer<typeof answerSchema>
 
 const mondaySchema = z.string().refine((value) => parseWeekOneMonday(value) !== null, 'Choose a Monday (YYYY-MM-DD)')
 
-export const createCycleSchema = z.object({ periodId: z.string().min(1), weekOneStartsOn: mondaySchema }).strict()
+const questionWeeksSchema = z.number().int().min(1, 'At least one question week').max(26)
+export const createCycleSchema = z.object({ periodId: z.string().min(1), weekOneStartsOn: mondaySchema, questionWeeks: questionWeeksSchema.optional() }).strict()
 export type CreateCycleInput = z.infer<typeof createCycleSchema>
 
 export const updateCycleSchema = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('update'), weekOneStartsOn: mondaySchema }).strict(),
+  z.object({ action: z.literal('update'), weekOneStartsOn: mondaySchema, questionWeeks: questionWeeksSchema.optional() }).strict(),
   z.object({ action: z.literal('start') }).strict(),
 ])
 export type UpdateCycleInput = z.infer<typeof updateCycleSchema>

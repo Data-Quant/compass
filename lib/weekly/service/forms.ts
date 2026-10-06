@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db'
 import { getResolvedEvaluationAssignmentForPair, getResolvedEvaluationAssignments, type ResolvedEvaluationAssignment } from '@/lib/evaluation-assignments'
 import { buildDepartmentEvaluationResponseKey, buildEvaluationResponseKey, getEvaluatorFourRatingQuota } from '@/lib/evaluation-rating-quota'
 import { getResolvedEvaluationQuestions } from '@/lib/pre-evaluation'
-import { effectiveWeek, questionWeekCount, totalWeeks, weekStartsAt } from '../calendar'
+import { cycleWeeks, effectiveWeek, questionWeekCount, weekStartsAt } from '../calendar'
 import { formsAreOpen } from '../close-rules'
 import { isFormRelationshipType, type FormRelationshipType } from '../perspectives'
 import type { FormDetailResponse, FormQuestionView, FormStatusValue, FormsResponse, FormSummaryView } from '../view-types'
@@ -28,12 +28,12 @@ const FORM_ORDER: Record<FormRelationshipType, number> = { C_LEVEL: 0, DEPT: 1, 
 export const formKey = (type: FormRelationshipType, evaluateeId: string): string => `${type}:${evaluateeId}`
 
 export function formsOpenFor(cycle: CycleWithPeriod, now: Date): boolean {
-  const total = totalWeeks(cycle.weekOneStartsOn, cycle.period.endDate)
+  const total = cycleWeeks(cycle)
   return formsAreOpen({ status: cycle.status, formsOpenAt: cycle.formsOpenAt, week: effectiveWeek(cycle.weekOneStartsOn, cycle.simulatedWeek, now), totalWeeks: total, now })
 }
 
 export function formsOpenDate(cycle: CycleWithPeriod): Date {
-  const catchUp = weekStartsAt(cycle.weekOneStartsOn, questionWeekCount(totalWeeks(cycle.weekOneStartsOn, cycle.period.endDate)) + 1)
+  const catchUp = weekStartsAt(cycle.weekOneStartsOn, questionWeekCount(cycleWeeks(cycle)) + 1)
   return cycle.formsOpenAt && cycle.formsOpenAt < catchUp ? cycle.formsOpenAt : catchUp
 }
 

@@ -31,6 +31,16 @@ export function weekIndexAt(weekOneStartsOn: Date, instant: Date): number {
   return Math.floor((instant.getTime() - weekOneStartsOn.getTime()) / WEEK_MS) + 1
 }
 
+/** HR sets the question weeks; the two catch-up weeks follow them. */
+export function cycleWeeks(cycle: { questionWeeks: number }): number {
+  return cycle.questionWeeks + CATCH_UP_WEEKS
+}
+
+/** The question weeks that fill the period after week 1, leaving the catch-up weeks. */
+export function defaultQuestionWeeks(weekOneStartsOn: Date, periodEnd: Date): number {
+  return questionWeekCount(totalWeeks(weekOneStartsOn, periodEnd))
+}
+
 /** Weeks from week 1 through the period's last day. */
 export function totalWeeks(weekOneStartsOn: Date, periodEnd: Date): number {
   return Math.max(1, weekIndexAt(weekOneStartsOn, endOfKarachiDay(karachiCalendarDate(periodEnd))))

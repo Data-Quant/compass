@@ -1,6 +1,6 @@
 // Spec 9.4 option C: HR asks everyone in a low-evidence group again, now, outside the weekly schedule.
 import { prisma } from '@/lib/db'
-import { effectiveWeek, totalWeeks } from '../calendar'
+import { cycleWeeks, effectiveWeek } from '../calendar'
 import { renderMoreEvidenceEmail } from '../emails'
 import type { Perspective } from '../perspectives'
 import { nextVariant } from '../scheduler'
@@ -30,7 +30,7 @@ export async function requestMoreEvidence(
   if (cycle.status !== 'RUNNING') throw new WeeklyError(NOT_RUNNING, 409)
   // Today's assignments first, so leavers and removed pairs are not asked.
   const live = new Set((await syncSlots(cycle, now)).pairs.map(pairKey))
-  const week = Math.min(totalWeeks(cycle.weekOneStartsOn, cycle.period.endDate), Math.max(1, effectiveWeek(cycle.weekOneStartsOn, cycle.simulatedWeek, now)))
+  const week = Math.min(cycleWeeks(cycle), Math.max(1, effectiveWeek(cycle.weekOneStartsOn, cycle.simulatedWeek, now)))
   const done = await prisma.$transaction(async (tx) => {
     // Serialises with a second "Ask again" and with the close, which locks the same row.
     const [row] = await tx.$queryRaw<Array<{ status: string }>>`SELECT status::text AS status FROM "WeeklyCycle" WHERE id = ${cycleId} FOR UPDATE`

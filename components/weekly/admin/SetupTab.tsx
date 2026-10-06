@@ -116,6 +116,7 @@ export function SetupTab() {
 function NewCycleForm({ periods, onCreated }: { periods: AdminPeriodRow[]; onCreated: () => Promise<void> }) {
   const [periodId, setPeriodId] = useState('')
   const [weekOne, setWeekOne] = useState('')
+  const [questionWeeks, setQuestionWeeks] = useState('')
   const [saving, setSaving] = useState(false)
   const chosen = periods.find((p) => p.id === periodId)
 
@@ -123,10 +124,11 @@ function NewCycleForm({ periods, onCreated }: { periods: AdminPeriodRow[]; onCre
     event.preventDefault()
     setSaving(true)
     try {
-      await weeklyRequest('/api/admin/weekly/cycles', { method: 'POST', body: { periodId, weekOneStartsOn: weekOne } })
+      await weeklyRequest('/api/admin/weekly/cycles', { method: 'POST', body: { periodId, weekOneStartsOn: weekOne, ...(questionWeeks ? { questionWeeks: Number(questionWeeks) } : {}) } })
       toast.success('Cycle created')
       setPeriodId('')
       setWeekOne('')
+      setQuestionWeeks('')
       await onCreated()
     } catch (e) {
       toast.error(errorMessage(e, 'Could not create the cycle'))
@@ -140,7 +142,7 @@ function NewCycleForm({ periods, onCreated }: { periods: AdminPeriodRow[]; onCre
       <CardContent className="p-4">
         <form onSubmit={submit} className="space-y-4">
           <h3 className="font-semibold">Run a quarter on weekly evaluations</h3>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="cycle-period">Quarter</Label>
               <Select value={periodId} onValueChange={setPeriodId}>
@@ -151,6 +153,11 @@ function NewCycleForm({ periods, onCreated }: { periods: AdminPeriodRow[]; onCre
             <div className="space-y-2">
               <Label htmlFor="cycle-week-one">Week 1 starts (a Monday)</Label>
               <Input id="cycle-week-one" type="date" value={weekOne} onChange={(e) => setWeekOne(e.target.value)} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cycle-question-weeks">Question weeks</Label>
+              <Input id="cycle-question-weeks" type="number" min={1} max={26} placeholder="Up to the period end" value={questionWeeks} onChange={(e) => setQuestionWeeks(e.target.value)} />
+              <p className="text-xs text-muted-foreground">Two catch-up weeks follow them.</p>
             </div>
           </div>
           <p className={`text-sm ${chosen?.isActive ? 'font-medium text-destructive' : 'text-muted-foreground'}`}>
@@ -169,13 +176,14 @@ function NewCycleForm({ periods, onCreated }: { periods: AdminPeriodRow[]; onCre
 
 function EditCycleDialog({ cycle, onClose, onSaved }: { cycle: CycleSummary; onClose: () => void; onSaved: () => Promise<void> }) {
   const [weekOne, setWeekOne] = useState(karachiDateInput(cycle.weekOneStartsOn))
+  const [questionWeeks, setQuestionWeeks] = useState(String(cycle.questionWeeks))
   const [saving, setSaving] = useState(false)
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSaving(true)
     try {
-      await weeklyRequest(`/api/admin/weekly/cycles/${cycle.id}`, { method: 'PATCH', body: { action: 'update', weekOneStartsOn: weekOne } })
+      await weeklyRequest(`/api/admin/weekly/cycles/${cycle.id}`, { method: 'PATCH', body: { action: 'update', weekOneStartsOn: weekOne, questionWeeks: Number(questionWeeks) } })
       toast.success('Cycle updated')
       onClose()
       await onSaved()
@@ -192,6 +200,11 @@ function EditCycleDialog({ cycle, onClose, onSaved }: { cycle: CycleSummary; onC
         <div className="space-y-2">
           <Label htmlFor="edit-week-one">Week 1 starts (a Monday)</Label>
           <Input id="edit-week-one" type="date" value={weekOne} onChange={(e) => setWeekOne(e.target.value)} required />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="edit-question-weeks">Question weeks</Label>
+          <Input id="edit-question-weeks" type="number" min={1} max={26} value={questionWeeks} onChange={(e) => setQuestionWeeks(e.target.value)} required />
+          <p className="text-xs text-muted-foreground">Two catch-up weeks follow them.</p>
         </div>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
