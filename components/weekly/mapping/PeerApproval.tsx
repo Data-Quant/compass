@@ -31,6 +31,8 @@ export function PeerApproval({ token }: { token: string }) {
       const body = await r.json().catch(() => null)
       if (!r.ok) setError(body?.error ?? 'Could not save your answer')
       else setDone(OUTCOME[body?.status] ?? OUTCOME.PENDING)
+    } catch {
+      setError('Could not reach Compass. Check your connection and try again.')
     } finally {
       setBusy(false)
     }
@@ -49,8 +51,8 @@ export function PeerApproval({ token }: { token: string }) {
               {view.requester.name} asked to {view.action === 'ADD' ? 'add' : 'remove'} {view.role === 'PEER' ? 'you' : view.peer.name} {view.action === 'ADD' ? 'as a peer' : 'from their peers'} for {view.periodName}.
             </p>
             {view.reason && <p className="rounded-md bg-muted p-3 text-sm">“{view.reason}”</p>}
-            {done ? <p className="text-sm font-medium">{done}</p> : answered ? (
-              <p className="text-sm text-muted-foreground">This request has already been answered.</p>
+            {done ? <p className="text-sm font-medium">{done}</p> : answered || error ? (
+              error ? null : <p className="text-sm text-muted-foreground">This request has already been answered.</p>
             ) : (
               <div className="flex gap-2">
                 <Button disabled={busy} onClick={() => void decide('APPROVE')}>Approve</Button>

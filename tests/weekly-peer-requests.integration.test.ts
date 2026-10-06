@@ -4,7 +4,7 @@ import { prisma } from '../lib/db'
 import { getResolvedEvaluationAssignments } from '../lib/evaluation-assignments'
 import { WeeklyError } from '../lib/weekly/service/errors'
 import {
-  cancelPeerRequest, decidePeerRequest, myMapping, peerRequestByToken, requestPeerChange, sendMappingEmails, voteOnPeerRequest,
+  cancelPeerRequest, decidePeerRequest, myMapping, peerRequestByToken, requestPeerChange, resendPeerRequestLinks, sendMappingEmails, voteOnPeerRequest,
 } from '../lib/weekly/service/peer-requests'
 import { at, HR_ACTOR, startedCycle } from './helpers/weekly-fixtures'
 import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST, weeklyActor } from './helpers/weekly-test-db'
@@ -120,4 +120,40 @@ test('HR emails everyone their mapping for the quarter, with a link to request p
   const toAna = mail.sent.find((m) => m.to === email(W.ana.id))!
   assert.match(toAna.html, new RegExp(W.lead.name))
   assert.match(toAna.html, new RegExp(W.ben.name))
+})
+
+test('an approval link stops working once HR locks the quarter', WEEKLY_DB_TEST, async () => {
+  const mail = mailbox()
+  await requestPeerChange(ana, { peerId: W.ben.id, action: 'REMOVE' }, at(1), mail.send, APP)
+  await prisma.evaluationPeriod.update({ where: { id: periodId }, data: { isLocked: true } })
+  await assert.rejects(voteOnPeerRequest(tokenFor(mail, email(W.ben.id)), 'APPROVE', at(2), mailbox().send, APP), /locked/)
+})
+
+test('two approvals at the same moment both succeed and the change is made once', WEEKLY_DB_TEST, async () => {
+  const mail = mailbox()
+  await requestPeerChange(ana, { peerId: W.ben.id, action: 'REMOVE' }, at(1), mail.send, APP)
+  const votes = await Promise.all([
+    voteOnPeerRequest(tokenFor(mail, email(W.ben.id)), 'APPROVE', at(1, 2), mailbox().send, APP),
+    voteOnPeerRequest(tokenFor(mail, email(W.lead.id)), 'APPROVE', at(1, 2), mailbox().send, APP),
+  ])
+  assert.ok(votes.some((v) => v.status === 'APPROVED'))
+  assert.deepEqual(await peerPairs(), [])
+  assert.equal(await prisma.evaluationPeriodAssignmentOverride.count(), 2)
+})
+
+test('HR can send fresh approval links; the old ones stop working', WEEKLY_DB_TEST, async () => {
+  const first = mailbox()
+  const request = await requestPeerChange(ana, { peerId: W.ben.id, action: 'REMOVE' }, at(1), first.send, APP)
+  const again = mailbox()
+  await assert.rejects(resendPeerRequestLinks(ana, request.id, at(2), again.send, APP), isStatus(403))
+  await resendPeerRequestLinks(HR_ACTOR, request.id, at(2), again.send, APP)
+  assert.deepEqual(again.sent.map((m) => m.to).sort(), [email(W.ben.id), email(W.lead.id)].sort())
+  await assert.rejects(peerRequestByToken(tokenFor(first, email(W.ben.id))), isStatus(404))
+  assert.equal((await peerRequestByToken(tokenFor(again, email(W.ben.id)))).status, 'PENDING')
+})
+
+test('the people offered as a new peer leave out the lead, the team and anyone already asked about', WEEKLY_DB_TEST, async () => {
+  await requestPeerChange(ana, { peerId: W.cara.id, action: 'ADD' }, at(1), mailbox().send, APP)
+  const ids = (await myMapping(ana, at(1))).candidates.map((c) => c.id)
+  assert.ok(!ids.includes(W.lead.id) && !ids.includes(W.ben.id) && !ids.includes(W.cara.id) && !ids.includes(W.ana.id))
 })

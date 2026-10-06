@@ -36,11 +36,20 @@ export function PeerRequestsAdminCard() {
     }
   }
 
+  async function resend(requestId: string) {
+    try {
+      const r = await weeklyRequest<{ sent: number; recorded: number }>('/api/admin/weekly/peer-requests', { method: 'POST', body: { requestId, action: 'resend' } })
+      toast.success(r.sent > 0 ? 'New links sent' : 'New links recorded (emails are off here)')
+    } catch (e) {
+      toast.error(errorMessage(e, 'Could not resend the links'))
+    }
+  }
+
   async function emailMappings() {
     setBusy(true)
     try {
       const r = await weeklyRequest<{ sent: number; recorded: number; skipped: number }>('/api/admin/weekly/mapping-emails', { method: 'POST' })
-      toast.success(r.sent > 0 ? `${r.sent} emails sent` : `${r.recorded} emails recorded (emails are off here)`)
+      toast.success(r.sent > 0 ? `${r.sent} emails sent` : r.recorded > 0 ? `${r.recorded} emails recorded (emails are off here)` : 'Everyone was already emailed today')
     } catch (e) {
       toast.error(errorMessage(e, 'Could not send the emails'))
     } finally {
@@ -74,6 +83,7 @@ export function PeerRequestsAdminCard() {
                   <span className="flex gap-2">
                     <Button size="sm" onClick={() => void decide(r.id, 'APPROVE')}>Approve</Button>
                     <Button size="sm" variant="outline" onClick={() => void decide(r.id, 'REJECT')}>Reject</Button>
+                    <Button size="sm" variant="ghost" onClick={() => void resend(r.id)}>Resend links</Button>
                   </span>
                 ) : <Badge variant={r.status === 'APPROVED' ? 'default' : 'outline'}>{r.status.toLowerCase()}</Badge>}
               </li>

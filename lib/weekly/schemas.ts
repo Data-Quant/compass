@@ -99,7 +99,26 @@ export const pairWindowSchema = z.object({
 export const peerRequestSchema = z.object({ peerId: z.string().min(1), action: z.enum(['ADD', 'REMOVE']), reason: z.string().trim().max(500).optional() }).strict()
 export const cancelPeerRequestSchema = z.object({ requestId: z.string().min(1) }).strict()
 export const peerVoteSchema = z.object({ decision: z.enum(['APPROVE', 'REJECT']) }).strict()
-export const peerDecisionSchema = z.object({ requestId: z.string().min(1), decision: z.enum(['APPROVE', 'REJECT']) }).strict()
+export const peerDecisionSchema = z.union([
+  z.object({ requestId: z.string().min(1), decision: z.enum(['APPROVE', 'REJECT']) }).strict(),
+  z.object({ requestId: z.string().min(1), action: z.literal('resend') }).strict(),
+])
+const surveyText = z.string().trim().max(2000).nullable().optional()
+export const surveySubmitSchema = z.object({
+  anonymous: z.boolean(),
+  answers: z.array(z.object({ questionId: z.string().min(1), value: z.number().int().min(0).max(10).nullable().optional(), choice: z.string().max(200).nullable().optional(), text: surveyText }).strict()).min(1).max(30),
+}).strict()
+export const surveyAdminSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('load-default'), periodId: z.string().min(1) }).strict(),
+  z.object({
+    action: z.literal('add'), periodId: z.string().min(1),
+    question: z.object({
+      text: z.string().trim().min(5, 'Write the question').max(500), kind: z.enum(['NPS', 'AGREE', 'CHOICE', 'TEXT']),
+      options: z.array(z.string().trim().min(1).max(200)).max(12).optional(), required: z.boolean().optional(), explainChoice: z.boolean().optional(),
+    }).strict(),
+  }).strict(),
+  z.object({ action: z.literal('remove'), questionId: z.string().min(1) }).strict(),
+])
 export const formQuerySchema = z.object({ relationshipType: formRelationshipTypeSchema, evaluateeId: z.string().min(1) })
 
 export const closeActionSchema = z.discriminatedUnion('action', [
