@@ -15,14 +15,14 @@ import { CyclePicker, useCycles } from './PeopleTab'
 const KIND_LABELS: Record<SurveyKindValue, string> = { NPS: '0 to 10', AGREE: 'Agree scale', CHOICE: 'Multiple choice', TEXT: 'Written answer' }
 const AGREE = ['Strongly disagree', 'Disagree', 'Neutral', 'Agree', 'Strongly agree']
 
-function ResultCard({ q }: { q: SurveyQuestionResult }) {
+function ResultCard({ q, position }: { q: SurveyQuestionResult; position: number }) {
   const max = Math.max(1, ...Object.values(q.counts))
   const label = (key: string) => (q.kind === 'AGREE' ? AGREE[Number(key) - 1] : key)
   return (
     <Card>
       <CardContent className="space-y-3 p-4">
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <p className="font-medium">{q.orderIndex + 1}. {q.text}{q.removed && <span className="text-xs text-muted-foreground"> (removed)</span>}</p>
+          <p className="font-medium">{position}. {q.text}{q.removed && <span className="text-xs text-muted-foreground"> (removed)</span>}</p>
           <p className="text-sm text-muted-foreground">
             {q.responses} {q.responses === 1 ? 'answer' : 'answers'}
             {q.enps !== null && ` · eNPS ${q.enps > 0 ? '+' : ''}${q.enps}`}
@@ -47,7 +47,7 @@ function ResultCard({ q }: { q: SurveyQuestionResult }) {
               {q.comments.map((c, i) => (
                 <li key={i} className="rounded-md border p-2">
                   <p className="whitespace-pre-wrap">{c.text}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{c.name ?? 'Anonymous'} · week {c.week}{c.choice ? ` · ${c.choice}` : ''}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{c.name ?? 'Anonymous'}{c.choice ? ` · ${c.choice}` : ''}</p>
                 </li>
               ))}
             </ul>
@@ -68,6 +68,8 @@ export function SurveyTab() {
 
   const load = useCallback(async () => {
     if (!periodId) return
+    setBank(null)
+    setResults(null)
     try {
       const data = await weeklyRequest<{ bank: SurveyQuestionView[]; results: SurveyResultsResponse }>(`/api/admin/weekly/survey?periodId=${periodId}`)
       setBank(data.bank)
@@ -80,13 +82,15 @@ export function SurveyTab() {
     void load()
   }, [load])
 
-  async function act(body: Record<string, unknown>, done: string) {
+  async function act(body: Record<string, unknown>, done: string): Promise<boolean> {
     try {
       await weeklyRequest('/api/admin/weekly/survey', { method: 'POST', body })
       toast.success(done)
       await load()
+      return true
     } catch (e) {
       toast.error(errorMessage(e, 'Could not save'))
+      return false
     }
   }
 
@@ -98,10 +102,11 @@ export function SurveyTab() {
       {bank && bank.length === 0 && (
         <Button onClick={() => void act({ action: 'load-default', periodId }, 'The standard 12 questions are loaded')}>Load the standard 12 questions</Button>
       )}
-      {bank && bank.length > 0 && (
+      {bank && (
         <Card>
           <CardContent className="space-y-3 p-4">
             <p className="font-semibold">Question bank</p>
+            {bank.length === 0 && <p className="text-sm text-muted-foreground">No questions yet. Load the standard twelve, or add your own.</p>}
             <ol className="divide-y">
               {bank.map((q, i) => (
                 <li key={q.id} className="flex items-start justify-between gap-2 py-2 text-sm">
@@ -124,7 +129,7 @@ export function SurveyTab() {
                 onClick={() => void act({
                   action: 'add', periodId,
                   question: { text: draft.text, kind: draft.kind, ...(draft.kind === 'CHOICE' ? { options: draft.options.split('\n').map((o) => o.trim()).filter(Boolean) } : {}) },
-                }, 'Question added').then(() => setDraft({ text: '', kind: 'AGREE', options: '' }))}
+                }, 'Question added').then((ok) => ok && setDraft({ text: '', kind: 'AGREE', options: '' }))}
               >Add</Button>
             </div>
             {draft.kind === 'CHOICE' && (
@@ -136,7 +141,7 @@ export function SurveyTab() {
       {results && results.questions.some((q) => q.responses > 0) && (
         <div className="space-y-3">
           <p className="font-semibold">Results</p>
-          {results.questions.map((q) => <ResultCard key={q.id} q={q} />)}
+          {results.questions.map((q, i) => <ResultCard key={q.id} q={q} position={i + 1} />)}
         </div>
       )}
     </div>

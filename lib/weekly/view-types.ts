@@ -424,6 +424,6 @@ export interface SurveyQuestionResult {
   enps: number | null
   average: number | null
   /** name is null for anonymous answers. */
-  comments: Array<{ text: string; choice: string | null; name: string | null; week: number }>
+  comments: Array<{ text: string; choice: string | null; name: string | null }>
 }
 export interface SurveyResultsResponse { questions: SurveyQuestionResult[] }

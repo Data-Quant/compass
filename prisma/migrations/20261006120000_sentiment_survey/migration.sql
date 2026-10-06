@@ -5,6 +5,7 @@ CREATE TABLE "SurveyQuestion" (
     "id" TEXT NOT NULL,
     "periodId" TEXT NOT NULL,
     "orderIndex" INTEGER NOT NULL,
+    "dueWeek" INTEGER NOT NULL,
     "text" TEXT NOT NULL,
     "kind" "SurveyQuestionKind" NOT NULL,
     "options" TEXT[] DEFAULT ARRAY[]::TEXT[],
@@ -26,7 +27,6 @@ CREATE TABLE "SurveyResponse" (
     "value" INTEGER,
     "choice" TEXT,
     "text" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "SurveyResponse_pkey" PRIMARY KEY ("id")
 );
 CREATE INDEX "SurveyResponse_periodId_questionId_idx" ON "SurveyResponse"("periodId", "questionId");
@@ -36,7 +36,7 @@ CREATE TABLE "SurveyCompletion" (
     "periodId" TEXT NOT NULL,
     "questionId" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
-    "answeredAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "weekIndex" INTEGER NOT NULL,
     CONSTRAINT "SurveyCompletion_pkey" PRIMARY KEY ("id")
 );
 CREATE UNIQUE INDEX "SurveyCompletion_periodId_questionId_userId_key" ON "SurveyCompletion"("periodId", "questionId", "userId");

@@ -2787,6 +2787,8 @@ model SurveyQuestion {
   id            String             @id @default(cuid())
   periodId      String
   orderIndex    Int
+  /// The question week it is first asked in, fixed when it is created.
+  dueWeek       Int
   text          String
   kind          SurveyQuestionKind
   options       String[]           @default([])
@@ -2800,9 +2802,10 @@ model SurveyQuestion {
   @@index([periodId])
 }
 
-/// One answer. userId is null when the person ticked anonymous that week: nothing links the answer to them.
+/// One answer. userId is null when the person ticked anonymous that week: nothing links the answer to them, so it
+/// has a random id and no timestamp.
 model SurveyResponse {
-  id         String   @id @default(cuid())
+  id         String   @id @default(uuid())
   periodId   String
   questionId String
   weekIndex  Int
@@ -2810,7 +2813,6 @@ model SurveyResponse {
   value      Int?
   choice     String?
   text       String?
-  createdAt  DateTime @default(now())
 
   @@index([periodId, questionId])
 }
@@ -2821,7 +2823,8 @@ model SurveyCompletion {
   periodId   String
   questionId String
   userId     String
-  answeredAt DateTime @default(now())
+  /// The week only: an exact time could be matched against an anonymous answer.
+  weekIndex  Int
 
   @@unique([periodId, questionId, userId])
 }

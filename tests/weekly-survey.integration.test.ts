@@ -35,7 +35,7 @@ test('HR loads the standard twelve questions for the quarter, and can add and re
   assert.equal(bank[0].text, 'How likely are you to recommend Plutus 21 as a place to work to a friend?')
   assert.equal(bank[11].required, false)
   await assert.rejects(loadDefaultSurvey(HR_ACTOR, periodId), /already has questions/)
-  await addSurveyQuestion(HR_ACTOR, periodId, { text: 'I have the tools I need to do my job well.', kind: 'AGREE' })
+  await addSurveyQuestion(HR_ACTOR, periodId, { text: 'I have the tools I need to do my job well.', kind: 'AGREE' }, at(1))
   await removeSurveyQuestion(HR_ACTOR, bank[3].id)
   bank = await surveyBank(HR_ACTOR, periodId)
   assert.equal(bank.length, 12)
@@ -89,4 +89,35 @@ test('anonymous answers are stored without a name, and HR sees counts, eNPS and 
   const happyResult = results.questions.find((q) => q.id === happy.id)!
   assert.deepEqual(happyResult.comments.map((c) => [c.text, c.name]), [['Workload', null]])
   assert.deepEqual(happyResult.counts, { '1': 1, '2': 0, '3': 0, '4': 0, '5': 1 })
+})
+
+test('nothing stored can tie an anonymous answer to its author: no answer times, random ids, completions by week only', WEEKLY_DB_TEST, async () => {
+  await loadDefaultSurvey(HR_ACTOR, periodId)
+  const [nps] = (await mySurvey(ana, at(1))).questions
+  await submitSurvey(ana, { anonymous: true, answers: [{ questionId: nps.id, value: 8, text: 'Fine' }] }, at(1, 3))
+  const response = await prisma.surveyResponse.findFirstOrThrow({ where: { questionId: nps.id } })
+  assert.ok(!('createdAt' in response), 'answers carry no timestamp')
+  assert.match(response.id, /^[0-9a-f-]{36}$/, 'a random id, not a time-ordered one')
+  const completion = await prisma.surveyCompletion.findFirstOrThrow({ where: { questionId: nps.id } })
+  assert.ok(!('answeredAt' in completion))
+  assert.equal(completion.weekIndex, 1)
+  const comment = (await surveyResults(HR_ACTOR, periodId)).questions.find((q) => q.id === nps.id)!.comments[0]
+  assert.deepEqual(Object.keys(comment).sort(), ['choice', 'name', 'text'])
+})
+
+test('each question keeps the week it was scheduled for: adding one later does not pull others forward', WEEKLY_DB_TEST, async () => {
+  await loadDefaultSurvey(HR_ACTOR, periodId)
+  await addSurveyQuestion(HR_ACTOR, periodId, { text: 'I have the tools I need to do my job well.', kind: 'AGREE' }, at(3))
+  const due = (await mySurvey(ben, at(3))).questions
+  // Two a week over three weeks, plus the new question, due from the week it was added.
+  assert.equal(due.length, 7)
+  assert.equal(due.at(-1)?.text, 'I have the tools I need to do my job well.')
+})
+
+test('a blank optional answer is not counted as an answer', WEEKLY_DB_TEST, async () => {
+  await loadDefaultSurvey(HR_ACTOR, periodId)
+  const ideas = (await mySurvey(ana, at(11))).questions.find((q) => q.orderIndex === 11)!
+  await submitSurvey(ana, { anonymous: false, answers: [{ questionId: ideas.id, text: '' }] }, at(11))
+  assert.equal((await surveyResults(HR_ACTOR, periodId)).questions.find((q) => q.id === ideas.id)!.responses, 0)
+  assert.ok(!(await mySurvey(ana, at(11))).questions.some((q) => q.id === ideas.id), 'and it is no longer asked')
 })

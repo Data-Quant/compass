@@ -29,10 +29,10 @@ export async function POST(request: NextRequest) {
     const input = surveyAdminSchema.parse(await request.json())
     switch (input.action) {
       case 'load-default':
-        await loadDefaultSurvey(actor, input.periodId)
+        await loadDefaultSurvey(actor, input.periodId, new Date())
         break
       case 'add':
-        await addSurveyQuestion(actor, input.periodId, input.question)
+        await addSurveyQuestion(actor, input.periodId, input.question, new Date())
         break
       case 'remove':
         await removeSurveyQuestion(actor, input.questionId)

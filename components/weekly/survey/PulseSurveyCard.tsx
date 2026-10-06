@@ -44,7 +44,7 @@ function QuestionField({ q, answer, onChange }: { q: SurveyQuestionView; answer:
       {q.kind === 'AGREE' && (
         <div className="flex flex-wrap gap-1" role="radiogroup" aria-label={q.text}>
           {AGREE.map((label, i) => (
-            <button key={label} type="button" role="radio" aria-checked={answer?.value === i + 1} className={choiceClass(answer?.value === i + 1)} onClick={() => set({ value: i + 1 })}>{label}</button>
+            <button key={label} type="button" role="radio" aria-checked={answer?.value === i + 1} className={choiceClass(answer?.value === i + 1)} onClick={() => set({ value: i + 1, ...(i + 1 > 2 ? { text: undefined } : {}) })}>{label}</button>
           ))}
         </div>
       )}
@@ -52,7 +52,7 @@ function QuestionField({ q, answer, onChange }: { q: SurveyQuestionView; answer:
         <div className="flex flex-col gap-1" role="radiogroup" aria-label={q.text}>
           {q.options.map((option) => (
             <div key={option} className="space-y-1">
-              <button type="button" role="radio" aria-checked={answer?.choice === option} className={`${choiceClass(answer?.choice === option)} w-full text-left`} onClick={() => set({ choice: option })}>{option}</button>
+              <button type="button" role="radio" aria-checked={answer?.choice === option} className={`${choiceClass(answer?.choice === option)} w-full text-left`} onClick={() => set({ choice: option, ...(answer?.choice !== option ? { text: undefined } : {}) })}>{option}</button>
               {q.explainChoice && answer?.choice === option && (
                 <Textarea rows={2} maxLength={2000} aria-label={`Why ${option}, and how could it be improved?`} placeholder="Why, and how could it be improved?" value={answer.text ?? ''} onChange={(e) => set({ text: e.target.value })} />
               )}
