@@ -4,7 +4,14 @@ import { prisma } from '../lib/db'
 import { WeeklyError } from '../lib/weekly/service/errors'
 import { formsProgress, formTables, saveTableRow } from '../lib/weekly/service/form-tables'
 import { formsView } from '../lib/weekly/service/forms'
+import { fakeModel } from '../lib/weekly/ai/model'
+import { aggregateCycle } from '../lib/weekly/service/aggregate'
+import { loadAnswerRecords } from '../lib/weekly/service/answer-states'
+import { loadCycle } from '../lib/weekly/service/cycles'
+import { decideAnswer } from '../lib/weekly/service/decisions'
+import { submitAnswer } from '../lib/weekly/service/inbox'
 import { releaseWeek } from '../lib/weekly/service/release'
+import { runScoring } from '../lib/weekly/service/scoring'
 import { F, seedFormFixtures } from './helpers/weekly-form-fixtures'
 import { at, HR_ACTOR, startedCycle } from './helpers/weekly-fixtures'
 import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST, weeklyActor } from './helpers/weekly-test-db'
@@ -103,4 +110,66 @@ test('a partner with unfinished evaluations makes HR, not the partner, the one r
   const { pendingEvaluatorIds } = await formsProgress(periodId)
   assert.ok(!pendingEvaluatorIds.includes(F.chief.id))
   assert.ok(pendingEvaluatorIds.includes(W.hr.id) && pendingEvaluatorIds.includes(F.hr2.id))
+})
+
+test('a partner’s weekly answers from before they were HR-filled are left out of the close, so HR’s rows are the record', WEEKLY_DB_TEST, async () => {
+  await prisma.evaluatorMapping.create({ data: { evaluatorId: F.chief.id, evaluateeId: W.lead.id, relationshipType: 'TEAM_LEAD' } })
+  await releaseWeek(cycleId, 1, at(1))
+  const prompt = await prisma.weeklyPrompt.findFirstOrThrow({ where: { evaluatorId: F.chief.id } })
+  const fields = { situation: 'The client moved the launch forward a week', action: 'They rebuilt the plan the same afternoon', result: 'We delivered on time with no rework' }
+  await submitAnswer(weeklyActor(F.chief), { evaluatorId: F.chief.id, actingAs: false }, prompt.id, fields, at(1, 2))
+  await runScoring({ model: fakeModel(), budgetMs: 30_000, clock: () => at(1, 3) })
+  const response = await prisma.weeklyResponse.findUniqueOrThrow({ where: { promptId: prompt.id } })
+  const [record] = await loadAnswerRecords({ responseIds: [response.id] })
+  await decideAnswer(HR_ACTOR, response.id, { action: 'SET_SCORE', score: 3, reason: 'Seen it', basedOn: { aiScoreId: record.aiScore?.id ?? null, reviewId: null } }, at(1, 4))
+
+  process.env.WEEKLY_HR_FILLED_PARTNERS = F.chief.name
+  const table = (await formTables(HR_ACTOR, 'PARTNER', at(12))).tables.find((t) => t.relationshipType === 'TEAM_LEAD')!
+  await saveTableRow(HR_ACTOR, {
+    kind: 'PARTNER', evaluatorId: F.chief.id, relationshipType: 'TEAM_LEAD', evaluateeId: W.lead.id, submit: true,
+    ratings: table.questions.map((q) => ({ questionId: q.id, questionSource: q.source, ratingValue: 3 })),
+  }, at(12))
+  const cycle = await loadCycle(cycleId)
+  await prisma.$transaction((tx) => aggregateCycle(tx, cycle, { runById: W.hr.id, now: at(13), drops: [] }), { timeout: 60_000 })
+  assert.equal(await prisma.evaluation.count({ where: { evaluatorId: F.chief.id, source: 'AI_WEEKLY' } }), 0)
+})
+
+test('partner tables leave out people the quarter does not evaluate, and refuse rows for them', WEEKLY_DB_TEST, async () => {
+  process.env.WEEKLY_HR_FILLED_PARTNERS = F.chief.name
+  await prisma.payrollEmployeeProfile.create({ data: { userId: W.ben.id, isPayrollActive: false } })
+  const cLevel = (await formTables(HR_ACTOR, 'PARTNER', at(12))).tables.find((t) => t.relationshipType === 'C_LEVEL')!
+  assert.deepEqual(cLevel.rows.map((r) => r.evaluateeId), [W.ana.id])
+  await assert.rejects(saveTableRow(HR_ACTOR, {
+    kind: 'PARTNER', evaluatorId: F.chief.id, relationshipType: 'C_LEVEL', evaluateeId: W.ben.id, submit: false,
+    ratings: [{ questionId: cLevel.questions[0].id, questionSource: 'GLOBAL', ratingValue: 2 }],
+  }, at(12)), isStatus(404))
+})
+
+test('a partner’s lead table includes the lead questions they set in pre-evaluation, like every other lead', WEEKLY_DB_TEST, async () => {
+  process.env.WEEKLY_HR_FILLED_PARTNERS = F.chief.name
+  await prisma.evaluatorMapping.create({ data: { evaluatorId: F.chief.id, evaluateeId: W.lead.id, relationshipType: 'TEAM_LEAD' } })
+  await prisma.preEvaluationLeadPrep.create({
+    data: {
+      periodId, leadId: F.chief.id, questionsSubmittedAt: at(1),
+      questions: { create: [{ orderIndex: 0, questionText: 'Grows the client book' }, { orderIndex: 1, questionText: 'Coaches the analysts' }] },
+    },
+  })
+  const table = (await formTables(HR_ACTOR, 'PARTNER', at(12))).tables.find((t) => t.relationshipType === 'TEAM_LEAD')!
+  assert.deepEqual(table.questions.filter((q) => q.source === 'LEAD').map((q) => q.text), ['Grows the client book', 'Coaches the analysts'])
+  await saveTableRow(HR_ACTOR, {
+    kind: 'PARTNER', evaluatorId: F.chief.id, relationshipType: 'TEAM_LEAD', evaluateeId: W.lead.id, submit: true,
+    ratings: table.questions.map((q) => ({ questionId: q.id, questionSource: q.source, ratingValue: 2 })),
+  }, at(12))
+  assert.equal(await prisma.evaluation.count({ where: { evaluatorId: F.chief.id, evaluateeId: W.lead.id, leadQuestionId: { not: null }, submittedAt: { not: null } } }), 2)
+})
+
+test('a draft save never un-submits a row, and a locked quarter says so', WEEKLY_DB_TEST, async () => {
+  const [q1, q2] = await ids('HR')
+  const row = { kind: 'HR' as const, evaluatorId: W.hr.id, relationshipType: 'HR' as const, evaluateeId: W.ana.id }
+  const ratings = [{ questionId: q1, questionSource: 'GLOBAL' as const, ratingValue: 3 }, { questionId: q2, questionSource: 'GLOBAL' as const, ratingValue: 3 }]
+  await saveTableRow(HR_ACTOR, { ...row, ratings, submit: true }, at(12))
+  await assert.rejects(saveTableRow(HR_ACTOR, { ...row, ratings, submit: false }, at(12)), isStatus(409))
+  assert.ok((await prisma.evaluation.findMany({ where: { evaluateeId: W.ana.id, questionId: { in: [q1, q2] } } })).every((e) => e.submittedAt !== null))
+  await prisma.evaluationPeriod.update({ where: { id: periodId }, data: { isLocked: true } })
+  assert.equal((await formTables(HR_ACTOR, 'HR', at(12))).locked, true)
 })

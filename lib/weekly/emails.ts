@@ -71,10 +71,10 @@ export function renderChallengeResolvedEmail(input: { name: string; periodName: 
   }
 }
 
-export function renderFormsOpenEmail(input: { name: string; appUrl: string }): { subject: string; html: string } {
+export function renderFormsOpenEmail(input: { name: string; appUrl: string; path?: string }): { subject: string; html: string } {
   return {
     subject: 'End-of-quarter evaluation forms are open',
-    html: layout(input.name, [escapeHtml('Your end-of-quarter evaluation forms (C-Level, Department or HR) are open. Please complete them before the quarter closes.')], `${base(input.appUrl)}/evaluations/weekly`, 'Open the forms'),
+    html: layout(input.name, [escapeHtml('Your end-of-quarter evaluation forms (C-Level, Department or HR) are open. Please complete them before the quarter closes.')], `${base(input.appUrl)}${input.path ?? '/evaluations/weekly'}`, 'Open the forms'),
   }
 }
 

@@ -34,14 +34,15 @@ function TablesPanel({ kind }: { kind: FormTableKind }) {
   }
   return (
     <div className="space-y-6">
-      {!data.open && data.opensAt && <p className="text-sm text-muted-foreground">These open on {formatKarachiDate(data.opensAt)}. Until then you can look but not score.</p>}
+      {data.locked && <p className="text-sm text-muted-foreground">This quarter is locked, so these evaluations can no longer change.</p>}
+      {!data.locked && !data.open && data.opensAt && <p className="text-sm text-muted-foreground">These open on {formatKarachiDate(data.opensAt)}. Until then you can look but not score.</p>}
       {data.tables.map((table) => (
         <Card key={`${table.evaluator.id}-${table.relationshipType}`}>
           <CardContent className="space-y-3 p-4">
             <h2 className="font-semibold">
               {kind === 'HR' ? 'HR evaluation' : `${table.evaluator.name} · ${RELATIONSHIP_LABELS[table.relationshipType]}`}
             </h2>
-            <FormTable kind={kind} table={table} editable={data.open} />
+            <FormTable kind={kind} table={table} editable={data.open && !data.locked} />
           </CardContent>
         </Card>
       ))}

@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client'
+import { isHrFilledPartner } from '../partners'
 import { buildAggregateRows, type AggregationCounts, type CommentAnswer, type ConfirmedScore } from '../aggregation'
 import type { Perspective } from '../perspectives'
 import { isConfirmedAction } from '../reviews'
@@ -43,11 +44,13 @@ export async function aggregateCycle(
   const comments: CommentAnswer[] = commentPrompts.flatMap((p) =>
     p.questionId && p.response?.commentText ? [{ evaluatorId: p.evaluatorId, evaluateeId: p.evaluateeId, questionId: p.questionId, text: p.response.commentText }] : [],
   )
-  const people = await loadPeople([...scores, ...comments].map((x) => x.evaluateeId), tx)
+  const people = await loadPeople([...scores, ...comments].flatMap((x) => [x.evaluateeId, x.evaluatorId]), tx)
+  // HR fills in partners' evaluations at the end of the quarter; weekly answers they gave earlier are not counted twice.
+  const fromPartners = (x: { evaluatorId: string }) => isHrFilledPartner(people.get(x.evaluatorId)?.name)
   // Spec 10: people who left before the close get no rows. A challenge re-aggregates after the close, so it uses the close's date.
   const leaverCutoff = cycle.closedAt ?? input.now
   const left = new Set([...people.values()].filter((p) => hasLeftBy(p, leaverCutoff)).map((p) => p.id))
-  const { rows, counts } = buildAggregateRows({ scores, comments, excludedEvaluateeIds: left })
+  const { rows, counts } = buildAggregateRows({ scores: scores.filter((s) => !fromPartners(s)), comments: comments.filter((c) => !fromPartners(c)), excludedEvaluateeIds: left })
   const run = await tx.weeklyAggregationRun.create({ data: { cycleId: cycle.id, runById: input.runById, counts: toJson(counts), drops: toJson(input.drops) } })
   await tx.evaluation.deleteMany({ where: { periodId: cycle.periodId, source: 'AI_WEEKLY', ...(scope ? { evaluateeId: { in: [...scope] } } : {}) } })
   if (rows.length > 0) {

@@ -88,7 +88,7 @@ export const formTableRowSchema = z.object({
   evaluatorId: z.string().min(1),
   relationshipType: z.enum(['C_LEVEL', 'DEPT', 'HR', 'TEAM_LEAD', 'DIRECT_REPORT', 'PEER', 'CROSS_DEPARTMENT']),
   evaluateeId: z.string().min(1),
-  ratings: z.array(z.object({ questionId: z.string().min(1), ratingValue: z.number().int().min(1).max(4).nullable() }).strict()).max(50),
+  ratings: z.array(z.object({ questionId: z.string().min(1), questionSource: z.enum(['GLOBAL', 'LEAD']).default('GLOBAL'), ratingValue: z.number().int().min(1).max(4).nullable() }).strict()).max(50),
   submit: z.boolean(),
 }).strict()
 export const formQuerySchema = z.object({ relationshipType: formRelationshipTypeSchema, evaluateeId: z.string().min(1) })

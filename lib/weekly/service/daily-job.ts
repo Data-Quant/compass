@@ -1,3 +1,4 @@
+import { prisma } from '@/lib/db'
 import type { StructuredModel } from '../ai/model'
 import { cycleWeeks, karachiWeekday, questionWeekCount, weekIndexAt } from '../calendar'
 import { resolveActiveModel } from './ai-settings'
@@ -83,12 +84,14 @@ export async function runWeeklyDailyJob(
   const { accepted } = await autoAcceptDue(clock(), { cycleId: cycle.id })
   const week = weekIndexAt(cycle.weekOneStartsOn, now)
   const total = cycleWeeks(cycle)
-  const { released, emails } = week >= 1 && week <= total ? await releaseAndAnnounce(cycle.id, week, now, send, appUrl) : { released: null, emails: null }
+  // Once HR locks the quarter nothing can be answered, so nothing is released or reminded.
+  const locked = (await prisma.evaluationPeriod.findUnique({ where: { id: cycle.periodId }, select: { isLocked: true } }))?.isLocked ?? false
+  const { released, emails } = !locked && week >= 1 && week <= total ? await releaseAndAnnounce(cycle.id, week, now, send, appUrl) : { released: null, emails: null }
   const scoring = await runScoring({ model, budgetMs: DAILY_SCORING_BUDGET_MS, clock })
   const messages = [
     ...(await scoringFailedMessages(cycle.id, now, appUrl)),
     ...(week === lowEvidenceWeek(total) ? await lowEvidenceMessages(cycle.id, appUrl) : []),
-    ...(formsOpenFor(cycle, now) ? await formsOpenMessages(cycle, now, appUrl) : []),
+    ...(!locked && formsOpenFor(cycle, now) ? await formsOpenMessages(cycle, now, appUrl) : []),
     ...(await lengthBiasMessages(cycle, now, appUrl)),
   ]
   const digests = messages.length > 0 ? await deliverOnce(messages, send) : null

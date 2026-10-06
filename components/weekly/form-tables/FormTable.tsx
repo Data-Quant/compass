@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -22,44 +22,61 @@ const totalOf = (row: FormTableRow) => {
 
 /** One row per person, a 1–4 picker per question, saved as HR goes. A submitted row re-submits on every change. */
 export function FormTable({ kind, table, editable }: FormTableProps) {
-  const [rows, setRows] = useState<FormTableRow[]>(table.rows)
-  const [busy, setBusy] = useState<Set<string>>(new Set())
+  const [rows, setRowsState] = useState<FormTableRow[]>(table.rows)
+  const [busy, setBusyState] = useState<Set<string>>(new Set())
+  // Refs hold the latest rows and in-flight saves, so a long "Submit all" never sends a row's older ratings.
+  const latest = useRef(rows)
+  const inFlight = useRef<Set<string>>(new Set())
   const questionIds = table.questions.map((q) => q.id)
+  const setRows = (update: (current: FormTableRow[]) => FormTableRow[]) => {
+    latest.current = update(latest.current)
+    setRowsState(latest.current)
+  }
+  const setBusy = (id: string, on: boolean) => {
+    if (on) inFlight.current.add(id)
+    else inFlight.current.delete(id)
+    setBusyState(new Set(inFlight.current))
+  }
+  const replace = (row: FormTableRow) => setRows((current) => current.map((r) => (r.evaluateeId === row.evaluateeId ? row : r)))
 
-  async function save(row: FormTableRow, submit: boolean): Promise<boolean> {
-    setBusy((current) => new Set(current).add(row.evaluateeId))
+  /** Saves the row as given; on failure the row goes back to `previous`, so the screen matches what is stored. */
+  async function save(row: FormTableRow, submit: boolean, previous: FormTableRow): Promise<boolean> {
+    setBusy(row.evaluateeId, true)
     try {
       const result = await weeklyRequest<{ status: FormStatusValue }>('/api/admin/weekly/form-tables', {
         method: 'POST',
         body: {
           kind, evaluatorId: table.evaluator.id, relationshipType: table.relationshipType, evaluateeId: row.evaluateeId, submit,
-          ratings: questionIds.map((questionId) => ({ questionId, ratingValue: row.ratings[questionId] })),
+          ratings: table.questions.map((q) => ({ questionId: q.id, questionSource: q.source, ratingValue: row.ratings[q.id] })),
         },
       })
-      setRows((current) => current.map((r) => (r.evaluateeId === row.evaluateeId ? { ...row, status: result.status } : r)))
+      replace({ ...row, status: result.status })
       return true
     } catch (e) {
+      replace(previous)
       toast.error(errorMessage(e, `Could not save ${row.name}`))
       return false
     } finally {
-      setBusy((current) => {
-        const next = new Set(current)
-        next.delete(row.evaluateeId)
-        return next
-      })
+      setBusy(row.evaluateeId, false)
     }
   }
 
   function score(row: FormTableRow, questionId: string, value: string) {
     const next = { ...row, ratings: { ...row.ratings, [questionId]: value ? Number(value) : null } }
-    setRows((current) => current.map((r) => (r.evaluateeId === row.evaluateeId ? next : r)))
-    void save(next, row.status === 'SUBMITTED')
+    replace(next)
+    void save(next, row.status === 'SUBMITTED', row)
   }
 
-  const ready = rows.filter((r) => r.status !== 'SUBMITTED' && r.status !== 'CLOSED_BY_OTHER' && isComplete(r, questionIds))
+  const isReady = (r: FormTableRow) => r.status !== 'SUBMITTED' && r.status !== 'CLOSED_BY_OTHER' && isComplete(r, questionIds)
+  const ready = rows.filter(isReady)
   async function submitAll() {
     let done = 0
-    for (const row of ready) if (await save(row, true)) done += 1
+    for (const id of ready.map((r) => r.evaluateeId)) {
+      // Read the row now, not when the button was pressed; skip one that is still saving.
+      const row = latest.current.find((r) => r.evaluateeId === id)
+      if (!row || inFlight.current.has(id) || !isReady(row)) continue
+      if (await save(row, true, row)) done += 1
+    }
     toast.success(`${done} ${done === 1 ? 'row' : 'rows'} submitted`)
   }
 
@@ -115,7 +132,7 @@ export function FormTable({ kind, table, editable }: FormTableProps) {
                     {row.status === 'SUBMITTED' || row.status === 'CLOSED_BY_OTHER' || !editable ? (
                       <Badge variant={row.status === 'SUBMITTED' ? 'default' : 'outline'}>{STATUS_LABELS[row.status]}</Badge>
                     ) : (
-                      <Button size="sm" variant="outline" disabled={locked || !isComplete(row, questionIds)} onClick={() => void save(row, true)}>Submit</Button>
+                      <Button size="sm" variant="outline" disabled={locked || !isComplete(row, questionIds)} onClick={() => void save(row, true, row)}>Submit</Button>
                     )}
                   </td>
                 </tr>

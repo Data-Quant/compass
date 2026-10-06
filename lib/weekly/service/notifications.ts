@@ -155,10 +155,12 @@ export async function lowEvidenceMessages(cycleId: string, appUrl: string): Prom
 
 /** Once the forms are open, everyone with an unfinished form hears about it once a day until they finish. */
 export async function formsOpenMessages(cycle: CycleWithPeriod, now: Date, appUrl: string): Promise<WeeklyEmailMessage[]> {
-  const { pendingEvaluatorIds } = await formsProgress(cycle.periodId)
+  const { pendingEvaluatorIds } = await formsProgress(cycle.periodId, now)
+  const hr = new Set(await hrUserIds())
   return pendingEvaluatorIds.map((userId) => ({
     userId, kind: 'weekly-forms-open' as const, dedupeKey: weeklyDedupeKey('weekly-forms-open', userId, now),
-    render: (name: string) => renderFormsOpenEmail({ name, appUrl }),
+    // HR's own HR evaluations and the partners' are on the quarter-end page.
+    render: (name: string) => renderFormsOpenEmail({ name, appUrl, path: hr.has(userId) ? '/admin/quarter-evaluations' : '/evaluations/weekly' }),
   }))
 }
 

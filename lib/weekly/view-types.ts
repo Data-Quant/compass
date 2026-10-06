@@ -203,10 +203,11 @@ export interface FormTableRow {
 export interface FormTableView {
   evaluator: PersonRef
   relationshipType: TableRelationshipTypeValue
-  questions: Array<{ id: string; text: string; ratingDescriptions: Record<'1' | '2' | '3' | '4', string | null> }>
+  questions: FormTableQuestion[]
   rows: FormTableRow[]
 }
-export interface FormTablesResponse { cycle: CycleSummary | null; open: boolean; opensAt: string | null; tables: FormTableView[] }
+export interface FormTableQuestion { id: string; source: 'GLOBAL' | 'LEAD'; text: string; ratingDescriptions: Record<'1' | '2' | '3' | '4', string | null> }
+export interface FormTablesResponse { cycle: CycleSummary | null; open: boolean; locked: boolean; opensAt: string | null; tables: FormTableView[] }
 export interface FormDetailResponse extends FormSummaryView { open: boolean; questions: FormQuestionView[]; fourRatings: { max: number; used: number } | null }
 
 export interface DropCandidateView { evaluatee: PersonRef; perspective: Perspective; assignments: number }
