@@ -18,7 +18,11 @@ export interface SchedulablePair {
   hasOpenPrompt: boolean
   /** At least one topic about this person can still be asked (see pickTopic). */
   hasAskableTopic: boolean
+  /** Added mid-quarter: the five questions are spread over these weeks instead of the whole quarter. */
+  window?: PairWindow
 }
+
+export interface PairWindow { startWeek: number; weeks: number }
 
 export interface WeekPlanInput {
   week: number
@@ -30,24 +34,36 @@ export interface WeekPlanInput {
 
 const shuffleKey = (seed: string, week: number, key: string) => stableHash(`${seed}|${week}|${key}`)
 
-/** How many questions this evaluator should have been asked by the end of `week`. */
-function cumulativeTarget(quota: number, week: number, totalWeeks: number): number {
-  const questionWeeks = questionWeekCount(totalWeeks)
-  return week >= questionWeeks ? quota : Math.ceil((quota * week) / questionWeeks)
+const startOf = (p: SchedulablePair) => p.window?.startWeek ?? 1
+
+/** How many questions about this person should have been asked by the end of `week` (a fraction). */
+function pairTarget(p: SchedulablePair, week: number, questionWeeks: number): number {
+  if (week < startOf(p)) return 0
+  if (week >= questionWeeks) return QUESTIONS_PER_PAIR
+  const weeks = Math.max(1, p.window?.weeks ?? questionWeeks)
+  return QUESTIONS_PER_PAIR * Math.min(1, (week - startOf(p) + 1) / weeks)
 }
 
 /** The people this evaluator is asked about this week, as pair keys. */
 export function planWeek(input: WeekPlanInput): string[] {
   if (input.week < 1 || input.week > input.totalWeeks) return []
-  const quota = QUESTIONS_PER_PAIR * input.pairs.length
+  const questionWeeks = questionWeekCount(input.totalWeeks)
+  const target = input.pairs.reduce((sum, p) => sum + pairTarget(p, input.week, questionWeeks), 0)
   const askedSoFar = input.pairs.reduce((sum, p) => sum + Math.min(p.asked, QUESTIONS_PER_PAIR), 0)
-  const due = cumulativeTarget(quota, input.week, input.totalWeeks) - askedSoFar
-  const candidates = input.pairs.filter((p) => p.asked < QUESTIONS_PER_PAIR && !p.hasOpenPrompt && p.hasAskableTopic)
-  const waited = (p: SchedulablePair) => input.week - (p.lastAskedWeek ?? 0)
+  // The small allowance keeps a sum of fractions that should be whole (e.g. 35 * 4 / 12) from rounding up a whole question.
+  const due = Math.ceil(target - 1e-9) - askedSoFar
+  const candidates = input.pairs.filter((p) => input.week >= startOf(p) && p.asked < QUESTIONS_PER_PAIR && !p.hasOpenPrompt && p.hasAskableTopic)
+  const waited = (p: SchedulablePair) => input.week - (p.lastAskedWeek ?? startOf(p) - 1)
   const overdue = candidates.filter((p) => waited(p) >= MAX_WEEKS_WITHOUT_ASKING).length
   const count = Math.min(candidates.length, Math.max(due, overdue))
+  // Anyone at the three-week limit first, then whoever is furthest behind their own pace (someone added mid-quarter
+  // has fewer weeks), then whoever has waited longest, then at random.
+  const isOverdue = (p: SchedulablePair) => Number(waited(p) >= MAX_WEEKS_WITHOUT_ASKING)
+  const behind = (p: SchedulablePair) => Math.ceil(pairTarget(p, input.week, questionWeeks) - 1e-9) - p.asked
   return [...candidates]
-    .sort((a, b) => waited(b) - waited(a) || a.asked - b.asked || shuffleKey(input.seed, input.week, a.key) - shuffleKey(input.seed, input.week, b.key) || a.key.localeCompare(b.key))
+    .sort((a, b) =>
+      isOverdue(b) - isOverdue(a) || behind(b) - behind(a) || waited(b) - waited(a) || a.asked - b.asked ||
+      shuffleKey(input.seed, input.week, a.key) - shuffleKey(input.seed, input.week, b.key) || a.key.localeCompare(b.key))
     .slice(0, count)
     .map((p) => p.key)
 }

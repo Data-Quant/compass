@@ -101,3 +101,17 @@ test('prompt variants rotate: the least-used variant first, A before B', () => {
   assert.equal(nextVariant(variants, ['a', 'b'])?.id, 'a')
   assert.equal(nextVariant([], []), null)
 })
+
+test('someone added mid-quarter gets their five questions over the weeks HR gave them, starting then', () => {
+  // Week 7 of 12: HR added a new team member with 6 weeks left.
+  let state = [...pairs(3).map((p) => ({ ...p, asked: 3, lastAskedWeek: 6 })), pair('new', { window: { startWeek: 7, weeks: 6 } })]
+  assert.deepEqual(planWeek(input([pair('new', { window: { startWeek: 7, weeks: 6 } })], { week: 6 })), [], 'nothing before the start week')
+  const asks: number[] = []
+  for (let week = 7; week <= 12; week += 1) {
+    const chosen = planWeek(input(state, { week }))
+    if (chosen.includes('new')) asks.push(week)
+    state = state.map((p) => (chosen.includes(p.key) ? { ...p, asked: p.asked + 1, lastAskedWeek: week } : p))
+  }
+  assert.equal(asks.length, 5, `asked in weeks ${asks.join(',')}`)
+  assert.ok(asks[0] <= 7 + MAX_WEEKS_WITHOUT_ASKING - 1)
+})

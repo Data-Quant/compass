@@ -1,14 +1,15 @@
 import { prisma } from '@/lib/db'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
-import { cycleWeeks, isCatchUpWeek } from '../calendar'
+import { cycleWeeks, effectiveWeek, isCatchUpWeek } from '../calendar'
 import { evaluateeExclusion, evaluatorExclusion } from '../eligibility'
 import { bankForPerspective, isWeeklyRelationshipType, perspectiveOf, type Perspective, type WeeklyRelationshipType } from '../perspectives'
-import { nextVariant, pickTopic, planWeek, type SchedulableTopic } from '../scheduler'
+import { nextVariant, pickTopic, planWeek, type PairWindow, type SchedulableTopic } from '../scheduler'
 import { ensureLeadCustomCompetencies, loadReadyCompetencies } from './content'
 import { loadPeople } from './context'
 import { loadCycle, type CycleWithPeriod } from './cycles'
 import { isUniqueViolation } from './db'
 import { WeeklyError } from './errors'
+import { defaultWindow, pairWindowKey, pairWindows } from './pair-windows'
 
 export interface LivePair { evaluatorId: string; evaluateeId: string; relationshipType: WeeklyRelationshipType; perspective: Perspective }
 export interface ReleaseSummary { week: number; slotsCreated: number; slotsCancelled: number; evaluatorsReleased: number; promptsCreated: number; commentPrompts: number }
@@ -17,8 +18,11 @@ type SlotKeyed = { evaluatorId: string; evaluateeId: string; relationshipType: s
 const pairKey = (p: { evaluatorId: string; evaluateeId: string; relationshipType: string }) => `${p.evaluatorId}|${p.evaluateeId}|${p.relationshipType}`
 const slotKey = (s: SlotKeyed) => `${pairKey(s)}|${s.competencyId}`
 
-/** Brings slots in line with this week's assignments, eligibility and ready topics. Accepted evidence is never removed. */
-export async function syncSlots(cycle: CycleWithPeriod, now: Date): Promise<{ created: number; cancelled: number; pairs: LivePair[] }> {
+/**
+ * Brings slots in line with this week's assignments, eligibility and ready topics. Accepted evidence is never removed.
+ * A pair that first appears after the quarter's first release gets its own window, from this week to the last question week.
+ */
+export async function syncSlots(cycle: CycleWithPeriod, now: Date, week: number = Math.max(1, effectiveWeek(cycle.weekOneStartsOn, cycle.simulatedWeek, now))): Promise<{ created: number; cancelled: number; pairs: LivePair[] }> {
   await ensureLeadCustomCompetencies(cycle)
   const ready = await loadReadyCompetencies(cycle.id)
   const assignments = (await getResolvedEvaluationAssignments(cycle.periodId)).filter((a) => isWeeklyRelationshipType(a.relationshipType))
@@ -43,6 +47,15 @@ export async function syncSlots(cycle: CycleWithPeriod, now: Date): Promise<{ cr
   const existingKeys = new Set(existing.map(slotKey))
   const desiredKeys = new Set(desired.map(slotKey))
   const toCreate = desired.filter((d) => !existingKeys.has(slotKey(d)))
+  const knownPairs = new Set(existing.map(pairKey))
+  const newPairs = [...new Map(toCreate.filter((d) => !knownPairs.has(pairKey(d))).map((d) => [pairKey(d), d])).values()]
+  if (newPairs.length && (await prisma.weeklyRelease.count({ where: { cycleId: cycle.id, weekIndex: { lt: week } } })) > 0) {
+    const window = defaultWindow(cycle, week)
+    await prisma.weeklyPairWindow.createMany({
+      data: newPairs.map((d) => ({ cycleId: cycle.id, evaluatorId: d.evaluatorId, evaluateeId: d.evaluateeId, relationshipType: d.relationshipType as WeeklyRelationshipType, ...window })),
+      skipDuplicates: true,
+    })
+  }
   if (toCreate.length) {
     await prisma.weeklySlot.createMany({ data: toCreate.map((d) => ({ ...d, relationshipType: d.relationshipType as WeeklyRelationshipType, cycleId: cycle.id })), skipDuplicates: true })
   }
@@ -113,7 +126,10 @@ type PlannedSlot = { id: string; evaluatorId: string; evaluateeId: string; relat
 type AskedPrompt = { slotId: string | null; evaluatorId: string; evaluateeId: string; relationshipType: string; status: string; weekIndex: number }
 
 /** The topics this evaluator is asked about this week, one per chosen person (see the scheduler). */
-export function planEvaluatorWeek(input: { cycleId: string; evaluatorId: string; week: number; totalWeeks: number; slots: readonly PlannedSlot[]; prompts: readonly AskedPrompt[] }): string[] {
+export function planEvaluatorWeek(input: {
+  cycleId: string; evaluatorId: string; week: number; totalWeeks: number; slots: readonly PlannedSlot[]; prompts: readonly AskedPrompt[]
+  windows?: ReadonlyMap<string, PairWindow>
+}): string[] {
   const seed = `${input.cycleId}|${input.evaluatorId}`
   const asked = input.prompts.filter((p) => p.evaluatorId === input.evaluatorId)
   const askedOnSlot = new Map<string, number>()
@@ -130,6 +146,7 @@ export function planEvaluatorWeek(input: { cycleId: string; evaluatorId: string;
       lastAskedWeek: mine.length ? Math.max(...mine.map((p) => p.weekIndex)) : null,
       hasOpenPrompt: mine.some((p) => p.status === 'OPEN' || p.status === 'DRAFT'),
       hasAskableTopic: pickTopic(topicsOf(key), input.week, seed) !== null,
+      window: input.windows?.get(key),
     }
   })
   return planWeek({ week: input.week, totalWeeks: input.totalWeeks, seed, pairs }).flatMap((key) => pickTopic(topicsOf(key), input.week, seed) ?? [])
@@ -140,7 +157,8 @@ export async function releaseWeek(cycleId: string, week: number, now: Date, opti
   if (cycle.status !== 'RUNNING') throw new WeeklyError('Start the cycle before releasing questions', 409)
   const total = cycleWeeks(cycle)
   if (week < 1 || week > total) throw new WeeklyError(`Week ${week} is outside this cycle (weeks 1 to ${total})`, 409)
-  const sync = await syncSlots(cycle, now)
+  const sync = await syncSlots(cycle, now, week)
+  const windows = await pairWindows(cycleId)
   const livePairs = new Set(sync.pairs.map(pairKey))
   const only = options.evaluatorId ? { evaluatorId: options.evaluatorId } : {}
   const slots = (
@@ -155,7 +173,7 @@ export async function releaseWeek(cycleId: string, week: number, now: Date, opti
   let evaluatorsReleased = 0
   let promptsCreated = 0
   for (const evaluatorId of new Set(slots.map((s) => s.evaluatorId))) {
-    const chosen = planEvaluatorWeek({ cycleId, evaluatorId, week, totalWeeks: total, slots, prompts })
+    const chosen = planEvaluatorWeek({ cycleId, evaluatorId, week, totalWeeks: total, slots, prompts, windows })
     const count = await releaseForEvaluator(cycleId, week, evaluatorId, chosen, askedVariants, now)
     if (count === null) continue
     evaluatorsReleased += 1

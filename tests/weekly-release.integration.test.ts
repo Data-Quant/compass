@@ -4,6 +4,7 @@ import { prisma } from '../lib/db'
 import { setOptIn } from '../lib/weekly/service/cycles'
 import { WeeklyError } from '../lib/weekly/service/errors'
 import { submitAnswer } from '../lib/weekly/service/inbox'
+import { pairWindowsView, setPairWindow } from '../lib/weekly/service/pair-windows'
 import { releaseWeek } from '../lib/weekly/service/release'
 import { at, HR_ACTOR, startedCycle } from './helpers/weekly-fixtures'
 import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST, weeklyActor } from './helpers/weekly-test-db'
@@ -119,4 +120,25 @@ test('once answered, the next question about the same person is on a different t
     assert.ok(about.length >= 2, `asked about ${evaluateeId} ${about.length} times by week 6`)
     assert.equal(new Set(about.map((p) => p.slotId)).size, about.length, 'a new topic each time while topics remain')
   }
+})
+
+test('a pair added mid-quarter gets its own window from the week it appears; HR can change its start and length', WEEKLY_DB_TEST, async () => {
+  await releaseWeek(cycleId, 1, at(1))
+  await releaseWeek(cycleId, 2, at(2))
+  await prisma.evaluatorMapping.create({ data: { evaluatorId: W.lead.id, evaluateeId: W.cara.id, relationshipType: 'TEAM_LEAD' } })
+  await releaseWeek(cycleId, 3, at(3))
+  const window = await prisma.weeklyPairWindow.findFirstOrThrow({ where: { cycleId, evaluatorId: W.lead.id, evaluateeId: W.cara.id } })
+  // Week 3 of 11 question weeks leaves 9.
+  assert.deepEqual([window.startWeek, window.weeks], [3, 9])
+  assert.equal(await prisma.weeklyPairWindow.count({ where: { cycleId, evaluateeId: { not: W.cara.id } } }), 0, 'pairs from week 1 have the whole quarter')
+
+  await setPairWindow(HR_ACTOR, cycleId, { evaluatorId: W.lead.id, evaluateeId: W.cara.id, relationshipType: 'TEAM_LEAD', startWeek: 5, weeks: 6 })
+  await prisma.weeklyPrompt.deleteMany({ where: { evaluateeId: W.cara.id } })
+  await prisma.weeklyRelease.deleteMany({ where: { weekIndex: { gte: 3 } } })
+  await releaseWeek(cycleId, 4, at(4))
+  assert.equal(await prisma.weeklyPrompt.count({ where: { evaluateeId: W.cara.id } }), 0, 'not before the start week')
+  await assert.rejects(setPairWindow(HR_ACTOR, cycleId, { evaluatorId: W.lead.id, evaluateeId: W.cara.id, relationshipType: 'TEAM_LEAD', startWeek: 9, weeks: 6 }), /at most 3/)
+  await assert.rejects(setPairWindow(weeklyActor(W.ana), cycleId, { evaluatorId: W.lead.id, evaluateeId: W.cara.id, relationshipType: 'TEAM_LEAD', startWeek: 5, weeks: 2 }), isStatus(403))
+  const view = await pairWindowsView(HR_ACTOR, cycleId)
+  assert.deepEqual(view.map((w) => [w.evaluator.name, w.evaluatee.name, w.startWeek, w.weeks]), [[W.lead.name, W.cara.name, 5, 6]])
 })

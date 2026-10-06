@@ -91,6 +91,11 @@ export const formTableRowSchema = z.object({
   ratings: z.array(z.object({ questionId: z.string().min(1), questionSource: z.enum(['GLOBAL', 'LEAD']).default('GLOBAL'), ratingValue: z.number().int().min(1).max(4).nullable() }).strict()).max(50),
   submit: z.boolean(),
 }).strict()
+export const pairWindowSchema = z.object({
+  cycleId: z.string().min(1), evaluatorId: z.string().min(1), evaluateeId: z.string().min(1),
+  relationshipType: z.enum(['TEAM_LEAD', 'DIRECT_REPORT', 'PEER', 'CROSS_DEPARTMENT']),
+  startWeek: z.number().int().min(1).max(26), weeks: z.number().int().min(1).max(26),
+}).strict()
 export const formQuerySchema = z.object({ relationshipType: formRelationshipTypeSchema, evaluateeId: z.string().min(1) })
 
 export const closeActionSchema = z.discriminatedUnion('action', [

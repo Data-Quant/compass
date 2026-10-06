@@ -369,3 +369,5 @@ export interface PersonScoreView {
   answers: PersonScoreAnswer[]
   people: Array<{ id: string; name: string; position: string | null }>
 }
+
+export interface PairWindowView { evaluator: PersonRef; evaluatee: PersonRef; relationshipType: string; startWeek: number; weeks: number }

@@ -2606,6 +2606,23 @@ model WeeklyParticipantOverride {
   @@unique([cycleId, userId])
 }
 
+/// A pair added after the quarter started: its five questions are spread over these weeks. HR can change them.
+model WeeklyPairWindow {
+  id               String           @id @default(cuid())
+  cycleId          String
+  evaluatorId      String
+  evaluateeId      String
+  relationshipType RelationshipType
+  startWeek        Int
+  weeks            Int
+  setById          String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@unique([cycleId, evaluatorId, evaluateeId, relationshipType])
+  @@index([cycleId])
+}
+
 model WeeklyNotification {
   id        String   @id @default(cuid())
   userId    String

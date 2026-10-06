@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import type { AdminCyclesResponse, CycleSummary, ParticipantRow, ParticipantsResponse } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest } from '../weekly-api'
+import { PairWindowsCard } from './PairWindowsCard'
 
 const EXCLUSION_LABELS: Record<NonNullable<ParticipantRow['exclusion']>, string> = {
   NOT_EVALUATED: 'Not evaluated (named leader or Partner)',
@@ -77,6 +78,7 @@ export function PeopleTab() {
   return (
     <div className="space-y-4">
       <CyclePicker cycles={cycles} cycleId={cycleId} onChange={setCycleId} />
+      {cycleId && <PairWindowsCard key={cycleId} cycleId={cycleId} />}
       <p className="text-sm text-muted-foreground">Everyone someone evaluates this quarter, and whether they get weekly questions about them.</p>
       <div className="overflow-x-auto rounded-md border">
         <table className="w-full text-sm">

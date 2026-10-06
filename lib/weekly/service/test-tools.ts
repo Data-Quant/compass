@@ -74,6 +74,7 @@ export async function resetCycle(actor: WeeklyActor, cycleId: string): Promise<v
     prisma.weeklyResponse.deleteMany({ where: { id: { in: responseIds } } }),
     prisma.weeklyPrompt.deleteMany({ where: { cycleId } }),
     prisma.weeklyRelease.deleteMany({ where: { cycleId } }),
+    prisma.weeklyPairWindow.deleteMany({ where: { cycleId } }),
     prisma.weeklySlot.deleteMany({ where: { cycleId } }),
     prisma.weeklyCycle.update({ where: { id: cycleId }, data: { simulatedWeek: null } }),
   ])

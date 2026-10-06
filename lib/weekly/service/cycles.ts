@@ -136,6 +136,7 @@ export async function deleteCycle(actor: WeeklyActor, cycleId: string): Promise<
   if (cycle.status !== 'SETUP') throw new WeeklyError(NOT_REMOVABLE, 409)
   await prisma.$transaction(async (tx) => {
     await tx.weeklyParticipantOverride.deleteMany({ where: { cycleId: cycle.id } })
+    await tx.weeklyPairWindow.deleteMany({ where: { cycleId: cycle.id } })
     // Guarded on status so a concurrent start wins cleanly.
     const removed = await tx.weeklyCycle.deleteMany({ where: { id: cycle.id, status: 'SETUP' } })
     if (removed.count === 0) throw new WeeklyError(NOT_REMOVABLE, 409)
