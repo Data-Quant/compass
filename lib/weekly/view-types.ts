@@ -407,3 +407,23 @@ export interface PeerRequestTokenView {
   periodName: string
   reason: string | null
 }
+
+export type SurveyKindValue = 'NPS' | 'AGREE' | 'CHOICE' | 'TEXT'
+export interface SurveyQuestionView { id: string; orderIndex: number; text: string; kind: SurveyKindValue; options: string[]; required: boolean; explainChoice: boolean }
+export interface MySurveyResponse { periodName: string | null; week: number | null; questions: SurveyQuestionView[]; notice: string }
+export interface SurveyQuestionResult {
+  id: string
+  orderIndex: number
+  text: string
+  kind: SurveyKindValue
+  removed: boolean
+  responses: number
+  /** Per answer: 0 to 10, 1 to 5 (Strongly disagree to Strongly agree), or each option. */
+  counts: Record<string, number>
+  /** % promoters (9–10) minus % detractors (0–6), for the 0 to 10 question. */
+  enps: number | null
+  average: number | null
+  /** name is null for anonymous answers. */
+  comments: Array<{ text: string; choice: string | null; name: string | null; week: number }>
+}
+export interface SurveyResultsResponse { questions: SurveyQuestionResult[] }

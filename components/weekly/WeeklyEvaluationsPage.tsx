@@ -1,6 +1,7 @@
 'use client'
 
 import { FormsSection } from './forms/FormsSection'
+import { PulseSurveyCard } from './survey/PulseSurveyCard'
 import { WeeklyInbox } from './WeeklyInbox'
 
 export function WeeklyEvaluationsPage() {
@@ -14,6 +15,7 @@ export function WeeklyEvaluationsPage() {
       </div>
       <FormsSection />
       <WeeklyInbox />
+      <PulseSurveyCard />
     </div>
   )
 }

@@ -13,9 +13,10 @@ import { LiveScoresTab } from './LiveScoresTab'
 import { PeopleTab } from './PeopleTab'
 import { ReviewTab } from './ReviewTab'
 import { SetupTab } from './SetupTab'
+import { SurveyTab } from './SurveyTab'
 import { TestToolsTab } from './TestToolsTab'
 
-const TABS = ['setup', 'content', 'people', 'review', 'live', 'dashboard', 'ai', 'close', 'challenges', 'test'] as const
+const TABS = ['setup', 'content', 'people', 'review', 'live', 'dashboard', 'ai', 'close', 'challenges', 'survey', 'test'] as const
 type Tab = (typeof TABS)[number]
 const isTab = (value: string | null): value is Tab => value !== null && (TABS as readonly string[]).includes(value)
 
@@ -45,6 +46,7 @@ export function AdminWeeklyWorkspace() {
           <TabsTrigger value="ai">AI model</TabsTrigger>
           <TabsTrigger value="close">Close quarter</TabsTrigger>
           <TabsTrigger value="challenges">Challenges</TabsTrigger>
+          <TabsTrigger value="survey">Pulse survey</TabsTrigger>
           {testTools && <TabsTrigger value="test">Test tools</TabsTrigger>}
         </TabsList>
         <TabsContent value="setup"><SetupTab /></TabsContent>
@@ -56,6 +58,7 @@ export function AdminWeeklyWorkspace() {
         <TabsContent value="ai"><AiModelTab /></TabsContent>
         <TabsContent value="close"><CloseTab /></TabsContent>
         <TabsContent value="challenges"><ChallengesTab /></TabsContent>
+        <TabsContent value="survey"><SurveyTab /></TabsContent>
         {testTools && <TabsContent value="test"><TestToolsTab /></TabsContent>}
       </Tabs>
     </div>

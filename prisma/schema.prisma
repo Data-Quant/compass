@@ -2774,3 +2774,55 @@ model WeeklyCalibrationResult {
   @@unique([runId, responseId])
   @@index([runId, completedAt])
 }
+
+enum SurveyQuestionKind {
+  NPS
+  AGREE
+  CHOICE
+  TEXT
+}
+
+/// The company sentiment survey's question bank, replaced by HR each quarter.
+model SurveyQuestion {
+  id            String             @id @default(cuid())
+  periodId      String
+  orderIndex    Int
+  text          String
+  kind          SurveyQuestionKind
+  options       String[]           @default([])
+  required      Boolean            @default(true)
+  /// A text box opens under the chosen option (the improvement-priorities question).
+  explainChoice Boolean            @default(false)
+  removedAt     DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@index([periodId])
+}
+
+/// One answer. userId is null when the person ticked anonymous that week: nothing links the answer to them.
+model SurveyResponse {
+  id         String   @id @default(cuid())
+  periodId   String
+  questionId String
+  weekIndex  Int
+  userId     String?
+  value      Int?
+  choice     String?
+  text       String?
+  createdAt  DateTime @default(now())
+
+  @@index([periodId, questionId])
+}
+
+/// That someone has answered a question, so it is not asked again. It never says what they answered.
+model SurveyCompletion {
+  id         String   @id @default(cuid())
+  periodId   String
+  questionId String
+  userId     String
+  answeredAt DateTime @default(now())
+
+  @@unique([periodId, questionId, userId])
+}
+
