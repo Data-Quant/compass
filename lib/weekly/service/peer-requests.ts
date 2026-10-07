@@ -1,8 +1,9 @@
-// Section 4 of HR's feedback: leads and reporting lines are HR's; peers are the employee's to correct. An employee asks
-// to add or remove a peer for the quarter; it takes effect once that peer and the employee's lead both approve (one click
-// each, from an email), or HR decides. An approved change is written as period overrides in both directions.
+// Section 4 of HR's feedback: at the start of a quarter everyone sees their lead, team and peers and can ask to correct
+// them. A peer change takes effect once that peer and the employee's lead both approve (one click each, from an email);
+// a change to the employee's lead or team, and anything without a lead to approve, is HR's decision. An approved change
+// is written as period overrides in both directions.
 import { createHash, randomBytes } from 'node:crypto'
-import type { PeerChangeAction, PeerChangeRequest, PeerChangeStatus, Prisma } from '@prisma/client'
+import type { MappingRelation, PeerChangeAction, PeerChangeRequest, PeerChangeStatus, Prisma, RelationshipType } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import { renderMappingEmail, renderPeerOutcomeEmail, renderPeerRequestEmail } from '../emails'
@@ -19,12 +20,18 @@ const base = (appUrl: string) => appUrl.replace(/\/$/, '')
 const hash = (token: string) => createHash('sha256').update(token).digest('hex')
 const newToken = () => randomBytes(32).toString('base64url')
 
-/** The quarter being mapped: the newest cycle in setup or running, else the active period. */
-async function mappingPeriod(): Promise<{ id: string; name: string; isLocked: boolean }> {
-  const cycle = await prisma.weeklyCycle.findFirst({ where: { status: { in: ['SETUP', 'RUNNING'] } }, orderBy: { weekOneStartsOn: 'desc' }, select: { periodId: true } })
-  const period = cycle
-    ? await prisma.evaluationPeriod.findUnique({ where: { id: cycle.periodId }, select: { id: true, name: true, isLocked: true } })
-    : await prisma.evaluationPeriod.findFirst({ where: { isActive: true }, select: { id: true, name: true, isLocked: true } })
+const NOT_IN_LIST: Record<MappingRelation, string> = { PEER: 'one of your peers', LEAD: 'your lead', REPORT: 'one of your team members' }
+
+type Period = { id: string; name: string; isLocked: boolean }
+
+/** The quarter being mapped: the one named, else the newest cycle in setup or running, else the active period. */
+async function mappingPeriod(periodId?: string): Promise<Period> {
+  const select = { id: true, name: true, isLocked: true } as const
+  const cycle = periodId ? null : await prisma.weeklyCycle.findFirst({ where: { status: { in: ['SETUP', 'RUNNING'] } }, orderBy: { weekOneStartsOn: 'desc' }, select: { periodId: true } })
+  const id = periodId ?? cycle?.periodId
+  const period = id
+    ? await prisma.evaluationPeriod.findUnique({ where: { id }, select })
+    : await prisma.evaluationPeriod.findFirst({ where: { isActive: true }, select })
   if (!period) throw new WeeklyError('There is no quarter to map yet', 409)
   return period
 }
@@ -43,13 +50,15 @@ function mappingOf(userId: string, assignments: ReadonlyArray<{ evaluatorId: str
   }
 }
 
+const listFor = (mapping: Mapping, relation: MappingRelation) => (relation === 'PEER' ? mapping.peers : relation === 'LEAD' ? mapping.leads : mapping.reports)
+
 async function mappingFor(periodId: string, userId: string): Promise<Mapping> {
   return mappingOf(userId, await getResolvedEvaluationAssignments(periodId))
 }
 
 function requestView(r: PeerChangeRequest, people: ReadonlyMap<string, { name: string; position: string | null }>): PeerRequestView {
   return {
-    id: r.id, action: r.action, status: r.status, reason: r.reason, createdAt: r.createdAt.toISOString(),
+    id: r.id, action: r.action, relation: r.relation, status: r.status, reason: r.reason, createdAt: r.createdAt.toISOString(),
     requester: personRef(people, r.requesterId), peer: personRef(people, r.peerId),
     approver: r.approverId ? personRef(people, r.approverId) : null, peerVote: r.peerVote, approverVote: r.approverVote,
   }
@@ -85,35 +94,38 @@ function approvalMessages(request: PeerChangeRequest, tokens: { peer: string; ap
 }
 
 export async function requestPeerChange(
-  actor: WeeklyActor, input: { peerId: string; action: PeerChangeAction; reason?: string | null }, now: Date, send: WeeklySendMail, appUrl: string,
+  actor: WeeklyActor,
+  input: { peerId: string; action: PeerChangeAction; relation?: MappingRelation; reason?: string | null },
+  now: Date, send: WeeklySendMail, appUrl: string,
 ): Promise<PeerRequestView> {
+  const relation = input.relation ?? 'PEER'
   const period = await mappingPeriod()
   if (period.isLocked) throw new WeeklyError(LOCKED, 409)
-  if (input.peerId === actor.id) throw new WeeklyError('You cannot add or remove yourself as a peer')
-  const peer = (await loadPeople([input.peerId])).get(input.peerId)
-  if (!peer || !peer.payrollActive || isOutsideRedesign(peer)) throw new WeeklyError('Person not found', 404)
+  if (input.peerId === actor.id) throw new WeeklyError('You cannot add or remove yourself')
+  const other = (await loadPeople([input.peerId])).get(input.peerId)
+  if (!other || !other.payrollActive || isOutsideRedesign(other)) throw new WeeklyError('Person not found', 404)
   const mapping = await mappingFor(period.id, actor.id)
-  if (input.action === 'REMOVE' && !mapping.peers.includes(input.peerId)) throw new WeeklyError(`${peer.name} is not one of your peers this quarter`)
-  if (input.action === 'ADD' && [...mapping.peers, ...mapping.leads, ...mapping.reports, ...mapping.others].includes(input.peerId)) throw new WeeklyError(`${peer.name} is already in your mapping this quarter`)
-  // The lead approves; when there is none, or the lead is the peer in question, HR decides instead.
-  const approverId = mapping.leads.find((id) => id !== input.peerId) ?? null
-  const tokens = { peer: newToken(), approver: approverId ? newToken() : null }
+  if (input.action === 'REMOVE' && !listFor(mapping, relation).includes(input.peerId)) throw new WeeklyError(`${other.name} is not ${NOT_IN_LIST[relation]} this quarter`)
+  if (input.action === 'ADD' && [...mapping.peers, ...mapping.leads, ...mapping.reports, ...mapping.others].includes(input.peerId)) throw new WeeklyError(`${other.name} is already in your mapping this quarter`)
+  // A peer change: the peer and the lead approve (HR when there is no other lead). A lead or team change: HR decides.
+  const approverId = relation === 'PEER' ? mapping.leads.find((id) => id !== input.peerId) ?? null : null
+  const tokens = relation === 'PEER' ? { peer: newToken(), approver: approverId ? newToken() : null } : null
   const pairLock = [actor.id, input.peerId].sort().join(':')
   const request = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`peer-request:${period.id}:${pairLock}`}))::text`
     const pending = await tx.peerChangeRequest.count({
       where: { periodId: period.id, status: 'PENDING', OR: [{ requesterId: actor.id, peerId: input.peerId }, { requesterId: input.peerId, peerId: actor.id }] },
     })
-    if (pending > 0) throw new WeeklyError('There is already a request about this peer waiting for approval', 409)
+    if (pending > 0) throw new WeeklyError('There is already a request about this person waiting for a decision', 409)
     return tx.peerChangeRequest.create({
       data: {
-        periodId: period.id, requesterId: actor.id, peerId: input.peerId, action: input.action, reason: input.reason?.trim() || null,
-        peerTokenHash: hash(tokens.peer), approverId, approverTokenHash: tokens.approver ? hash(tokens.approver) : null,
+        periodId: period.id, requesterId: actor.id, peerId: input.peerId, action: input.action, relation, reason: input.reason?.trim() || null,
+        peerTokenHash: tokens ? hash(tokens.peer) : null, approverId, approverTokenHash: tokens?.approver ? hash(tokens.approver) : null,
       },
     })
   })
-  await recordAudit(prisma, { actorId: actor.id, actorRole: 'EMPLOYEE', action: 'PEER_REQUEST', objectType: 'PeerChangeRequest', objectId: request.id, after: { action: input.action, peerId: input.peerId } })
-  await deliverOnce(approvalMessages(request, tokens, { requester: actor.name, peer: peer.name }, period.name, appUrl), send)
+  await recordAudit(prisma, { actorId: actor.id, actorRole: 'EMPLOYEE', action: 'MAPPING_REQUEST', objectType: 'PeerChangeRequest', objectId: request.id, after: { action: input.action, relation, peerId: input.peerId } })
+  if (tokens) await deliverOnce(approvalMessages(request, tokens, { requester: actor.name, peer: other.name }, period.name, appUrl), send)
   const people = await loadPeople([actor.id, input.peerId, approverId ?? ''])
   return requestView(request, people)
 }
@@ -123,14 +135,27 @@ export async function cancelPeerRequest(actor: WeeklyActor, requestId: string): 
   if (cancelled.count === 0) throw new WeeklyError('Request not found', 404)
 }
 
-/** Both directions of the peer pair, for this period only. */
+/** The period overrides for a change, both directions: peers evaluate each other; a lead and their report evaluate each other. */
+function overridesFor(request: PeerChangeRequest): Array<{ evaluatorId: string; evaluateeId: string; relationshipType: RelationshipType }> {
+  const me = request.requesterId
+  const them = request.peerId
+  switch (request.relation) {
+    case 'PEER':
+      return [{ evaluatorId: me, evaluateeId: them, relationshipType: 'PEER' }, { evaluatorId: them, evaluateeId: me, relationshipType: 'PEER' }]
+    case 'LEAD':
+      return [{ evaluatorId: them, evaluateeId: me, relationshipType: 'TEAM_LEAD' }, { evaluatorId: me, evaluateeId: them, relationshipType: 'DIRECT_REPORT' }]
+    case 'REPORT':
+      return [{ evaluatorId: me, evaluateeId: them, relationshipType: 'TEAM_LEAD' }, { evaluatorId: them, evaluateeId: me, relationshipType: 'DIRECT_REPORT' }]
+  }
+}
+
 async function applyChange(tx: Prisma.TransactionClient, request: PeerChangeRequest, decidedById: string | null): Promise<void> {
-  for (const [evaluatorId, evaluateeId] of [[request.requesterId, request.peerId], [request.peerId, request.requesterId]]) {
-    const key = { periodId: request.periodId, evaluatorId, evaluateeId, relationshipType: 'PEER' as const }
+  for (const pair of overridesFor(request)) {
+    const key = { periodId: request.periodId, ...pair }
     await tx.evaluationPeriodAssignmentOverride.upsert({
       where: { periodId_evaluatorId_evaluateeId_relationshipType: key },
-      create: { ...key, action: request.action, note: `Peer request ${request.id}`, createdById: decidedById },
-      update: { action: request.action, note: `Peer request ${request.id}` },
+      create: { ...key, action: request.action, note: `Mapping request ${request.id}`, createdById: decidedById },
+      update: { action: request.action, note: `Mapping request ${request.id}` },
     })
   }
 }
@@ -156,10 +181,10 @@ async function settle(requestId: string, now: Date, send: WeeklySendMail, appUrl
     if (hrDecision) throw new WeeklyError('This request was already decided', 409)
     return (await prisma.peerChangeRequest.findUniqueOrThrow({ where: { id: requestId }, select: { status: true } })).status
   }
-  const peer = (await loadPeople([request.peerId])).get(request.peerId)
+  const other = (await loadPeople([request.peerId])).get(request.peerId)
   await deliverOnce([{
     userId: request.requesterId, kind: 'peer-request-outcome', dedupeKey: `peer-request-outcome:${request.id}`,
-    render: (name) => renderPeerOutcomeEmail({ name, peerName: peer?.name ?? 'the peer', action: request.action, approved, appUrl }),
+    render: (name) => renderPeerOutcomeEmail({ name, peerName: other?.name ?? 'the person', action: request.action, relation: request.relation, approved, appUrl }),
   }], send)
   return status
 }
@@ -204,15 +229,15 @@ export async function decidePeerRequest(actor: WeeklyActor, requestId: string, d
   const period = await prisma.evaluationPeriod.findUnique({ where: { id: request.periodId }, select: { isLocked: true } })
   if (period?.isLocked) throw new WeeklyError(LOCKED, 409)
   const status = await settle(requestId, now, send, appUrl, { by: actor.id, decision })
-  await recordAudit(prisma, { actorId: actor.id, actorRole: 'HR', action: `PEER_DECIDE_${decision}`, objectType: 'PeerChangeRequest', objectId: requestId })
+  await recordAudit(prisma, { actorId: actor.id, actorRole: 'HR', action: `MAPPING_DECIDE_${decision}`, objectType: 'PeerChangeRequest', objectId: requestId })
   return { status }
 }
 
-/** New links for the votes still open; the old links stop working. */
+/** New links for the votes still open on a peer request; the old links stop working. */
 export async function resendPeerRequestLinks(actor: WeeklyActor, requestId: string, now: Date, send: WeeklySendMail, appUrl: string): Promise<WeeklySendResult> {
   assertHr(actor)
   const request = await prisma.peerChangeRequest.findUnique({ where: { id: requestId } })
-  if (!request || request.status !== 'PENDING') throw new WeeklyError('Only a request waiting for approval can be resent', 409)
+  if (!request || request.status !== 'PENDING' || request.relation !== 'PEER') throw new WeeklyError('Only a peer request waiting for approval has links to resend', 409)
   const tokens = { peer: newToken(), approver: request.approverId ? newToken() : null }
   const updated = await prisma.peerChangeRequest.update({
     where: { id: requestId },
@@ -236,10 +261,10 @@ export async function adminPeerRequests(actor: WeeklyActor): Promise<{ period: {
   return { period: { id: period.id, name: period.name }, requests: requests.map((r) => requestView(r, people)) }
 }
 
-/** HR's pre-evaluation step: everyone with a mapping gets their lead, team and peers, and a link to ask for peer changes. */
-export async function sendMappingEmails(actor: WeeklyActor, now: Date, send: WeeklySendMail, appUrl: string): Promise<WeeklySendResult> {
+/** HR's pre-evaluation step: everyone with a mapping gets their lead, team and peers, and a link to ask for changes. */
+export async function sendMappingEmails(actor: WeeklyActor, now: Date, send: WeeklySendMail, appUrl: string, periodId?: string): Promise<WeeklySendResult> {
   assertHr(actor)
-  const period = await mappingPeriod()
+  const period = await mappingPeriod(periodId)
   const assignments = await getResolvedEvaluationAssignments(period.id)
   const userIds = [...new Set(assignments.flatMap((a) => [a.evaluatorId, a.evaluateeId]))]
   const people = await loadPeople(userIds)

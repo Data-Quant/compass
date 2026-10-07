@@ -253,7 +253,7 @@ export default function AdminPreEvaluationsPage() {
         toast.error(result.error || 'Failed to trigger pre-evaluation onboarding')
         return
       }
-      toast.success(`Triggered ${result.prepCount} prep task(s); notified ${result.notified} lead(s)`)
+      toast.success(`Triggered ${result.prepCount} prep task(s); notified ${result.notified} lead(s); sent ${result.mappingEmails ?? 0} mapping email(s)`)
       await loadData(selectedPeriodId)
     } catch {
       toast.error('Failed to trigger pre-evaluation onboarding')

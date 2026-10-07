@@ -9,6 +9,7 @@ import type { PeerRequestView } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest } from '../weekly-api'
 
 const VOTE: Record<PeerRequestView['peerVote'], string> = { PENDING: 'waiting', APPROVED: 'approved', REJECTED: 'declined' }
+const NOUN: Record<PeerRequestView['relation'], string> = { PEER: 'peer', LEAD: 'lead', REPORT: 'team member' }
 
 /** HR's view of the quarter's peer requests, with an override, and the button that emails everyone their mapping. */
 export function PeerRequestsAdminCard() {
@@ -63,8 +64,8 @@ export function PeerRequestsAdminCard() {
       <CardContent className="space-y-4 p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="font-semibold">Mapping and peer requests · {data.period.name}</h2>
-            <p className="text-sm text-muted-foreground">Everyone can see their lead, team and peers, and ask to add or remove a peer. A request takes effect once the peer and the employee’s lead approve, or when you decide it here.</p>
+            <h2 className="font-semibold">Mapping requests · {data.period.name}</h2>
+            <p className="text-sm text-muted-foreground">Everyone sees their lead, team and peers on their Evaluations page and can ask for corrections. A peer change takes effect once the peer and the employee’s lead approve; you decide lead and team changes here. An approved change applies to this quarter; to make it permanent, update the <a className="underline" href="/admin/mappings">mappings</a>.</p>
           </div>
           <Button disabled={busy} onClick={() => void emailMappings()}>{busy ? 'Sending…' : 'Email everyone their mapping'}</Button>
         </div>
@@ -73,9 +74,9 @@ export function PeerRequestsAdminCard() {
             {data.requests.map((r) => (
               <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
                 <div>
-                  <p><span className="font-medium">{r.requester.name}</span> · {r.action === 'ADD' ? 'add' : 'remove'} <span className="font-medium">{r.peer.name}</span></p>
+                  <p><span className="font-medium">{r.requester.name}</span> · {r.action === 'ADD' ? 'add' : 'remove'} <span className="font-medium">{r.peer.name}</span> as their {NOUN[r.relation]}</p>
                   <p className="text-xs text-muted-foreground">
-                    {r.peer.name}: {VOTE[r.peerVote]} · {r.approver ? `${r.approver.name} (lead): ${VOTE[r.approverVote]}` : 'No lead: HR decides'}
+                    {r.relation !== 'PEER' ? 'HR decides' : <>{r.peer.name}: {VOTE[r.peerVote]} · {r.approver ? `${r.approver.name} (lead): ${VOTE[r.approverVote]}` : 'No lead: HR decides'}</>}
                     {r.reason ? ` · “${r.reason}”` : ''}
                   </p>
                 </div>
@@ -83,7 +84,7 @@ export function PeerRequestsAdminCard() {
                   <span className="flex gap-2">
                     <Button size="sm" onClick={() => void decide(r.id, 'APPROVE')}>Approve</Button>
                     <Button size="sm" variant="outline" onClick={() => void decide(r.id, 'REJECT')}>Reject</Button>
-                    <Button size="sm" variant="ghost" onClick={() => void resend(r.id)}>Resend links</Button>
+                    {r.relation === 'PEER' && <Button size="sm" variant="ghost" onClick={() => void resend(r.id)}>Resend links</Button>}
                   </span>
                 ) : <Badge variant={r.status === 'APPROVED' ? 'default' : 'outline'}>{r.status.toLowerCase()}</Badge>}
               </li>

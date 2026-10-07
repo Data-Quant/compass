@@ -121,11 +121,13 @@ export function renderPeerRequestEmail(input: { name: string; requesterName: str
   }
 }
 
-export function renderPeerOutcomeEmail(input: { name: string; peerName: string; action: 'ADD' | 'REMOVE'; approved: boolean; appUrl: string }): { subject: string; html: string } {
-  const change = `${ACTION_WORDS[input.action]} ${input.peerName} ${input.action === 'ADD' ? 'as a peer' : 'from your peers'}`
+const RELATION_WORDS = { PEER: ['as a peer', 'from your peers'], LEAD: ['as your lead', 'as your lead'], REPORT: ['to your team', 'from your team'] } as const
+
+export function renderPeerOutcomeEmail(input: { name: string; peerName: string; action: 'ADD' | 'REMOVE'; relation: 'PEER' | 'LEAD' | 'REPORT'; approved: boolean; appUrl: string }): { subject: string; html: string } {
+  const change = `${ACTION_WORDS[input.action]} ${input.peerName} ${RELATION_WORDS[input.relation][input.action === 'ADD' ? 0 : 1]}`
   return {
     subject: input.approved ? `Approved: ${change}` : `Not approved: ${change}`,
-    html: layout(input.name, [escapeHtml(input.approved ? `Your request to ${change} was approved.` : `Your request to ${change} was not approved.`)], `${base(input.appUrl)}/pre-evaluation`, 'See your mapping'),
+    html: layout(input.name, [escapeHtml(input.approved ? `Your request to ${change} was approved.` : `Your request to ${change} was not approved.`)], `${base(input.appUrl)}/evaluations/weekly`, 'See your mapping'),
   }
 }
 
@@ -139,7 +141,7 @@ export function renderMappingEmail(input: { name: string; periodName: string; le
       `<strong>Your lead:</strong> ${list(input.leads)}`,
       `<strong>Your reporting team members:</strong> ${list(input.reports)}`,
       `<strong>Your peers:</strong> ${list(input.peers)}`,
-      escapeHtml('If a peer is wrong or missing, you can ask to remove or add one. The change happens once that peer and your lead approve. For a change to your lead or team, contact HR.'),
-    ], `${base(input.appUrl)}/pre-evaluation`, 'Review your peers'),
+      escapeHtml('If anyone is wrong or missing, ask for a change on the page below. A peer change happens once that peer and your lead approve; HR decides changes to your lead or team.'),
+    ], `${base(input.appUrl)}/evaluations/weekly`, 'Review your mapping'),
   }
 }

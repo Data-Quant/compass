@@ -116,7 +116,7 @@ test('HR emails everyone their mapping for the quarter, with a link to request p
   assert.ok(result.sent >= 3)
   const toLead = mail.sent.find((m) => m.to === email(W.lead.id))!
   assert.match(toLead.html, new RegExp(W.ana.name))
-  assert.match(toLead.html, /\/pre-evaluation/)
+  assert.match(toLead.html, /\/evaluations\/weekly/)
   const toAna = mail.sent.find((m) => m.to === email(W.ana.id))!
   assert.match(toAna.html, new RegExp(W.lead.name))
   assert.match(toAna.html, new RegExp(W.ben.name))
@@ -156,4 +156,32 @@ test('the people offered as a new peer leave out the lead, the team and anyone a
   await requestPeerChange(ana, { peerId: W.cara.id, action: 'ADD' }, at(1), mailbox().send, APP)
   const ids = (await myMapping(ana, at(1))).candidates.map((c) => c.id)
   assert.ok(!ids.includes(W.lead.id) && !ids.includes(W.ben.id) && !ids.includes(W.cara.id) && !ids.includes(W.ana.id))
+})
+
+test('starting pre-evaluation for a quarter emails everyone that quarter’s mapping', WEEKLY_DB_TEST, async () => {
+  const next = await prisma.evaluationPeriod.create({
+    data: { name: 'Q1 2027 (weekly test)', startDate: new Date('2027-01-01T00:00:00.000Z'), endDate: new Date('2027-03-31T00:00:00.000Z'), reviewStartDate: new Date('2027-04-05T00:00:00.000Z'), isActive: false },
+  })
+  const mail = mailbox()
+  await sendMappingEmails(HR_ACTOR, at(1), mail.send, APP, next.id)
+  const toAna = mail.sent.find((m) => m.to === email(W.ana.id))!
+  assert.match(toAna.subject, /Q1 2027/)
+})
+
+test('people can also ask to change their lead or their team; HR decides those, and the lead pairs follow', WEEKLY_DB_TEST, async () => {
+  const mail = mailbox()
+  const pairs = async () => (await getResolvedEvaluationAssignments(periodId)).filter((a) => a.relationshipType === 'TEAM_LEAD' || a.relationshipType === 'DIRECT_REPORT').map((a) => `${a.relationshipType}:${a.evaluatorId}>${a.evaluateeId}`).sort()
+  // Cara says Layla is her lead.
+  const lead = await requestPeerChange(weeklyActor(W.cara), { peerId: W.lead.id, action: 'ADD', relation: 'LEAD' }, at(1), mail.send, APP)
+  assert.deepEqual([lead.relation, lead.approver], ['LEAD', null])
+  assert.deepEqual(mail.sent, [], 'nobody is asked to vote: HR decides')
+  await decidePeerRequest(HR_ACTOR, lead.id, 'APPROVE', at(1, 2), mailbox().send, APP)
+  assert.ok((await pairs()).includes(`TEAM_LEAD:${W.lead.id}>${W.cara.id}`) && (await pairs()).includes(`DIRECT_REPORT:${W.cara.id}>${W.lead.id}`))
+  assert.deepEqual((await myMapping(weeklyActor(W.cara), at(2))).leads.map((p) => p.id), [W.lead.id])
+
+  // Layla says Ben no longer reports to her.
+  const report = await requestPeerChange(weeklyActor(W.lead), { peerId: W.ben.id, action: 'REMOVE', relation: 'REPORT' }, at(2), mailbox().send, APP)
+  await decidePeerRequest(HR_ACTOR, report.id, 'APPROVE', at(2, 2), mailbox().send, APP)
+  assert.ok(!(await pairs()).includes(`TEAM_LEAD:${W.lead.id}>${W.ben.id}`) && !(await pairs()).includes(`DIRECT_REPORT:${W.ben.id}>${W.lead.id}`))
+  await assert.rejects(requestPeerChange(ana, { peerId: W.ben.id, action: 'REMOVE', relation: 'LEAD' }, at(2), mailbox().send, APP), /not your lead/)
 })

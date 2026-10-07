@@ -1,6 +1,7 @@
 'use client'
 
 import { FormsSection } from './forms/FormsSection'
+import { MyMappingCard } from './mapping/MyMappingCard'
 import { PulseSurveyCard } from './survey/PulseSurveyCard'
 import { WeeklyInbox } from './WeeklyInbox'
 
@@ -13,6 +14,7 @@ export function WeeklyEvaluationsPage() {
           Each question asks for one real, recent example: the situation, what the person did, and what happened. Only what you describe counts, so be specific.
         </p>
       </div>
+      <MyMappingCard />
       <FormsSection />
       <WeeklyInbox />
       <PulseSurveyCard />

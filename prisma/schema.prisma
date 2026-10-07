@@ -2618,6 +2618,13 @@ enum PeerChangeStatus {
   CANCELLED
 }
 
+/// What the request changes: a peer (the peer and the lead approve), or the person's lead or a team member (HR decides).
+enum MappingRelation {
+  PEER
+  LEAD
+  REPORT
+}
+
 enum PeerChangeVote {
   PENDING
   APPROVED
@@ -2632,11 +2639,13 @@ model PeerChangeRequest {
   requesterId       String
   peerId            String
   action            PeerChangeAction
+  relation          MappingRelation  @default(PEER)
   reason            String?
   status            PeerChangeStatus @default(PENDING)
   peerVote          PeerChangeVote   @default(PENDING)
   peerVotedAt       DateTime?
-  peerTokenHash     String           @unique
+  /// Only peer requests have voting links.
+  peerTokenHash     String?          @unique
   /// The requester's lead; null when they have none, and HR decides.
   approverId        String?
   approverVote      PeerChangeVote   @default(PENDING)

@@ -375,15 +375,18 @@ export interface PairWindowView { evaluator: PersonRef; evaluatee: PersonRef; re
 export type PeerChangeActionValue = 'ADD' | 'REMOVE'
 export type PeerChangeStatusValue = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
 export type PeerChangeVoteValue = 'PENDING' | 'APPROVED' | 'REJECTED'
+export type MappingRelationValue = 'PEER' | 'LEAD' | 'REPORT'
 export interface PeerRequestView {
   id: string
   action: PeerChangeActionValue
+  /** A peer, the requester's lead, or one of their team members. */
+  relation: MappingRelationValue
   status: PeerChangeStatusValue
   reason: string | null
   createdAt: string
   requester: PersonRef
   peer: PersonRef
-  /** The requester's lead; null when HR decides. */
+  /** The requester's lead, who approves a peer change; null when HR decides. */
   approver: PersonRef | null
   peerVote: PeerChangeVoteValue
   approverVote: PeerChangeVoteValue

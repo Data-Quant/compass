@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getSession } from '@/lib/auth'
 import { isAdminRole } from '@/lib/permissions'
-import { sendPreEvaluationLeadPrepNotification } from '@/lib/email'
+import { sendMail as sendWeeklyMail, sendPreEvaluationLeadPrepNotification } from '@/lib/email'
 import { triggerPreEvaluationForPeriod, setPrepReminderSent } from '@/lib/pre-evaluation'
+import { isWeeklyEnabled } from '@/lib/weekly/flag'
+import { actorFromUser } from '@/lib/weekly/service/context'
+import { sendMappingEmails } from '@/lib/weekly/service/peer-requests'
 
 const triggerSchema = z.object({
   periodId: z.string().trim().min(1),
@@ -45,10 +48,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Starting pre-evaluation also sends everyone their lead, team and peers for the quarter, with a link to ask for changes.
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || request.nextUrl.origin
+    const mapping = isWeeklyEnabled() ? await sendMappingEmails(actorFromUser(user), new Date(), sendWeeklyMail, appUrl, parsed.data.periodId) : null
+
     return NextResponse.json({
       success: true,
       ...result,
       notified,
+      mappingEmails: mapping ? mapping.sent + mapping.recorded : 0,
     })
   } catch (error) {
     console.error('Failed to trigger pre-evaluations:', error)
