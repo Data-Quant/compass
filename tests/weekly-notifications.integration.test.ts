@@ -1,14 +1,13 @@
 import test, { after, afterEach, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { prisma } from '../lib/db'
-import { fakeModel } from '../lib/weekly/ai/model'
 import { runWeeklyDailyJob } from '../lib/weekly/service/daily-job'
-import { inboxView, submitAnswer } from '../lib/weekly/service/inbox'
+import { inboxView } from '../lib/weekly/service/inbox'
+import { answerAs } from './helpers/weekly-answers'
 import { at, startedCycle } from './helpers/weekly-fixtures'
-import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST, weeklyActor } from './helpers/weekly-test-db'
+import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST } from './helpers/weekly-test-db'
 
 const APP = 'https://compass.example'
-const words = (n: number) => Array.from({ length: n }, (_, i) => `word${i}`).join(' ')
 
 function mailbox() {
   const sent: Array<{ to: string; subject: string; html: string }> = []
@@ -52,18 +51,17 @@ test('every day after Monday reminds people with open questions, once a day, unt
   process.env.WEEKLY_SEND_EMAILS = 'true'
   await runWeeklyDailyJob(mailbox().send, APP, at(1))
   const [prompt] = (await inboxView(W.lead.id, at(1))).prompts
-  const answer = { situation: `The client moved the launch ${words(10)}`, action: `They rebuilt the plan ${words(15)}`, result: `We delivered on time ${words(15)}` }
-  await submitAnswer(weeklyActor(W.lead), { evaluatorId: W.lead.id, actingAs: false }, prompt.id, answer, at(1, 2))
+  await answerAs({ id: prompt.id, evaluatorId: W.lead.id }, 3, at(1, 2))
   const tuesday = mailbox()
-  const result = await runWeeklyDailyJob(tuesday.send, APP, at(1, 2), { model: fakeModel() })
+  const result = await runWeeklyDailyJob(tuesday.send, APP, at(1, 2))
   assert.equal(result.released?.promptsCreated, 0)
   assert.deepEqual(tuesday.sent.map((m) => m.to).sort(), ['wkt-ana@example.test', 'wkt-ben@example.test'])
   assert.equal(tuesday.sent[0].subject, 'Reminder: 1 evaluation question is waiting')
   const laterTuesday = mailbox()
-  await runWeeklyDailyJob(laterTuesday.send, APP, at(1, 2, 15), { model: fakeModel() })
+  await runWeeklyDailyJob(laterTuesday.send, APP, at(1, 2, 15))
   assert.equal(laterTuesday.sent.length, 0, 'once a day')
   const wednesday = mailbox()
-  await runWeeklyDailyJob(wednesday.send, APP, at(1, 3), { model: fakeModel() })
+  await runWeeklyDailyJob(wednesday.send, APP, at(1, 3))
   assert.deepEqual(wednesday.sent.map((m) => m.to).sort(), ['wkt-ana@example.test', 'wkt-ben@example.test'])
 })
 

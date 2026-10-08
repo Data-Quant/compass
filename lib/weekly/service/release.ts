@@ -1,10 +1,13 @@
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import { cycleWeeks, effectiveWeek, isCatchUpWeek } from '../calendar'
 import { evaluateeExclusion, evaluatorExclusion } from '../eligibility'
+import { optionsProblem, parseOptions, personalise, shuffleOptions } from '../mcq'
 import { bankForPerspective, isWeeklyRelationshipType, perspectiveOf, type Perspective, type WeeklyRelationshipType } from '../perspectives'
 import { nextVariant, pickTopic, planWeek, type PairWindow, type SchedulableTopic } from '../scheduler'
-import { ensureLeadCustomCompetencies, loadReadyCompetencies } from './content'
+import { loadReadyCompetencies, type ReadyCompetency } from './content'
+import { toJson } from './db'
 import { loadPeople } from './context'
 import { loadCycle, type CycleWithPeriod } from './cycles'
 import { isUniqueViolation } from './db'
@@ -17,13 +20,15 @@ export interface ReleaseSummary { week: number; slotsCreated: number; slotsCance
 type SlotKeyed = { evaluatorId: string; evaluateeId: string; relationshipType: string; competencyId: string }
 const pairKey = (p: { evaluatorId: string; evaluateeId: string; relationshipType: string }) => `${p.evaluatorId}|${p.evaluateeId}|${p.relationshipType}`
 const slotKey = (s: SlotKeyed) => `${pairKey(s)}|${s.competencyId}`
+const sameDepartment = (a: string, b: string | null) => a.trim().toLowerCase() === (b ?? '').trim().toLowerCase()
+/** A department topic is asked only about people in one of its departments. */
+const appliesTo = (topic: ReadyCompetency, department: string | null) => topic.departments.length === 0 || topic.departments.some((d) => sameDepartment(d, department))
 
 /**
  * Brings slots in line with this week's assignments, eligibility and ready topics. Accepted evidence is never removed.
  * A pair that first appears after the quarter's first release gets its own window, from this week to the last question week.
  */
 export async function syncSlots(cycle: CycleWithPeriod, now: Date, week: number = Math.max(1, effectiveWeek(cycle.weekOneStartsOn, cycle.simulatedWeek, now))): Promise<{ created: number; cancelled: number; pairs: LivePair[] }> {
-  await ensureLeadCustomCompetencies(cycle)
   const ready = await loadReadyCompetencies(cycle.id)
   const assignments = (await getResolvedEvaluationAssignments(cycle.periodId)).filter((a) => isWeeklyRelationshipType(a.relationshipType))
   const people = await loadPeople(assignments.flatMap((a) => [a.evaluatorId, a.evaluateeId]))
@@ -40,7 +45,7 @@ export async function syncSlots(cycle: CycleWithPeriod, now: Date, week: number 
     if (evaluateeExclusion(evaluatee, { now, weekOneStartsOn: cycle.weekOneStartsOn, totalWeeks: total, optedIn: optIns.has(evaluatee.id) })) continue
     const relationshipType = a.relationshipType as WeeklyRelationshipType
     pairs.push({ evaluatorId: a.evaluatorId, evaluateeId: a.evaluateeId, relationshipType, perspective })
-    const topics = [...(ready.global.get(perspective) ?? []), ...(perspective === 'LEAD' ? ready.customByLead.get(a.evaluatorId) ?? [] : [])]
+    const topics = (ready.global.get(perspective) ?? []).filter((topic) => appliesTo(topic, evaluatee.department))
     for (const topic of topics) desired.push({ evaluatorId: a.evaluatorId, evaluateeId: a.evaluateeId, relationshipType, competencyId: topic.id })
   }
   const existing = await prisma.weeklySlot.findMany({ where: { cycleId: cycle.id }, select: { id: true, evaluatorId: true, evaluateeId: true, relationshipType: true, competencyId: true, status: true } })
@@ -74,11 +79,27 @@ export async function syncSlots(cycle: CycleWithPeriod, now: Date, week: number 
   return { created: toCreate.length, cancelled: cancelIds.length, pairs }
 }
 
+type AskableSlot = { id: string; evaluatorId: string; evaluateeId: string; relationshipType: WeeklyRelationshipType | string }
+type Variant = { id: string; text: string; options: Prisma.JsonValue }
+
+/** Only questions whose statements are complete can be asked. */
+export const askable = <T extends { options: Prisma.JsonValue }>(prompts: readonly T[]): T[] => prompts.filter((p) => optionsProblem(parseOptions(p.options)) === null)
+
+/** A question as one evaluator gets it: the person's first name in the text, the statements shuffled once and kept with their scores. */
+export function standardPromptData(slot: AskableSlot, variant: Variant, week: number, now: Date, evaluateeName: string) {
+  return {
+    cycleId: '', slotId: slot.id, evaluatorId: slot.evaluatorId, evaluateeId: slot.evaluateeId, relationshipType: slot.relationshipType as WeeklyRelationshipType,
+    weekIndex: week, kind: 'STANDARD' as const, promptVariantId: variant.id, textSnapshot: personalise(variant.text, evaluateeName),
+    options: toJson(shuffleOptions(parseOptions(variant.options), `${slot.id}|${week}`)), releasedAt: now,
+  }
+}
+
 async function releaseForEvaluator(cycleId: string, week: number, evaluatorId: string, slotIds: string[], askedVariants: Map<string, string[]>, now: Date): Promise<number | null> {
   const slots = slotIds.length
     ? await prisma.weeklySlot.findMany({ where: { id: { in: slotIds } }, include: { competency: { include: { prompts: { where: { isActive: true }, orderBy: { variant: 'asc' } } } } } })
     : []
   const byId = new Map(slots.map((s) => [s.id, s]))
+  const names = await loadPeople(slots.map((s) => s.evaluateeId))
   try {
     return await prisma.$transaction(async (tx) => {
       // Claiming the (cycle, week, evaluator) row first makes a concurrent second release fail as a whole.
@@ -86,14 +107,9 @@ async function releaseForEvaluator(cycleId: string, week: number, evaluatorId: s
       let created = 0
       for (const slotId of slotIds) {
         const slot = byId.get(slotId)
-        const variant = slot ? nextVariant(slot.competency.prompts, askedVariants.get(slotId) ?? []) : null
+        const variant = slot ? nextVariant(askable(slot.competency.prompts), askedVariants.get(slotId) ?? []) : null
         if (!slot || !variant) continue
-        await tx.weeklyPrompt.create({
-          data: {
-            cycleId, slotId, evaluatorId, evaluateeId: slot.evaluateeId, relationshipType: slot.relationshipType,
-            weekIndex: week, kind: 'STANDARD', promptVariantId: variant.id, textSnapshot: variant.text, releasedAt: now,
-          },
-        })
+        await tx.weeklyPrompt.create({ data: { ...standardPromptData(slot, variant, week, now, names.get(slot.evaluateeId)?.name ?? 'them'), cycleId } })
         await tx.weeklySlot.update({ where: { id: slotId }, data: { lastAskedWeek: week } })
         created += 1
       }

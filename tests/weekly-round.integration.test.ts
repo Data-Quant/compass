@@ -3,12 +3,12 @@ import assert from 'node:assert/strict'
 import { prisma } from '../lib/db'
 import { roundStage } from '../lib/weekly/round-stage'
 import { setupRoundSchema } from '../lib/weekly/schemas'
-import { syncFromQuestionBank } from '../lib/weekly/service/content'
+import { loadStandardBank } from '../lib/weekly/service/content'
 import { WeeklyError } from '../lib/weekly/service/errors'
 import { confirmMyLists, decidePeerRequest, myMapping, requestPeerChange } from '../lib/weekly/service/peer-requests'
 import { openReviewStage } from '../lib/weekly/service/review-stage'
 import { openRound, roundsList, roundView, setupRound } from '../lib/weekly/service/round'
-import { approveAllContent, at, HR_ACTOR } from './helpers/weekly-fixtures'
+import { at, HR_ACTOR } from './helpers/weekly-fixtures'
 import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST, weeklyActor } from './helpers/weekly-test-db'
 
 const APP = 'https://compass.example'
@@ -23,8 +23,7 @@ beforeEach(async () => {
   if (!WEEKLY_DB_READY) return
   await resetWeeklyTestData(prisma)
   await seedWeeklyBase(prisma)
-  await syncFromQuestionBank(HR_ACTOR)
-  await approveAllContent()
+  await loadStandardBank(HR_ACTOR)
 })
 after(async () => {
   await prisma.$disconnect()

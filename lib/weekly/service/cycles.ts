@@ -105,7 +105,7 @@ export async function updateCycle(actor: WeeklyActor, cycleId: string, input: Up
   }
   if (input.action === 'start') {
     if ((await prisma.weeklyCycle.count({ where: { status: 'RUNNING' } })) > 0) throw new WeeklyError('Another weekly cycle is already running', 409)
-    if ((await readyCompetencyCount()) === 0) throw new WeeklyError('Approve at least one topic profile before starting', 409)
+    if ((await readyCompetencyCount()) === 0) throw new WeeklyError('Load the question bank before starting: no topic has questions ready to ask', 409)
     return prisma.$transaction(async (tx) => {
       const started = await tx.weeklyCycle.update({ where: { id: cycle.id }, data: { status: 'RUNNING' } })
       await recordAudit(tx, { cycleId: cycle.id, actorId: actor.id, actorRole: 'HR', action: 'CYCLE_START', objectType: 'WeeklyCycle', objectId: cycle.id })

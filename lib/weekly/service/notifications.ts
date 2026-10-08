@@ -1,20 +1,16 @@
 import { prisma } from '@/lib/db'
-import { formatCalendarDate, formatMonthKey, karachiCalendarDate, monthKeyOf } from '../../kpi/calendar'
-import { renderFormsOpenEmail, renderLengthBiasEmail, renderLowEvidenceEmail, renderQuestionsEmail, renderScoringFailedEmail } from '../emails'
-import { LENGTH_ALERT_THRESHOLD } from '../quality'
+import { formatCalendarDate, karachiCalendarDate } from '../../kpi/calendar'
+import { renderFormsOpenEmail, renderLowEvidenceEmail, renderQuestionsEmail } from '../emails'
 import { areWeeklyEmailsEnabled } from '../flag'
 import { PERSPECTIVE_LABELS } from '../perspectives'
-import { loadAnswerRecords } from './answer-states'
 import type { CycleWithPeriod } from './cycles'
 import { lowEvidenceRows } from './dashboard'
 import { isUniqueViolation } from './db'
 import { formsProgress } from './form-tables'
-import { lengthCorrelation } from './reporting'
 
 export type WeeklySendMail = (to: string, subject: string, html: string) => Promise<unknown>
 export type WeeklyEmailKind =
-  | 'weekly-questions' | 'weekly-reminder' | 'weekly-scoring-failed' | 'weekly-low-evidence'
-  | 'weekly-challenge-new' | 'weekly-challenge-resolved' | 'weekly-forms-open' | 'weekly-more-evidence' | 'weekly-length-bias'
+  | 'weekly-questions' | 'weekly-reminder' | 'weekly-low-evidence' | 'weekly-forms-open'
   | 'peer-request' | 'peer-request-outcome' | 'peer-request-question' | 'weekly-mapping'
 export interface QuestionRecipient { userId: string; newCount: number; openCount: number }
 export interface WeeklySendResult { sent: number; recorded: number; skipped: number; failed: number }
@@ -83,8 +79,6 @@ export async function questionRecipients(cycleId: string, week: number): Promise
   return open.map((row) => ({ userId: row.evaluatorId, openCount: row._count._all, newCount: freshBy.get(row.evaluatorId) ?? 0 }))
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000
-
 export interface WeeklyEmailMessage {
   userId: string
   kind: WeeklyEmailKind
@@ -134,16 +128,6 @@ export async function hrUserIds(): Promise<string[]> {
   return (await prisma.user.findMany({ where: { role: 'HR' }, select: { id: true } })).map((u) => u.id)
 }
 
-/** HR hears about answers whose scoring failed in the last day. */
-export async function scoringFailedMessages(cycleId: string, now: Date, appUrl: string): Promise<WeeklyEmailMessage[]> {
-  const failed = (await loadAnswerRecords({ cycleId })).filter((r) => r.state === 'FAILED' && r.job !== null && r.job.updatedAt.getTime() > now.getTime() - DAY_MS)
-  if (failed.length === 0) return []
-  return (await hrUserIds()).map((userId) => ({
-    userId, kind: 'weekly-scoring-failed' as const, dedupeKey: weeklyDedupeKey('weekly-scoring-failed', userId, now),
-    render: (name: string) => renderScoringFailedEmail({ name, count: failed.length, appUrl }),
-  }))
-}
-
 /** Spec 8.2: the low-evidence list, emailed to HR once per cycle. */
 export async function lowEvidenceMessages(cycleId: string, appUrl: string): Promise<WeeklyEmailMessage[]> {
   const rows = (await lowEvidenceRows(cycleId)).map((r) => ({ evaluatee: r.evaluatee.name, group: PERSPECTIVE_LABELS[r.perspective], satisfied: r.satisfied, total: r.total }))
@@ -165,16 +149,3 @@ export async function formsOpenMessages(cycle: CycleWithPeriod, now: Date, appUr
   }))
 }
 
-/**
- * Spec 8.7: HR hears the running quarter's length–score correlation once per Karachi month. Until it can be computed
- * (two scored answers that differ) there is nothing to report, and the month's email goes out on a later run.
- */
-export async function lengthBiasMessages(cycle: CycleWithPeriod, now: Date, appUrl: string): Promise<WeeklyEmailMessage[]> {
-  const { correlation, scored } = await lengthCorrelation(cycle.id)
-  if (correlation === null) return []
-  const month = formatMonthKey(monthKeyOf(now))
-  return (await hrUserIds()).map((userId) => ({
-    userId, kind: 'weekly-length-bias' as const, dedupeKey: `weekly-length-bias:${userId}:${month}`,
-    render: (name: string) => renderLengthBiasEmail({ name, periodName: cycle.period.name, correlation, alert: correlation > LENGTH_ALERT_THRESHOLD, scored, appUrl }),
-  }))
-}

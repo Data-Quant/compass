@@ -1,15 +1,17 @@
+// An evaluator's weekly questions (UX spec, section 8). Each question offers 8 statements in a shuffled order fixed at
+// release; choosing one saves the answer with that statement's score. A note is required for 1, 1.5 and 4, and the
+// 10% cap on 4s applies per relationship. Answers can change until HR locks the quarter.
 import type { Prisma, WeeklyPrompt, WeeklyResponse } from '@prisma/client'
 import { prisma } from '@/lib/db'
-import {
-  afterNotObserved, answerProblem, canEditSubmitted, commentProblem, evaluatorStatus, RECENTLY_SUBMITTED_MS,
-} from '../answer-rules'
+import { isFourRatingCapExempt } from '@/lib/evaluation-rating-quota'
+import { afterNotObserved, canEditSubmitted, choiceProblem, commentProblem, evaluatorStatus, RECENTLY_SUBMITTED_MS } from '../answer-rules'
 import { cycleWeeks, effectiveWeek } from '../calendar'
 import { areWeeklyTestToolsEnabled } from '../flag'
-import { perspectiveOf } from '../perspectives'
-import { isConfirmedAction, latestByResponse } from '../reviews'
+import { fourRatingLimit, parseOptions } from '../mcq'
+import { perspectiveOf, type Perspective } from '../perspectives'
 import { QUESTIONS_PER_PAIR } from '../scheduler'
 import type { AnswerInput } from '../schemas'
-import type { AnswerView, EvaluateeProgress, HistoryGroup, HistoryResponse, InboxPrompt, InboxResponse } from '../view-types'
+import type { AnswerView, ChoiceView, EvaluateeProgress, HistoryGroup, HistoryResponse, InboxPrompt, InboxResponse } from '../view-types'
 import { recordAudit } from './audit'
 import { byName, isHrActor, loadPeople, personRef, type WeeklyActor } from './context'
 import { cycleSummary, findRunningCycle, loadCycle } from './cycles'
@@ -18,6 +20,8 @@ import { WeeklyError } from './errors'
 export interface InboxSubject { evaluatorId: string; actingAs: boolean }
 
 const ANSWERED = 'This question was already answered'
+const LOCKED = 'This quarter is locked, so answers can no longer change'
+const TOP_SCORE = 4
 const promptInclude = { response: true, slot: { select: { competency: { select: { name: true } } } } } as const satisfies Prisma.WeeklyPromptInclude
 type PromptRow = WeeklyPrompt & { response: WeeklyResponse | null; slot: { competency: { name: string } } | null }
 
@@ -36,33 +40,29 @@ export async function openPromptCount(cycleId: string, evaluatorId: string): Pro
 
 function answerView(response: WeeklyResponse | null): AnswerView | null {
   if (!response) return null
-  return { situation: response.situation, action: response.action, result: response.result, shortfall: response.shortfall, commentText: response.commentText }
+  return { optionId: response.optionId, note: response.note, commentText: response.commentText }
 }
+
+/** The statements in the evaluator's order, without scores. */
+const choicesOf = (prompt: WeeklyPrompt): ChoiceView[] => parseOptions(prompt.options).map((o) => ({ id: o.id, text: o.text }))
 
 function topicOf(prompt: PromptRow): string {
   return prompt.kind === 'COMMENT' ? 'Comment (optional)' : prompt.slot?.competency.name ?? 'Question'
 }
 
-const LOCKED = 'This quarter is locked, so answers can no longer change'
-
 async function periodLocked(periodId: string): Promise<boolean> {
   return (await prisma.evaluationPeriod.findUnique({ where: { id: periodId }, select: { isLocked: true } }))?.isLocked ?? false
 }
 
-/** Per person: of the quarter's five questions, how many are answered (or not observed) and how many were accepted. */
+/** Per person: of the quarter's five questions, how many are answered or not observed, and how many with a choice. */
 async function progressFor(cycleId: string, evaluatorId: string): Promise<EvaluateeProgress[]> {
   const [slots, prompts] = await Promise.all([
     prisma.weeklySlot.findMany({ where: { cycleId, evaluatorId, status: { not: 'CANCELLED' } }, select: { evaluateeId: true, relationshipType: true } }),
     prisma.weeklyPrompt.findMany({
       where: { cycleId, evaluatorId, kind: 'STANDARD', status: { in: ['SUBMITTED', 'NOT_OBSERVED'] } },
-      select: { evaluateeId: true, relationshipType: true, response: { select: { id: true } } },
+      select: { evaluateeId: true, relationshipType: true, status: true },
     }),
   ])
-  const responseIds = prompts.flatMap((p) => (p.response ? [p.response.id] : []))
-  const reviews = responseIds.length
-    ? await prisma.weeklyScoreReview.findMany({ where: { responseId: { in: responseIds } }, select: { id: true, responseId: true, createdAt: true, action: true } })
-    : []
-  const accepted = new Set([...latestByResponse(reviews).values()].filter((r) => isConfirmedAction(r.action)).map((r) => r.responseId))
   const people = await loadPeople(slots.map((s) => s.evaluateeId))
   const groups = new Map<string, EvaluateeProgress>()
   const keyOf = (row: { evaluateeId: string; relationshipType: string }) => `${row.evaluateeId}|${row.relationshipType}`
@@ -76,7 +76,7 @@ async function progressFor(cycleId: string, evaluatorId: string): Promise<Evalua
     groups.set(keyOf(prompt), {
       ...current,
       answered: Math.min(QUESTIONS_PER_PAIR, current.answered + 1),
-      satisfied: current.satisfied + (prompt.response && accepted.has(prompt.response.id) ? 1 : 0),
+      satisfied: current.satisfied + (prompt.status === 'SUBMITTED' ? 1 : 0),
     })
   }
   return [...groups.values()].sort((a, b) => byName(a.evaluatee, b.evaluatee))
@@ -103,7 +103,7 @@ export async function inboxView(evaluatorId: string, now: Date): Promise<InboxRe
     const submittedAt = p.response?.submittedAt ?? null
     return {
       id: p.id, weekIndex: p.weekIndex, kind: p.kind, status: p.status as InboxPrompt['status'], text: p.textSnapshot, topic: topicOf(p),
-      perspective: perspectiveOf(p.relationshipType) ?? 'PEER', evaluatee: personRef(people, p.evaluateeId), answer: answerView(p.response),
+      perspective: perspectiveOf(p.relationshipType) ?? 'PEER', evaluatee: personRef(people, p.evaluateeId), options: choicesOf(p), answer: answerView(p.response),
       submittedAt: submittedAt?.toISOString() ?? null,
       canEdit: p.status === 'SUBMITTED' ? canEditSubmitted({ submittedAt, periodLocked: locked }) : !locked,
       overdue: p.weekIndex < summary.currentWeek,
@@ -120,56 +120,79 @@ async function ownPrompt(evaluatorId: string, promptId: string) {
   return prompt
 }
 
-function draftFields(input: AnswerInput) {
-  return { situation: input.situation, action: input.action, result: input.result, shortfall: input.shortfall ?? null, commentText: input.commentText ?? null }
-}
-
+/** Keeps a note or comment typed before the answer is complete. Does not score anything. */
 export async function saveDraft(actor: WeeklyActor, subject: InboxSubject, promptId: string, input: AnswerInput, now: Date): Promise<{ savedAt: string }> {
+  void actor
   const prompt = await ownPrompt(subject.evaluatorId, promptId)
   if (prompt.status !== 'OPEN' && prompt.status !== 'DRAFT') throw new WeeklyError(ANSWERED, 409)
+  const optionId = prompt.kind === 'STANDARD' && input.optionId && parseOptions(prompt.options).some((o) => o.id === input.optionId) ? input.optionId : null
+  const data = { optionId, note: input.note?.trim() || null, commentText: input.commentText ?? null }
   await prisma.$transaction(async (tx) => {
     // The guarded status change locks the row, so a concurrent submit cannot be overwritten.
     const moved = await tx.weeklyPrompt.updateMany({ where: { id: promptId, status: { in: ['OPEN', 'DRAFT'] } }, data: { status: 'DRAFT' } })
     if (moved.count === 0) throw new WeeklyError(ANSWERED, 409)
-    await tx.weeklyResponse.upsert({ where: { promptId }, create: { promptId, ...draftFields(input) }, update: draftFields(input) })
+    await tx.weeklyResponse.upsert({ where: { promptId }, create: { promptId, ...data }, update: data })
   })
   return { savedAt: now.toISOString() }
 }
 
+const CAP_NOUN: Record<Perspective, string> = { LEAD: 'your team members', UPWARD: 'your lead', PEER: 'peers' }
+
+/** D-Q4: at most 10% of an evaluator's questions in one relationship may be 4s this quarter. */
+async function assertFourAllowed(tx: Prisma.TransactionClient, prompt: { id: string; cycleId: string; evaluatorId: string; relationshipType: string }): Promise<void> {
+  const perspective = perspectiveOf(prompt.relationshipType as Parameters<typeof perspectiveOf>[0]) ?? 'PEER'
+  const evaluator = await tx.user.findUnique({ where: { id: prompt.evaluatorId }, select: { name: true, position: true } })
+  if (evaluator && isFourRatingCapExempt(evaluator)) return
+  // Serialises this evaluator's 4s, so two at once cannot both slip under the cap.
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`weekly-fours:${prompt.cycleId}:${prompt.evaluatorId}`}))::text`
+  const types = perspective === 'PEER' ? ['PEER', 'CROSS_DEPARTMENT'] : [prompt.relationshipType]
+  const sameRelation = { cycleId: prompt.cycleId, evaluatorId: prompt.evaluatorId, relationshipType: { in: types as Prisma.EnumRelationshipTypeFilter['in'] } }
+  const pairs = await tx.weeklySlot.findMany({ where: { ...sameRelation, status: { not: 'CANCELLED' } }, distinct: ['evaluateeId'], select: { evaluateeId: true } })
+  const limit = fourRatingLimit(pairs.length * QUESTIONS_PER_PAIR)
+  const used = await tx.weeklyResponse.count({ where: { score: TOP_SCORE, prompt: { ...sameRelation, kind: 'STANDARD', status: 'SUBMITTED', id: { not: prompt.id } } } })
+  if (used >= limit) {
+    throw new WeeklyError(`You've used your ${limit} top rating${limit === 1 ? '' : 's'} for ${CAP_NOUN[perspective]} this quarter. To choose this, change an earlier one.`, 409)
+  }
+}
+
 export async function submitAnswer(actor: WeeklyActor, subject: InboxSubject, promptId: string, input: AnswerInput, now: Date): Promise<{ status: 'SUBMITTED'; revision: number }> {
   const prompt = await ownPrompt(subject.evaluatorId, promptId)
+  if (prompt.status !== 'OPEN' && prompt.status !== 'DRAFT' && prompt.status !== 'SUBMITTED') throw new WeeklyError('This question can no longer be answered', 409)
   const comment = prompt.kind === 'COMMENT'
-  const problem = comment ? commentProblem(input.commentText) : answerProblem(input)
-  if (problem) throw new WeeklyError(problem)
-  const data = comment
-    ? { situation: '', action: '', result: '', shortfall: null, commentText: (input.commentText ?? '').trim() }
-    : { situation: input.situation.trim(), action: input.action.trim(), result: input.result.trim(), shortfall: input.shortfall?.trim() || null, commentText: null }
+  const data = comment ? commentData(input) : choiceData(prompt.options, input)
   return prisma.$transaction(async (tx) => {
-    let revision: number
-    if (prompt.status === 'OPEN' || prompt.status === 'DRAFT') {
+    if (!comment && data.score === TOP_SCORE) await assertFourAllowed(tx, prompt)
+    const revision = (prompt.response?.revision ?? 0) + 1
+    if (prompt.status === 'SUBMITTED') {
+      // Guarded on the revision, so two edits at once cannot both win.
+      const updated = await tx.weeklyResponse.updateMany({ where: { promptId, revision: prompt.response?.revision ?? 0 }, data: { ...data, revision } })
+      if (updated.count === 0) throw new WeeklyError('This answer changed since you opened it; reload and try again', 409)
+    } else {
       const moved = await tx.weeklyPrompt.updateMany({ where: { id: promptId, status: { in: ['OPEN', 'DRAFT'] } }, data: { status: 'SUBMITTED' } })
       if (moved.count === 0) throw new WeeklyError(ANSWERED, 409)
-      revision = (prompt.response?.revision ?? 0) + 1
       await tx.weeklyResponse.upsert({ where: { promptId }, create: { promptId, ...data, revision, submittedAt: now }, update: { ...data, revision, submittedAt: now } })
-    } else if (prompt.status === 'SUBMITTED' && prompt.response) {
-      // Editable until the quarter is locked (checked above). An answer HR already decided is scored again and, because
-      // a person judged it, comes back to HR rather than being accepted automatically.
-      const updated = await tx.weeklyResponse.updateMany({ where: { id: prompt.response.id, revision: prompt.response.revision }, data: { ...data, revision: { increment: 1 } } })
-      if (updated.count === 0) throw new WeeklyError('This answer changed since you opened it; reload and try again', 409)
-      revision = prompt.response.revision + 1
-      await tx.weeklyScoringJob.updateMany({ where: { responseId: prompt.response.id, status: 'PENDING' }, data: { status: 'CANCELLED' } })
-    } else {
-      throw new WeeklyError('This question can no longer be answered', 409)
     }
-    if (!comment) {
-      const response = await tx.weeklyResponse.findUniqueOrThrow({ where: { promptId } })
-      await tx.weeklyScoringJob.create({ data: { responseId: response.id, revision } })
-    }
+    if (!comment && prompt.slotId) await tx.weeklySlot.update({ where: { id: prompt.slotId }, data: { status: 'SATISFIED' } })
     if (subject.actingAs) {
       await recordAudit(tx, { cycleId: prompt.cycleId, actorId: actor.id, actorRole: 'HR', action: 'TEST_ACT_AS_SUBMIT', objectType: 'WeeklyPrompt', objectId: promptId, after: { evaluatorId: subject.evaluatorId } })
     }
     return { status: 'SUBMITTED' as const, revision }
   })
+}
+
+function commentData(input: AnswerInput) {
+  const problem = commentProblem(input.commentText)
+  if (problem) throw new WeeklyError(problem)
+  return { optionId: null, score: null, note: null, commentText: (input.commentText ?? '').trim() }
+}
+
+function choiceData(options: Prisma.JsonValue, input: AnswerInput) {
+  const chosen = parseOptions(options).find((o) => o.id === input.optionId)
+  if (!chosen) throw new WeeklyError('Choose one of the statements')
+  const note = input.note?.trim() || null
+  const problem = choiceProblem({ score: chosen.score, note })
+  if (problem) throw new WeeklyError(problem)
+  return { optionId: chosen.id, score: chosen.score, note, commentText: null }
 }
 
 export async function markNotObserved(actor: WeeklyActor, subject: InboxSubject, promptId: string, now: Date): Promise<void> {
@@ -185,7 +208,7 @@ export async function markNotObserved(actor: WeeklyActor, subject: InboxSubject,
       const outcome = afterNotObserved(slot.notObservedCount, week)
       await tx.weeklySlot.update({
         where: { id: slot.id },
-        // A slot that already has confirmed evidence stays satisfied.
+        // A topic already answered stays answered.
         data: { status: slot.status === 'SATISFIED' ? 'SATISFIED' : outcome.status, snoozedUntilWeek: outcome.snoozedUntilWeek, notObservedCount: outcome.notObservedCount },
       })
     }
@@ -199,26 +222,18 @@ export async function historyView(evaluatorId: string): Promise<HistoryResponse>
   const cycle = await findRunningCycle()
   if (!cycle) return { cycle: null, groups: [] }
   const prompts: PromptRow[] = await prisma.weeklyPrompt.findMany({ where: { cycleId: cycle.id, evaluatorId }, include: promptInclude, orderBy: [{ weekIndex: 'desc' }, { createdAt: 'desc' }] })
-  const responseIds = prompts.flatMap((p) => (p.response ? [p.response.id] : []))
-  const [people, locked, reviews] = await Promise.all([
-    loadPeople(prompts.map((p) => p.evaluateeId)),
-    periodLocked(cycle.periodId),
-    prisma.weeklyScoreReview.findMany({ where: { responseId: { in: responseIds } }, select: { id: true, responseId: true, createdAt: true, action: true } }),
-  ])
-  const latest = latestByResponse(reviews)
+  const [people, locked] = await Promise.all([loadPeople(prompts.map((p) => p.evaluateeId)), periodLocked(cycle.periodId)])
   const groups = new Map<string, HistoryGroup>()
   for (const p of prompts) {
     const key = `${p.evaluateeId}|${p.relationshipType}`
     const group = groups.get(key) ?? { evaluatee: personRef(people, p.evaluateeId), perspective: perspectiveOf(p.relationshipType) ?? 'PEER', entries: [] }
-    const responseId = p.response?.id ?? ''
     groups.set(key, {
       ...group,
       entries: [
         ...group.entries,
         {
-          id: p.id, weekIndex: p.weekIndex, kind: p.kind, topic: topicOf(p), text: p.textSnapshot,
-          status: evaluatorStatus({ promptStatus: p.status, latestReviewAction: latest.get(responseId)?.action ?? null }),
-          answer: answerView(p.response), submittedAt: p.response?.submittedAt?.toISOString() ?? null,
+          id: p.id, weekIndex: p.weekIndex, kind: p.kind, topic: topicOf(p), text: p.textSnapshot, status: evaluatorStatus(p.status),
+          options: choicesOf(p), answer: answerView(p.response), submittedAt: p.response?.submittedAt?.toISOString() ?? null,
           canEdit: p.status === 'SUBMITTED' && canEditSubmitted({ submittedAt: p.response?.submittedAt ?? null, periodLocked: locked }),
         },
       ],

@@ -2,8 +2,7 @@ import test, { after, afterEach, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { prisma } from '../lib/db'
 import { WeeklyError } from '../lib/weekly/service/errors'
-import { approveAllDrafts, fillSynthetic, releaseNextWeek, resetCycle } from '../lib/weekly/service/test-tools'
-import { syncFromQuestionBank } from '../lib/weekly/service/content'
+import { fillSynthetic, releaseNextWeek, resetCycle } from '../lib/weekly/service/test-tools'
 import { at, HR_ACTOR, startedCycle } from './helpers/weekly-fixtures'
 import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST, weeklyActor } from './helpers/weekly-test-db'
 
@@ -33,26 +32,23 @@ test('releasing the next week moves the cycle forward one week at a time', WEEKL
   assert.equal((await prisma.weeklyCycle.findUniqueOrThrow({ where: { id: cycleId } })).simulatedWeek, 2)
 })
 
-test('synthetic answers fill every open question with a valid answer', WEEKLY_DB_TEST, async () => {
+test('synthetic answers choose a middling statement for every open question', WEEKLY_DB_TEST, async () => {
   await releaseNextWeek(HR_ACTOR, cycleId, at(1))
   assert.deepEqual(await fillSynthetic(HR_ACTOR, cycleId, W.lead.id, at(1)), { answered: 1 })
   assert.deepEqual(await fillSynthetic(HR_ACTOR, cycleId, undefined, at(1)), { answered: 2 })
   const prompts = await prisma.weeklyPrompt.findMany()
   assert.ok(prompts.every((p) => p.status === 'SUBMITTED'))
-  assert.equal(await prisma.weeklyScoringJob.count(), 3)
+  const scores = (await prisma.weeklyResponse.findMany()).map((r) => r.score)
+  assert.equal(scores.length, 3)
+  assert.ok(scores.every((s) => s !== null && s >= 2 && s <= 3.5))
   assert.ok((await prisma.weeklyAuditEvent.count({ where: { action: 'TEST_FILL' } })) >= 2)
 })
 
-test('approve-all approves every draft; reset clears the cycle’s answers', WEEKLY_DB_TEST, async () => {
-  await prisma.weeklyProfile.deleteMany()
-  await prisma.weeklyCompetencyPrompt.deleteMany()
-  await prisma.weeklyCompetency.deleteMany()
-  await syncFromQuestionBank(HR_ACTOR)
-  assert.deepEqual(await approveAllDrafts(HR_ACTOR), { approved: 11 })
+test('reset clears the cycle’s answers', WEEKLY_DB_TEST, async () => {
   await releaseNextWeek(HR_ACTOR, cycleId, at(1))
   await fillSynthetic(HR_ACTOR, cycleId, undefined, at(1))
   await resetCycle(HR_ACTOR, cycleId)
-  assert.deepEqual([await prisma.weeklyPrompt.count(), await prisma.weeklySlot.count(), await prisma.weeklyScoringJob.count()], [0, 0, 0])
+  assert.deepEqual([await prisma.weeklyPrompt.count(), await prisma.weeklySlot.count(), await prisma.weeklyResponse.count()], [0, 0, 0])
   assert.equal((await prisma.weeklyCycle.findUniqueOrThrow({ where: { id: cycleId } })).simulatedWeek, null)
 })
 

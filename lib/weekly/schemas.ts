@@ -1,16 +1,13 @@
 import { z } from 'zod'
-import { isValidModelId } from './calibration-rules'
 import { MAX_FIELD_CHARS } from './answer-rules'
 import { parseWeekOneMonday } from './calendar'
-import { profileLevelsSchema } from './profile'
 
 const field = z.string().max(MAX_FIELD_CHARS, `Keep each box under ${MAX_FIELD_CHARS} characters`)
+/** A multiple-choice answer (the chosen statement and an optional or required note), or a comment. */
 export const answerSchema = z
   .object({
-    situation: field.default(''),
-    action: field.default(''),
-    result: field.default(''),
-    shortfall: field.nullable().optional(),
+    optionId: z.string().min(1).max(20).nullable().optional(),
+    note: field.nullable().optional(),
     commentText: field.nullable().optional(),
   })
   .strict()
@@ -28,13 +25,18 @@ export const updateCycleSchema = z.discriminatedUnion('action', [
 ])
 export type UpdateCycleInput = z.infer<typeof updateCycleSchema>
 
+/** A question's 8 statements; optionsProblem checks the levels, this only the shape. */
+export const statementsSchema = z.array(z.object({ text: z.string().trim().min(1, 'A statement is empty').max(300), score: z.number() }).strict()).max(12)
 export const promptUpdateSchema = z
-  .object({ text: z.string().trim().min(20, 'Write at least 20 characters').max(600).optional(), isActive: z.boolean().optional() })
+  .object({ text: z.string().trim().min(10, 'Write the question').max(600).optional(), options: statementsSchema.optional(), isActive: z.boolean().optional() })
   .strict()
-  .refine((value) => value.text !== undefined || value.isActive !== undefined, 'Nothing to change')
-
-export const profileDraftSchema = z.object({ levels: profileLevelsSchema, insufficientDefinition: z.string().trim().min(10).max(1000) }).strict()
-export type ProfileDraftInput = z.infer<typeof profileDraftSchema>
+  .refine((value) => value.text !== undefined || value.options !== undefined || value.isActive !== undefined, 'Nothing to change')
+export const questionCreateSchema = z.object({ text: z.string().trim().min(10, 'Write the question').max(600), options: statementsSchema }).strict()
+export const topicCreateSchema = z.object({
+  perspective: z.enum(['LEAD', 'UPWARD', 'PEER']), name: z.string().trim().min(2, 'Name the topic').max(120), departments: z.array(z.string().trim().max(80)).max(20).default([]),
+  text: z.string().trim().min(10, 'Write the question').max(600), options: statementsSchema,
+}).strict()
+export const topicUpdateSchema = z.object({ name: z.string().trim().min(2).max(120).optional(), departments: z.array(z.string().trim().max(80)).max(20).optional() }).strict()
 
 export const reasonSchema = z.string().trim().min(3, 'Give a reason').max(500)
 export const optInSchema = z.object({ cycleId: z.string().min(1), userId: z.string().min(1), reason: reasonSchema }).strict()
@@ -43,33 +45,12 @@ export const removeOptInSchema = z.object({ cycleId: z.string().min(1), userId: 
 export const testToolSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('release-next-week'), cycleId: z.string().min(1) }).strict(),
   z.object({ action: z.literal('fill-synthetic'), cycleId: z.string().min(1), evaluatorId: z.string().min(1).optional() }).strict(),
-  z.object({ action: z.literal('approve-all-drafts') }).strict(),
   z.object({ action: z.literal('reset'), cycleId: z.string().min(1) }).strict(),
-  z.object({ action: z.literal('score-now'), cycleId: z.string().min(1), model: z.enum(['configured', 'stand-in']).default('configured') }).strict(),
-  z.object({ action: z.literal('accept-due-now'), cycleId: z.string().min(1) }).strict(),
-  z.object({ action: z.literal('settle-for-close'), cycleId: z.string().min(1) }).strict(),
   z.object({ action: z.literal('pairs'), cycleId: z.string().min(1), evaluatorId: z.string().min(1) }).strict(),
   z.object({ action: z.literal('release-for'), cycleId: z.string().min(1), evaluatorId: z.string().min(1) }).strict(),
   z.object({ action: z.literal('ask-pair'), cycleId: z.string().min(1), evaluatorId: z.string().min(1), evaluateeId: z.string().min(1) }).strict(),
 ])
 export type TestToolInput = z.infer<typeof testToolSchema>
-
-const basedOnSchema = z.object({ aiScoreId: z.string().min(1).nullable(), reviewId: z.string().min(1).nullable() }).strict()
-const optionalReason = z.string().trim().max(500).optional()
-/** `basedOn` is what HR was looking at; a decision on anything newer is refused as stale. */
-export const decisionSchema = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('ACCEPT'), basedOn: basedOnSchema, reason: optionalReason }).strict(),
-  z.object({ action: z.literal('SET_SCORE'), basedOn: basedOnSchema, score: z.number().int().min(1).max(4), reason: reasonSchema }).strict(),
-  z.object({ action: z.literal('NOT_ENOUGH_EVIDENCE'), basedOn: basedOnSchema, reason: optionalReason }).strict(),
-  z.object({ action: z.literal('EXCLUDE'), basedOn: basedOnSchema, reason: reasonSchema }).strict(),
-])
-export type DecisionInput = z.infer<typeof decisionSchema>
-
-export const reviewFilterSchema = z.enum(['NEEDS_REVIEW', 'FAILED', 'AUTO_ACCEPT', 'SCORING', 'DECIDED'])
-export const correctionSchema = z
-  .object({ situation: field, action: field, result: field, shortfall: field.nullable().optional(), reason: reasonSchema })
-  .strict()
-export type CorrectionInput = z.infer<typeof correctionSchema>
 
 const formRelationshipTypeSchema = z.enum(['C_LEVEL', 'DEPT', 'HR'])
 export const formResponseSchema = z
@@ -161,64 +142,3 @@ export const closeActionSchema = z.discriminatedUnion('action', [
 ])
 export type CloseActionInput = z.infer<typeof closeActionSchema>
 
-export const challengeSchema = z.object({ reason: z.string().trim().min(20, 'Explain in at least 20 characters').max(3000) }).strict()
-export const challengeActionSchema = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('adjust'), responseId: z.string().min(1), score: z.number().int().min(1).max(4), reason: reasonSchema }).strict(),
-  z.object({ action: z.literal('resolve'), outcome: z.enum(['UPHELD', 'NOT_UPHELD']), resolution: z.string().trim().min(10, 'Write at least 10 characters').max(3000) }).strict(),
-])
-export type ChallengeActionInput = z.infer<typeof challengeActionSchema>
-
-const modelIdSchema = z.string().trim().refine(isValidModelId, 'Use a Fireworks model id such as accounts/fireworks/models/llama-v3p1-70b-instruct')
-const priceValue = z.number().finite().min(0, 'Prices cannot be negative').max(1000)
-export const aiSettingsSchema = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('set-active'), model: modelIdSchema.nullable() }).strict(),
-  z.object({ action: z.literal('set-price'), model: modelIdSchema, inputPerMillion: priceValue, outputPerMillion: priceValue }).strict(),
-  z.object({ action: z.literal('remove-price'), model: z.string().trim().min(1).max(200) }).strict(),
-])
-export type AiSettingsInput = z.infer<typeof aiSettingsSchema>
-
-type JudgementLike = { hrSufficiency: 'SUFFICIENT' | 'INSUFFICIENT'; hrScore: number | null }
-function judgementMatches(value: JudgementLike, ctx: z.RefinementCtx): void {
-  if (value.hrSufficiency === 'SUFFICIENT' && value.hrScore === null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['hrScore'], message: 'Give your score (1–4)' })
-  if (value.hrSufficiency === 'INSUFFICIENT' && value.hrScore !== null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['hrScore'], message: 'An answer without enough evidence has no score' })
-}
-const itemBox = z.string().trim().min(1, 'Required').max(MAX_FIELD_CHARS)
-const itemFields = {
-  competencyId: z.string().min(1),
-  question: z.string().trim().min(10, 'Write the question').max(600),
-  situation: itemBox,
-  action: itemBox,
-  result: itemBox,
-  shortfall: z.string().trim().max(MAX_FIELD_CHARS).nullable().optional(),
-}
-const judgementFields = {
-  hrSufficiency: z.enum(['SUFFICIENT', 'INSUFFICIENT']),
-  hrScore: z.number().int().min(1).max(4).nullable(),
-  note: z.string().trim().max(1000).nullable().optional(),
-}
-export const calibrationItemSchema = z
-  .discriminatedUnion('source', [
-    z.object({ source: z.literal('answer'), responseId: z.string().min(1), ...judgementFields }).strict(),
-    z.object({ source: z.literal('manual'), ...itemFields, ...judgementFields }).strict(),
-  ])
-  .superRefine(judgementMatches)
-export type CalibrationItemInput = z.infer<typeof calibrationItemSchema>
-export const calibrationItemUpdateSchema = z
-  .discriminatedUnion('op', [
-    z.object({ op: z.literal('edit'), ...itemFields, ...judgementFields }).strict(),
-    z.object({ op: z.literal('archive') }).strict(),
-    z.object({ op: z.literal('restore') }).strict(),
-  ])
-  .superRefine((value, ctx) => {
-    if (value.op === 'edit') judgementMatches(value, ctx)
-  })
-export type CalibrationItemUpdate = z.infer<typeof calibrationItemUpdateSchema>
-
-const runModel = z.string().trim().min(1, 'Enter a model id').max(200)
-export const calibrationRunSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('SET'), model: runModel }).strict(),
-  z.object({ kind: z.literal('CYCLE'), cycleId: z.string().min(1), model: runModel }).strict(),
-])
-export type CalibrationRunInput = z.infer<typeof calibrationRunSchema>
-
-export const moreEvidenceSchema = z.object({ cycleId: z.string().min(1), evaluateeId: z.string().min(1), perspective: z.enum(['LEAD', 'UPWARD', 'PEER']) }).strict()

@@ -13,7 +13,7 @@ export function renderQuestionsEmail(input: { name: string; newCount: number; op
     : `You have ${plural(input.newCount, 'new question')} this week (${input.openCount} open in total).`
   const html =
     '<div style="font-family:Arial,sans-serif;font-size:14px;color:#111;max-width:600px">' +
-    `<p>Hi ${escapeHtml(input.name)},</p><p>${escapeHtml(lead)} Each takes about five minutes: describe a real situation, what the person did, and what happened.</p>` +
+    `<p>Hi ${escapeHtml(input.name)},</p><p>${escapeHtml(lead)} Each one takes a few seconds: pick the statement that best fits what you have seen.</p>` +
     `<p><a href="${escapeHtml(link)}" style="display:inline-block;padding:10px 16px;background:#111;color:#fff;border-radius:6px;text-decoration:none">Answer now</a></p>` +
     '<p style="color:#666;font-size:12px">Unanswered questions stay open until the quarter closes.</p></div>'
   return { subject, html }
@@ -29,45 +29,22 @@ function layout(name: string, paragraphs: string[], link: string, button: string
 }
 const base = (appUrl: string) => appUrl.replace(/\/$/, '')
 
-export function renderScoringFailedEmail(input: { name: string; count: number; appUrl: string }): { subject: string; html: string } {
-  const answers = plural(input.count, 'weekly answer')
-  return {
-    subject: `${answers} could not be scored`,
-    html: layout(input.name, [escapeHtml(`The AI could not score ${answers}. Retry them, or score them by hand, in the review queue.`)], `${base(input.appUrl)}/admin/evaluation-round?tab=advanced&sub=review`, 'Open the review queue'),
-  }
-}
-
 const MAX_EMAIL_ROWS = 50
 
 export function renderLowEvidenceEmail(input: { name: string; rows: ReadonlyArray<{ evaluatee: string; group: string; satisfied: number; total: number }>; appUrl: string }): { subject: string; html: string } {
   const shown = input.rows.slice(0, MAX_EMAIL_ROWS)
   const table =
     '<table style="border-collapse:collapse;font-size:13px">' +
-    '<tr><th align="left" style="padding:4px 8px">Person</th><th align="left" style="padding:4px 8px">Group</th><th align="left" style="padding:4px 8px">Topics with accepted evidence</th></tr>' +
+    '<tr><th align="left" style="padding:4px 8px">Person</th><th align="left" style="padding:4px 8px">Group</th><th align="left" style="padding:4px 8px">Topics answered</th></tr>' +
     shown.map((r) => `<tr><td style="padding:4px 8px">${escapeHtml(r.evaluatee)}</td><td style="padding:4px 8px">${escapeHtml(r.group)}</td><td style="padding:4px 8px">${r.satisfied} of ${r.total}</td></tr>`).join('') +
     '</table>'
   const more = input.rows.length > shown.length ? `<p>…and ${input.rows.length - shown.length} more on the dashboard.</p>` : ''
   return {
     subject: `Weekly evaluations: ${plural(input.rows.length, 'person-group')} with low evidence`,
     html: layout(input.name, [
-      escapeHtml('These people have less than 60% of their topics covered by accepted evidence in a group, with two question weeks left.'),
+      escapeHtml('These people have answers on less than 60% of their topics in a group, with two question weeks left.'),
       table + more,
     ], `${base(input.appUrl)}/admin/evaluation-round?tab=progress`, 'Open the dashboard'),
-  }
-}
-
-export function renderChallengeRaisedEmail(input: { name: string; evaluatee: string; periodName: string; appUrl: string }): { subject: string; html: string } {
-  return {
-    subject: `${input.evaluatee} raised a challenge on their ${input.periodName} results`,
-    html: layout(input.name, [escapeHtml(`${input.evaluatee} has challenged their ${input.periodName} results. Review their evidence and resolve the challenge.`)], `${base(input.appUrl)}/admin/evaluation-round?tab=advanced&sub=challenges`, 'Open challenges'),
-  }
-}
-
-export function renderChallengeResolvedEmail(input: { name: string; periodName: string; upheld: boolean; resolution: string; appUrl: string }): { subject: string; html: string } {
-  const outcome = input.upheld ? 'HR upheld your challenge and updated your results.' : 'HR reviewed your challenge and kept your results as they were.'
-  return {
-    subject: `Your challenge on your ${input.periodName} results has been decided`,
-    html: layout(input.name, [escapeHtml(outcome), `<strong>HR’s explanation:</strong> ${escapeHtml(input.resolution)}`], `${base(input.appUrl)}/dashboard`, 'Open Compass'),
   }
 }
 
@@ -75,33 +52,6 @@ export function renderFormsOpenEmail(input: { name: string; appUrl: string; path
   return {
     subject: 'End-of-quarter evaluation forms are open',
     html: layout(input.name, [escapeHtml('Your end-of-quarter evaluation forms (C-Level, Department or HR) are open. Please complete them before the quarter closes.')], `${base(input.appUrl)}${input.path ?? '/evaluations/weekly'}`, 'Open the forms'),
-  }
-}
-
-/** Part D: HR asked for more examples about someone; the evaluator has new questions. Nobody is named and no score is mentioned. */
-export function renderMoreEvidenceEmail(input: { name: string; count: number; appUrl: string }): { subject: string; html: string } {
-  const questions = input.count === 1 ? 'there is one new question' : `there are ${input.count} new questions`
-  return {
-    subject: `HR asked for more examples: ${plural(input.count, 'new evaluation question')}`,
-    html: layout(input.name, [
-      escapeHtml(`HR would like a few more examples from you, so ${questions} on your weekly evaluations page.`),
-      'Each takes about five minutes: describe a real situation, what the person did, and what happened.',
-    ], `${base(input.appUrl)}/evaluations/weekly`, 'Answer now'),
-  }
-}
-
-/** Spec 8.7: once a month, HR sees whether longer answers score higher because they are longer. */
-export function renderLengthBiasEmail(input: { name: string; periodName: string; correlation: number; alert: boolean; scored: number; appUrl: string }): { subject: string; html: string } {
-  const value = input.correlation.toFixed(2)
-  const verdict = input.alert
-    ? `<strong>${escapeHtml('Alert: this is above 0.3, so longer answers may be scoring higher just for being longer. Check the AI quality section and review a sample.')}</strong>`
-    : escapeHtml('This is within the expected range (0.3 or below).')
-  return {
-    subject: `Weekly evaluations: length–score check for ${input.periodName} (${value})`,
-    html: layout(input.name, [
-      escapeHtml(`Across ${plural(input.scored, 'scored answer')} in ${input.periodName} so far, the correlation between an answer’s length and its AI score is ${value}.`),
-      verdict,
-    ], `${base(input.appUrl)}/admin/evaluation-round?tab=progress`, 'Open the dashboard'),
   }
 }
 

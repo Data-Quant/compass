@@ -34,7 +34,6 @@ export function TestToolsTab() {
   }
   const [busy, setBusy] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
-  const [scoreModel, setScoreModel] = useState<'configured' | 'stand-in'>('configured')
   const [refreshKey, setRefreshKey] = useState(0)
 
   const loadPeople = useCallback(async () => {
@@ -73,25 +72,10 @@ export function TestToolsTab() {
           </div>
           <CyclePicker cycles={cycles} cycleId={cycleId} onChange={setCycleId} />
           <div className="flex flex-wrap gap-2">
-            <Button disabled={busy} variant="outline" onClick={() => void run({ action: 'approve-all-drafts' }, (r) => `${String(r.approved)} profiles approved`)}>Approve all drafts</Button>
             {cycleId && (
               <>
                 <Button disabled={busy} onClick={() => void run({ action: 'release-next-week', cycleId }, (r) => `Week ${String(r.week)} released: ${String(r.promptsCreated)} questions`)}>Release next week now</Button>
-                <Button disabled={busy} variant="outline" onClick={() => void run({ action: 'fill-synthetic', cycleId }, (r) => `${String(r.answered)} answers written`)}>Fill synthetic answers</Button>
-                <Select value={scoreModel} onValueChange={(value) => setScoreModel(value === 'stand-in' ? 'stand-in' : 'configured')}>
-                  <SelectTrigger className="w-60" aria-label="Scoring model"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="configured">Configured AI model</SelectItem>
-                    <SelectItem value="stand-in">Stand-in model (no AI call)</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button disabled={busy} variant="outline" onClick={() => void run({ action: 'score-now', cycleId, model: scoreModel }, (r) => `${String(r.scored)} scored, ${String(r.insufficient)} without enough evidence, ${String(r.failed)} failed, ${String(r.remaining)} still queued`)}>
-                  Score now
-                </Button>
-                <Button disabled={busy} variant="outline" onClick={() => void run({ action: 'accept-due-now', cycleId }, (r) => `${String(r.accepted)} scores accepted`)}>Accept answers due now</Button>
-                <Button disabled={busy} variant="outline" onClick={() => void run({ action: 'settle-for-close', cycleId }, (r) => `${String(r.scored)} scored, ${String(r.accepted)} accepted, ${String(r.scoredByHand)} scored by hand`)}>
-                  Settle everything for close
-                </Button>
+                <Button disabled={busy} variant="outline" onClick={() => void run({ action: 'fill-synthetic', cycleId }, (r) => `${String(r.answered)} questions answered`)}>Answer every open question</Button>
                 <Button disabled={busy} variant="ghost" onClick={() => setConfirmReset(true)}>Reset this cycle</Button>
               </>
             )}
@@ -104,7 +88,7 @@ export function TestToolsTab() {
           <CardContent className="space-y-3 p-4">
             <div>
               <p className="font-semibold">Ask someone now</p>
-              <p className="text-sm text-muted-foreground">For a live demo. “Release this week for them” gives the evaluator this week’s questions, about a random few of the people they evaluate. “Ask this pair now” gives them their next question about one person. Watch the answers being scored on Live scores.</p>
+              <p className="text-sm text-muted-foreground">For a live demo. “Release this week for them” gives the evaluator this week’s questions, about a random few of the people they evaluate. “Ask this pair now” gives them their next question about one person. Each answer is scored the moment it is chosen.</p>
             </div>
             <div className="flex flex-wrap items-end gap-3">
               <Select value={pair.evaluatorId} onValueChange={(evaluatorId) => void chooseEvaluator(evaluatorId)}>

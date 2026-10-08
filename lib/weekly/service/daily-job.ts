@@ -1,38 +1,22 @@
 import { prisma } from '@/lib/db'
-import type { StructuredModel } from '../ai/model'
 import { cycleWeeks, karachiWeekday, questionWeekCount, weekIndexAt } from '../calendar'
-import { resolveActiveModel } from './ai-settings'
-import { CALIBRATION_DAILY_BUDGET_MS, continueCalibrationRuns, type CalibrationProgress, type ModelResolver } from './calibration-runs'
 import { findRunningCycle } from './cycles'
-import { autoAcceptDue } from './decisions'
 import { formsOpenFor } from './forms'
-import {
-  deliverOnce, formsOpenMessages, lengthBiasMessages, lowEvidenceMessages, questionRecipients, scoringFailedMessages, sendQuestionEmails,
-  type WeeklySendMail, type WeeklySendResult,
-} from './notifications'
+import { deliverOnce, formsOpenMessages, lowEvidenceMessages, questionRecipients, sendQuestionEmails, type WeeklySendMail, type WeeklySendResult } from './notifications'
 import { remindStaleMappingRequests } from './peer-requests'
 import { releaseWeek, type ReleaseSummary } from './release'
-import { runScoring, type ScoringRunSummary } from './scoring'
 
 export interface WeeklyDailyResult {
   cycleId: string | null
   week: number | null
   released: ReleaseSummary | null
   emails: WeeklySendResult | null
-  scoring: ScoringRunSummary | null
-  autoAccepted: number
   digests: WeeklySendResult | null
-  calibration: CalibrationProgress[]
   /** Leads reminded about peer changes waiting 2 working days; a round in review has no running cycle yet. */
   mappingReminders: WeeklySendResult | null
 }
 
 const MONDAY = 1
-/**
- * The cron has 300 s: live scoring gets 120 s with one model call (45 s) possibly still in flight, then the digests go
- * out; calibration runs come last with 45 s, so a slow model can only cut calibration short, never the day's emails.
- */
-export const DAILY_SCORING_BUDGET_MS = 120_000
 
 /** Spec 8.2: HR is emailed the low-evidence list two question weeks before questions stop (week 10 of 13). */
 export function lowEvidenceWeek(total: number): number {
@@ -65,40 +49,23 @@ function addResults(a: WeeklySendResult, b: WeeklySendResult): WeeklySendResult 
 }
 
 /**
- * 04:00 UTC = 09:00 Karachi. Accepts what is due first, so slots satisfied since yesterday are not asked again;
- * then the release and question emails, so a slow scoring backlog can never delay or cut off the week's questions;
- * then scores what is waiting; then the digests, which include today's follow-ups, scoring failures and the month's
- * length check; then continues calibration runs, last. Calibration runs continue even when no quarter is running.
- * Uses the calendar week only; the preview's simulated week never affects production.
+ * 04:00 UTC = 09:00 Karachi. Reminds leads about peer changes first (a round in review has no running cycle), then
+ * releases the week and sends the question emails, then HR's digests. Answers are scored as they are given, so there is
+ * nothing to score here. Uses the calendar week only; the preview's simulated week never affects production.
  */
-export async function runWeeklyDailyJob(
-  send: WeeklySendMail,
-  appUrl: string,
-  now: Date = new Date(),
-  options: { model?: StructuredModel | null; resolveModel?: ModelResolver } = {},
-): Promise<WeeklyDailyResult> {
-  // Advances in real time from `now`, so leases stay honest during a long run and tests stay deterministic.
-  const started = Date.now()
-  const clock = () => new Date(now.getTime() + (Date.now() - started))
-  const calibrate = () => continueCalibrationRuns(CALIBRATION_DAILY_BUDGET_MS, { resolveModel: options.resolveModel, clock })
+export async function runWeeklyDailyJob(send: WeeklySendMail, appUrl: string, now: Date = new Date()): Promise<WeeklyDailyResult> {
   const mappingReminders = await remindStaleMappingRequests(now, send, appUrl)
   const cycle = await findRunningCycle()
-  if (!cycle) return { cycleId: null, week: null, released: null, emails: null, scoring: null, autoAccepted: 0, digests: null, calibration: await calibrate(), mappingReminders }
-  const model = options.model !== undefined ? options.model : await resolveActiveModel()
-  const { accepted } = await autoAcceptDue(clock(), { cycleId: cycle.id })
+  if (!cycle) return { cycleId: null, week: null, released: null, emails: null, digests: null, mappingReminders }
   const week = weekIndexAt(cycle.weekOneStartsOn, now)
   const total = cycleWeeks(cycle)
   // Once HR locks the quarter nothing can be answered, so nothing is released or reminded.
   const locked = (await prisma.evaluationPeriod.findUnique({ where: { id: cycle.periodId }, select: { isLocked: true } }))?.isLocked ?? false
   const { released, emails } = !locked && week >= 1 && week <= total ? await releaseAndAnnounce(cycle.id, week, now, send, appUrl) : { released: null, emails: null }
-  const scoring = await runScoring({ model, budgetMs: DAILY_SCORING_BUDGET_MS, clock })
   const messages = [
-    ...(await scoringFailedMessages(cycle.id, now, appUrl)),
     ...(week === lowEvidenceWeek(total) ? await lowEvidenceMessages(cycle.id, appUrl) : []),
     ...(!locked && formsOpenFor(cycle, now) ? await formsOpenMessages(cycle, now, appUrl) : []),
-    ...(await lengthBiasMessages(cycle, now, appUrl)),
   ]
   const digests = messages.length > 0 ? await deliverOnce(messages, send) : null
-  const calibration = await calibrate()
-  return { cycleId: cycle.id, week, released, emails, scoring, autoAccepted: accepted, digests, calibration, mappingReminders }
+  return { cycleId: cycle.id, week, released, emails, digests, mappingReminders }
 }

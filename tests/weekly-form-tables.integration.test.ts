@@ -4,14 +4,11 @@ import { prisma } from '../lib/db'
 import { WeeklyError } from '../lib/weekly/service/errors'
 import { formsProgress, formTables, saveTableRow } from '../lib/weekly/service/form-tables'
 import { formsView } from '../lib/weekly/service/forms'
-import { fakeModel } from '../lib/weekly/ai/model'
 import { aggregateCycle } from '../lib/weekly/service/aggregate'
-import { loadAnswerRecords } from '../lib/weekly/service/answer-states'
 import { loadCycle } from '../lib/weekly/service/cycles'
-import { decideAnswer } from '../lib/weekly/service/decisions'
 import { submitAnswer } from '../lib/weekly/service/inbox'
 import { releaseWeek } from '../lib/weekly/service/release'
-import { runScoring } from '../lib/weekly/service/scoring'
+import { optionWithScore } from './helpers/weekly-answers'
 import { F, seedFormFixtures } from './helpers/weekly-form-fixtures'
 import { at, HR_ACTOR, startedCycle } from './helpers/weekly-fixtures'
 import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST, weeklyActor } from './helpers/weekly-test-db'
@@ -116,12 +113,8 @@ test('a partner’s weekly answers from before they were HR-filled are left out 
   await prisma.evaluatorMapping.create({ data: { evaluatorId: F.chief.id, evaluateeId: W.lead.id, relationshipType: 'TEAM_LEAD' } })
   await releaseWeek(cycleId, 1, at(1))
   const prompt = await prisma.weeklyPrompt.findFirstOrThrow({ where: { evaluatorId: F.chief.id } })
-  const fields = { situation: 'The client moved the launch forward a week', action: 'They rebuilt the plan the same afternoon', result: 'We delivered on time with no rework' }
-  await submitAnswer(weeklyActor(F.chief), { evaluatorId: F.chief.id, actingAs: false }, prompt.id, fields, at(1, 2))
-  await runScoring({ model: fakeModel(), budgetMs: 30_000, clock: () => at(1, 3) })
-  const response = await prisma.weeklyResponse.findUniqueOrThrow({ where: { promptId: prompt.id } })
-  const [record] = await loadAnswerRecords({ responseIds: [response.id] })
-  await decideAnswer(HR_ACTOR, response.id, { action: 'SET_SCORE', score: 3, reason: 'Seen it', basedOn: { aiScoreId: record.aiScore?.id ?? null, reviewId: null } }, at(1, 4))
+  const optionId = await optionWithScore(prompt.id, 3)
+  await submitAnswer(weeklyActor(F.chief), { evaluatorId: F.chief.id, actingAs: false }, prompt.id, { optionId }, at(1, 2))
 
   process.env.WEEKLY_HR_FILLED_PARTNERS = F.chief.name
   const table = (await formTables(HR_ACTOR, 'PARTNER', at(12))).tables.find((t) => t.relationshipType === 'TEAM_LEAD')!

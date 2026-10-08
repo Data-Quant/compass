@@ -14,7 +14,6 @@ import { Button } from '@/components/ui/button'
 import { StatsCard } from '@/components/composed/StatsCard'
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import { EmptyState } from '@/components/composed/EmptyState'
-import { WeeklyChallengeCard } from '@/components/weekly/WeeklyChallengeCard'
 import { WeeklyQuestionsCard } from '@/components/weekly/WeeklyQuestionsCard'
 import {
   ClipboardCheck,
@@ -348,7 +347,6 @@ export default function DashboardPage() {
       )}
 
       <WeeklyQuestionsCard />
-      <WeeklyChallengeCard />
 
       {/* Quick stats */}
       <motion.div

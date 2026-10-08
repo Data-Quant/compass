@@ -1,13 +1,13 @@
 import test, { after, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { prisma } from '../lib/db'
-import { syncFromQuestionBank } from '../lib/weekly/service/content'
+import { loadStandardBank } from '../lib/weekly/service/content'
 import {
   createCycle, cycleSummary, deleteCycle, findRunningCycle, loadCycle, removeOptIn, setOptIn, updateCycle,
 } from '../lib/weekly/service/cycles'
 import { WeeklyError } from '../lib/weekly/service/errors'
 import { participantsView } from '../lib/weekly/service/round-people'
-import { approveAllContent, at, HR_ACTOR, WEEK_ONE_MONDAY } from './helpers/weekly-fixtures'
+import { at, HR_ACTOR, WEEK_ONE_MONDAY } from './helpers/weekly-fixtures'
 import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST, WEEKLY_PERIOD, weeklyActor } from './helpers/weekly-test-db'
 
 const isStatus = (status: number) => (e: unknown) => e instanceof WeeklyError && e.status === status
@@ -37,11 +37,10 @@ test('week 1 must be a Monday that leaves at least three weeks', WEEKLY_DB_TEST,
   await assert.rejects(createCycle(HR_ACTOR, { periodId, weekOneStartsOn: '2026-12-21' }), /three weeks/)
 })
 
-test('a cycle starts only with approved topics, and only one runs at a time', WEEKLY_DB_TEST, async () => {
+test('a cycle starts only once the question bank is loaded, and only one runs at a time', WEEKLY_DB_TEST, async () => {
   const cycle = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY })
-  await assert.rejects(updateCycle(HR_ACTOR, cycle.id, { action: 'start' }), /Approve/)
-  await syncFromQuestionBank(HR_ACTOR)
-  await approveAllContent()
+  await assert.rejects(updateCycle(HR_ACTOR, cycle.id, { action: 'start' }), /question bank/)
+  await loadStandardBank(HR_ACTOR)
   assert.equal((await updateCycle(HR_ACTOR, cycle.id, { action: 'start' })).status, 'RUNNING')
   assert.equal((await findRunningCycle())?.id, cycle.id)
   await assert.rejects(updateCycle(HR_ACTOR, cycle.id, { action: 'update', weekOneStartsOn: '2026-10-12' }), isStatus(409))
@@ -92,8 +91,7 @@ test('HR can remove a cycle that has not started', WEEKLY_DB_TEST, async () => {
   assert.equal(await prisma.weeklyParticipantOverride.count({ where: { cycleId: cycle.id } }), 0)
   assert.equal(await prisma.weeklyAuditEvent.count({ where: { action: 'CYCLE_DELETE', objectId: cycle.id } }), 1)
   const started = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY })
-  await syncFromQuestionBank(HR_ACTOR)
-  await approveAllContent()
+  await loadStandardBank(HR_ACTOR)
   await updateCycle(HR_ACTOR, started.id, { action: 'start' })
   await assert.rejects(deleteCycle(HR_ACTOR, started.id), isStatus(409))
 })

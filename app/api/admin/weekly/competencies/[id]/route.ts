@@ -1,17 +1,18 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { guardWeeklyMutation, requireWeeklySession } from '@/lib/weekly/http'
 import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
-import { questionCreateSchema } from '@/lib/weekly/schemas'
+import { topicUpdateSchema } from '@/lib/weekly/schemas'
 import { actorFromUser } from '@/lib/weekly/service/context'
-import { addQuestion } from '@/lib/weekly/service/question-bank'
+import { updateTopic } from '@/lib/weekly/service/question-bank'
 
-/** HR adds a question, with its 8 statements, to a topic's rotation. */
-export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+/** HR renames a topic or changes the departments it is asked about. */
+export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireWeeklySession({ admin: true })
     await guardWeeklyMutation(request, user.id)
     const { id } = await context.params
-    return NextResponse.json({ success: true, ...(await addQuestion(actorFromUser(user), id, questionCreateSchema.parse(await request.json()))) })
+    await updateTopic(actorFromUser(user), id, topicUpdateSchema.parse(await request.json()))
+    return NextResponse.json({ success: true })
   } catch (error) {
     return weeklyErrorResponse(error)
   }

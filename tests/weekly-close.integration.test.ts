@@ -4,19 +4,14 @@ import { computePeriodScoreMatrix } from '../lib/analytics/period-score-matrix'
 import { prisma } from '../lib/db'
 import { getResolvedEvaluationAssignments } from '../lib/evaluation-assignments'
 import { calculateWeightedScore } from '../lib/scoring'
-import { fakeModel } from '../lib/weekly/ai/model'
-import { loadAnswerRecords } from '../lib/weekly/service/answer-states'
 import { closeCycle, closeView, publishResults, reopenCycle } from '../lib/weekly/service/close'
-import { decideAnswer } from '../lib/weekly/service/decisions'
 import { WeeklyError } from '../lib/weekly/service/errors'
 import { submitForm } from '../lib/weekly/service/form-submit'
 import { formDetail, openForms } from '../lib/weekly/service/forms'
 import { submitAnswer } from '../lib/weekly/service/inbox'
 import { releaseWeek } from '../lib/weekly/service/release'
-import { runScoring } from '../lib/weekly/service/scoring'
-import { settleForClose } from '../lib/weekly/service/test-tools'
-import { answerAs, releaseWeekOne, scoringClock } from './helpers/weekly-answers'
-import { acceptWaitingIn, leadEvidenceIn } from './helpers/weekly-close-fixtures'
+import { answerAs, releaseWeekOne } from './helpers/weekly-answers'
+import { leadEvidenceIn } from './helpers/weekly-close-fixtures'
 import { F, seedFormFixtures } from './helpers/weekly-form-fixtures'
 import { at, HR_ACTOR, startedCycle } from './helpers/weekly-fixtures'
 import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST, weeklyActor } from './helpers/weekly-test-db'
@@ -38,19 +33,12 @@ after(async () => {
   await prisma.$disconnect()
 })
 
-const score = () => runScoring({ model: fakeModel(), budgetMs: 30_000, clock: () => scoringClock() })
-const acceptWaiting = (when: Date) => acceptWaitingIn(cycleId, when)
 const leadEvidence = () => leadEvidenceIn(cycleId)
 const weeklyRows = (evaluateeId?: string) => prisma.evaluation.findMany({ where: { periodId, source: 'AI_WEEKLY', ...(evaluateeId ? { evaluateeId } : {}) }, orderBy: { createdAt: 'asc' } })
 
-test('closing waits for answers to be scored and reviewed, and refuses a locked period', WEEKLY_DB_TEST, async () => {
+test('answers are scored as they are given, so the quarter can close at once; a locked period cannot', WEEKLY_DB_TEST, async () => {
   const prompt = (await releaseWeekOne(cycleId)).find((p) => p.evaluatorId === W.lead.id)!
-  await answerAs(prompt, 'strong')
-  assert.deepEqual((await closeView(HR_ACTOR, cycleId, at(13))).blockers, { scoring: 1, failed: 0, needsReview: 0 })
-  await assert.rejects(closeCycle(HR_ACTOR, cycleId, { drops: [] }, at(13)), isError(409, /Resolve these first/))
-  await score()
-  assert.equal((await closeView(HR_ACTOR, cycleId, at(13))).blockers.needsReview, 1)
-  await acceptWaiting(at(1, 3))
+  await answerAs(prompt, 3)
   assert.equal((await closeView(HR_ACTOR, cycleId, at(13))).canClose, true)
   await prisma.evaluationPeriod.update({ where: { id: periodId }, data: { isLocked: true } })
   assert.equal((await closeView(HR_ACTOR, cycleId, at(13))).canClose, false)
@@ -58,11 +46,11 @@ test('closing waits for answers to be scored and reviewed, and refuses a locked 
   await assert.rejects(closeView(weeklyActor(W.lead), cycleId, at(13)), isError(403))
 })
 
-test('closing turns accepted scores and comments into weekly rows, expires open questions and records the run', WEEKLY_DB_TEST, async () => {
+test('closing turns the chosen scores and comments into weekly rows, expires open questions and records the run', WEEKLY_DB_TEST, async () => {
   const { evaluateeId } = await leadEvidence()
   await releaseWeek(cycleId, 12, at(12))
   const comment = await prisma.weeklyPrompt.findFirstOrThrow({ where: { cycleId, kind: 'COMMENT', evaluatorId: W.lead.id, evaluateeId } })
-  await submitAnswer(weeklyActor(W.lead), { evaluatorId: W.lead.id, actingAs: false }, comment.id, { situation: '', action: '', result: '', commentText: 'Keep sharing plans early.' }, at(12, 2))
+  await submitAnswer(weeklyActor(W.lead), { evaluatorId: W.lead.id, actingAs: false }, comment.id, { commentText: 'Keep sharing plans early.' }, at(12, 2))
   const result = await closeCycle(HR_ACTOR, cycleId, { drops: [] }, at(13))
   assert.deepEqual([result.counts.ratingRows, result.counts.commentRows], [1, 1])
   const rows = await weeklyRows(evaluateeId)
@@ -117,15 +105,16 @@ test('reopening and closing again replaces the weekly rows and leaves the form r
   // The chief's other forms and Ana's HR form are still unsubmitted: HR closes anyway.
   await closeCycle(HR_ACTOR, cycleId, { drops: [], formsAcknowledged: true }, at(13))
   await reopenCycle(HR_ACTOR, cycleId, at(13, 2))
-  const [record] = await loadAnswerRecords({ responseIds: [responseId] })
-  await decideAnswer(HR_ACTOR, responseId, { action: 'SET_SCORE', score: 2, reason: 'Recalibrated', basedOn: { aiScoreId: record.aiScore!.id, reviewId: record.latestReview!.id } }, at(13, 2))
+  // Reopened and not locked: the lead changes their answer.
+  const answered = await prisma.weeklyResponse.findUniqueOrThrow({ where: { id: responseId }, include: { prompt: true } })
+  await answerAs(answered.prompt, 2, at(13, 2))
   await closeCycle(HR_ACTOR, cycleId, { drops: [], formsAcknowledged: true }, at(13, 3))
   const ratings = (await weeklyRows(evaluateeId)).filter((r) => r.ratingValue !== null)
   assert.deepEqual(ratings.map((r) => r.ratingValue), [2])
   assert.deepEqual(await formRows(), formsBefore)
   assert.equal(await prisma.weeklyAggregationRun.count({ where: { cycleId } }), 2)
   await publishResults(HR_ACTOR, cycleId, at(13, 4))
-  await assert.rejects(reopenCycle(HR_ACTOR, cycleId, at(13, 5)), isError(409, /published/))
+  await assert.rejects(reopenCycle(HR_ACTOR, cycleId, at(13, 5)), isError(409, /released/))
 })
 
 test('people who left before close get no weekly rows', WEEKLY_DB_TEST, async () => {
@@ -147,14 +136,15 @@ test('after aggregation the analytics matrix and the scorer agree (as scripts/ve
   }
 })
 
-test('the preview tool settles every waiting answer so the quarter can close', WEEKLY_DB_TEST, async () => {
-  const prompts = await releaseWeekOne(cycleId)
-  for (const prompt of prompts) await answerAs(prompt, prompt.evaluatorId === W.lead.id ? 'strong' : 'solid')
-  await assert.rejects(settleForClose(HR_ACTOR, cycleId, at(1, 3)), isError(404))
-  process.env.WEEKLY_TEST_TOOLS = 'true'
-  const settled = await settleForClose(HR_ACTOR, cycleId, at(1, 3))
-  assert.equal(settled.scored, prompts.length)
-  assert.equal((await closeView(HR_ACTOR, cycleId, at(13))).canClose, true)
+test('several answers about one person on one topic are averaged into one row', WEEKLY_DB_TEST, async () => {
+  const prompt = (await releaseWeekOne(cycleId)).find((p) => p.evaluatorId === W.lead.id)!
+  await answerAs(prompt, 3)
+  const again = await prisma.weeklyPrompt.create({
+    data: { cycleId, slotId: prompt.slotId, evaluatorId: W.lead.id, evaluateeId: prompt.evaluateeId, relationshipType: prompt.relationshipType, weekIndex: 4, textSnapshot: prompt.textSnapshot, options: prompt.options ?? undefined, releasedAt: at(4) },
+  })
+  await answerAs(again, 2, at(4))
+  await closeCycle(HR_ACTOR, cycleId, { drops: [] }, at(13))
+  assert.deepEqual((await weeklyRows(prompt.evaluateeId)).map((r) => r.ratingValue), [2.5])
 })
 
 test('closing while end-of-quarter forms are unsubmitted names who has them and needs HR to confirm', WEEKLY_DB_TEST, async () => {

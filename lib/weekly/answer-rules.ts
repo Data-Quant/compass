@@ -1,26 +1,13 @@
+import { noteRequired } from './mcq'
+
 export const MAX_FIELD_CHARS = 4000
 /** The inbox keeps a submitted answer in view for a day; after that it is in History. */
 export const RECENTLY_SUBMITTED_MS = 24 * 60 * 60 * 1000
 export const NOT_OBSERVED_SNOOZE_WEEKS = 3
 
-export interface AnswerFields { situation: string; action: string; result: string; shortfall?: string | null }
-
-export function countWords(text: string | null | undefined): number {
-  const trimmed = (text ?? '').trim()
-  return trimmed ? trimmed.split(/\s+/).length : 0
-}
-
-/** Words in the three required boxes (the optional shortfall box is left out); used for the length-bias check. */
-export function answerWordCount(fields: AnswerFields): number {
-  return countWords(fields.situation) + countWords(fields.action) + countWords(fields.result)
-}
-
-/** What is missing before an answer can be submitted, or null. */
-export function answerProblem(fields: AnswerFields): string | null {
-  if (!fields.situation.trim()) return 'Describe the situation'
-  if (!fields.action.trim()) return 'Add what they did'
-  if (!fields.result.trim()) return 'Add what happened as a result'
-  // No minimum length: the AI marks a thin answer as not enough evidence and HR decides it.
+/** What is missing before a chosen statement can be submitted, or null (UX spec, section 8). */
+export function choiceProblem(input: { score: number; note: string | null | undefined }): string | null {
+  if (noteRequired(input.score) && !(input.note ?? '').trim()) return 'Add a short note explaining this choice'
   return null
 }
 
@@ -28,7 +15,7 @@ export function commentProblem(text: string | null | undefined): string | null {
   return (text ?? '').trim() ? null : 'Write a comment, or skip it'
 }
 
-/** A submitted answer stays editable until HR locks the quarter; an edit is scored again and goes back to HR. */
+/** A submitted answer stays editable until HR locks the quarter (HR's feedback, section 1). */
 export function canEditSubmitted(input: { submittedAt: Date | null; periodLocked: boolean }): boolean {
   return input.submittedAt !== null && !input.periodLocked
 }
@@ -37,6 +24,7 @@ export type NotObservedOutcome =
   | { status: 'OPEN'; snoozedUntilWeek: number; notObservedCount: number }
   | { status: 'CLOSED_NOT_OBSERVED'; snoozedUntilWeek: null; notObservedCount: number }
 
+/** The question returns once, 3 weeks later; a second "Not observed" closes it. */
 export function afterNotObserved(notObservedCount: number, week: number): NotObservedOutcome {
   const count = notObservedCount + 1
   return count >= 2
@@ -44,39 +32,25 @@ export function afterNotObserved(notObservedCount: number, week: number): NotObs
     : { status: 'OPEN', snoozedUntilWeek: week + NOT_OBSERVED_SNOOZE_WEEKS, notObservedCount: count }
 }
 
-export type EvaluatorAnswerStatus =
-  | 'OPEN' | 'DRAFT' | 'BEING_REVIEWED' | 'ACCEPTED' | 'NOT_USED' | 'NOT_OBSERVED' | 'EXPIRED' | 'CANCELLED'
+export type EvaluatorAnswerStatus = 'OPEN' | 'DRAFT' | 'SUBMITTED' | 'NOT_OBSERVED' | 'EXPIRED' | 'CANCELLED'
 
 export const EVALUATOR_STATUS_LABELS: Record<EvaluatorAnswerStatus, string> = {
   OPEN: 'To answer',
   DRAFT: 'Draft',
-  BEING_REVIEWED: 'Submitted',
-  ACCEPTED: 'Accepted',
-  NOT_USED: 'Not used as evidence',
+  SUBMITTED: 'Answered',
   NOT_OBSERVED: 'Not observed',
   EXPIRED: 'Expired',
   CANCELLED: 'No longer needed',
 }
 
-/** D13: evaluators learn only whether an answer was used as evidence, never its score. */
-export function evaluatorStatus(input: { promptStatus: string; latestReviewAction: string | null }): EvaluatorAnswerStatus {
-  switch (input.promptStatus) {
+/** Evaluators never see scores; only whether they answered. */
+export function evaluatorStatus(promptStatus: string): EvaluatorAnswerStatus {
+  switch (promptStatus) {
     case 'OPEN': return 'OPEN'
     case 'DRAFT': return 'DRAFT'
     case 'NOT_OBSERVED': return 'NOT_OBSERVED'
     case 'EXPIRED': return 'EXPIRED'
     case 'CANCELLED': return 'CANCELLED'
-  }
-  switch (input.latestReviewAction) {
-    case 'ACCEPTED':
-    case 'ADJUSTED':
-    case 'AUTO_ACCEPTED':
-    case 'MANUAL':
-      return 'ACCEPTED'
-    case 'MARKED_INSUFFICIENT':
-    case 'EXCLUDED':
-      return 'NOT_USED'
-    default:
-      return 'BEING_REVIEWED'
+    default: return 'SUBMITTED'
   }
 }

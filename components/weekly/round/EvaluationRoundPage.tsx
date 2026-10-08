@@ -13,14 +13,10 @@ import { formatKarachiDate } from '@/lib/weekly/format'
 import { ROUND_STAGE_LABELS, ROUND_STAGES } from '@/lib/weekly/round-stage'
 import type { RoundChecklistItem, RoundSummary, RoundView, WeeklyMeResponse } from '@/lib/weekly/view-types'
 import { QuarterEvaluationsWorkspace } from '../form-tables/QuarterEvaluationsWorkspace'
-import { AiModelTab } from '../admin/AiModelTab'
-import { ChallengesTab } from '../admin/ChallengesTab'
 import { CloseTab } from '../admin/CloseTab'
 import { ContentTab } from '../admin/ContentTab'
 import { DashboardTab } from '../admin/DashboardTab'
-import { LiveScoresTab } from '../admin/LiveScoresTab'
 import { PeopleTab } from '../admin/PeopleTab'
-import { ReviewTab } from '../admin/ReviewTab'
 import { SurveyTab } from '../admin/SurveyTab'
 import { TestToolsTab } from '../admin/TestToolsTab'
 import { errorMessage, weeklyRequest } from '../weekly-api'
@@ -195,22 +191,13 @@ export function EvaluationRoundPage() {
               <RoundResultsCard key={view.periodId} periodId={view.periodId} onReleased={async () => { await loadRounds(view.periodId); await loadView() }} />
             </TabsContent>
             <TabsContent value="advanced" className="pt-4">
-              <p className="mb-4 text-sm text-muted-foreground">Tools for the current AI-scored questions. These change in a later step of the overhaul.</p>
               <Tabs value={advanced} onValueChange={setAdvanced}>
                 <TabsList className="flex-wrap">
-                  <TabsTrigger value="content">Topics and profiles</TabsTrigger>
-                  <TabsTrigger value="review">Answer review</TabsTrigger>
-                  <TabsTrigger value="live">Live scores</TabsTrigger>
-                  <TabsTrigger value="ai">AI model</TabsTrigger>
-                  <TabsTrigger value="challenges">Challenges</TabsTrigger>
+                  <TabsTrigger value="content">Questions</TabsTrigger>
                   <TabsTrigger value="survey">Pulse survey</TabsTrigger>
                   {testTools && <TabsTrigger value="test">Test tools</TabsTrigger>}
                 </TabsList>
                 <TabsContent value="content"><ContentTab /></TabsContent>
-                <TabsContent value="review"><ReviewTab /></TabsContent>
-                <TabsContent value="live"><LiveScoresTab /></TabsContent>
-                <TabsContent value="ai"><AiModelTab /></TabsContent>
-                <TabsContent value="challenges"><ChallengesTab /></TabsContent>
                 <TabsContent value="survey"><SurveyTab /></TabsContent>
                 {testTools && <TabsContent value="test"><TestToolsTab /></TabsContent>}
               </Tabs>

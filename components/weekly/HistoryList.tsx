@@ -11,8 +11,7 @@ import { AnswerCard } from './AnswerCard'
 import { errorMessage, weeklyRequest, withActingAs } from './weekly-api'
 
 const TONE: Record<EvaluatorAnswerStatus, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  OPEN: 'outline', DRAFT: 'outline', BEING_REVIEWED: 'secondary', ACCEPTED: 'default',
-  NOT_USED: 'outline', NOT_OBSERVED: 'outline', EXPIRED: 'outline', CANCELLED: 'outline',
+  OPEN: 'outline', DRAFT: 'outline', SUBMITTED: 'default', NOT_OBSERVED: 'outline', EXPIRED: 'outline', CANCELLED: 'outline',
 }
 
 export function HistoryList({ actingAs }: { actingAs?: string }) {
@@ -78,27 +77,20 @@ export function HistoryList({ actingAs }: { actingAs?: string }) {
 function asPrompt(entry: HistoryEntry, group: HistoryGroup): InboxPrompt {
   return {
     id: entry.id, weekIndex: entry.weekIndex, kind: entry.kind, status: 'SUBMITTED', text: entry.text, topic: entry.topic,
-    perspective: group.perspective, evaluatee: group.evaluatee, answer: entry.answer, submittedAt: entry.submittedAt, canEdit: true, overdue: false,
+    perspective: group.perspective, evaluatee: group.evaluatee, options: entry.options, answer: entry.answer, submittedAt: entry.submittedAt, canEdit: true, overdue: false,
   }
 }
 
 function AnswerDetails({ entry }: { entry: HistoryEntry }) {
   const answer = entry.answer
-  if (!answer || (!answer.commentText && !answer.situation)) return null
+  const chosen = entry.options.find((o) => o.id === answer?.optionId)
+  if (!answer || (!answer.commentText && !chosen)) return null
   return (
     <details className="text-sm">
       <summary className="cursor-pointer text-primary">Your answer{entry.submittedAt ? ` · ${formatKarachiDateTime(entry.submittedAt)}` : ''}</summary>
       <div className="mt-2 space-y-1 whitespace-pre-wrap">
-        {answer.commentText ? (
-          <p>{answer.commentText}</p>
-        ) : (
-          <>
-            <p><span className="font-medium">Situation:</span> {answer.situation}</p>
-            <p><span className="font-medium">What they did:</span> {answer.action}</p>
-            <p><span className="font-medium">Result:</span> {answer.result}</p>
-            {answer.shortfall && <p><span className="font-medium">Did not go well:</span> {answer.shortfall}</p>}
-          </>
-        )}
+        {answer.commentText ? <p>{answer.commentText}</p> : <p>{chosen?.text}</p>}
+        {answer.note && <p className="text-muted-foreground">Your note: {answer.note}</p>}
       </div>
     </details>
   )

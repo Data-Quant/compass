@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/ui/modal'
 import { Textarea } from '@/components/ui/textarea'
-import { LEVEL_LABELS, type LevelKey } from '@/lib/weekly/profile'
+import { LEVEL_LABELS, type LevelKey } from '@/lib/weekly/levels'
 import type { FormDetailResponse, FormSummaryView } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest } from '../weekly-api'
 

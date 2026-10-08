@@ -1,23 +1,16 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildAggregateRows } from '../lib/weekly/aggregation'
-import { categoryKey, closeBlockers, dropCandidates, formsAreOpen, hasBlockers, RELATIONSHIP_TYPES_BY_PERSPECTIVE } from '../lib/weekly/close-rules'
+import { categoryKey, dropCandidates, formsAreOpen, RELATIONSHIP_TYPES_BY_PERSPECTIVE } from '../lib/weekly/close-rules'
 import { addWorkingDays } from '../lib/weekly/working-days'
 
-test('the challenge window counts working days, skipping weekends and public holidays', () => {
+test('working days skip weekends and public holidays', () => {
   const published = new Date('2026-12-30T04:00:00.000Z') // Wednesday 30 Dec, 09:00 Karachi
   assert.equal(addWorkingDays(published, 10, []).toISOString(), '2027-01-13T18:59:59.999Z')
   assert.equal(addWorkingDays(published, 10, [{ year: 2027, month: 1, day: 1 }]).toISOString(), '2027-01-14T18:59:59.999Z')
 })
 
-test('scoring, failed and unreviewed answers block the close; others do not', () => {
-  const blockers = closeBlockers(['SCORING', 'FAILED', 'FAILED', 'NEEDS_REVIEW', 'AUTO_ACCEPT_PENDING', 'INSUFFICIENT', 'DECIDED'])
-  assert.deepEqual(blockers, { scoring: 1, failed: 2, needsReview: 1 })
-  assert.equal(hasBlockers(blockers), true)
-  assert.equal(hasBlockers(closeBlockers(['DECIDED', 'INSUFFICIENT', 'AUTO_ACCEPT_PENDING'])), false)
-})
-
-test('a group with no accepted evidence can be dropped; the peer group covers cross-department assignments', () => {
+test('a group with no answers can be dropped; the peer group covers cross-department assignments', () => {
   const categories = [
     { evaluateeId: 'ana', perspective: 'LEAD' as const },
     { evaluateeId: 'ana', perspective: 'PEER' as const },

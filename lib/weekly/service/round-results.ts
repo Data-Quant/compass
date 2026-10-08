@@ -64,7 +64,7 @@ export async function releaseReport(actor: WeeklyActor, periodId: string, employ
 }
 
 /** Closed → Released, once the reports are out: from now on people can challenge their results. */
-export async function markRoundReleased(actor: WeeklyActor, periodId: string, now: Date): Promise<{ challengeDeadline: string }> {
+export async function markRoundReleased(actor: WeeklyActor, periodId: string, now: Date): Promise<{ releasedAt: string }> {
   assertHr(actor)
   const cycle = await cycleOf(periodId)
   return publishResults(actor, cycle.id, now)

@@ -1,23 +1,20 @@
 import { prisma } from '@/lib/db'
 import { getResolvedEvaluationAssignments, type ResolvedEvaluationAssignment } from '@/lib/evaluation-assignments'
 import type { AggregationCounts } from '../aggregation'
-import { categoryKey, closeBlockers, dropCandidates, hasBlockers, type CloseBlockers } from '../close-rules'
+import { categoryKey, dropCandidates } from '../close-rules'
 import { isWeeklyRelationshipType, perspectiveOf, type Perspective } from '../perspectives'
-import { isConfirmedAction } from '../reviews'
 import type { CloseViewResponse } from '../view-types'
 import { aggregateCycle, hasLeftBy, type DropRecord } from './aggregate'
 import { loadAnswerRecords, type AnswerRecord } from './answer-states'
 import { recordAudit } from './audit'
-import { challengeDeadlineFor } from './challenge-window'
 import { assertHr, byName, loadPeople, personRef, type WeeklyActor } from './context'
 import { cycleSummary, loadCycle, type CycleWithPeriod } from './cycles'
 import { coverageRows } from './dashboard'
-import { autoAcceptDue } from './decisions'
 import { WeeklyError } from './errors'
 import { formsProgress } from './form-tables'
 import { formsOpenDate, formsOpenFor } from './forms'
 
-export const DROP_NOTE = 'Weekly evaluations: no accepted evidence in this group, dropped at quarter close'
+export const DROP_NOTE = 'Weekly evaluations: no answers in this group, dropped at quarter close'
 
 interface Category { evaluateeId: string; perspective: Perspective; assignments: ResolvedEvaluationAssignment[] }
 
@@ -40,19 +37,10 @@ async function weeklyCategories(cycle: CycleWithPeriod, now: Date): Promise<Map<
 function confirmedCounts(records: readonly AnswerRecord[]): Map<string, number> {
   const counts = new Map<string, number>()
   for (const r of records) {
-    if (!r.latestReview || !isConfirmedAction(r.latestReview.action)) continue
     const key = categoryKey(r.evaluateeId, r.perspective)
     counts.set(key, (counts.get(key) ?? 0) + 1)
   }
   return counts
-}
-
-function describe(blockers: CloseBlockers): string {
-  return [
-    blockers.scoring && `${blockers.scoring} still being scored`,
-    blockers.failed && `${blockers.failed} whose scoring failed`,
-    blockers.needsReview && `${blockers.needsReview} waiting for review`,
-  ].filter(Boolean).join(', ')
 }
 
 export async function closeView(actor: WeeklyActor, cycleId: string, now: Date): Promise<CloseViewResponse> {
@@ -61,7 +49,6 @@ export async function closeView(actor: WeeklyActor, cycleId: string, now: Date):
   const period = await prisma.evaluationPeriod.findUniqueOrThrow({ where: { id: cycle.periodId }, select: { isLocked: true } })
   const running = cycle.status === 'RUNNING'
   const records = running ? await loadAnswerRecords({ cycleId }) : []
-  const blockers = closeBlockers(records.map((r) => r.state))
   const categories = running ? await weeklyCategories(cycle, now) : new Map<string, Category>()
   const candidates = dropCandidates([...categories.values()], confirmedCounts(records))
   const [people, openPrompts, progress, coverage, lastRun] = await Promise.all([
@@ -79,9 +66,6 @@ export async function closeView(actor: WeeklyActor, cycleId: string, now: Date):
     periodLocked: period.isLocked,
     closedAt: cycle.closedAt?.toISOString() ?? null,
     resultsPublishedAt: cycle.resultsPublishedAt?.toISOString() ?? null,
-    challengeDeadline: cycle.resultsPublishedAt ? (await challengeDeadlineFor(cycle.resultsPublishedAt)).toISOString() : null,
-    blockers,
-    pendingAutoAccept: records.filter((r) => r.state === 'AUTO_ACCEPT_PENDING').length,
     openPrompts,
     forms: { open: formsOpenFor(cycle, now), opensAt: formsOpenDate(cycle).toISOString(), total: progress.total, done: progress.done, outstanding },
     dropCandidates: candidates
@@ -92,7 +76,7 @@ export async function closeView(actor: WeeklyActor, cycleId: string, now: Date):
       id: lastRun.id, at: lastRun.createdAt.toISOString(), runBy: runner?.name ?? 'Unknown',
       counts: lastRun.counts as unknown as AggregationCounts, drops: Array.isArray(lastRun.drops) ? lastRun.drops.length : 0,
     },
-    canClose: running && !period.isLocked && !hasBlockers(blockers),
+    canClose: running && !period.isLocked,
   }
 }
 
@@ -105,11 +89,8 @@ export async function closeCycle(
   assertHr(actor)
   const cycle = await loadCycle(cycleId)
   if (cycle.status !== 'RUNNING') throw new WeeklyError('This quarter is already closed', 409)
-  // The 72-hour wait ends at close (a ruling: these scores need no review, so they are accepted now).
-  await autoAcceptDue(now, { cycleId, ignoreWait: true })
   const view = await closeView(actor, cycleId, now)
   if (view.periodLocked) throw new WeeklyError('Unlock the evaluation period first: a locked period ignores dropped groups', 409)
-  if (hasBlockers(view.blockers)) throw new WeeklyError(`Resolve these first: ${describe(view.blockers)}`, 409)
   // Forms cannot be filled once the quarter closes, and a missing form's group keeps its weight, so HR confirms knowingly.
   if (view.forms.outstanding.length > 0 && input.formsAcknowledged !== true) {
     const missing = view.forms.total - view.forms.done
@@ -153,7 +134,7 @@ export async function reopenCycle(actor: WeeklyActor, cycleId: string, now: Date
   assertHr(actor)
   const cycle = await loadCycle(cycleId)
   if (cycle.status !== 'CLOSED') throw new WeeklyError('Only a closed quarter can be reopened', 409)
-  if (cycle.resultsPublishedAt) throw new WeeklyError('Results are published. Handle changes as challenges.', 409)
+  if (cycle.resultsPublishedAt) throw new WeeklyError('Reports are already released, so this quarter cannot be reopened', 409)
   const period = await prisma.evaluationPeriod.findUniqueOrThrow({ where: { id: cycle.periodId }, select: { isLocked: true } })
   if (period.isLocked) throw new WeeklyError('Unlock the evaluation period first', 409)
   if ((await prisma.weeklyCycle.count({ where: { status: 'RUNNING', id: { not: cycleId } } })) > 0) throw new WeeklyError('Another weekly quarter is running', 409)
@@ -164,13 +145,13 @@ export async function reopenCycle(actor: WeeklyActor, cycleId: string, now: Date
   })
 }
 
-/** Starts the challenge window (D14). HR sends the reports first with the existing Email page. */
-export async function publishResults(actor: WeeklyActor, cycleId: string, now: Date): Promise<{ challengeDeadline: string }> {
+/** Marks the quarter's reports as released. */
+export async function publishResults(actor: WeeklyActor, cycleId: string, now: Date): Promise<{ releasedAt: string }> {
   assertHr(actor)
   const cycle = await loadCycle(cycleId)
   if (cycle.status !== 'CLOSED') throw new WeeklyError('Close the quarter first', 409)
   const moved = await prisma.weeklyCycle.updateMany({ where: { id: cycleId, status: 'CLOSED', resultsPublishedAt: null }, data: { resultsPublishedAt: now } })
   if (moved.count === 0) throw new WeeklyError('Results are already published', 409)
   await recordAudit(prisma, { cycleId, actorId: actor.id, actorRole: 'HR', action: 'RESULTS_PUBLISHED', objectType: 'WeeklyCycle', objectId: cycleId })
-  return { challengeDeadline: (await challengeDeadlineFor(now)).toISOString() }
+  return { releasedAt: now.toISOString() }
 }

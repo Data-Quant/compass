@@ -1,13 +1,9 @@
-import { after, NextResponse, type NextRequest } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { DRAFT_LIMIT, guardWeeklyMutation, requireWeeklySession } from '@/lib/weekly/http'
 import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
 import { answerSchema } from '@/lib/weekly/schemas'
 import { actorFromUser } from '@/lib/weekly/service/context'
 import { resolveSubject, saveDraft, submitAnswer } from '@/lib/weekly/service/inbox'
-import { scorePromptSoon } from '@/lib/weekly/service/scoring'
-
-// Scoring runs after the response (after()) for up to INLINE_BUDGET_MS plus one model call.
-export const maxDuration = 180
 
 type Context = { params: Promise<{ id: string }> }
 
@@ -33,8 +29,6 @@ export async function POST(request: NextRequest, context: Context) {
     const subject = await resolveSubject(actor, request.nextUrl.searchParams.get('as'))
     const { id } = await context.params
     const result = await submitAnswer(actor, subject, id, answerSchema.parse(await request.json()), new Date())
-    // Score now rather than waiting for the daily sweep; runs after the evaluator has their response.
-    after(() => scorePromptSoon(id))
     return NextResponse.json({ success: true, ...result })
   } catch (error) {
     return weeklyErrorResponse(error)

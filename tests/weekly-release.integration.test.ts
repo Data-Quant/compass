@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 import { prisma } from '../lib/db'
 import { setOptIn } from '../lib/weekly/service/cycles'
 import { WeeklyError } from '../lib/weekly/service/errors'
-import { submitAnswer } from '../lib/weekly/service/inbox'
 import { pairWindowsView, setPairWindow } from '../lib/weekly/service/pair-windows'
 import { releaseWeek } from '../lib/weekly/service/release'
+import { answerAs } from './helpers/weekly-answers'
 import { at, HR_ACTOR, startedCycle } from './helpers/weekly-fixtures'
 import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST, weeklyActor } from './helpers/weekly-test-db'
 
@@ -22,11 +22,13 @@ after(async () => {
   await prisma.$disconnect()
 })
 
-test('slots follow the mappings in both directions, with each perspective’s topics', WEEKLY_DB_TEST, async () => {
+test('slots follow the mappings in both directions, with each perspective’s topics and the person’s department topics', WEEKLY_DB_TEST, async () => {
   await releaseWeek(cycleId, 1, at(1))
   const slots = await prisma.weeklySlot.findMany({ include: { competency: true } })
   const leadAboutAna = slots.filter((s) => s.evaluatorId === W.lead.id && s.evaluateeId === W.ana.id)
-  assert.equal(leadAboutAna.length, 4)
+  // Three common topics, and Ana is in Product: its four department topics, no other department's.
+  assert.equal(leadAboutAna.length, 7)
+  assert.ok(leadAboutAna.every((s) => s.competency.departments.length === 0 || s.competency.departments.includes('Product')))
   assert.ok(leadAboutAna.every((s) => s.relationshipType === 'TEAM_LEAD' && s.competency.perspective === 'LEAD'))
   const anaAboutLead = slots.filter((s) => s.evaluatorId === W.ana.id && s.evaluateeId === W.lead.id)
   assert.equal(anaAboutLead.length, 4)
@@ -34,7 +36,7 @@ test('slots follow the mappings in both directions, with each perspective’s to
   const peerSlots = slots.filter((s) => s.relationshipType === 'PEER')
   assert.equal(peerSlots.length, 6)
   assert.ok(peerSlots.every((s) => s.competency.perspective === 'PEER'))
-  assert.equal(slots.length, 22)
+  assert.equal(slots.length, 28)
 })
 
 test('week 1 gives each evaluator a paced question about one of the people they evaluate', WEEKLY_DB_TEST, async () => {
@@ -107,11 +109,10 @@ test('only a running cycle releases, and only within its weeks', WEEKLY_DB_TEST,
 })
 
 test('once answered, the next question about the same person is on a different topic', WEEKLY_DB_TEST, async () => {
-  const answer = { situation: 'The client moved the launch forward', action: 'They rebuilt the plan in a day', result: 'We delivered on time' }
   for (let week = 1; week <= 6; week += 1) {
     await releaseWeek(cycleId, week, at(week))
     for (const open of await prisma.weeklyPrompt.findMany({ where: { evaluatorId: W.lead.id, status: 'OPEN' } })) {
-      await submitAnswer(weeklyActor(W.lead), { evaluatorId: W.lead.id, actingAs: false }, open.id, answer, at(week))
+      await answerAs(open, 2, at(week))
     }
   }
   const asked = await prisma.weeklyPrompt.findMany({ where: { evaluatorId: W.lead.id } })

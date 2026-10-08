@@ -6,8 +6,10 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Textarea } from '@/components/ui/textarea'
+import type { McqStatement } from '@/lib/weekly/mcq'
 import type { ContentPrompt, RemovedTopic } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest } from '../weekly-api'
+import { BLANK_STATEMENTS, StatementsEditor, statementsProblem } from './StatementsEditor'
 
 type Reload = () => Promise<void>
 
@@ -25,21 +27,27 @@ async function act(request: () => Promise<unknown>, success: string, onChanged: 
 
 export function AddQuestion({ topicId, topicName, onChanged }: { topicId: string; topicName: string; onChanged: Reload }) {
   const [text, setText] = useState('')
+  const [statements, setStatements] = useState<McqStatement[]>(BLANK_STATEMENTS)
   const [saving, setSaving] = useState(false)
   async function add() {
     setSaving(true)
-    const ok = await act(() => weeklyRequest(`/api/admin/weekly/competencies/${topicId}/questions`, { method: 'POST', body: { text: text.trim() } }), 'Question added', onChanged)
+    const ok = await act(() => weeklyRequest(`/api/admin/weekly/competencies/${topicId}/questions`, { method: 'POST', body: { text: text.trim(), options: statements } }), 'Question added', onChanged)
     setSaving(false)
-    if (ok) setText('')
+    if (ok) {
+      setText('')
+      setStatements(BLANK_STATEMENTS)
+    }
   }
   return (
-    <div className="space-y-1 rounded-md border border-dashed p-3">
+    <div className="space-y-2 rounded-md border border-dashed p-3">
       <Textarea value={text} rows={2} maxLength={600} placeholder="+ Add a question to this topic (asked in rotation with the others)" aria-label={`New question for ${topicName}`} onChange={(e) => setText(e.target.value)} />
       {text.trim().length > 0 && (
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">{text.trim().length < 20 ? 'Write at least 20 characters' : 'Ask for one specific, recent situation.'}</p>
-          <Button size="sm" disabled={saving || text.trim().length < 20} onClick={() => void add()}>{saving ? 'Adding…' : 'Add question'}</Button>
-        </div>
+        <>
+          <StatementsEditor label={`New question for ${topicName}`} statements={statements} onChange={setStatements} disabled={saving} />
+          <div className="flex justify-end">
+            <Button size="sm" disabled={saving || text.trim().length < 10 || statementsProblem(statements) !== null} onClick={() => void add()}>{saving ? 'Adding…' : 'Add question'}</Button>
+          </div>
+        </>
       )}
     </div>
   )

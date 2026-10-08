@@ -55,7 +55,9 @@ function tableUnits(type: RelationshipType, assignments: readonly ResolvedEvalua
 async function tableQuestions(periodId: string, evaluatorId: string, type: RelationshipType, evaluateeId: string): Promise<FormTableQuestion[]> {
   const resolved = await getResolvedEvaluationQuestions({ relationshipType: type, periodId, evaluatorId, evaluateeId })
   if (resolved.error) throw new WeeklyError(resolved.error, 409)
-  return resolved.questions.filter((q) => q.questionType === 'RATING').map((q) => {
+  // A department's own weekly topics apply only to that department, so they are not columns everyone must fill.
+  const departmentOnly = new Set((await prisma.weeklyCompetency.findMany({ where: { NOT: { departments: { isEmpty: true } }, sourceQuestionId: { not: null } }, select: { sourceQuestionId: true } })).map((c) => c.sourceQuestionId))
+  return resolved.questions.filter((q) => q.questionType === 'RATING' && !(q.sourceType === 'GLOBAL' && departmentOnly.has(q.id))).map((q) => {
     const d = q.ratingDescriptions
     return { id: q.id, source: q.sourceType, text: q.questionText, ratingDescriptions: { '1': d?.[1] ?? null, '2': d?.[2] ?? null, '3': d?.[3] ?? null, '4': d?.[4] ?? null } }
   })

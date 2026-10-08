@@ -1,23 +1,5 @@
 import { questionWeekCount } from './calendar'
 import type { Perspective, WeeklyRelationshipType } from './perspectives'
-import type { AnswerState } from './review-rules'
-
-export const CLOSE_BLOCKING_STATES: readonly AnswerState[] = ['SCORING', 'FAILED', 'NEEDS_REVIEW']
-export interface CloseBlockers { scoring: number; failed: number; needsReview: number }
-
-/** Spec 10: close waits for every submitted answer to be scored and, where HR must look, reviewed. */
-export function closeBlockers(states: readonly AnswerState[]): CloseBlockers {
-  return {
-    scoring: states.filter((s) => s === 'SCORING').length,
-    failed: states.filter((s) => s === 'FAILED').length,
-    needsReview: states.filter((s) => s === 'NEEDS_REVIEW').length,
-  }
-}
-
-export function hasBlockers(blockers: CloseBlockers): boolean {
-  return blockers.scoring + blockers.failed + blockers.needsReview > 0
-}
-
 /** The assignments a category covers. Dropping PEER must remove cross-department assignments too (the scorer treats them as PEER). */
 export const RELATIONSHIP_TYPES_BY_PERSPECTIVE: Record<Perspective, readonly WeeklyRelationshipType[]> = {
   LEAD: ['TEAM_LEAD'],

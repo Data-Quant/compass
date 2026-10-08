@@ -3,11 +3,9 @@ import { guardWeeklyMutation, requireWeeklySession } from '@/lib/weekly/http'
 import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
 import { testToolSchema } from '@/lib/weekly/schemas'
 import { actorFromUser } from '@/lib/weekly/service/context'
-import { acceptDueNow, approveAllDrafts, askPairNow, fillSynthetic, pairsFor, releaseNextWeek, releaseWeekFor, resetCycle, scoreNow, settleForClose } from '@/lib/weekly/service/test-tools'
+import { askPairNow, fillSynthetic, pairsFor, releaseNextWeek, releaseWeekFor, resetCycle } from '@/lib/weekly/service/test-tools'
 
 export const runtime = 'nodejs'
-// "Score now" runs for up to SCORE_NOW_BUDGET_MS plus one model call.
-export const maxDuration = 120
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,17 +19,9 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true, ...(await releaseNextWeek(actor, input.cycleId, now)) })
       case 'fill-synthetic':
         return NextResponse.json({ success: true, ...(await fillSynthetic(actor, input.cycleId, input.evaluatorId, now)) })
-      case 'approve-all-drafts':
-        return NextResponse.json({ success: true, ...(await approveAllDrafts(actor)) })
       case 'reset':
         await resetCycle(actor, input.cycleId)
         return NextResponse.json({ success: true })
-      case 'score-now':
-        return NextResponse.json({ success: true, ...(await scoreNow(actor, input.cycleId, input.model)) })
-      case 'accept-due-now':
-        return NextResponse.json({ success: true, ...(await acceptDueNow(actor, input.cycleId, now)) })
-      case 'settle-for-close':
-        return NextResponse.json({ success: true, ...(await settleForClose(actor, input.cycleId, now)) })
       case 'pairs':
         return NextResponse.json({ success: true, pairs: await pairsFor(actor, input.cycleId, input.evaluatorId, now) })
       case 'release-for':

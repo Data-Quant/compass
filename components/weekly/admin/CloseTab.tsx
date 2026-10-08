@@ -10,7 +10,6 @@ import { formatKarachiDate, formatKarachiDateTime } from '@/lib/weekly/format'
 import { PERSPECTIVE_LABELS } from '@/lib/weekly/perspectives'
 import type { CloseViewResponse } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest } from '../weekly-api'
-import { AskAgainButton } from './AskAgainButton'
 import { CyclePicker, useCycles } from './PeopleTab'
 
 type Pending = 'close' | 'reopen' | null
@@ -63,7 +62,6 @@ export function CloseTab() {
   if (!data) return <p className="text-sm text-muted-foreground">Loading…</p>
   const running = data.cycle.status === 'RUNNING'
   const drops = data.dropCandidates.filter((c) => selected.has(keyOf(c.evaluatee.id, c.perspective))).map((c) => ({ evaluateeId: c.evaluatee.id, perspective: c.perspective }))
-  const blocked = data.blockers.scoring + data.blockers.failed + data.blockers.needsReview
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -89,14 +87,7 @@ export function CloseTab() {
           <Card>
             <CardContent className="space-y-2 p-4">
               <h2 className="font-semibold">Before closing</h2>
-              {blocked === 0 ? <p className="text-sm">Nothing is blocking the close.</p> : (
-                <ul className="list-disc pl-5 text-sm">
-                  {data.blockers.scoring > 0 && <li>{data.blockers.scoring} answers are still being scored.</li>}
-                  {data.blockers.failed > 0 && <li>{data.blockers.failed} answers could not be scored: score them by hand in Review.</li>}
-                  {data.blockers.needsReview > 0 && <li>{data.blockers.needsReview} answers wait for your review in Review.</li>}
-                </ul>
-              )}
-              {data.pendingAutoAccept > 0 && <p className="text-sm text-muted-foreground">{data.pendingAutoAccept} scores waiting for the 72-hour accept will be accepted when you close.</p>}
+              <p className="text-sm">Every answer already has its score. Closing stops answers and writes the scores into the quarter’s results.</p>
               {data.openPrompts > 0 && <p className="text-sm text-muted-foreground">{data.openPrompts} unanswered questions will expire.</p>}
             </CardContent>
           </Card>
@@ -104,7 +95,7 @@ export function CloseTab() {
           <Card>
             <CardContent className="space-y-2 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="font-semibold">Groups with no accepted evidence</h2>
+                <h2 className="font-semibold">Groups with no answers</h2>
                 {data.dropCandidates.length > 0 && (
                   <Button size="sm" variant="ghost" onClick={() => setSelected(new Set(data.dropCandidates.map((c) => keyOf(c.evaluatee.id, c.perspective))))}>Select all</Button>
                 )}
@@ -120,7 +111,6 @@ export function CloseTab() {
                           <input type="checkbox" checked={selected.has(key)} onChange={() => toggle(key)} />
                           {c.evaluatee.name} — {PERSPECTIVE_LABELS[c.perspective]} ({c.assignments} evaluator{c.assignments === 1 ? '' : 's'})
                         </label>
-                        <AskAgainButton cycleId={cycleId} evaluatee={c.evaluatee} perspective={c.perspective} onDone={load} />
                       </li>
                     )
                   })}
@@ -152,7 +142,7 @@ export function CloseTab() {
               </p>
             )}
             {data.resultsPublishedAt ? (
-              <p className="text-sm">Reports released {formatKarachiDateTime(data.resultsPublishedAt)}. Challenges close {data.challengeDeadline ? formatKarachiDate(data.challengeDeadline) : '—'}.</p>
+              <p className="text-sm">Reports released {formatKarachiDateTime(data.resultsPublishedAt)}.</p>
             ) : (
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-sm text-muted-foreground">Release the reports below. Until then you can reopen the round.</p>

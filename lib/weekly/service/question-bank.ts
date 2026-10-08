@@ -1,7 +1,10 @@
-// HR's weekly question bank: add questions to a topic, remove questions, and remove or restore whole topics.
+// HR's weekly question bank: add topics and questions, edit them, remove questions, and remove or restore whole topics.
 // A question that was already asked is archived, not deleted, so earlier answers keep the question they answered.
 import { prisma } from '@/lib/db'
+import type { McqStatement } from '../mcq'
+import type { Perspective } from '../perspectives'
 import { recordAudit } from './audit'
+import { createBankQuestion, storedOptions } from './content'
 import { assertHr, type WeeklyActor } from './context'
 import { WeeklyError } from './errors'
 
@@ -18,15 +21,61 @@ function nextVariantName(used: readonly string[]): string {
   return `Q${n}`
 }
 
-export async function addQuestion(actor: WeeklyActor, competencyId: string, input: { text: string }): Promise<{ id: string; variant: string }> {
+const cleanDepartments = (departments: readonly string[]) => [...new Set(departments.map((d) => d.trim()).filter(Boolean))]
+const required = (text: string, message: string) => {
+  if (!text.trim()) throw new WeeklyError(message)
+  return text.trim()
+}
+
+export async function addQuestion(actor: WeeklyActor, competencyId: string, input: { text: string; options: McqStatement[] }): Promise<{ id: string; variant: string }> {
   assertHr(actor)
+  const text = required(input.text, 'Write the question')
+  const options = storedOptions(input.options)
   return prisma.$transaction(async (tx) => {
     const topic = await tx.weeklyCompetency.findUnique({ where: { id: competencyId }, include: { prompts: { select: { variant: true } } } })
     if (!topic) throw new WeeklyError('Topic not found', 404)
     const variant = nextVariantName(topic.prompts.map((p) => p.variant))
-    const created = await tx.weeklyCompetencyPrompt.create({ data: { competencyId, variant, text: input.text.trim() } })
-    await recordAudit(tx, { actorId: actor.id, actorRole: 'HR', action: 'PROMPT_ADD', objectType: 'WeeklyCompetencyPrompt', objectId: created.id, after: { competencyId, variant, text: created.text } })
+    const created = await tx.weeklyCompetencyPrompt.create({ data: { competencyId, variant, text, options } })
+    await recordAudit(tx, { actorId: actor.id, actorRole: 'HR', action: 'PROMPT_ADD', objectType: 'WeeklyCompetencyPrompt', objectId: created.id, after: { competencyId, variant, text } })
     return { id: created.id, variant }
+  })
+}
+
+/** A new topic, with its first question; its scores are written against a new question in the perspective's bank. */
+export async function createTopic(
+  actor: WeeklyActor,
+  input: { perspective: Perspective; name: string; departments: string[]; text: string; options: McqStatement[] },
+): Promise<{ id: string }> {
+  assertHr(actor)
+  const name = required(input.name, 'Name the topic')
+  const text = required(input.text, 'Write the question')
+  const options = storedOptions(input.options)
+  return prisma.$transaction(async (tx) => {
+    const sourceQuestionId = await createBankQuestion(tx, input.perspective, name)
+    const topic = await tx.weeklyCompetency.create({
+      data: {
+        key: `${input.perspective}.HR.${sourceQuestionId}`, perspective: input.perspective, name, definition: '', departments: cleanDepartments(input.departments), sourceQuestionId,
+        prompts: { create: [{ variant: 'A', text, options }] },
+      },
+    })
+    await recordAudit(tx, { actorId: actor.id, actorRole: 'HR', action: 'TOPIC_CREATE', objectType: 'WeeklyCompetency', objectId: topic.id, after: { name, perspective: input.perspective } })
+    return { id: topic.id }
+  })
+}
+
+/** Renames a topic (and the question its scores are reported under) or changes the departments it is asked about. */
+export async function updateTopic(actor: WeeklyActor, competencyId: string, input: { name?: string; departments?: string[] }): Promise<void> {
+  assertHr(actor)
+  const topic = await prisma.weeklyCompetency.findUnique({ where: { id: competencyId } })
+  if (!topic) throw new WeeklyError('Topic not found', 404)
+  const name = input.name !== undefined ? required(input.name, 'Name the topic') : undefined
+  await prisma.$transaction(async (tx) => {
+    await tx.weeklyCompetency.update({
+      where: { id: competencyId },
+      data: { ...(name !== undefined ? { name } : {}), ...(input.departments !== undefined ? { departments: cleanDepartments(input.departments) } : {}) },
+    })
+    if (name !== undefined && topic.sourceQuestionId) await tx.evaluationQuestion.update({ where: { id: topic.sourceQuestionId }, data: { questionText: name } })
+    await recordAudit(tx, { actorId: actor.id, actorRole: 'HR', action: 'TOPIC_EDIT', objectType: 'WeeklyCompetency', objectId: competencyId, before: { name: topic.name, departments: topic.departments }, after: input })
   })
 }
 

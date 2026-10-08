@@ -5,45 +5,34 @@ import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { LEVEL_KEYS, LEVEL_LABELS } from '@/lib/weekly/profile'
-import type { ContentCompetency, ContentPrompt, ProfileView } from '@/lib/weekly/view-types'
+import type { McqStatement } from '@/lib/weekly/mcq'
+import type { ContentCompetency, ContentPrompt } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest } from '../weekly-api'
-import { ProfileEditorDialog } from './ProfileEditorDialog'
 import { AddQuestion, RemoveQuestion, RemoveTopic } from './QuestionBankControls'
+import { StatementsEditor, statementsProblem } from './StatementsEditor'
+
+const toStatements = (prompt: ContentPrompt): McqStatement[] => prompt.options.map((o) => ({ text: o.text, score: o.score }))
+const parseDepartments = (text: string) => text.split(',').map((d) => d.trim()).filter(Boolean)
 
 export function TopicCard({ topic, onChanged }: { topic: ContentCompetency; onChanged: () => Promise<void> }) {
-  const [editing, setEditing] = useState(false)
-  const [approving, setApproving] = useState(false)
-  const [confirmDraft, setConfirmDraft] = useState(false)
-  const [drafting, setDrafting] = useState(false)
+  const [name, setName] = useState(topic.name)
+  const [departments, setDepartments] = useState(topic.departments.join(', '))
+  const [saving, setSaving] = useState(false)
+  const changed = name.trim() !== topic.name || parseDepartments(departments).join('|') !== topic.departments.join('|')
 
-  async function draftWithAi() {
-    setConfirmDraft(false)
-    setDrafting(true)
+  async function saveTopic() {
+    setSaving(true)
     try {
-      const result = await weeklyRequest<{ version: number }>(`/api/admin/weekly/competencies/${topic.id}/ai-draft`, { method: 'POST' })
-      toast.success(`Draft v${result.version} written. Review it, then approve.`)
+      await weeklyRequest(`/api/admin/weekly/competencies/${topic.id}`, { method: 'PATCH', body: { name: name.trim(), departments: parseDepartments(departments) } })
+      toast.success('Topic saved')
       await onChanged()
     } catch (e) {
-      toast.error(errorMessage(e, 'The AI could not draft this topic'))
+      toast.error(errorMessage(e, 'Could not save the topic'))
     } finally {
-      setDrafting(false)
-    }
-  }
-  const shown = topic.draft ?? topic.approved
-
-  async function approve() {
-    setApproving(false)
-    if (!topic.draft) return
-    try {
-      await weeklyRequest(`/api/admin/weekly/profiles/${topic.draft.id}/approve`, { method: 'POST' })
-      toast.success(`${topic.name} approved`)
-      await onChanged()
-    } catch (e) {
-      toast.error(errorMessage(e, 'Could not approve the profile'))
+      setSaving(false)
     }
   }
 
@@ -51,71 +40,35 @@ export function TopicCard({ topic, onChanged }: { topic: ContentCompetency; onCh
     <Card>
       <CardContent className="space-y-4 p-4">
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <p className="font-semibold">{topic.name}</p>
-            <p className="text-sm text-muted-foreground">{topic.definition}</p>
+          <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
+            <Input value={name} maxLength={120} aria-label="Topic name" onChange={(e) => setName(e.target.value)} />
+            <Input value={departments} maxLength={300} aria-label="Departments" placeholder="Every department" onChange={(e) => setDepartments(e.target.value)} />
           </div>
           <div className="flex flex-wrap gap-2">
-            {topic.ready ? <Badge>Ready</Badge> : <Badge variant="outline">Needs approval</Badge>}
-            {topic.custom && <Badge variant="secondary">{topic.leadName ? `${topic.leadName}’s question` : 'Lead’s question'}</Badge>}
-            {shown?.incomplete && <Badge variant="destructive">Incomplete</Badge>}
-            {topic.draft && topic.approved && <Badge variant="outline">Draft v{topic.draft.version}</Badge>}
+            {topic.ready ? <Badge>Ready</Badge> : <Badge variant="outline">Not ready</Badge>}
+            {topic.departments.length > 0 && <Badge variant="secondary">{topic.departments.join(', ')} only</Badge>}
           </div>
         </div>
+        {changed && <div className="flex justify-end"><Button size="sm" disabled={saving || !name.trim()} onClick={() => void saveTopic()}>Save topic</Button></div>}
         <div className="space-y-2">
-          {topic.prompts.map((prompt) => <PromptEditor key={`${prompt.id}-${prompt.text}`} prompt={prompt} onChanged={onChanged} />)}
+          {topic.prompts.map((prompt) => <QuestionEditor key={`${prompt.id}-${prompt.text}-${prompt.options.map((o) => o.text).join('|')}`} prompt={prompt} onChanged={onChanged} />)}
           <AddQuestion topicId={topic.id} topicName={topic.name} onChanged={onChanged} />
         </div>
-        {shown && <ProfileSummary profile={shown} />}
-        <div className="flex flex-wrap justify-end gap-2">
+        <div className="flex justify-end">
           <RemoveTopic topicId={topic.id} topicName={topic.name} onChanged={onChanged} />
-          <Button variant="ghost" size="sm" disabled={drafting} onClick={() => setConfirmDraft(true)}>{drafting ? 'Drafting…' : 'Draft with AI'}</Button>
-          <Button variant="outline" size="sm" onClick={() => setEditing(true)}>{topic.draft ? 'Edit draft' : 'Edit profile'}</Button>
-          {topic.draft && <Button size="sm" aria-label={`Approve ${topic.name}`} onClick={() => setApproving(true)}>Approve</Button>}
         </div>
       </CardContent>
-      {editing && shown && (
-        <ProfileEditorDialog
-          topic={topic}
-          profile={shown}
-          onClose={() => setEditing(false)}
-          onSaved={async () => {
-            setEditing(false)
-            await onChanged()
-          }}
-        />
-      )}
-      <ConfirmDialog
-        isOpen={approving}
-        onClose={() => setApproving(false)}
-        onConfirm={() => void approve()}
-        title={`Approve ${topic.name}?`}
-        message="Answers submitted from now on are scored against this version. Earlier scores keep the version they used."
-        confirmText="Approve profile"
-        variant="info"
-      />
-      <ConfirmDialog
-        isOpen={confirmDraft}
-        onClose={() => setConfirmDraft(false)}
-        onConfirm={() => void draftWithAi()}
-        title={`Draft ${topic.name} with the AI?`}
-        message={[
-          'The AI rewrites both questions now and writes a draft profile from HR’s 1–4 descriptions.',
-          topic.draft ? `It replaces draft v${topic.draft.version}; the replaced text is kept in the audit log.` : '',
-          topic.approved ? 'The approved profile stays in use until you approve the draft, and the topic’s definition is not changed.' : '',
-        ].filter(Boolean).join(' ')}
-        confirmText="Draft with AI"
-        variant="warning"
-      />
     </Card>
   )
 }
 
-function PromptEditor({ prompt, onChanged }: { prompt: ContentPrompt; onChanged: () => Promise<void> }) {
+function QuestionEditor({ prompt, onChanged }: { prompt: ContentPrompt; onChanged: () => Promise<void> }) {
   const [text, setText] = useState(prompt.text)
+  const [statements, setStatements] = useState<McqStatement[]>(toStatements(prompt))
   const [saving, setSaving] = useState(false)
+  const dirty = text !== prompt.text || JSON.stringify(statements) !== JSON.stringify(toStatements(prompt))
 
-  async function save(body: { text?: string; isActive?: boolean }) {
+  async function save(body: { text?: string; options?: McqStatement[]; isActive?: boolean }) {
     setSaving(true)
     try {
       await weeklyRequest(`/api/admin/weekly/prompts/${prompt.id}`, { method: 'PATCH', body })
@@ -129,40 +82,27 @@ function PromptEditor({ prompt, onChanged }: { prompt: ContentPrompt; onChanged:
   }
 
   return (
-    <div className="space-y-1 rounded-md border p-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-medium text-muted-foreground">Question {prompt.variant}</p>
-        <div className="flex items-center gap-2">
-        <RemoveQuestion prompt={prompt} onChanged={onChanged} />
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          Active
-          <Switch checked={prompt.isActive} disabled={saving} onCheckedChange={(checked) => void save({ isActive: checked })} aria-label={`Question ${prompt.variant} active`} />
-        </label>
-        </div>
-      </div>
-      <Textarea value={text} rows={2} maxLength={600} aria-label={`Question ${prompt.variant}`} onChange={(e) => setText(e.target.value)} />
-      {text !== prompt.text && (
-        <div className="flex justify-end"><Button size="sm" disabled={saving} onClick={() => void save({ text })}>Save question</Button></div>
-      )}
-    </div>
-  )
-}
-
-function ProfileSummary({ profile }: { profile: ProfileView }) {
-  return (
-    <details className="rounded-md border p-3 text-sm">
-      <summary className="cursor-pointer font-medium">{profile.status === 'APPROVED' ? `Approved profile v${profile.version}` : `Draft profile v${profile.version}`}</summary>
+    <details className="rounded-md border p-3" open={prompt.problem !== null}>
+      <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 text-sm">
+        <span className="min-w-0 flex-1"><span className="font-medium">Question {prompt.variant}:</span> {prompt.text}</span>
+        {prompt.problem && <Badge variant="destructive">{prompt.problem}</Badge>}
+      </summary>
       <div className="mt-3 space-y-3">
-        {LEVEL_KEYS.map((key) => (
-          <div key={key}>
-            <p className="font-medium">{key} · {LEVEL_LABELS[key]}</p>
-            <p>{profile.levels[key].behaviours}</p>
-            <p className="text-muted-foreground">Consistency: {profile.levels[key].consistency} Outcome: {profile.levels[key].outcome}</p>
-            {profile.levels[key].evidence.length > 0 && (
-              <p className="text-muted-foreground">Examples: {profile.levels[key].evidence.map((e) => `“${e}”`).join(' ')}</p>
-            )}
+        <div className="flex items-center justify-end gap-2">
+          <RemoveQuestion prompt={prompt} onChanged={onChanged} />
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            Active
+            <Switch checked={prompt.isActive} disabled={saving} onCheckedChange={(checked) => void save({ isActive: checked })} aria-label={`Question ${prompt.variant} active`} />
+          </label>
+        </div>
+        <Textarea value={text} rows={2} maxLength={600} aria-label={`Question ${prompt.variant}`} onChange={(e) => setText(e.target.value)} />
+        <p className="text-xs text-muted-foreground">Write [name] where the person’s first name goes.</p>
+        <StatementsEditor label={`Question ${prompt.variant}`} statements={statements} onChange={setStatements} disabled={saving} />
+        {dirty && (
+          <div className="flex justify-end">
+            <Button size="sm" disabled={saving || !text.trim() || statementsProblem(statements) !== null} onClick={() => void save({ text, options: statements })}>Save question</Button>
           </div>
-        ))}
+        )}
       </div>
     </details>
   )

@@ -2311,7 +2311,6 @@ model KpiNotification {
   sentAt    DateTime @default(now())
 }
 
-
 // ─── Weekly evaluations ─────────────────────────────────────────────────────
 
 enum WeeklyPerspective {
@@ -2324,12 +2323,6 @@ enum WeeklyCycleStatus {
   SETUP
   RUNNING
   CLOSED
-}
-
-enum WeeklyProfileStatus {
-  DRAFT
-  APPROVED
-  RETIRED
 }
 
 enum WeeklySlotStatus {
@@ -2351,21 +2344,6 @@ enum WeeklyPromptStatus {
   NOT_OBSERVED
   EXPIRED
   CANCELLED
-}
-
-enum WeeklyReviewAction {
-  ACCEPTED
-  ADJUSTED
-  MARKED_INSUFFICIENT
-  EXCLUDED
-  AUTO_ACCEPTED
-  MANUAL
-}
-
-enum WeeklyChallengeStatus {
-  OPEN
-  UPHELD
-  NOT_UPHELD
 }
 
 model WeeklyCycle {
@@ -2400,10 +2378,11 @@ model WeeklyCompetency {
   isActive             Boolean                  @default(true)
   /// Removed by HR from the weekly bank; sync leaves it off until HR restores it.
   removedAt            DateTime?
+  /// Asked only about people in these departments; empty for everyone.
+  departments          String[]                 @default([])
   createdAt            DateTime                 @default(now())
   updatedAt            DateTime                 @updatedAt
   prompts              WeeklyCompetencyPrompt[]
-  profiles             WeeklyProfile[]
   slots                WeeklySlot[]
 
   @@index([perspective, isActive])
@@ -2416,6 +2395,8 @@ model WeeklyCompetencyPrompt {
   competencyId String
   variant      String
   text         String
+  /// The 8 statements, each { id, text, score } with scores 1 to 4 in half points (UX spec, section 8).
+  options      Json?
   isActive     Boolean          @default(true)
   /// Removed by HR after it was asked: kept so earlier answers keep their question, hidden from the bank.
   archivedAt   DateTime?
@@ -2424,24 +2405,6 @@ model WeeklyCompetencyPrompt {
   competency   WeeklyCompetency @relation(fields: [competencyId], references: [id])
 
   @@unique([competencyId, variant])
-}
-
-model WeeklyProfile {
-  id                     String              @id @default(cuid())
-  competencyId           String
-  version                Int
-  levels                 Json
-  insufficientDefinition String
-  status                 WeeklyProfileStatus @default(DRAFT)
-  incomplete             Boolean             @default(false)
-  createdById            String?
-  approvedById           String?
-  approvedAt             DateTime?
-  createdAt              DateTime            @default(now())
-  competency             WeeklyCompetency    @relation(fields: [competencyId], references: [id])
-
-  @@unique([competencyId, version])
-  @@index([competencyId, status])
 }
 
 model WeeklySlot {
@@ -2478,6 +2441,8 @@ model WeeklyPrompt {
   promptVariantId  String?
   questionId       String?
   textSnapshot     String
+  /// The statements as this evaluator sees them: shuffled once at release, with their scores.
+  options          Json?
   status           WeeklyPromptStatus @default(OPEN)
   releasedAt       DateTime
   createdAt        DateTime           @default(now())
@@ -2505,70 +2470,17 @@ model WeeklyRelease {
 model WeeklyResponse {
   id          String       @id @default(cuid())
   promptId    String       @unique
-  situation   String       @default("")
-  action      String       @default("")
-  result      String       @default("")
-  shortfall   String?
   commentText String?
+  /// The statement chosen, its score (fixed by the statement) and the evaluator's note.
+  optionId    String?
+  score       Float?
+  note        String?
   revision    Int          @default(0)
   submittedAt DateTime?
   lockedAt    DateTime?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   prompt      WeeklyPrompt @relation(fields: [promptId], references: [id])
-}
-
-model WeeklyScoringJob {
-  id         String    @id @default(cuid())
-  responseId String
-  revision   Int
-  status     String    @default("PENDING")
-  attempts   Int       @default(0)
-  runAfter   DateTime  @default(now())
-  leaseUntil DateTime?
-  leaseToken String?
-  error      String?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-
-  @@unique([responseId, revision])
-  @@index([status, runAfter])
-}
-
-model WeeklyAiScore {
-  id                      String   @id @default(cuid())
-  responseId              String
-  revision                Int
-  profileId               String
-  model                   String
-  promptVersion           String
-  sufficiency             String
-  score                   Int?
-  confidence              String
-  criteriaMet             Json
-  criteriaNotDemonstrated Json
-  evidenceQuotes          Json
-  rationale               String
-  flags                   Json
-  inputTokens             Int      @default(0)
-  outputTokens            Int      @default(0)
-  createdAt               DateTime @default(now())
-
-  @@unique([responseId, revision, profileId, model, promptVersion])
-  @@index([responseId])
-}
-
-model WeeklyScoreReview {
-  id         String             @id @default(cuid())
-  responseId String
-  aiScoreId  String?
-  action     WeeklyReviewAction
-  finalScore Float?
-  reason     String?
-  reviewerId String?
-  createdAt  DateTime           @default(now())
-
-  @@index([responseId, createdAt])
 }
 
 model WeeklyAggregationRun {
@@ -2580,20 +2492,6 @@ model WeeklyAggregationRun {
   createdAt DateTime @default(now())
 
   @@index([cycleId, createdAt])
-}
-
-model WeeklyChallenge {
-  id           String                @id @default(cuid())
-  cycleId      String
-  evaluateeId  String
-  reason       String
-  status       WeeklyChallengeStatus @default(OPEN)
-  resolution   String?
-  resolvedById String?
-  resolvedAt   DateTime?
-  createdAt    DateTime              @default(now())
-
-  @@unique([cycleId, evaluateeId])
 }
 
 model WeeklyParticipantOverride {
@@ -2753,86 +2651,6 @@ model WeeklyAuditEvent {
 }
 
 // ─── Weekly evaluations: AI settings and calibration (Part D) ───────────────
-
-model WeeklyAiSettings {
-  id          String   @id @default("default")
-  activeModel String?
-  /// model id → { inputPerMillion, outputPerMillion } in US dollars
-  prices      Json     @default("{}")
-  updatedById String?
-  updatedAt   DateTime @updatedAt
-}
-
-model WeeklyCalibrationItem {
-  id               String    @id @default(cuid())
-  competencyId     String
-  question         String
-  situation        String
-  action           String
-  result           String
-  shortfall        String?
-  hrSufficiency    String // SUFFICIENT | INSUFFICIENT
-  hrScore          Int?
-  note             String?
-  sourceResponseId String?   @unique
-  createdById      String
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  archivedAt       DateTime?
-
-  @@index([archivedAt])
-}
-
-model WeeklyCalibrationRun {
-  id            String                    @id @default(cuid())
-  kind          String // SET | CYCLE
-  cycleId       String?
-  model         String
-  promptVersion String
-  status        String                    @default("RUNNING") // RUNNING | DONE | FAILED
-  itemCount     Int
-  leaseUntil    DateTime?
-  startedById   String
-  createdAt     DateTime                  @default(now())
-  finishedAt    DateTime?
-  summary       Json?
-  results       WeeklyCalibrationResult[]
-
-  @@index([kind, status, promptVersion, model])
-}
-
-model WeeklyCalibrationResult {
-  id                String               @id @default(cuid())
-  runId             String
-  itemId            String?
-  responseId        String?
-  competencyId      String
-  targetSufficiency String
-  targetScore       Float?
-  question          String?
-  situation         String?
-  action            String?
-  result            String?
-  shortfall         String?
-  sufficiency       String?
-  score             Int?
-  confidence        String?
-  rationale         String?
-  flags             Json?
-  evidenceQuotes    Json?
-  profileId         String?
-  inputTokens       Int                  @default(0)
-  outputTokens      Int                  @default(0)
-  latencyMs         Int                  @default(0)
-  error             String?
-  completedAt       DateTime?
-  createdAt         DateTime             @default(now())
-  run               WeeklyCalibrationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
-
-  @@unique([runId, itemId])
-  @@unique([runId, responseId])
-  @@index([runId, completedAt])
-}
 
 enum SurveyQuestionKind {
   NPS

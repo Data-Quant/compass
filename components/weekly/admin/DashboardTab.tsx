@@ -2,15 +2,11 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { PERSPECTIVE_LABELS, PERSPECTIVE_ORDER } from '@/lib/weekly/perspectives'
+import { PERSPECTIVE_LABELS } from '@/lib/weekly/perspectives'
 import type { CoverageView, DashboardResponse } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest } from '../weekly-api'
-import { GateBadge } from './ActiveModelCard'
-import { AskAgainButton } from './AskAgainButton'
-import { AiCostSection, StandardsSection } from './DashboardExtras'
 import { CyclePicker, useCycles } from './PeopleTab'
 
 const percent = (value: number | null) => (value === null ? '—' : `${Math.round(value * 100)}%`)
@@ -26,20 +22,11 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-function Stat({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="rounded-md border p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-lg font-semibold">{value}</p>
-    </div>
-  )
-}
-
-function CoverageTable({ rows, askAgain }: { rows: CoverageView[]; askAgain?: { cycleId: string; onDone: () => Promise<void> } }) {
+function CoverageTable({ rows }: { rows: CoverageView[] }) {
   if (rows.length === 0) return <p className="text-sm text-muted-foreground">Nobody.</p>
   return (
     <table className="w-full text-sm">
-      <thead><tr className="text-left text-muted-foreground"><th className="py-1">Person</th><th>Group</th><th>Topics with accepted evidence</th><th>Evaluators contributing</th>{askAgain && <th />}</tr></thead>
+      <thead><tr className="text-left text-muted-foreground"><th className="py-1">Person</th><th>Group</th><th>Topics answered</th><th>Evaluators contributing</th></tr></thead>
       <tbody>
         {rows.map((r) => (
           <tr key={`${r.evaluatee.id}-${r.perspective}`} className="border-t">
@@ -47,7 +34,6 @@ function CoverageTable({ rows, askAgain }: { rows: CoverageView[]; askAgain?: { 
             <td>{PERSPECTIVE_LABELS[r.perspective]}</td>
             <td>{r.satisfied} of {r.total} ({percent(r.share)})</td>
             <td>{r.evaluatorsContributing}</td>
-            {askAgain && <td className="text-right"><AskAgainButton cycleId={askAgain.cycleId} evaluatee={r.evaluatee} perspective={r.perspective} onDone={askAgain.onDone} /></td>}
           </tr>
         ))}
       </tbody>
@@ -74,7 +60,6 @@ export function DashboardTab() {
 
   if (cycles.length === 0) return <p className="text-sm text-muted-foreground">Create a cycle in Setup to see the dashboard.</p>
   if (!data) return <p className="text-sm text-muted-foreground">Loading…</p>
-  const q = data.quality
   const low = data.coverage.filter((c) => c.lowEvidence)
   return (
     <div className="space-y-4">
@@ -85,38 +70,9 @@ export function DashboardTab() {
           <Button variant="outline" size="sm" onClick={() => void load()}>Refresh</Button>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="Needs review" value={data.queue.NEEDS_REVIEW} />
-        <Stat label="Scoring failed" value={data.queue.FAILED} />
-        <Stat label="Decided" value={data.queue.DECIDED} />
-      </div>
-      <Section title="AI quality">
-        <p className="text-sm">
-          Scoring model: {data.gate ? <><span className="font-mono">{data.gate.model}</span> <GateBadge gate={data.gate} /></> : 'none available'}
-        </p>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat label="Answers scored" value={q.scored} />
-          <Stat label="Reviewed by HR" value={`${q.reviewedByHuman} (${percent(q.scored ? q.reviewedByHuman / q.scored : null)})`} />
-          <Stat label="HR agreed exactly" value={percent(q.exactAgreement)} />
-          <Stat label="HR within one level" value={percent(q.withinOneAgreement)} />
-          <Stat
-            label="Length–score correlation"
-            value={<>{q.lengthScoreCorrelation === null ? '—' : q.lengthScoreCorrelation.toFixed(2)} {q.lengthAlert && <Badge variant="destructive">Longer answers score higher</Badge>}</>}
-          />
-          <Stat label="Tokens used" value={q.tokens.toLocaleString()} />
-          {PERSPECTIVE_ORDER.map((p) => <Stat key={p} label={`4s — ${PERSPECTIVE_LABELS[p].toLowerCase()}`} value={percent(q.foursShare[p])} />)}
-        </div>
-        {Object.keys(q.flagCounts).length > 0 && (
-          <p className="text-sm">Flags: {Object.entries(q.flagCounts).map(([flag, count]) => `${flag.toLowerCase().replace(/_/g, ' ')} ${count}`).join(' · ')}</p>
-        )}
-        {q.adjustmentsByTopic.length > 0 && (
-          <p className="text-sm">HR changed the AI’s score most on: {q.adjustmentsByTopic.slice(0, 5).map((t) => `${t.topic} (${t.adjusted} of ${t.reviewed})`).join(', ')}</p>
-        )}
-      </Section>
-      <AiCostSection cost={data.aiCost} />
       <Section title="Low evidence">
-        <p className="text-sm text-muted-foreground">Under 60% of a group’s topics have accepted evidence. HR is emailed this list in week {Math.max(1, data.cycle.questionWeeks - 1)}.</p>
-        <CoverageTable rows={low} askAgain={data.cycle.status === 'RUNNING' ? { cycleId, onDone: load } : undefined} />
+        <p className="text-sm text-muted-foreground">Under 60% of a group’s topics have an answer. HR is emailed this list in week {Math.max(1, data.cycle.questionWeeks - 1)}.</p>
+        <CoverageTable rows={low} />
       </Section>
       <Section title="Evaluators">
         <table className="w-full text-sm">
@@ -132,7 +88,7 @@ export function DashboardTab() {
       </Section>
       <Section title="Evaluator drift">
         {data.drift.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No evaluator’s accepted scores sit far from their group’s average.</p>
+          <p className="text-sm text-muted-foreground">No evaluator’s scores sit far from their group’s average.</p>
         ) : (
           <ul className="text-sm">
             {data.drift.map((d) => (
@@ -143,7 +99,6 @@ export function DashboardTab() {
           </ul>
         )}
       </Section>
-      <StandardsSection standards={data.standards} />
       <details className="rounded-md border p-3">
         <summary className="cursor-pointer text-sm font-medium">Coverage for everyone</summary>
         <div className="mt-3"><CoverageTable rows={data.coverage} /></div>

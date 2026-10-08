@@ -30,7 +30,7 @@ export function WeeklyQuestionsCard() {
                 <p className="font-semibold text-foreground">This week’s evaluation questions</p>
                 <Badge variant="secondary">{me.openCount}</Badge>
               </div>
-              <p className="mt-1 text-sm text-muted-foreground">About five minutes each: describe a real situation, what the person did, and what happened.</p>
+              <p className="mt-1 text-sm text-muted-foreground">A few seconds each: pick the statement that best fits what you have seen.</p>
             </div>
           </div>
           <Button asChild>

@@ -1,17 +1,10 @@
 import { prisma } from '@/lib/db'
-import { answerWordCount } from '../answer-rules'
 import { categoryCoverage } from '../coverage'
-import { evaluatorDrift, qualityReport, type QualityRow } from '../quality'
-import { isConfirmedAction } from '../reviews'
-import type { CoverageView, DashboardResponse, EvaluatorStatsView, ReviewFilter } from '../view-types'
-import { jsonStrings, loadAnswerRecords, type AnswerRecord } from './answer-states'
+import { evaluatorDrift } from '../drift'
+import type { CoverageView, DashboardResponse, EvaluatorStatsView } from '../view-types'
+import { loadAnswerRecords } from './answer-states'
 import { assertHr, byName, loadPeople, personRef, type WeeklyActor } from './context'
 import { cycleSummary, loadCycle } from './cycles'
-import { filterOf, REVIEW_FILTERS } from './review-queue'
-import { activeModelName } from '../ai/configured'
-import { loadAiSettings } from './ai-settings'
-import { modelGate } from './calibration-gate'
-import { aiCostForCycle, standardsUsed } from './reporting'
 
 export async function coverageRows(cycleId: string): Promise<CoverageView[]> {
   const slots = await prisma.weeklySlot.findMany({
@@ -59,51 +52,17 @@ async function evaluatorStats(cycleId: string, currentWeek: number): Promise<Eva
     .sort((a, b) => (a.responseRate ?? 1) - (b.responseRate ?? 1) || byName(a.evaluator, b.evaluator))
 }
 
-const confirmedScore = (r: AnswerRecord) => (r.latestReview && isConfirmedAction(r.latestReview.action) ? r.latestReview.finalScore : null)
-
-async function qualityRows(records: readonly AnswerRecord[]): Promise<QualityRow[]> {
-  const scored = records.filter((r) => r.aiScore?.sufficiency === 'SUFFICIENT')
-  const texts = await prisma.weeklyResponse.findMany({ where: { id: { in: scored.map((r) => r.responseId) } }, select: { id: true, situation: true, action: true, result: true } })
-  const words = new Map(texts.map((t) => [t.id, answerWordCount(t)]))
-  return records.map((r) => ({
-    aiScore: r.aiScore?.sufficiency === 'SUFFICIENT' ? r.aiScore.score : null,
-    finalScore: confirmedScore(r),
-    humanReviewed: r.latestReview?.reviewerId != null,
-    wordCount: words.get(r.responseId) ?? 0,
-    flags: r.aiScore ? jsonStrings(r.aiScore.flags) : [],
-    topic: r.topic, perspective: r.perspective, evaluatorId: r.evaluatorId, tokens: r.tokens,
-  }))
-}
-
 export async function dashboardView(actor: WeeklyActor, cycleId: string, now: Date): Promise<DashboardResponse> {
   assertHr(actor)
   const cycle = await loadCycle(cycleId)
   const summary = cycleSummary(cycle, now)
-  const records = await loadAnswerRecords({ cycleId })
-  const queue = Object.fromEntries(REVIEW_FILTERS.map((filter) => [filter, 0])) as Record<ReviewFilter, number>
-  for (const record of records) queue[filterOf(record.state)] += 1
-  const settings = await loadAiSettings()
-  const effective = activeModelName(settings.activeModel)
-  const [coverage, evaluators, rows, aiCost, standards, gate] = await Promise.all([
-    coverageRows(cycleId), evaluatorStats(cycleId, summary.currentWeek), qualityRows(records),
-    aiCostForCycle(cycleId, settings.prices), standardsUsed(cycleId), effective ? modelGate(effective) : Promise.resolve(null),
-  ])
-  const confirmed = records.flatMap((r) => {
-    const finalScore = confirmedScore(r)
-    return finalScore === null ? [] : [{ evaluatorId: r.evaluatorId, perspective: r.perspective, finalScore }]
-  })
-  const drift = evaluatorDrift(confirmed)
+  const [records, coverage, evaluators] = await Promise.all([loadAnswerRecords({ cycleId }), coverageRows(cycleId), evaluatorStats(cycleId, summary.currentWeek)])
+  const drift = evaluatorDrift(records.map((r) => ({ evaluatorId: r.evaluatorId, perspective: r.perspective, finalScore: r.score })))
   const people = await loadPeople(drift.map((d) => d.evaluatorId))
   return {
     cycle: summary,
-    queue,
-    jobs: { pending: queue.SCORING, failed: queue.FAILED },
     coverage,
     evaluators,
-    quality: qualityReport(rows),
     drift: drift.map((d) => ({ evaluator: personRef(people, d.evaluatorId), perspective: d.perspective, difference: d.difference, count: d.count })),
-    aiCost,
-    standards,
-    gate,
   }
 }

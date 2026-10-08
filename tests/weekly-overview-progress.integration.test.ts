@@ -1,13 +1,9 @@
 import test, { after, before, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { prisma } from '../lib/db'
-import { fakeModel } from '../lib/weekly/ai/model'
-import { loadAnswerRecords } from '../lib/weekly/service/answer-states'
-import { decideAnswer } from '../lib/weekly/service/decisions'
 import { weeklyOverviewProgress } from '../lib/weekly/service/overview-progress'
-import { runScoring } from '../lib/weekly/service/scoring'
-import { answerAs, releaseWeekOne, scoringClock } from './helpers/weekly-answers'
-import { at, HR_ACTOR, startedCycle } from './helpers/weekly-fixtures'
+import { answerAs, releaseWeekOne } from './helpers/weekly-answers'
+import { startedCycle } from './helpers/weekly-fixtures'
 import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST } from './helpers/weekly-test-db'
 
 let periodId = ''
@@ -25,7 +21,7 @@ after(async () => {
   await prisma.$disconnect()
 })
 
-test('HR overview: evaluating others moves on answering, being evaluated moves on acceptance', WEEKLY_DB_TEST, async () => {
+test('HR overview: an answer moves both the evaluator’s and the evaluated person’s progress', WEEKLY_DB_TEST, async () => {
   const prompt = (await releaseWeekOne(cycleId)).find((p) => p.evaluatorId === W.lead.id)!
   const start = (await weeklyOverviewProgress(periodId))!
   const lead = start.get(W.lead.id)!
@@ -33,17 +29,11 @@ test('HR overview: evaluating others moves on answering, being evaluated moves o
   assert.ok(lead.topicsToAnswer > 0 && evaluatee.topics > 0)
   assert.deepEqual([lead.answeredTopics, evaluatee.coveredTopics], [0, 0])
 
-  const responseId = await answerAs(prompt, 'strong')
+  await answerAs(prompt, 3)
   const answered = (await weeklyOverviewProgress(periodId))!
   assert.equal(answered.get(W.lead.id)!.answeredTopics, 1)
-  assert.equal(answered.get(prompt.evaluateeId)!.coveredTopics, 0, 'an answer alone does not cover a topic')
-
-  await runScoring({ model: fakeModel(), budgetMs: 30_000, clock: () => scoringClock() })
-  const [record] = await loadAnswerRecords({ responseIds: [responseId] })
-  await decideAnswer(HR_ACTOR, responseId, { action: 'ACCEPT', basedOn: { aiScoreId: record.aiScore?.id ?? null, reviewId: record.latestReview?.id ?? null } }, at(1, 3))
-  const accepted = (await weeklyOverviewProgress(periodId))!
-  assert.equal(accepted.get(prompt.evaluateeId)!.coveredTopics, 1)
-  assert.ok(accepted.get(prompt.evaluateeId)!.evaluators >= 1)
+  assert.equal(answered.get(prompt.evaluateeId)!.coveredTopics, 1, 'a chosen statement covers the topic at once')
+  assert.ok(answered.get(prompt.evaluateeId)!.evaluators >= 1)
 })
 
 test('a period without a weekly cycle has no weekly progress', WEEKLY_DB_TEST, async () => {

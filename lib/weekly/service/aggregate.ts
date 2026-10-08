@@ -2,7 +2,6 @@ import type { Prisma } from '@prisma/client'
 import { isHrFilledPartner } from '../partners'
 import { buildAggregateRows, type AggregationCounts, type CommentAnswer, type ConfirmedScore } from '../aggregation'
 import type { Perspective } from '../perspectives'
-import { isConfirmedAction } from '../reviews'
 import { loadAnswerRecords } from './answer-states'
 import { loadPeople } from './context'
 import type { CycleWithPeriod } from './cycles'
@@ -18,7 +17,7 @@ export function hasLeftBy(person: { payrollActive: boolean; exitDate: Date | nul
 
 /**
  * Spec 10: replaces the period's AI_WEEKLY rows (all of them, or only `evaluateeIds`') with one row per evaluator, person and
- * question from the latest confirmed decisions, plus comment rows. Records a WeeklyAggregationRun. Runs inside the caller's transaction.
+ * question from the chosen statements' scores, plus comment rows. Records a WeeklyAggregationRun. Runs inside the caller's transaction.
  */
 export async function aggregateCycle(
   tx: Prisma.TransactionClient,
@@ -32,10 +31,9 @@ export async function aggregateCycle(
     (await tx.weeklyCompetency.findMany({ where: { id: { in: competencyIds } }, select: { id: true, sourceQuestionId: true, sourceLeadQuestionId: true } })).map((c) => [c.id, c]),
   )
   const scores: ConfirmedScore[] = records.flatMap((r) => {
-    const review = r.latestReview
     const competency = r.competencyId ? competencies.get(r.competencyId) : undefined
-    if (!review || !isConfirmedAction(review.action) || review.finalScore === null || !competency) return []
-    return [{ evaluatorId: r.evaluatorId, evaluateeId: r.evaluateeId, questionId: competency.sourceQuestionId, leadQuestionId: competency.sourceLeadQuestionId, score: review.finalScore }]
+    if (!competency) return []
+    return [{ evaluatorId: r.evaluatorId, evaluateeId: r.evaluateeId, questionId: competency.sourceQuestionId, leadQuestionId: competency.sourceLeadQuestionId, score: r.score }]
   })
   const commentPrompts = await tx.weeklyPrompt.findMany({
     where: { cycleId: cycle.id, kind: 'COMMENT', status: 'SUBMITTED', questionId: { not: null }, ...(scope ? { evaluateeId: { in: [...scope] } } : {}) },
