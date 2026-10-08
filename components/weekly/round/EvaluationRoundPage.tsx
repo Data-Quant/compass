@@ -1,0 +1,241 @@
+'use client'
+
+import { useCallback, useEffect, useState } from 'react'
+import { Check, ChevronRight, Circle, CircleDot } from 'lucide-react'
+import { toast } from 'sonner'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { formatKarachiDate } from '@/lib/weekly/format'
+import { ROUND_STAGE_LABELS, ROUND_STAGES } from '@/lib/weekly/round-stage'
+import type { RoundChecklistItem, RoundSummary, RoundView, WeeklyMeResponse } from '@/lib/weekly/view-types'
+import { QuarterEvaluationsWorkspace } from '../form-tables/QuarterEvaluationsWorkspace'
+import { AiModelTab } from '../admin/AiModelTab'
+import { ChallengesTab } from '../admin/ChallengesTab'
+import { CloseTab } from '../admin/CloseTab'
+import { ContentTab } from '../admin/ContentTab'
+import { DashboardTab } from '../admin/DashboardTab'
+import { LiveScoresTab } from '../admin/LiveScoresTab'
+import { PeopleTab } from '../admin/PeopleTab'
+import { ReviewTab } from '../admin/ReviewTab'
+import { SurveyTab } from '../admin/SurveyTab'
+import { TestToolsTab } from '../admin/TestToolsTab'
+import { errorMessage, weeklyRequest } from '../weekly-api'
+import { RoundCycleContext } from './RoundContext'
+import { SetupRoundDialog } from './SetupRoundDialog'
+
+type Tab = RoundChecklistItem['tab']
+const TABS: Array<{ value: Tab; label: string }> = [
+  { value: 'overview', label: 'Overview' }, { value: 'people', label: 'People' }, { value: 'progress', label: 'Progress' },
+  { value: 'forms', label: 'Quarter-end forms' }, { value: 'results', label: 'Close and release' }, { value: 'advanced', label: 'Advanced' },
+]
+
+function Stepper({ view }: { view: RoundView }) {
+  const current = ROUND_STAGES.indexOf(view.stage)
+  return (
+    <ol className="flex flex-wrap items-center gap-1 text-sm" aria-label="Round stages">
+      {ROUND_STAGES.map((stage, i) => (
+        <li key={stage} className="flex items-center gap-1">
+          {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />}
+          <span className={`flex items-center gap-1 ${i === current ? 'font-semibold text-foreground' : 'text-muted-foreground'}`} aria-current={i === current ? 'step' : undefined}>
+            {i < current ? <Check className="h-3.5 w-3.5" aria-hidden /> : i === current ? <CircleDot className="h-3.5 w-3.5" aria-hidden /> : <Circle className="h-3.5 w-3.5" aria-hidden />}
+            {ROUND_STAGE_LABELS[stage]}
+          </span>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
+/** UX spec, section 4: HR runs the whole round from here. It always says what is next, with one button for it. */
+export function EvaluationRoundPage() {
+  const [rounds, setRounds] = useState<RoundSummary[] | null>(null)
+  const [periodId, setPeriodId] = useState('')
+  const [view, setView] = useState<RoundView | null>(null)
+  const [tab, setTab] = useState<Tab>('overview')
+  const [settingUp, setSettingUp] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [testTools, setTestTools] = useState(false)
+
+  const loadRounds = useCallback(async (select?: string) => {
+    try {
+      const result = await weeklyRequest<{ rounds: RoundSummary[] }>('/api/admin/rounds')
+      setRounds(result.rounds)
+      const preferred = select ?? result.rounds.find((r) => r.stage === 'OPEN')?.periodId ?? result.rounds[0]?.periodId ?? ''
+      setPeriodId(preferred)
+    } catch (e) {
+      toast.error(errorMessage(e, 'Could not load the rounds'))
+    }
+  }, [])
+  const loadView = useCallback(async () => {
+    if (!periodId) return setView(null)
+    try {
+      setView(await weeklyRequest<RoundView>(`/api/admin/rounds/${periodId}`))
+    } catch (e) {
+      toast.error(errorMessage(e, 'Could not load the round'))
+    }
+  }, [periodId])
+
+  useEffect(() => {
+    void loadRounds()
+    weeklyRequest<WeeklyMeResponse>('/api/weekly/me').then((me) => setTestTools(Boolean(me.testTools))).catch(() => setTestTools(false))
+    const requested = new URLSearchParams(window.location.search).get('tab')
+    if (TABS.some((t) => t.value === requested)) setTab(requested as Tab)
+  }, [loadRounds])
+  useEffect(() => {
+    void loadView()
+  }, [loadView])
+
+  async function act(action: 'open-review' | 'open-round') {
+    setBusy(true)
+    try {
+      await weeklyRequest(`/api/admin/rounds/${periodId}`, { method: 'POST', body: { action } })
+      toast.success(action === 'open-review' ? 'Review stage open. Everyone can now check their lists.' : 'Round open. Weekly questions start on week 1.')
+      setConfirming(false)
+      await loadRounds(periodId)
+      await loadView()
+    } catch (e) {
+      toast.error(errorMessage(e, 'Could not move the round on'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function primary() {
+    const next = view?.next
+    if (!next) return
+    if (next.action === 'close-round' || next.action === 'release') setTab('results')
+    else setConfirming(true)
+  }
+
+  const pending = view?.checklist.find((c) => c.key === 'requests')?.count ?? 0
+  return (
+    <div className="mx-auto max-w-7xl space-y-6 p-6 sm:p-8">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="font-display text-2xl font-bold text-foreground">Evaluation round{view ? ` · ${view.name}` : ''}</h1>
+          <p className="mt-1 text-muted-foreground">Run the quarter&apos;s evaluations from here, one step at a time.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {rounds && rounds.length > 1 && (
+            <Select value={periodId} onValueChange={setPeriodId}>
+              <SelectTrigger className="w-56" aria-label="Round"><SelectValue /></SelectTrigger>
+              <SelectContent>{rounds.map((r) => <SelectItem key={r.periodId} value={r.periodId}>{r.name} · {ROUND_STAGE_LABELS[r.stage]}</SelectItem>)}</SelectContent>
+            </Select>
+          )}
+          <Button variant="outline" onClick={() => setSettingUp(true)}>Set up a new round</Button>
+        </div>
+      </div>
+
+      {rounds && rounds.length === 0 && (
+        <Card><CardContent className="space-y-3 p-6">
+          <p className="font-semibold">No evaluation round yet</p>
+          <p className="text-sm text-muted-foreground">Set up a round for the quarter: its dates, when weekly questions start, and how many weeks they run.</p>
+          <Button onClick={() => setSettingUp(true)}>Set up round</Button>
+        </CardContent></Card>
+      )}
+
+      {view && (
+        <Card>
+          <CardContent className="space-y-4 p-5">
+            <Stepper view={view} />
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium">{view.next ? 'Next step' : 'Done'}</p>
+                <p className="text-sm text-muted-foreground">{view.next?.sentence ?? 'This round has been released.'}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Weekly questions from {formatKarachiDate(view.weekOneStartsOn)} for {view.questionWeeks} weeks, plus 2 catch-up weeks; closes {formatKarachiDate(view.closesOn)}
+                  {view.reviewDeadline ? ` · review stage ends ${formatKarachiDate(view.reviewDeadline)}` : ''}
+                  {view.currentWeek ? ` · now in week ${view.currentWeek}` : ''}
+                </p>
+              </div>
+              {view.next && <Button disabled={busy} onClick={primary}>{view.next.label}</Button>}
+            </div>
+            {view.checklist.length > 0 && (
+              <ul className="flex flex-wrap gap-2">
+                {view.checklist.map((item) => (
+                  <li key={item.key}>
+                    <button type="button" onClick={() => setTab(item.tab)} className="rounded-full">
+                      <Badge variant={item.done ? 'secondary' : 'outline'} className="gap-1">{item.done ? <Check className="h-3 w-3" aria-hidden /> : null}{item.label}</Badge>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {view && (
+        <RoundCycleContext.Provider value={view.cycleId}>
+          <Tabs value={tab} onValueChange={(value) => setTab(value as Tab)}>
+            <TabsList className="flex-wrap">{TABS.map((t) => <TabsTrigger key={t.value} value={t.value}>{t.label}</TabsTrigger>)}</TabsList>
+            <TabsContent value="overview" className="pt-4">
+              <Card><CardContent className="space-y-2 p-4 text-sm">
+                <p><span className="font-medium">Quarter:</span> {formatKarachiDate(view.startDate)} to {formatKarachiDate(view.endDate)}</p>
+                <p><span className="font-medium">Stage:</span> {ROUND_STAGE_LABELS[view.stage]}{view.reviewOpenedAt ? ` · review stage opened ${formatKarachiDate(view.reviewOpenedAt)}` : ''}</p>
+                {view.checklist.length === 0 ? <p className="text-muted-foreground">Nothing is waiting on you at this stage.</p> : (
+                  <ul className="list-disc pl-5">{view.checklist.map((c) => <li key={c.key}>{c.label}</li>)}</ul>
+                )}
+              </CardContent></Card>
+            </TabsContent>
+            <TabsContent value="people" className="pt-4"><PeopleTab /></TabsContent>
+            <TabsContent value="progress" className="pt-4"><DashboardTab /></TabsContent>
+            <TabsContent value="forms" className="pt-4"><QuarterEvaluationsWorkspace embedded /></TabsContent>
+            <TabsContent value="results" className="pt-4"><CloseTab /></TabsContent>
+            <TabsContent value="advanced" className="pt-4">
+              <p className="mb-4 text-sm text-muted-foreground">Tools for the current AI-scored questions. These change in a later step of the overhaul.</p>
+              <Tabs defaultValue="content">
+                <TabsList className="flex-wrap">
+                  <TabsTrigger value="content">Topics and profiles</TabsTrigger>
+                  <TabsTrigger value="review">Answer review</TabsTrigger>
+                  <TabsTrigger value="live">Live scores</TabsTrigger>
+                  <TabsTrigger value="ai">AI model</TabsTrigger>
+                  <TabsTrigger value="challenges">Challenges</TabsTrigger>
+                  <TabsTrigger value="survey">Pulse survey</TabsTrigger>
+                  {testTools && <TabsTrigger value="test">Test tools</TabsTrigger>}
+                </TabsList>
+                <TabsContent value="content"><ContentTab /></TabsContent>
+                <TabsContent value="review"><ReviewTab /></TabsContent>
+                <TabsContent value="live"><LiveScoresTab /></TabsContent>
+                <TabsContent value="ai"><AiModelTab /></TabsContent>
+                <TabsContent value="challenges"><ChallengesTab /></TabsContent>
+                <TabsContent value="survey"><SurveyTab /></TabsContent>
+                {testTools && <TabsContent value="test"><TestToolsTab /></TabsContent>}
+              </Tabs>
+            </TabsContent>
+          </Tabs>
+        </RoundCycleContext.Provider>
+      )}
+
+      {settingUp && (
+        <SetupRoundDialog
+          onClose={() => setSettingUp(false)}
+          onCreated={async (id) => {
+            setSettingUp(false)
+            await loadRounds(id)
+          }}
+        />
+      )}
+      {confirming && view?.next && (
+        <ConfirmDialog
+          isOpen
+          title={view.next.label}
+          message={view.next.action === 'open-review'
+            ? 'Everyone in the round is sent their lists to check, and leads are asked for their two team questions. Requests can be made until you open the round.'
+            : pending > 0
+              ? `${pending} change ${pending === 1 ? 'request has' : 'requests have'} not been decided. Opening the round lets them expire and tells the people who asked. Decide them in People first if they matter.`
+              : 'Weekly questions start on week 1. After this, list changes are made by HR only.'}
+          confirmText={view.next.label}
+          variant={pending > 0 && view.next.action === 'open-round' ? 'warning' : 'info'}
+          onConfirm={() => void act(view.next!.action as 'open-review' | 'open-round')}
+          onClose={() => setConfirming(false)}
+        />
+      )}
+    </div>
+  )
+}

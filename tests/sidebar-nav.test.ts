@@ -36,3 +36,8 @@ test('the Evaluations item gets the weekly badge in place, without touching the 
   assert.equal(config.items[1].badge, undefined)
   assert.equal(withItemPatched(config, '/nowhere', { badge: 1 }), config)
 })
+
+test('a group item can go first in its group', () => {
+  const result = withGroupItem(config, 'Performance', item('/admin/evaluation-round'), 'start')
+  assert.deepEqual(result.groups[0].items.map((i) => i.href), ['/admin/evaluation-round', '/admin/periods'])
+})

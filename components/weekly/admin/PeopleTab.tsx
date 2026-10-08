@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import type { AdminCyclesResponse, CycleSummary, ParticipantRow, ParticipantsResponse } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest } from '../weekly-api'
+import { useRoundCycle } from '../round/RoundContext'
 import { PairWindowsCard } from './PairWindowsCard'
 import { ReviewStageCard } from './ReviewStageCard'
 
@@ -21,9 +22,12 @@ const EXCLUSION_LABELS: Record<NonNullable<ParticipantRow['exclusion']>, string>
   JOINED_LATE: 'Joined with fewer than 6 weeks left',
 }
 
+/** The cycles, and the one being worked on: the Evaluation round page's round when inside it. */
 export function useCycles() {
+  const roundCycleId = useRoundCycle()
   const [cycles, setCycles] = useState<CycleSummary[]>([])
-  const [cycleId, setCycleId] = useState('')
+  const [chosen, setCycleId] = useState('')
+  const cycleId = roundCycleId ?? chosen
   useEffect(() => {
     weeklyRequest<AdminCyclesResponse>('/api/admin/weekly/cycles')
       .then((result) => {
@@ -37,7 +41,8 @@ export function useCycles() {
 }
 
 export function CyclePicker({ cycles, cycleId, onChange }: { cycles: CycleSummary[]; cycleId: string; onChange: (id: string) => void }) {
-  if (cycles.length < 2) return null
+  const roundCycleId = useRoundCycle()
+  if (roundCycleId || cycles.length < 2) return null
   return (
     <Select value={cycleId} onValueChange={onChange}>
       <SelectTrigger className="w-72" aria-label="Cycle"><SelectValue /></SelectTrigger>

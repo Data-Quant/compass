@@ -1,3 +1,4 @@
+import { prisma } from '../../lib/db'
 import { approveProfile, contentView, syncFromQuestionBank } from '../../lib/weekly/service/content'
 import { createCycle, updateCycle } from '../../lib/weekly/service/cycles'
 import { W, weeklyActor } from './weekly-test-db'
@@ -25,5 +26,12 @@ export async function startedCycle(periodId: string): Promise<{ cycleId: string 
   await approveAllContent()
   const cycle = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY })
   await updateCycle(HR_ACTOR, cycle.id, { action: 'start' })
+  return { cycleId: cycle.id }
+}
+
+/** A round in its review stage: the cycle is set up, not started, and the review stage is open. */
+export async function reviewStageCycle(periodId: string): Promise<{ cycleId: string }> {
+  const cycle = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY })
+  await prisma.evaluationPeriod.update({ where: { id: periodId }, data: { preEvaluationTriggeredAt: at(0) } })
   return { cycleId: cycle.id }
 }

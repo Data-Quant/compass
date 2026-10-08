@@ -120,6 +120,12 @@ export const surveyAdminSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('remove'), questionId: z.string().min(1) }).strict(),
 ])
 export const reviewStageSchema = z.object({ periodId: z.string().min(1) }).strict()
+const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date (YYYY-MM-DD)')
+export const setupRoundSchema = z.object({
+  name: z.string().trim().min(2, 'Name the quarter').max(80), startDate: dateSchema, endDate: dateSchema, weekOneStartsOn: dateSchema,
+  questionWeeks: z.number().int().min(1).max(26).optional(), reviewDeadline: dateSchema.optional(),
+}).strict()
+export const roundActionSchema = z.object({ action: z.enum(['open-review', 'open-round']) }).strict()
 export const formQuerySchema = z.object({ relationshipType: formRelationshipTypeSchema, evaluateeId: z.string().min(1) })
 
 export const closeActionSchema = z.discriminatedUnion('action', [

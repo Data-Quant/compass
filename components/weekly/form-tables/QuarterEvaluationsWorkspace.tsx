@@ -51,13 +51,16 @@ function TablesPanel({ kind }: { kind: FormTableKind }) {
 }
 
 /** HR's end-of-quarter scoring: its own HR evaluations, and the partners' evaluations it fills in on their behalf. */
-export function QuarterEvaluationsWorkspace() {
+export function QuarterEvaluationsWorkspace({ embedded = false }: { embedded?: boolean }) {
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-6 sm:p-8">
-      <div>
-        <h1 className="font-display text-2xl font-bold text-foreground">Quarter-end evaluations</h1>
-        <p className="mt-1 text-muted-foreground">Score everyone in one table, 1 to 4 per question. Rows save as you go; submit a row when it is complete.</p>
-      </div>
+    <div className={embedded ? 'space-y-6' : 'mx-auto max-w-7xl space-y-6 p-6 sm:p-8'}>
+      {!embedded && (
+        <div>
+          <h1 className="font-display text-2xl font-bold text-foreground">Quarter-end evaluations</h1>
+          <p className="mt-1 text-muted-foreground">Score everyone in one table, 1 to 4 per question. Rows save as you go; submit a row when it is complete.</p>
+        </div>
+      )}
+      {embedded && <p className="text-sm text-muted-foreground">Score everyone in one table, 1 to 4 per question. Rows save as you go; submit a row when it is complete.</p>}
       <Tabs defaultValue="hr">
         <TabsList>
           <TabsTrigger value="hr">HR evaluations</TabsTrigger>

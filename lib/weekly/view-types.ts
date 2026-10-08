@@ -373,7 +373,7 @@ export interface PersonScoreView {
 export interface PairWindowView { evaluator: PersonRef; evaluatee: PersonRef; relationshipType: string; startWeek: number; weeks: number }
 
 export type PeerChangeActionValue = 'ADD' | 'REMOVE'
-export type PeerChangeStatusValue = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
+export type PeerChangeStatusValue = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'EXPIRED'
 export type PeerChangeVoteValue = 'PENDING' | 'APPROVED' | 'REJECTED'
 export type MappingRelationValue = 'PEER' | 'LEAD' | 'REPORT'
 export interface PeerRequestView {
@@ -438,4 +438,30 @@ export interface ReviewStageView {
   openedAt: string | null
   reviewEndsAt: string
   leads: Array<{ lead: PersonRef; status: string; questionsSubmitted: boolean }>
+}
+
+export type RoundStageValue = 'DRAFT' | 'REVIEW' | 'OPEN' | 'CLOSED' | 'RELEASED'
+export type RoundAction = 'open-review' | 'open-round' | 'close-round' | 'release'
+export interface RoundSummary { periodId: string; cycleId: string; name: string; stage: RoundStageValue }
+export interface RoundNextStep { action: RoundAction; label: string; sentence: string }
+export interface RoundChecklistItem { key: string; label: string; done: boolean; count?: number; tab: 'overview' | 'people' | 'progress' | 'forms' | 'results' | 'advanced' }
+export interface RoundView {
+  periodId: string
+  cycleId: string
+  name: string
+  stage: RoundStageValue
+  locked: boolean
+  startDate: string
+  endDate: string
+  weekOneStartsOn: string
+  /** The end of the last catch-up week. */
+  closesOn: string
+  reviewOpenedAt: string | null
+  reviewDeadline: string | null
+  questionWeeks: number
+  totalWeeks: number
+  currentWeek: number | null
+  /** The one primary step for this stage; null once released. */
+  next: RoundNextStep | null
+  checklist: RoundChecklistItem[]
 }

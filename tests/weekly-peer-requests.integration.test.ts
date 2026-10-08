@@ -6,7 +6,7 @@ import { WeeklyError } from '../lib/weekly/service/errors'
 import {
   cancelPeerRequest, decidePeerRequest, myMapping, peerRequestByToken, requestPeerChange, resendPeerRequestLinks, sendMappingEmails, voteOnPeerRequest,
 } from '../lib/weekly/service/peer-requests'
-import { at, HR_ACTOR, startedCycle } from './helpers/weekly-fixtures'
+import { at, HR_ACTOR, reviewStageCycle } from './helpers/weekly-fixtures'
 import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST, weeklyActor } from './helpers/weekly-test-db'
 
 const APP = 'https://compass.example'
@@ -33,7 +33,7 @@ beforeEach(async () => {
   if (!WEEKLY_DB_READY) return
   await resetWeeklyTestData(prisma)
   ;({ periodId } = await seedWeeklyBase(prisma))
-  await startedCycle(periodId)
+  await reviewStageCycle(periodId)
   process.env.WEEKLY_SEND_EMAILS = 'true'
 })
 afterEach(() => {

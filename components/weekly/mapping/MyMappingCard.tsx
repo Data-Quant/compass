@@ -12,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea'
 import type { MappingRelationValue, MyMappingResponse, PeerRequestView, PersonRef } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest } from '../weekly-api'
 
-const STATUS: Record<PeerRequestView['status'], string> = { PENDING: 'Waiting', APPROVED: 'Approved', REJECTED: 'Not approved', CANCELLED: 'Cancelled' }
+const STATUS: Record<PeerRequestView['status'], string> = { PENDING: 'Waiting', APPROVED: 'Approved', REJECTED: 'Not approved', CANCELLED: 'Cancelled', EXPIRED: 'Not decided in time' }
 const SECTIONS: Record<MappingRelationValue, { title: string; add: string; noun: string; empty: string }> = {
   LEAD: { title: 'Your lead', add: 'Ask to add a lead', noun: 'lead', empty: 'None' },
   REPORT: { title: 'Your reporting team members', add: 'Ask to add a team member', noun: 'team member', empty: 'None' },
@@ -93,7 +93,8 @@ export function MyMappingCard() {
         <div>
           <h2 className="font-semibold">Your mapping for {data.period.name}</h2>
           <p className="text-sm text-muted-foreground">
-            Who you evaluate and who evaluates you this quarter. If anyone is wrong or missing, ask for a change: a peer change needs that peer and your lead to approve; HR decides changes to your lead or team.
+            Who you evaluate and who evaluates you this quarter.{' '}
+            {locked ? 'If anything is wrong, contact HR.' : 'If anyone is wrong or missing, ask for a change: a peer change needs that peer and your lead to approve; HR decides changes to your lead or team.'}
           </p>
         </div>
         <div className="grid gap-4 md:grid-cols-3">

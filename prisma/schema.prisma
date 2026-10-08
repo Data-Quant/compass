@@ -2373,6 +2373,8 @@ model WeeklyCycle {
   periodId           String            @unique
   weekOneStartsOn    DateTime
   questionWeeks      Int
+  /// The date the review stage should finish by (employees check their lists, leads write questions).
+  reviewDeadline     DateTime?
   status             WeeklyCycleStatus @default(SETUP)
   simulatedWeek      Int?
   formsOpenAt        DateTime?
@@ -2616,6 +2618,8 @@ enum PeerChangeStatus {
   APPROVED
   REJECTED
   CANCELLED
+  /// Not decided before the round opened.
+  EXPIRED
 }
 
 /// What the request changes: a peer (the peer and the lead approve), or the person's lead or a team member (HR decides).

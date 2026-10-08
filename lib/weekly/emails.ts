@@ -145,3 +145,14 @@ export function renderMappingEmail(input: { name: string; periodName: string; le
     ], `${base(input.appUrl)}/evaluations/weekly`, 'Review your mapping'),
   }
 }
+
+/** A change request nobody decided before the round opened. */
+export function renderRequestExpiredEmail(input: { name: string; otherName: string; appUrl: string }): { subject: string; html: string } {
+  return {
+    subject: 'Your evaluation list request was not decided in time',
+    html: layout(input.name, [
+      escapeHtml(`Your request about ${input.otherName} was not decided before evaluations started, so your lists stay as they are.`),
+      escapeHtml('If it still matters, contact HR: they can change your lists during the round.'),
+    ], `${base(input.appUrl)}/evaluations/weekly`, 'See your lists'),
+  }
+}

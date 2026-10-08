@@ -13,9 +13,16 @@ import { recordAudit } from './audit'
 import { assertHr, loadPeople, personRef, type WeeklyActor } from './context'
 import { WeeklyError } from './errors'
 import { deliverOnce, type WeeklyEmailMessage, type WeeklySendMail, type WeeklySendResult } from './notifications'
+import { periodRoundStage } from './round'
 
 export type PeerDecision = 'APPROVE' | 'REJECT'
 const LOCKED = 'This quarter is locked, so its mapping can no longer change'
+const NOT_IN_REVIEW = 'Lists can only be changed here during the review stage. Contact HR to change them now.'
+
+/** Employees request changes only while the round is in its review stage (UX spec, section 6). */
+async function inReview(periodId: string): Promise<boolean> {
+  return (await periodRoundStage(periodId)) === 'REVIEW'
+}
 const base = (appUrl: string) => appUrl.replace(/\/$/, '')
 const hash = (token: string) => createHash('sha256').update(token).digest('hex')
 const newToken = () => randomBytes(32).toString('base64url')
@@ -78,7 +85,7 @@ export async function myMapping(actor: WeeklyActor, now: Date): Promise<MyMappin
   const people = await loadPeople([...mapping.leads, ...mapping.reports, ...mapping.peers, ...requests.flatMap((r) => [r.requesterId, r.peerId, r.approverId ?? ''])])
   const refs = (ids: string[]): PersonRef[] => ids.map((id) => personRef(people, id)).sort((a, b) => a.name.localeCompare(b.name))
   return {
-    period: { id: period.id, name: period.name, locked: period.isLocked },
+    period: { id: period.id, name: period.name, locked: period.isLocked || !(await inReview(period.id)) },
     leads: refs(mapping.leads), reports: refs(mapping.reports), peers: refs(mapping.peers),
     requests: requests.map((r) => requestView(r, people)),
     candidates: candidates.filter((c) => !isOutsideRedesign(c)).map((c) => ({ id: c.id, name: c.name, position: c.position })),
@@ -101,6 +108,7 @@ export async function requestPeerChange(
   const relation = input.relation ?? 'PEER'
   const period = await mappingPeriod()
   if (period.isLocked) throw new WeeklyError(LOCKED, 409)
+  if (!(await inReview(period.id))) throw new WeeklyError(NOT_IN_REVIEW, 409)
   if (input.peerId === actor.id) throw new WeeklyError('You cannot add or remove yourself')
   const other = (await loadPeople([input.peerId])).get(input.peerId)
   if (!other || !other.payrollActive || isOutsideRedesign(other)) throw new WeeklyError('Person not found', 404)
@@ -212,6 +220,7 @@ export async function voteOnPeerRequest(token: string, decision: PeerDecision, n
   const period = await prisma.evaluationPeriod.findUnique({ where: { id: request.periodId }, select: { isLocked: true } })
   const closed = await prisma.weeklyCycle.count({ where: { periodId: request.periodId, status: 'CLOSED' } })
   if (period?.isLocked || closed > 0) throw new WeeklyError(LOCKED, 409)
+  if (!(await inReview(request.periodId))) throw new WeeklyError('The round has started, so this request can no longer be answered', 409)
   const vote = decision === 'APPROVE' ? 'APPROVED' : 'REJECTED'
   // Guarded on the vote still being open, so a second click (or a race) changes nothing.
   const voted = role === 'PEER'

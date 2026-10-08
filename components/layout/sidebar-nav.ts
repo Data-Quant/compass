@@ -8,11 +8,11 @@ export function withItemAfter(config: SidebarConfig, entry: NavItem, anchorHref:
   return { ...config, items }
 }
 
-export function withGroupItem(config: SidebarConfig, groupLabel: string, entry: NavItem): SidebarConfig {
+export function withGroupItem(config: SidebarConfig, groupLabel: string, entry: NavItem, position: 'start' | 'end' = 'end'): SidebarConfig {
   if (config.groups.some((group) => group.items.some((item) => item.href === entry.href))) return config
   return {
     ...config,
-    groups: config.groups.map((group) => (group.label === groupLabel ? { ...group, items: [...group.items, entry] } : group)),
+    groups: config.groups.map((group) => (group.label === groupLabel ? { ...group, items: position === 'start' ? [entry, ...group.items] : [...group.items, entry] } : group)),
   }
 }
 
