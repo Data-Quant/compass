@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -8,11 +8,41 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Check, Loader2, Pencil, X } from 'lucide-react'
+import { buildTravelTierPatch, toTravelTierDraft, type TravelTierDraft } from '@/lib/payroll/travel-tiers'
 import { ALL_TEAMS, TEAM_LABELS } from '@/lib/handbook/teams'
 import type { TeamTag } from '@prisma/client'
 
 interface Props {
   canEdit: boolean
+}
+
+const TRANSPORT_MODE_LABELS: Record<TravelTier['transportMode'], string> = {
+  CAR: 'Car',
+  BIKE: 'Bike',
+  PUBLIC_TRANSPORT: 'Public Transport',
+}
+
+interface ListResult<T> {
+  data: T[] | null
+  /** Human label of the list that failed, for the combined error toast. */
+  error: string | null
+}
+
+async function fetchList<T>(url: string, key: string, label: string): Promise<ListResult<T>> {
+  try {
+    const res = await fetch(url)
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      console.error(`Failed to load ${label}:`, json.error || res.status)
+      return { data: null, error: label }
+    }
+    return { data: (json[key] as T[]) || [], error: null }
+  } catch (error) {
+    console.error(`Failed to load ${label}:`, error)
+    return { data: null, error: label }
+  }
 }
 
 interface TravelTier {
@@ -86,6 +116,9 @@ const TEAM_PRESETS: Array<{ label: string; teams: TeamTag[] }> = [
 export function PayrollSettingsPanel({ canEdit }: Props) {
   const [loading, setLoading] = useState(true)
   const [travelTiers, setTravelTiers] = useState<TravelTier[]>([])
+  const [editingTierId, setEditingTierId] = useState<string | null>(null)
+  const [tierDraft, setTierDraft] = useState<TravelTierDraft | null>(null)
+  const [savingTier, setSavingTier] = useState(false)
   const [financialYears, setFinancialYears] = useState<FinancialYear[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
   const [employmentTypes, setEmploymentTypes] = useState<EmploymentType[]>([])
@@ -145,49 +178,100 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
   }, [])
 
   const loadData = async () => {
-    try {
-      setLoading(true)
-      const [tiersRes, yearsRes, departmentsRes, employmentRes, salaryHeadsRes, holidaysRes] = await Promise.all([
-        fetch('/api/payroll/travel-tiers'),
-        fetch('/api/payroll/financial-years'),
-        fetch('/api/payroll/departments'),
-        fetch('/api/payroll/employment-types'),
-        fetch('/api/payroll/salary-heads'),
-        fetch('/api/payroll/public-holidays'),
-      ])
-      const tiersJson = await tiersRes.json()
-      const yearsJson = await yearsRes.json()
-      const departmentsJson = await departmentsRes.json()
-      const employmentJson = await employmentRes.json()
-      const salaryHeadsJson = await salaryHeadsRes.json()
-      const holidaysJson = await holidaysRes.json()
+    setLoading(true)
+    // Each list loads on its own: a failure in one must not blank the others,
+    // and HR should see exactly which list could not be fetched.
+    const results = await Promise.all([
+      fetchList<TravelTier>('/api/payroll/travel-tiers', 'travelTiers', 'travel tiers'),
+      fetchList<FinancialYear>('/api/payroll/financial-years', 'financialYears', 'financial years'),
+      fetchList<Department>('/api/payroll/departments', 'departments', 'departments'),
+      fetchList<EmploymentType>('/api/payroll/employment-types', 'employmentTypes', 'employment types'),
+      fetchList<SalaryHead>('/api/payroll/salary-heads', 'salaryHeads', 'salary heads'),
+      fetchList<PublicHoliday>('/api/payroll/public-holidays', 'holidays', 'public holidays'),
+    ] as const)
+    const [tiers, years, depts, employment, heads, holidays] = results
 
-      if (!tiersRes.ok) throw new Error(tiersJson.error || 'Failed to load travel tiers')
-      if (!yearsRes.ok) throw new Error(yearsJson.error || 'Failed to load financial years')
-      if (!departmentsRes.ok) throw new Error(departmentsJson.error || 'Failed to load departments')
-      if (!employmentRes.ok) throw new Error(employmentJson.error || 'Failed to load employment types')
-      if (!salaryHeadsRes.ok) throw new Error(salaryHeadsJson.error || 'Failed to load salary heads')
-      if (!holidaysRes.ok) throw new Error(holidaysJson.error || 'Failed to load public holidays')
-
-      setTravelTiers(tiersJson.travelTiers || [])
-      setFinancialYears(yearsJson.financialYears || [])
-      setDepartments(departmentsJson.departments || [])
-      setEmploymentTypes(employmentJson.employmentTypes || [])
-      setSalaryHeads(salaryHeadsJson.salaryHeads || [])
-      setPublicHolidays(holidaysJson.holidays || [])
-      const firstYearId = yearsJson.financialYears?.[0]?.id || ''
+    if (tiers.data) setTravelTiers(tiers.data)
+    if (years.data) {
+      setFinancialYears(years.data)
+      const firstYearId = years.data[0]?.id || ''
       setBracketForm((prev) => ({ ...prev, financialYearId: prev.financialYearId || firstYearId }))
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to load payroll settings')
-    } finally {
-      setLoading(false)
     }
+    if (depts.data) setDepartments(depts.data)
+    if (employment.data) setEmploymentTypes(employment.data)
+    if (heads.data) setSalaryHeads(heads.data)
+    if (holidays.data) setPublicHolidays(holidays.data)
+
+    const failed = results.filter((r) => r.error).map((r) => r.error)
+    if (failed.length > 0) {
+      toast.error(`Could not load ${failed.join(', ')}. Refresh to try again.`)
+    }
+    setLoading(false)
   }
 
   const activeYear = useMemo(
     () => financialYears.find((year) => year.isActive) || null,
     [financialYears]
   )
+
+  const startEditTier = (tier: TravelTier) => {
+    setEditingTierId(tier.id)
+    setTierDraft(toTravelTierDraft(tier))
+  }
+
+  const cancelEditTier = () => {
+    setEditingTierId(null)
+    setTierDraft(null)
+  }
+
+  const updateTierDraft = (patch: Partial<TravelTierDraft>) => {
+    setTierDraft((prev) => (prev ? { ...prev, ...patch } : prev))
+  }
+
+  const saveTier = async () => {
+    if (!editingTierId || !tierDraft) return
+    const tier = travelTiers.find((t) => t.id === editingTierId)
+    if (!tier) return
+
+    const result = buildTravelTierPatch(tier, tierDraft)
+    if (!result.ok) {
+      toast.error(result.error)
+      return
+    }
+    if (Object.keys(result.patch).length === 0) {
+      cancelEditTier()
+      return
+    }
+
+    setSavingTier(true)
+    try {
+      const res = await fetch('/api/payroll/travel-tiers', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: tier.id, ...result.patch }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to update travel tier')
+      const saved = data.travelTier as TravelTier
+      setTravelTiers((prev) => prev.map((t) => (t.id === tier.id ? { ...t, ...saved } : t)))
+      toast.success('Travel tier updated')
+      cancelEditTier()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update travel tier')
+    } finally {
+      setSavingTier(false)
+    }
+  }
+
+  const tierEditorKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      void saveTier()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      cancelEditTier()
+    }
+  }
 
   const submitTravelTier = async (e: FormEvent) => {
     e.preventDefault()
@@ -680,26 +764,146 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
                   <TableHead>Monthly Rate</TableHead>
                   <TableHead>Effective</TableHead>
                   <TableHead>Status</TableHead>
+                  {canEdit && (
+                    <TableHead className="w-[1%] text-right">
+                      <span className="sr-only">Actions</span>
+                    </TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {travelTiers.map((tier) => (
-                  <TableRow key={tier.id}>
-                    <TableCell>{tier.transportMode}</TableCell>
-                    <TableCell>
-                      {tier.minKm} - {tier.maxKm ?? '∞'}
-                    </TableCell>
-                    <TableCell>PKR {tier.monthlyRate.toLocaleString()}</TableCell>
-                    <TableCell>
-                      {new Date(tier.effectiveFrom).toLocaleDateString()}
-                      {tier.effectiveTo ? ` → ${new Date(tier.effectiveTo).toLocaleDateString()}` : ''}
-                    </TableCell>
-                    <TableCell>{tier.isActive ? 'Active' : 'Inactive'}</TableCell>
-                  </TableRow>
-                ))}
+                {travelTiers.map((tier) =>
+                  editingTierId === tier.id && tierDraft ? (
+                    <TableRow key={tier.id} className="bg-muted/30">
+                      <TableCell>
+                        <Select
+                          value={tierDraft.transportMode}
+                          onValueChange={(v) => updateTierDraft({ transportMode: v })}
+                        >
+                          <SelectTrigger className="h-8 w-[160px]" aria-label="Transport mode">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="BIKE">Bike</SelectItem>
+                            <SelectItem value="CAR">Car</SelectItem>
+                            <SelectItem value="PUBLIC_TRANSPORT">Public Transport</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1.5">
+                          <Input
+                            aria-label="Min KM"
+                            className="h-8 w-20"
+                            type="number"
+                            min={0}
+                            value={tierDraft.minKm}
+                            onChange={(e) => updateTierDraft({ minKm: e.target.value })}
+                            onKeyDown={tierEditorKeyDown}
+                            autoFocus
+                          />
+                          <span className="text-muted-foreground">-</span>
+                          <Input
+                            aria-label="Max KM"
+                            className="h-8 w-20"
+                            type="number"
+                            min={0}
+                            placeholder="∞"
+                            value={tierDraft.maxKm}
+                            onChange={(e) => updateTierDraft({ maxKm: e.target.value })}
+                            onKeyDown={tierEditorKeyDown}
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-muted-foreground text-sm">PKR</span>
+                          <Input
+                            aria-label="Monthly rate"
+                            className="h-8 w-28"
+                            type="number"
+                            min={0}
+                            value={tierDraft.monthlyRate}
+                            onChange={(e) => updateTierDraft({ monthlyRate: e.target.value })}
+                            onKeyDown={tierEditorKeyDown}
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1.5">
+                          <Input
+                            aria-label="Effective from"
+                            className="h-8 w-36"
+                            type="date"
+                            value={tierDraft.effectiveFrom}
+                            onChange={(e) => updateTierDraft({ effectiveFrom: e.target.value })}
+                            onKeyDown={tierEditorKeyDown}
+                          />
+                          <span className="text-muted-foreground">→</span>
+                          <Input
+                            aria-label="Effective to"
+                            className="h-8 w-36"
+                            type="date"
+                            value={tierDraft.effectiveTo}
+                            onChange={(e) => updateTierDraft({ effectiveTo: e.target.value })}
+                            onKeyDown={tierEditorKeyDown}
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <label className="flex items-center gap-2 text-sm">
+                          <Checkbox
+                            checked={tierDraft.isActive}
+                            onCheckedChange={(v) => updateTierDraft({ isActive: v === true })}
+                          />
+                          Active
+                        </label>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button size="sm" onClick={() => void saveTier()} disabled={savingTier}>
+                            {savingTier ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                            Save
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={cancelEditTier} disabled={savingTier}>
+                            <X className="w-4 h-4" />
+                            Cancel
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    <TableRow key={tier.id}>
+                      <TableCell>{TRANSPORT_MODE_LABELS[tier.transportMode] ?? tier.transportMode}</TableCell>
+                      <TableCell>
+                        {tier.minKm} - {tier.maxKm ?? '∞'}
+                      </TableCell>
+                      <TableCell>PKR {tier.monthlyRate.toLocaleString()}</TableCell>
+                      <TableCell>
+                        {new Date(tier.effectiveFrom).toLocaleDateString()}
+                        {tier.effectiveTo ? ` → ${new Date(tier.effectiveTo).toLocaleDateString()}` : ''}
+                      </TableCell>
+                      <TableCell>{tier.isActive ? 'Active' : 'Inactive'}</TableCell>
+                      {canEdit && (
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => startEditTier(tier)}
+                            disabled={editingTierId !== null}
+                            aria-label={`Edit ${TRANSPORT_MODE_LABELS[tier.transportMode]} tier ${tier.minKm}-${tier.maxKm ?? '∞'} km`}
+                          >
+                            <Pencil className="w-4 h-4" />
+                            Edit
+                          </Button>
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  )
+                )}
                 {!travelTiers.length && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground">
+                    <TableCell colSpan={canEdit ? 6 : 5} className="text-center text-muted-foreground">
                       {loading ? 'Loading...' : 'No travel tiers'}
                     </TableCell>
                   </TableRow>
