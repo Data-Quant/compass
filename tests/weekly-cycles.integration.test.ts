@@ -3,9 +3,10 @@ import assert from 'node:assert/strict'
 import { prisma } from '../lib/db'
 import { syncFromQuestionBank } from '../lib/weekly/service/content'
 import {
-  createCycle, cycleSummary, deleteCycle, findRunningCycle, loadCycle, participantsView, removeOptIn, setOptIn, updateCycle,
+  createCycle, cycleSummary, deleteCycle, findRunningCycle, loadCycle, removeOptIn, setOptIn, updateCycle,
 } from '../lib/weekly/service/cycles'
 import { WeeklyError } from '../lib/weekly/service/errors'
+import { participantsView } from '../lib/weekly/service/round-people'
 import { approveAllContent, at, HR_ACTOR, WEEK_ONE_MONDAY } from './helpers/weekly-fixtures'
 import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST, WEEKLY_PERIOD, weeklyActor } from './helpers/weekly-test-db'
 
@@ -77,8 +78,9 @@ test('HR sees who is excluded and can opt a late joiner in', WEEKLY_DB_TEST, asy
   assert.deepEqual([(await benRow())?.exclusion, (await benRow())?.optedIn], [null, true])
   await removeOptIn(HR_ACTOR, { cycleId: cycle.id, userId: W.ben.id })
   assert.equal((await benRow())?.exclusion, 'JOINED_LATE')
-  const names = (await participantsView(HR_ACTOR, cycle.id, at(8))).rows.map((r) => r.person.id).sort()
-  assert.deepEqual(names, [W.ana.id, W.ben.id, W.lead.id].sort())
+  const names = (await participantsView(HR_ACTOR, cycle.id, at(8))).rows.map((r) => r.person.id).filter((id) => id.startsWith('wkt-')).sort()
+  // Everyone active is listed, including people with no lists yet (Cara) and HR.
+  assert.deepEqual(names, [W.ana.id, W.ben.id, W.cara.id, W.hr.id, W.lead.id].sort())
 })
 
 test('HR can remove a cycle that has not started', WEEKLY_DB_TEST, async () => {

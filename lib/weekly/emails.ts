@@ -156,3 +156,11 @@ export function renderRequestExpiredEmail(input: { name: string; otherName: stri
     ], `${base(input.appUrl)}/evaluations/weekly`, 'See your lists'),
   }
 }
+
+/** HR changed someone's evaluation lists during a round (UX spec, section 13: "Override during round"). */
+export function renderListChangedEmail(input: { name: string; change: string; appUrl: string }): { subject: string; html: string } {
+  return {
+    subject: 'Your evaluation list changed',
+    html: layout(input.name, [escapeHtml(input.change), escapeHtml('Answers you already gave still count. Any new questions start next week.')], `${base(input.appUrl)}/evaluations/weekly`, 'See your lists'),
+  }
+}

@@ -2664,6 +2664,19 @@ model PeerChangeRequest {
   @@index([requesterId])
 }
 
+/// HR accepted a mapping warning for a person in a round (e.g. no lead because they report to a partner).
+model RoundWarningAcceptance {
+  id           String   @id @default(cuid())
+  cycleId      String
+  userId       String
+  warning      String
+  reason       String
+  acceptedById String
+  createdAt    DateTime @default(now())
+
+  @@unique([cycleId, userId, warning])
+}
+
 /// A pair added after the quarter started: its five questions are spread over these weeks. HR can change them.
 model WeeklyPairWindow {
   id               String           @id @default(cuid())

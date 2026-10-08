@@ -126,6 +126,13 @@ export const setupRoundSchema = z.object({
   questionWeeks: z.number().int().min(1).max(26).optional(), reviewDeadline: dateSchema.optional(),
 }).strict()
 export const roundActionSchema = z.object({ action: z.enum(['open-review', 'open-round']) }).strict()
+export const roundPeopleActionSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('accept-warning'), cycleId: z.string().min(1), userId: z.string().min(1), warning: z.enum(['NO_LEAD', 'FEW_PEERS']), reason: reasonSchema }).strict(),
+  z.object({
+    action: z.literal('change'), cycleId: z.string().min(1), userId: z.string().min(1), otherId: z.string().min(1),
+    relation: z.enum(['PEER', 'LEAD', 'REPORT']), change: z.enum(['ADD', 'REMOVE']), reason: reasonSchema,
+  }).strict(),
+])
 export const formQuerySchema = z.object({ relationshipType: formRelationshipTypeSchema, evaluateeId: z.string().min(1) })
 
 export const closeActionSchema = z.discriminatedUnion('action', [

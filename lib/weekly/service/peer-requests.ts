@@ -43,9 +43,9 @@ async function mappingPeriod(periodId?: string): Promise<Period> {
   return period
 }
 
-interface Mapping { leads: string[]; reports: string[]; peers: string[]; others: string[] }
+export interface Mapping { leads: string[]; reports: string[]; peers: string[]; others: string[] }
 
-function mappingOf(userId: string, assignments: ReadonlyArray<{ evaluatorId: string; evaluateeId: string; relationshipType: string }>): Mapping {
+export function mappingOf(userId: string, assignments: ReadonlyArray<{ evaluatorId: string; evaluateeId: string; relationshipType: string }>): Mapping {
   const ids = (list: string[]) => [...new Set(list)].filter((id) => id !== userId)
   const as = (type: string, side: 'evaluatorId' | 'evaluateeId', other: 'evaluatorId' | 'evaluateeId') =>
     assignments.filter((a) => a.relationshipType === type && a[side] === userId).map((a) => a[other])
@@ -144,10 +144,8 @@ export async function cancelPeerRequest(actor: WeeklyActor, requestId: string): 
 }
 
 /** The period overrides for a change, both directions: peers evaluate each other; a lead and their report evaluate each other. */
-function overridesFor(request: PeerChangeRequest): Array<{ evaluatorId: string; evaluateeId: string; relationshipType: RelationshipType }> {
-  const me = request.requesterId
-  const them = request.peerId
-  switch (request.relation) {
+function overridesFor(relation: MappingRelation, me: string, them: string): Array<{ evaluatorId: string; evaluateeId: string; relationshipType: RelationshipType }> {
+  switch (relation) {
     case 'PEER':
       return [{ evaluatorId: me, evaluateeId: them, relationshipType: 'PEER' }, { evaluatorId: them, evaluateeId: me, relationshipType: 'PEER' }]
     case 'LEAD':
@@ -157,15 +155,26 @@ function overridesFor(request: PeerChangeRequest): Array<{ evaluatorId: string; 
   }
 }
 
-async function applyChange(tx: Prisma.TransactionClient, request: PeerChangeRequest, decidedById: string | null): Promise<void> {
-  for (const pair of overridesFor(request)) {
-    const key = { periodId: request.periodId, ...pair }
+/** Writes a change to someone's lists for one quarter, as overrides in both directions. */
+export async function applyMappingChange(
+  tx: Prisma.TransactionClient,
+  input: { periodId: string; userId: string; otherId: string; relation: MappingRelation; action: PeerChangeAction; note: string; by: string | null },
+): Promise<void> {
+  for (const pair of overridesFor(input.relation, input.userId, input.otherId)) {
+    const key = { periodId: input.periodId, ...pair }
     await tx.evaluationPeriodAssignmentOverride.upsert({
       where: { periodId_evaluatorId_evaluateeId_relationshipType: key },
-      create: { ...key, action: request.action, note: `Mapping request ${request.id}`, createdById: decidedById },
-      update: { action: request.action, note: `Mapping request ${request.id}` },
+      create: { ...key, action: input.action, note: input.note, createdById: input.by },
+      update: { action: input.action, note: input.note },
     })
   }
+}
+
+function applyChange(tx: Prisma.TransactionClient, request: PeerChangeRequest, decidedById: string | null): Promise<void> {
+  return applyMappingChange(tx, {
+    periodId: request.periodId, userId: request.requesterId, otherId: request.peerId, relation: request.relation, action: request.action,
+    note: `Mapping request ${request.id}`, by: decidedById,
+  })
 }
 
 /** Moves a request on after a vote or an HR decision: any rejection rejects it; both approvals approve and apply it. */

@@ -147,29 +147,6 @@ export async function deleteCycle(actor: WeeklyActor, cycleId: string): Promise<
   })
 }
 
-export async function participantsView(actor: WeeklyActor, cycleId: string, now: Date): Promise<ParticipantsResponse> {
-  assertHr(actor)
-  const cycle = await loadCycle(cycleId)
-  const assignments = (await getResolvedEvaluationAssignments(cycle.periodId)).filter((a) => isWeeklyRelationshipType(a.relationshipType))
-  const [people, overrides] = await Promise.all([
-    loadPeople(assignments.map((a) => a.evaluateeId)),
-    prisma.weeklyParticipantOverride.findMany({ where: { cycleId, optIn: true } }),
-  ])
-  const optIns = new Map(overrides.map((o) => [o.userId, o]))
-  const total = cycleWeeks(cycle)
-  const rows = [...people.values()].filter((person) => !isOutsideRedesign(person)).map((person) => {
-    const optIn = optIns.get(person.id)
-    return {
-      person: personRef(people, person.id),
-      department: person.department,
-      exclusion: evaluateeExclusion(person, { now, weekOneStartsOn: cycle.weekOneStartsOn, totalWeeks: total, optedIn: Boolean(optIn) }),
-      optedIn: Boolean(optIn),
-      optInReason: optIn?.reason ?? null,
-    }
-  })
-  return { cycleId, rows: rows.sort((a, b) => byName(a.person, b.person)) }
-}
-
 export async function setOptIn(actor: WeeklyActor, input: { cycleId: string; userId: string; reason: string }): Promise<void> {
   assertHr(actor)
   await loadCycle(input.cycleId)

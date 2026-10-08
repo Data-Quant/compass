@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/ui/modal'
@@ -13,6 +12,7 @@ import { errorMessage, weeklyRequest } from '../weekly-api'
 import { useRoundCycle } from '../round/RoundContext'
 import { PairWindowsCard } from './PairWindowsCard'
 import { ReviewStageCard } from './ReviewStageCard'
+import { RoundPeopleTable } from './RoundPeopleTable'
 
 const EXCLUSION_LABELS: Record<NonNullable<ParticipantRow['exclusion']>, string> = {
   NOT_EVALUATED: 'Not evaluated (named leader or Partner)',
@@ -87,32 +87,7 @@ export function PeopleTab() {
       <CyclePicker cycles={cycles} cycleId={cycleId} onChange={setCycleId} />
       {periodId && <ReviewStageCard key={periodId} periodId={periodId} />}
       {cycleId && <PairWindowsCard key={cycleId} cycleId={cycleId} />}
-      <p className="text-sm text-muted-foreground">Everyone someone evaluates this quarter, and whether they get weekly questions about them.</p>
-      <div className="overflow-x-auto rounded-md border">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-muted/40 text-left">
-              <th className="p-2">Person</th><th className="p-2">Department</th><th className="p-2">Status</th><th className="p-2"><span className="sr-only">Actions</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.rows.map((row) => (
-              <tr key={row.person.id} className="border-b last:border-0">
-                <td className="p-2">{row.person.name}</td>
-                <td className="p-2">{row.department ?? ''}</td>
-                <td className="p-2">
-                  {row.exclusion ? <Badge variant="outline">{EXCLUSION_LABELS[row.exclusion]}</Badge> : <Badge>Included</Badge>}
-                  {row.optedIn && <span className="ml-2 text-xs text-muted-foreground">Opted in: {row.optInReason}</span>}
-                </td>
-                <td className="p-2 text-right">
-                  {row.exclusion === 'JOINED_LATE' && <Button size="sm" variant="outline" onClick={() => setOptingIn(row)}>Opt in</Button>}
-                  {row.optedIn && <Button size="sm" variant="ghost" onClick={() => void removeOptIn(row)}>Remove opt-in</Button>}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <RoundPeopleTable cycleId={cycleId} rows={data.rows} exclusionLabels={EXCLUSION_LABELS} onChanged={load} onOptIn={setOptingIn} onRemoveOptIn={(row) => void removeOptIn(row)} />
       {optingIn && <OptInDialog cycleId={cycleId} row={optingIn} onClose={() => setOptingIn(null)} onSaved={load} />}
     </div>
   )

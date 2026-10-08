@@ -96,7 +96,13 @@ export interface ParticipantRow {
   exclusion: 'NOT_EVALUATED' | 'FILLED_BY_HR' | 'INACTIVE' | 'LEFT' | 'JOINED_LATE' | null
   optedIn: boolean
   optInReason: string | null
+  leads: PersonRef[]
+  reports: PersonRef[]
+  peers: PersonRef[]
+  /** Mapping gaps HR should fix or accept; acceptedReason is set once accepted. */
+  warnings: Array<{ key: RoundWarningKey; acceptedReason: string | null }>
 }
+export type RoundWarningKey = 'NO_LEAD' | 'FEW_PEERS'
 export interface ParticipantsResponse { cycleId: string; rows: ParticipantRow[] }
 
 export interface QualityView {
