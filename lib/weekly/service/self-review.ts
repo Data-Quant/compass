@@ -231,6 +231,8 @@ export async function replyToSelfReview(actor: WeeklyActor, reviewId: string, te
   }], send)
 }
 
+export interface AdminSelfReviewMonth { month: number; title: string; parts: string[]; discussOption: boolean; monthName: string; releaseWeek: number | null; answered: number }
+
 export interface AdminSelfReviewRow {
   id: string; person: PersonRef; department: string | null; month: number; monthName: string; title: string; parts: string[]; answers: string[]
   wantsDiscussion: boolean; submittedAt: string
@@ -239,7 +241,7 @@ export interface AdminSelfReviewRow {
 
 /** Every submission for HR, by month and department, with each lead's read status; and who has not submitted yet. */
 export async function adminSelfReviews(actor: WeeklyActor, periodId: string, filter: { month?: number; department?: string }, now: Date = new Date()): Promise<{
-  months: Array<{ month: number; title: string; monthName: string; releaseWeek: number | null }>; rows: AdminSelfReviewRow[]; missing: PersonRef[]
+  months: AdminSelfReviewMonth[]; rows: AdminSelfReviewRow[]; missing: PersonRef[]
 }> {
   assertHr(actor)
   const cycleRow = await prisma.weeklyCycle.findUnique({ where: { periodId }, select: { id: true } })
@@ -267,7 +269,10 @@ export async function adminSelfReviews(actor: WeeklyActor, periodId: string, fil
   const participants = [...everyone.values()].filter((p) => p.payrollActive && takesPart(p) && inDepartment(p.id))
   const missing = participants.filter((p) => months.some((m) => !submitted.has(`${p.id}|${m}`))).map((p) => personRef(everyone, p.id)).sort(byName)
   return {
-    months: qs.map((q) => ({ month: q.month, title: q.title, monthName: monthName(cycle, q.month), releaseWeek: releases[q.month - 1] ?? null })),
+    months: await Promise.all(qs.map(async (q) => ({
+      month: q.month, title: q.title, parts: q.parts, discussOption: q.discussOption, monthName: monthName(cycle, q.month), releaseWeek: releases[q.month - 1] ?? null,
+      answered: await prisma.selfReview.count({ where: { questionId: q.id } }),
+    }))),
     rows, missing,
   }
 }
@@ -292,4 +297,21 @@ export async function remindUnreadSelfReviews(now: Date, send: WeeklySendMail, a
     total = { sent: total.sent + result.sent, recorded: total.recorded + result.recorded, skipped: total.skipped + result.skipped, failed: total.failed + result.failed }
   }
   return total
+}
+
+/** HR edits a month's question, until someone has answered it (earlier answers keep the question they answered). */
+export async function updateSelfReviewQuestion(
+  actor: WeeklyActor, periodId: string, month: number, input: { title: string; parts: string[]; discussOption: boolean },
+): Promise<void> {
+  assertHr(actor)
+  const title = input.title.trim()
+  const parts = input.parts.map((p) => p.trim())
+  if (!title) throw new WeeklyError('Give the question a title')
+  if (parts.length !== 3 || parts.some((p) => !p)) throw new WeeklyError('A self-evaluation question has three parts')
+  const question = (await questions(periodId)).find((q) => q.month === month)
+  if (!question) throw new WeeklyError('Question not found', 404)
+  const answered = await prisma.selfReview.count({ where: { questionId: question.id } })
+  if (answered > 0) throw new WeeklyError(`This question was already answered by ${answered} ${answered === 1 ? 'person' : 'people'}, so it can no longer change`, 409)
+  await prisma.selfReviewQuestion.update({ where: { id: question.id }, data: { title, parts, discussOption: input.discussOption } })
+  await recordAudit(prisma, { actorId: actor.id, actorRole: 'HR', action: 'SELF_REVIEW_QUESTION_EDIT', objectType: 'SelfReviewQuestion', objectId: question.id, before: { title: question.title, parts: question.parts }, after: { title, parts } })
 }

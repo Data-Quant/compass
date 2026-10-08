@@ -4,6 +4,7 @@ import { prisma } from '../lib/db'
 import { WeeklyError } from '../lib/weekly/service/errors'
 import {
   adminSelfReviews, markSelfReviewRead, mySelfReview, remindUnreadSelfReviews, replyToSelfReview, selfReviewReleaseWeeks, submitSelfReview, teamSelfReviews,
+  updateSelfReviewQuestion,
 } from '../lib/weekly/service/self-review'
 import { at, HR_ACTOR, startedCycle } from './helpers/weekly-fixtures'
 import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST, weeklyActor } from './helpers/weekly-test-db'
@@ -134,4 +135,15 @@ test('once a month is replaced, HR’s not-sent list is about the current month'
   assert.ok(missing.includes(W.ana.id))
   await submitSelfReview(ana, { month: 2, answers: FULL, wantsDiscussion: false }, at(9), mailbox().send, APP)
   assert.ok(!(await adminSelfReviews(HR_ACTOR, periodId, {}, at(9))).missing.some((p) => p.id === W.ana.id), 'month 1 no longer counts once month 2 replaced it')
+})
+
+test('HR edits a month’s question until someone has answered it', WEEKLY_DB_TEST, async () => {
+  const parts = ['What did you ship?', 'What did it change?', 'What slipped?']
+  await assert.rejects(updateSelfReviewQuestion(ana, periodId, 1, { title: 'Delivered', parts, discussOption: true }), isStatus(403))
+  await assert.rejects(updateSelfReviewQuestion(HR_ACTOR, periodId, 1, { title: 'Delivered', parts: parts.slice(0, 2), discussOption: true }), /three parts/)
+  await updateSelfReviewQuestion(HR_ACTOR, periodId, 1, { title: 'Delivered', parts, discussOption: false })
+  const current = (await mySelfReview(ana, at(4))).current!
+  assert.deepEqual([current.title, current.parts, current.discussOption], ['Delivered', parts, false])
+  await submitSelfReview(ana, { month: 1, answers: FULL, wantsDiscussion: false }, at(4), mailbox().send, APP)
+  await assert.rejects(updateSelfReviewQuestion(HR_ACTOR, periodId, 1, { title: 'Changed', parts, discussOption: false }), isStatus(409, /already answered/))
 })

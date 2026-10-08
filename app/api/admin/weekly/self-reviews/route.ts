@@ -1,9 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { requireWeeklySession } from '@/lib/weekly/http'
+import { guardWeeklyMutation, requireWeeklySession } from '@/lib/weekly/http'
 import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
 import { actorFromUser } from '@/lib/weekly/service/context'
 import { WeeklyError } from '@/lib/weekly/service/errors'
-import { adminSelfReviews } from '@/lib/weekly/service/self-review'
+import { selfReviewQuestionSchema } from '@/lib/weekly/schemas'
+import { adminSelfReviews, updateSelfReviewQuestion } from '@/lib/weekly/service/self-review'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,6 +20,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(await adminSelfReviews(actorFromUser(user), periodId, {
       ...(month >= 1 && month <= 3 ? { month } : {}), ...(department ? { department } : {}),
     }))
+  } catch (error) {
+    return weeklyErrorResponse(error)
+  }
+}
+
+/** HR edits a month's question, until someone has answered it. */
+export async function POST(request: NextRequest) {
+  try {
+    const user = await requireWeeklySession({ admin: true })
+    await guardWeeklyMutation(request, user.id)
+    const { periodId, month, ...input } = selfReviewQuestionSchema.parse(await request.json())
+    await updateSelfReviewQuestion(actorFromUser(user), periodId, month, input)
+    return NextResponse.json({ success: true })
   } catch (error) {
     return weeklyErrorResponse(error)
   }

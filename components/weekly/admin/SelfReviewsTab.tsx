@@ -5,14 +5,17 @@ import { Clock } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Modal } from '@/components/ui/modal'
 import { formatKarachiDate } from '@/lib/weekly/format'
-import type { AdminSelfReviewRow } from '@/lib/weekly/service/self-review'
+import type { AdminSelfReviewMonth, AdminSelfReviewRow } from '@/lib/weekly/service/self-review'
 import type { PersonRef } from '@/lib/weekly/view-types'
 import { cn } from '@/lib/utils'
 import { errorMessage, weeklyRequest } from '../weekly-api'
 
-interface Data { months: Array<{ month: number; title: string; monthName: string; releaseWeek: number | null }>; rows: AdminSelfReviewRow[]; missing: PersonRef[] }
+interface Data { months: AdminSelfReviewMonth[]; rows: AdminSelfReviewRow[]; missing: PersonRef[] }
 
 /** HR's view of the round's monthly self-evaluations (UX spec, section 12): by month and department, with read status. */
 export function SelfReviewsTab({ periodId }: { periodId: string }) {
@@ -20,6 +23,7 @@ export function SelfReviewsTab({ periodId }: { periodId: string }) {
   const [department, setDepartment] = useState('')
   const [data, setData] = useState<Data | null>(null)
   const [open, setOpen] = useState<string | null>(null)
+  const [editing, setEditing] = useState<AdminSelfReviewMonth | null>(null)
 
   const load = useCallback(async () => {
     const params = new URLSearchParams({ periodId, ...(month ? { month: String(month) } : {}), ...(department.trim() ? { department: department.trim() } : {}) })
@@ -91,7 +95,56 @@ export function SelfReviewsTab({ periodId }: { periodId: string }) {
           <p className="mt-2 text-muted-foreground">{data.missing.map((p) => p.name).join(', ')}</p>
         </details>
       )}
+      <details className="rounded-lg border p-3 text-sm">
+        <summary className="cursor-pointer font-medium">The three questions</summary>
+        <ul className="mt-3 space-y-3">
+          {data.months.map((m) => (
+            <li key={m.month} className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="font-medium">{m.monthName} (week {m.releaseWeek ?? '–'}): {m.title}</p>
+                <ul className="list-disc pl-5 text-muted-foreground">{m.parts.map((p) => <li key={p}>{p}</li>)}</ul>
+              </div>
+              {m.answered > 0 ? <Badge variant="outline">Answered by {m.answered}: fixed</Badge> : <Button size="sm" variant="outline" onClick={() => setEditing(m)}>Edit</Button>}
+            </li>
+          ))}
+        </ul>
+      </details>
       <div className="flex justify-end"><Button variant="ghost" size="sm" onClick={() => void load()}>Refresh</Button></div>
+      {editing && <QuestionEditor periodId={periodId} month={editing} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await load() }} />}
     </div>
+  )
+}
+
+function QuestionEditor({ periodId, month, onClose, onSaved }: { periodId: string; month: AdminSelfReviewMonth; onClose: () => void; onSaved: () => Promise<void> }) {
+  const [title, setTitle] = useState(month.title)
+  const [parts, setParts] = useState(month.parts)
+  const [discuss, setDiscuss] = useState(month.discussOption)
+  const [saving, setSaving] = useState(false)
+  async function save() {
+    setSaving(true)
+    try {
+      await weeklyRequest('/api/admin/weekly/self-reviews', { method: 'POST', body: { periodId, month: month.month, title, parts, discussOption: discuss } })
+      toast.success('Question saved')
+      await onSaved()
+    } catch (e) {
+      toast.error(errorMessage(e, 'Could not save the question'))
+    } finally {
+      setSaving(false)
+    }
+  }
+  return (
+    <Modal isOpen onClose={onClose} title={`${month.monthName}'s self-evaluation question`}>
+      <div className="space-y-3">
+        <div className="space-y-1.5"><Label htmlFor="sr-title">Title</Label><Input id="sr-title" value={title} maxLength={120} onChange={(e) => setTitle(e.target.value)} /></div>
+        {parts.map((p, i) => (
+          <div key={i} className="space-y-1.5"><Label htmlFor={`sr-part-${i}`}>Part {i + 1}</Label><Input id={`sr-part-${i}`} value={p} maxLength={300} onChange={(e) => setParts(parts.map((x, j) => (j === i ? e.target.value : x)))} /></div>
+        ))}
+        <div className="flex items-center gap-2"><Checkbox id="sr-discuss" checked={discuss} onCheckedChange={(v) => setDiscuss(v === true)} /><Label htmlFor="sr-discuss" className="font-normal">Offer “I’d like to discuss this with my lead”</Label></div>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={saving || !title.trim() || parts.some((p) => !p.trim())} onClick={() => void save()}>Save</Button>
+        </div>
+      </div>
+    </Modal>
   )
 }

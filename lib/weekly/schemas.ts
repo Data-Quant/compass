@@ -163,6 +163,10 @@ export const selfReviewSubmitSchema = z.object({
   answers: z.array(z.string().max(3000)).length(3),
   wantsDiscussion: z.boolean().default(false),
 }).strict()
+export const selfReviewQuestionSchema = z.object({
+  periodId: z.string().min(1), month: z.number().int().min(1).max(3), title: z.string().trim().min(1).max(120),
+  parts: z.array(z.string().trim().min(1).max(300)).length(3), discussOption: z.boolean(),
+}).strict()
 export const selfReviewLeadSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('read'), reviewId: z.string().min(1) }).strict(),
   z.object({ action: z.literal('reply'), reviewId: z.string().min(1), text: z.string().trim().min(1, 'Write a reply').max(1000) }).strict(),

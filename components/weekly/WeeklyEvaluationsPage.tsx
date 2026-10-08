@@ -17,11 +17,14 @@ export function WeeklyEvaluationsPage() {
         </p>
       </div>
       <MyMappingCard />
-      <FormsSection />
-      <WeeklyInbox />
-      <SelfReviewCard />
-      <PulseSurveyCard />
+      {/* The weekly set, in the spec's order: the questions, the month's self-evaluation, then the sentiment question last. */}
+      <section aria-label="This week" className="space-y-4">
+        <WeeklyInbox />
+        <SelfReviewCard />
+        <PulseSurveyCard />
+      </section>
       <TeamSelfReviewsCard />
+      <FormsSection />
     </div>
   )
 }
