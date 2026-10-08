@@ -144,6 +144,11 @@ export async function submitAnswer(actor: WeeklyActor, subject: InboxSubject, pr
     const problem = choiceProblem({ score: data.level ?? 0, note: data.note })
     if (problem) throw new WeeklyError(problem)
   }
+  // Saving the same choice, note or comment again changes nothing, so HR's decision stands.
+  const current = prompt.response
+  if (prompt.status === 'SUBMITTED' && current && current.optionId === data.optionId && (current.note ?? null) === data.note && (current.commentText ?? null) === data.commentText) {
+    return { status: 'SUBMITTED' as const, revision: current.revision }
+  }
   return prisma.$transaction(async (tx) => {
     const revision = (prompt.response?.revision ?? 0) + 1
     if (prompt.status === 'SUBMITTED') {

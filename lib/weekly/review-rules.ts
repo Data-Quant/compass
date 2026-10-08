@@ -6,6 +6,7 @@ export const ANSWER_STATES: readonly AnswerState[] = ['NEEDS_REVIEW', 'FAILED', 
 export function answerState(input: { jobStatus: string | null; hasAiScore: boolean; hasReview: boolean }): AnswerState {
   if (input.hasReview) return 'DECIDED'
   if (input.hasAiScore) return 'NEEDS_REVIEW'
-  if (input.jobStatus === 'FAILED') return 'FAILED'
+  // CANCELLED: the model will not score it (its round stopped), so HR scores it.
+  if (input.jobStatus === 'FAILED' || input.jobStatus === 'CANCELLED') return 'FAILED'
   return 'SCORING'
 }

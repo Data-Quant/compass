@@ -61,14 +61,14 @@ export function ReviewTab() {
   function accept(item: ReviewItem) {
     const overCap = item.ai?.score === 4 && !item.fours.exempt && item.fours.used >= item.fours.limit
     if (overCap) setSetting({ item, score: '4', reason: '', confirmFour: true })
-    else void post({ action: 'accept', responseId: item.responseId, revision: item.revision }, `Confirmed ${item.ai?.score}`)
+    else void post({ action: 'accept', responseId: item.responseId, revision: item.revision, aiScoreId: item.ai?.id }, `Confirmed ${item.ai?.score}`)
   }
 
   async function submitSetting() {
     if (!setting) return
     const { item, score, reason, confirmFour } = setting
     const body = confirmFour
-      ? { action: 'accept', responseId: item.responseId, revision: item.revision, reason }
+      ? { action: 'accept', responseId: item.responseId, revision: item.revision, aiScoreId: item.ai?.id, reason }
       : { action: 'set-score', responseId: item.responseId, revision: item.revision, score: Number(score), reason }
     if (await post(body, `Score set to ${score}`)) setSetting(null)
   }

@@ -146,6 +146,8 @@ async function scoreJob(job: ClaimedJob, model: StructuredModel | null, now: Dat
 }
 
 export async function runScoring(input: { model: StructuredModel | null; budgetMs: number; clock?: () => Date; responseIds?: readonly string[]; limit?: number; concurrency?: number }): Promise<ScoringRunSummary> {
+  // No model yet (no key or model set): answers wait as they are rather than failing into HR's queue.
+  if (!input.model) return { scored: 0, failed: 0, remaining: await prisma.weeklyScoringJob.count({ where: { ...scopeOf(input.responseIds), status: { in: ['PENDING', 'RUNNING'] } } }) }
   const clock = input.clock ?? (() => new Date())
   const started = Date.now()
   const limit = input.limit ?? 200

@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true })
     }
     const decision = input.action === 'accept'
-      ? { action: 'ACCEPT' as const, revision: input.revision, reason: input.reason }
+      ? { action: 'ACCEPT' as const, revision: input.revision, aiScoreId: input.aiScoreId, reason: input.reason }
       : { action: 'SET_SCORE' as const, revision: input.revision, score: input.score, reason: input.reason }
     return NextResponse.json({ success: true, ...(await decideAnswer(actor, input.responseId, decision, now)) })
   } catch (error) {

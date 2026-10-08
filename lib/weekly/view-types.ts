@@ -121,7 +121,7 @@ export interface ReviewItem {
   statements: Array<{ id: string; text: string; level: number }>
   chosen: { id: string; text: string; level: number }
   note: string | null
-  ai: { score: number; rationale: string; model: string } | null
+  ai: { id: string; score: number; rationale: string; model: string } | null
   decision: { action: 'ACCEPTED' | 'ADJUSTED'; finalScore: number; reason: string | null; reviewer: string; at: string } | null
   jobError: string | null
   /** This evaluator's confirmed 4s in this relationship (other answers) and their limit; partners are exempt. */

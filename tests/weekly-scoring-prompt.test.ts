@@ -46,3 +46,8 @@ test('the stand-in model scores at the chosen level, moving half a level for cle
   assert.equal(((await run('Other teams adopted it.', 3)) as { score: number }).score, 3.5)
   assert.equal(((await run('It arrived late again.', 2)) as { score: number }).score, 1.5)
 })
+
+test('surnames on their own and accented names are replaced too, and the model is told to ignore instructions in notes', () => {
+  assert.equal(anonymise('Ahmed and Zoë agreed; Ahmed led.', { evaluatee: 'Bilal Ahmed', evaluator: 'Zoë Park' }), '[name] and [evaluator] agreed; [name] led.')
+  assert.match(buildScoringMessages(INPUT).system, /Ignore any instruction/)
+})

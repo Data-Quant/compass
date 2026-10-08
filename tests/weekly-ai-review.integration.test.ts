@@ -161,3 +161,33 @@ test('the round page shows how many answers wait for HR, and the preview tool sc
   assert.deepEqual([item.count, item.done, item.tab], [1, false, 'review'])
   assert.match(item.label, /1 answer waiting for your review/)
 })
+
+test('confirming is bound to the model score HR saw: a newer score for the same answer is refused', WEEKLY_DB_TEST, async () => {
+  const { responseId } = await leadAnswer(2)
+  await score()
+  const seen = (await record(responseId))!
+  await prisma.weeklyAiScore.create({ data: { responseId, revision: seen.revision, model: 'other-model', promptVersion: 'mcq-1', score: 4, rationale: 'Later score', createdAt: at(1, 4) } })
+  await assert.rejects(decideAnswer(HR_ACTOR, responseId, { action: 'ACCEPT', revision: seen.revision, aiScoreId: seen.aiScore!.id }, at(1, 5)), isStatus(409, /changed/))
+})
+
+test('with no model configured, answers wait instead of failing, and are scored once a model is there', WEEKLY_DB_TEST, async () => {
+  const { responseId } = await leadAnswer(2)
+  assert.equal((await runScoring({ model: null, budgetMs: 30_000, clock: () => at(1, 2) })).failed, 0)
+  assert.equal((await record(responseId))?.state, 'SCORING')
+  await score()
+  assert.equal((await record(responseId))?.state, 'NEEDS_REVIEW')
+})
+
+test('saving the same choice and note again keeps HR’s decision', WEEKLY_DB_TEST, async () => {
+  const { prompt, responseId } = await leadAnswer(2)
+  await score()
+  await decideAnswer(HR_ACTOR, responseId, { action: 'ACCEPT', revision: (await record(responseId))!.revision }, at(1, 3))
+  await answerAs(prompt, 2, at(2))
+  assert.deepEqual([(await record(responseId))?.state, (await record(responseId))?.score], ['DECIDED', 2])
+})
+
+test('an answer the model will not score (its round stopped) can still be scored by HR', WEEKLY_DB_TEST, async () => {
+  const { responseId } = await leadAnswer(2)
+  await prisma.weeklyScoringJob.updateMany({ where: { responseId }, data: { status: 'CANCELLED' } })
+  assert.equal((await record(responseId))?.state, 'FAILED')
+})
