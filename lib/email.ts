@@ -333,39 +333,6 @@ export async function sendEmail(emailQueueId: string) {
   }
 }
 
-export async function sendBatchEmails(periodId: string) {
-  const period =
-    periodId === 'active'
-      ? await prisma.evaluationPeriod.findFirst({ where: { isActive: true } })
-      : await prisma.evaluationPeriod.findUnique({ where: { id: periodId } })
-
-  if (!period) {
-    throw new Error('Period not found')
-  }
-
-  const queueEntries = await prisma.emailQueue.findMany({
-    where: {
-      report: {
-        periodId: period.id,
-      },
-      emailStatus: 'PENDING',
-    },
-  })
-
-  const results = []
-
-  for (const queueEntry of queueEntries) {
-    try {
-      const result = await sendEmail(queueEntry.id)
-      results.push({ queueId: queueEntry.id, success: true, result })
-    } catch (error: any) {
-      results.push({ queueId: queueEntry.id, success: false, error: error.message })
-    }
-  }
-
-  return results
-}
-
 // Leave Management Email Functions
 
 export async function sendLeaveRequestNotification(requestId: string) {

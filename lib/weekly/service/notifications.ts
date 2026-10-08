@@ -161,7 +161,7 @@ export async function formsOpenMessages(cycle: CycleWithPeriod, now: Date, appUr
   return pendingEvaluatorIds.map((userId) => ({
     userId, kind: 'weekly-forms-open' as const, dedupeKey: weeklyDedupeKey('weekly-forms-open', userId, now),
     // HR's own HR evaluations and the partners' are on the quarter-end page.
-    render: (name: string) => renderFormsOpenEmail({ name, appUrl, path: hr.has(userId) ? '/admin/quarter-evaluations' : '/evaluations/weekly' }),
+    render: (name: string) => renderFormsOpenEmail({ name, appUrl, path: hr.has(userId) ? '/admin/evaluation-round?tab=forms' : '/evaluations/weekly' }),
   }))
 }
 

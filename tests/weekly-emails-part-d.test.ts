@@ -16,7 +16,7 @@ test('the monthly length check gives the correlation, with an alert line only ab
   assert.equal(high.subject, 'Weekly evaluations: length–score check for Q4 <2026> (0.42)')
   assert.match(high.html, /12 scored answers in Q4 &lt;2026&gt;/)
   assert.match(high.html, /Alert:/)
-  assert.match(high.html, /admin\/weekly\?tab=dashboard/)
+  assert.match(high.html, /admin\/evaluation-round\?tab=progress/)
   const low = renderLengthBiasEmail({ name: 'Hana', periodName: 'Q4 2026', correlation: 0.1, alert: false, scored: 12, appUrl: 'https://compass.example' })
   assert.doesNotMatch(low.html, /Alert:/)
 })

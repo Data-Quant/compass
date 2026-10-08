@@ -11,7 +11,6 @@ import { findRunningCycle, loadCycle } from './cycles'
 import { isUniqueViolation } from './db'
 import { WeeklyError } from './errors'
 
-export const AGREE_LABELS = ['Strongly disagree', 'Disagree', 'Neutral', 'Agree', 'Strongly agree'] as const
 export const CONFIDENTIALITY_NOTICE = 'All responses are confidential to HR. Tick “answer anonymously” and this week’s answers are saved without your name.'
 
 interface DefaultQuestion { text: string; kind: SurveyQuestionKind; options?: string[]; required?: boolean; explainChoice?: boolean }

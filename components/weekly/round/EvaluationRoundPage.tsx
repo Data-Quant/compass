@@ -57,6 +57,7 @@ export function EvaluationRoundPage() {
   const [periodId, setPeriodId] = useState('')
   const [view, setView] = useState<RoundView | null>(null)
   const [tab, setTab] = useState<Tab>('overview')
+  const [advanced, setAdvanced] = useState('content')
   const [settingUp, setSettingUp] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -86,6 +87,8 @@ export function EvaluationRoundPage() {
     weeklyRequest<WeeklyMeResponse>('/api/weekly/me').then((me) => setTestTools(Boolean(me.testTools))).catch(() => setTestTools(false))
     const requested = new URLSearchParams(window.location.search).get('tab')
     if (TABS.some((t) => t.value === requested)) setTab(requested as Tab)
+    const sub = new URLSearchParams(window.location.search).get('sub')
+    if (sub) setAdvanced(sub)
   }, [loadRounds])
   useEffect(() => {
     void loadView()
@@ -186,14 +189,14 @@ export function EvaluationRoundPage() {
             </TabsContent>
             <TabsContent value="people" className="pt-4"><PeopleTab /></TabsContent>
             <TabsContent value="progress" className="pt-4"><DashboardTab /></TabsContent>
-            <TabsContent value="forms" className="pt-4"><QuarterEvaluationsWorkspace embedded /></TabsContent>
+            <TabsContent value="forms" className="pt-4"><QuarterEvaluationsWorkspace /></TabsContent>
             <TabsContent value="results" className="space-y-4 pt-4">
               <CloseTab />
               <RoundResultsCard key={view.periodId} periodId={view.periodId} onReleased={async () => { await loadRounds(view.periodId); await loadView() }} />
             </TabsContent>
             <TabsContent value="advanced" className="pt-4">
               <p className="mb-4 text-sm text-muted-foreground">Tools for the current AI-scored questions. These change in a later step of the overhaul.</p>
-              <Tabs defaultValue="content">
+              <Tabs value={advanced} onValueChange={setAdvanced}>
                 <TabsList className="flex-wrap">
                   <TabsTrigger value="content">Topics and profiles</TabsTrigger>
                   <TabsTrigger value="review">Answer review</TabsTrigger>

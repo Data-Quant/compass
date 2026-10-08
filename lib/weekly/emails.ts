@@ -33,7 +33,7 @@ export function renderScoringFailedEmail(input: { name: string; count: number; a
   const answers = plural(input.count, 'weekly answer')
   return {
     subject: `${answers} could not be scored`,
-    html: layout(input.name, [escapeHtml(`The AI could not score ${answers}. Retry them, or score them by hand, in the review queue.`)], `${base(input.appUrl)}/admin/weekly?tab=review`, 'Open the review queue'),
+    html: layout(input.name, [escapeHtml(`The AI could not score ${answers}. Retry them, or score them by hand, in the review queue.`)], `${base(input.appUrl)}/admin/evaluation-round?tab=advanced&sub=review`, 'Open the review queue'),
   }
 }
 
@@ -52,14 +52,14 @@ export function renderLowEvidenceEmail(input: { name: string; rows: ReadonlyArra
     html: layout(input.name, [
       escapeHtml('These people have less than 60% of their topics covered by accepted evidence in a group, with two question weeks left.'),
       table + more,
-    ], `${base(input.appUrl)}/admin/weekly?tab=dashboard`, 'Open the dashboard'),
+    ], `${base(input.appUrl)}/admin/evaluation-round?tab=progress`, 'Open the dashboard'),
   }
 }
 
 export function renderChallengeRaisedEmail(input: { name: string; evaluatee: string; periodName: string; appUrl: string }): { subject: string; html: string } {
   return {
     subject: `${input.evaluatee} raised a challenge on their ${input.periodName} results`,
-    html: layout(input.name, [escapeHtml(`${input.evaluatee} has challenged their ${input.periodName} results. Review their evidence and resolve the challenge.`)], `${base(input.appUrl)}/admin/weekly?tab=challenges`, 'Open challenges'),
+    html: layout(input.name, [escapeHtml(`${input.evaluatee} has challenged their ${input.periodName} results. Review their evidence and resolve the challenge.`)], `${base(input.appUrl)}/admin/evaluation-round?tab=advanced&sub=challenges`, 'Open challenges'),
   }
 }
 
@@ -101,7 +101,7 @@ export function renderLengthBiasEmail(input: { name: string; periodName: string;
     html: layout(input.name, [
       escapeHtml(`Across ${plural(input.scored, 'scored answer')} in ${input.periodName} so far, the correlation between an answer’s length and its AI score is ${value}.`),
       verdict,
-    ], `${base(input.appUrl)}/admin/weekly?tab=dashboard`, 'Open the dashboard'),
+    ], `${base(input.appUrl)}/admin/evaluation-round?tab=progress`, 'Open the dashboard'),
   }
 }
 

@@ -451,7 +451,7 @@ export default function QuestionsPage() {
         ) : (
           <div className="flex gap-3 mt-1 md:mt-0">
             <Button variant="outline" asChild>
-              <Link href="/admin/weekly?tab=people">
+              <Link href="/admin/evaluation-round?tab=people">
                 Open review stage <ArrowRight className="w-4 h-4" />
               </Link>
             </Button>

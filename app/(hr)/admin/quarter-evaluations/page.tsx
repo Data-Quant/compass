@@ -1,10 +1,6 @@
-import { notFound } from 'next/navigation'
-import { QuarterEvaluationsWorkspace } from '@/components/weekly/form-tables/QuarterEvaluationsWorkspace'
-import { isWeeklyEnabled } from '@/lib/weekly/flag'
+import { redirect } from 'next/navigation'
 
-export const dynamic = 'force-dynamic'
-
-export default function QuarterEvaluationsPage() {
-  if (!isWeeklyEnabled()) notFound()
-  return <QuarterEvaluationsWorkspace />
+// Quarter-end evaluations became a tab of the Evaluation round page; old links land there.
+export default function QuarterEvaluationsRedirect() {
+  redirect('/admin/evaluation-round?tab=forms')
 }

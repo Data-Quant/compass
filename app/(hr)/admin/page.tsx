@@ -114,9 +114,9 @@ export default function AdminDashboardPage() {
           : null,
       },
       {
-        title: 'Performance Overview',
-        description: 'Review evaluation progress, reports, and pre-evaluation status.',
-        href: '/admin/performance',
+        title: 'Evaluation round',
+        description: 'Run the quarter: set up, review lists, follow progress, close and release reports.',
+        href: '/admin/evaluation-round',
         icon: ClipboardList,
         badge: dashboardData?.period?.name || null,
       },

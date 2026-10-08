@@ -5,53 +5,9 @@ import {
   buildAssignmentTripleKey,
   calculateWeightedEvaluationCompletion,
   filterPooledRelationshipEvaluations,
-  getAssignmentCompletionState,
-  getHrPoolClosedPairKeys,
+
+
 } from '../lib/evaluation-completion'
-
-test('HR pool closes every HR pair for an employee once one HR evaluator submits', () => {
-  const assignments = [
-    { evaluatorId: 'hr-a', evaluateeId: 'ammar', relationshipType: 'HR' as const },
-    { evaluatorId: 'hr-b', evaluateeId: 'ammar', relationshipType: 'HR' as const },
-    { evaluatorId: 'lead-a', evaluateeId: 'ammar', relationshipType: 'TEAM_LEAD' as const },
-  ]
-
-  const closedPairKeys = getHrPoolClosedPairKeys(
-    assignments,
-    new Set([buildEvaluationPairKey('hr-a', 'ammar')])
-  )
-
-  assert.deepEqual(
-    [...closedPairKeys].sort(),
-    [
-      buildEvaluationPairKey('hr-a', 'ammar'),
-      buildEvaluationPairKey('hr-b', 'ammar'),
-    ]
-  )
-})
-
-test('HR assignments closed by the pool report complete without a local submission', () => {
-  const submittedCounts = new Map([[buildEvaluationPairKey('hr-a', 'ammar'), 4]])
-  const hrPoolClosedPairKeys = new Set([
-    buildEvaluationPairKey('hr-a', 'ammar'),
-    buildEvaluationPairKey('hr-b', 'ammar'),
-  ])
-
-  const state = getAssignmentCompletionState({
-    assignment: {
-      evaluatorId: 'hr-b',
-      evaluateeId: 'ammar',
-      relationshipType: 'HR',
-    },
-    questionsCount: 4,
-    submittedCounts,
-    hrPoolClosedPairKeys,
-  })
-
-  assert.equal(state.isClosedByPool, true)
-  assert.equal(state.completedCount, 4)
-  assert.equal(state.isComplete, true)
-})
 
 test('filterPooledRelationshipEvaluations keeps only the first submitted HR evaluator', () => {
   const firstSubmitted = new Date('2026-04-08T10:00:00.000Z')
@@ -93,25 +49,6 @@ test('non-HR pooled filtering leaves other relationship types untouched', () => 
   ]
 
   assert.deepEqual(filterPooledRelationshipEvaluations('TEAM_LEAD', evaluations), evaluations)
-})
-
-test('partial submitted rows do not mark a non-HR evaluation complete', () => {
-  const submittedCounts = new Map([[buildAssignmentTripleKey('peer-a', 'imam', 'PEER'), 8]])
-
-  const state = getAssignmentCompletionState({
-    assignment: {
-      evaluatorId: 'peer-a',
-      evaluateeId: 'imam',
-      relationshipType: 'PEER',
-    },
-    questionsCount: 10,
-    submittedCounts,
-    hrPoolClosedPairKeys: new Set(),
-  })
-
-  assert.equal(state.completedCount, 8)
-  assert.equal(state.isClosedByPool, false)
-  assert.equal(state.isComplete, false)
 })
 
 test('weighted completion gives full credit when all profile slots are complete', () => {

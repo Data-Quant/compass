@@ -38,13 +38,10 @@ const ADMIN_NAV_GROUPS = [
   {
     label: 'Performance',
     items: [
-      { label: 'Overview', href: '/admin/performance' },
-      { label: 'Periods', href: '/admin/periods' },
       { label: 'Questions', href: '/admin/questions' },
       { label: 'Mappings', href: '/admin/mappings' },
       { label: 'Weightages', href: '/admin/settings' },
       { label: 'Reports', href: '/admin/reports' },
-      { label: 'Email', href: '/admin/email' },
     ],
   },
   {
@@ -144,16 +141,12 @@ test('admin nav has no duplicate hrefs across all groups', () => {
   assert.equal(allHrefs.length, unique.size, 'Duplicate admin hrefs found')
 })
 
-test('admin nav Performance group includes all PE management tools', () => {
+test('admin nav Performance group keeps the set-up pages; the round page replaces Overview, Periods, Pre-Evaluation and Email', () => {
   const perfGroup = ADMIN_NAV_GROUPS.find((g) => g.label === 'Performance')
   assert.ok(perfGroup, 'Performance group not found')
   const labels = perfGroup!.items.map((i) => i.label)
-  assert.ok(labels.includes('Overview'), 'Missing Overview')
-  assert.ok(labels.includes('Periods'), 'Missing Periods')
-  assert.ok(labels.includes('Questions'), 'Missing Questions')
-  assert.ok(labels.includes('Mappings'), 'Missing Mappings')
-  assert.ok(labels.includes('Reports'), 'Missing Reports')
-  assert.ok(labels.includes('Email'), 'Missing Email')
+  for (const label of ['Questions', 'Mappings', 'Weightages', 'Reports']) assert.ok(labels.includes(label), `Missing ${label}`)
+  for (const label of ['Overview', 'Periods', 'Pre-Evaluation', 'Email']) assert.ok(!labels.includes(label), `${label} should be gone`)
 })
 
 test('admin nav People group includes Users', () => {

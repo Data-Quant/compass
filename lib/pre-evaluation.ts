@@ -83,21 +83,9 @@ type PreviousLeadQuestionPrefill<TQuestion extends { orderIndex: number }> = {
   questions: TQuestion[]
 }
 
-export interface PreEvaluationSelectionInput {
-  type: 'PRIMARY' | 'PEER' | 'CROSS_DEPARTMENT'
-  evaluateeId: string
-  suggestedEvaluatorId?: string | null
-}
-
 function startOfDay(date: Date = new Date()) {
   const normalized = new Date(date)
   normalized.setHours(0, 0, 0, 0)
-  return normalized
-}
-
-function endOfDay(date: Date = new Date()) {
-  const normalized = new Date(date)
-  normalized.setHours(23, 59, 59, 999)
   return normalized
 }
 

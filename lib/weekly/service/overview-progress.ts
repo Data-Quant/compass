@@ -42,30 +42,4 @@ export async function weeklyOverviewProgress(periodId: string): Promise<Map<stri
   return new Map([...progress].map(([id, p]) => [id, { ...p, evaluators: evaluatorsOf.get(id)?.size ?? 0, evaluatees: evaluateesOf.get(id)?.size ?? 0 }]))
 }
 
-export interface PairTopics { total: number; answered: number; covered: number }
 
-/**
- * Per evaluator, person and relationship while the quarter runs (`evaluatorId|evaluateeId|relationshipType`).
- * Null once the quarter is closed or when there is no weekly cycle: then the written results are the record.
- */
-export async function weeklyPairTopics(periodId: string): Promise<Map<string, PairTopics> | null> {
-  const cycle = await prisma.weeklyCycle.findUnique({ where: { periodId }, select: { id: true, status: true } })
-  if (!cycle || cycle.status !== 'RUNNING') return null
-  const [slots, submitted] = await Promise.all([
-    prisma.weeklySlot.findMany({ where: { cycleId: cycle.id, status: { not: 'CANCELLED' } }, select: { id: true, evaluatorId: true, evaluateeId: true, relationshipType: true, status: true } }),
-    prisma.weeklyPrompt.findMany({ where: { cycleId: cycle.id, status: 'SUBMITTED', slotId: { not: null } }, select: { slotId: true } }),
-  ])
-  const answeredSlots = new Set(submitted.map((p) => p.slotId))
-  const pairs = new Map<string, PairTopics>()
-  for (const slot of slots) {
-    const key = `${slot.evaluatorId}|${slot.evaluateeId}|${slot.relationshipType}`
-    const current = pairs.get(key) ?? { total: 0, answered: 0, covered: 0 }
-    const covered = slot.status === 'SATISFIED'
-    pairs.set(key, {
-      total: current.total + 1,
-      covered: current.covered + (covered ? 1 : 0),
-      answered: current.answered + (covered || answeredSlots.has(slot.id) ? 1 : 0),
-    })
-  }
-  return pairs
-}
