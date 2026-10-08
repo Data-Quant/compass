@@ -111,3 +111,27 @@ test('HR-filled partners get no self-evaluation question', WEEKLY_DB_TEST, async
     delete process.env.WEEKLY_HR_FILLED_PARTNERS
   }
 })
+
+test('with no lead, HR is emailed the self-evaluation', WEEKLY_DB_TEST, async () => {
+  const mail = mailbox()
+  await submitSelfReview(weeklyActor(W.cara), { month: 1, answers: FULL, wantsDiscussion: false }, at(4), mail.send, APP)
+  assert.ok(mail.sent.some((m) => m.to === email(W.hr.id)))
+  assert.ok(!mail.sent.some((m) => m.to === email(W.lead.id)))
+})
+
+test('a lead who could not be emailed is not shown as reminded', WEEKLY_DB_TEST, async () => {
+  await submitSelfReview(ana, { month: 1, answers: FULL, wantsDiscussion: false }, at(4, 1), mailbox().send, APP)
+  await prisma.user.update({ where: { id: W.lead.id }, data: { email: null } as never }).catch(async () => {
+    await prisma.payrollEmployeeProfile.create({ data: { userId: W.lead.id, isPayrollActive: false } })
+  })
+  await remindUnreadSelfReviews(at(5, 2), mailbox().send, APP)
+  const row = (await adminSelfReviews(HR_ACTOR, periodId, {}, at(5, 2))).rows.find((r) => r.person.id === W.ana.id)!
+  assert.equal(row.reads[0].overdue, false)
+})
+
+test('once a month is replaced, HR’s not-sent list is about the current month', WEEKLY_DB_TEST, async () => {
+  const missing = (await adminSelfReviews(HR_ACTOR, periodId, {}, at(9))).missing.map((p) => p.id)
+  assert.ok(missing.includes(W.ana.id))
+  await submitSelfReview(ana, { month: 2, answers: FULL, wantsDiscussion: false }, at(9), mailbox().send, APP)
+  assert.ok(!(await adminSelfReviews(HR_ACTOR, periodId, {}, at(9))).missing.some((p) => p.id === W.ana.id), 'month 1 no longer counts once month 2 replaced it')
+})

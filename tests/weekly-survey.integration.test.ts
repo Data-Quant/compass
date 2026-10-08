@@ -147,3 +147,33 @@ test('an anonymous answer keeps its department only when at least five from that
   assert.equal(await prisma.surveyResponse.count({ where: { questionId: nps.id, userId: null, department: 'Design' } }), 0)
   assert.equal(await prisma.surveyResponse.count({ where: { questionId: nps.id, userId: null, department: 'Product' } }), 5)
 })
+
+test('the department shows only when five or more answered that question anonymously from it: named answers cannot be subtracted', WEEKLY_DB_TEST, async () => {
+  await loadDefaultSurvey(HR_ACTOR, periodId)
+  const people = Array.from({ length: 5 }, (_, i) => ({ id: `wkt-fin-${i}`, name: `Finance Person ${i}`, role: 'EMPLOYEE' as const, position: 'Analyst', department: 'Finance' }))
+  for (const p of people) await prisma.user.create({ data: { id: p.id, name: p.name, email: `${p.id}@example.test`, role: 'EMPLOYEE', department: 'Finance', position: 'Analyst' } })
+  const [nps] = (await mySurvey(ana, at(1))).questions
+  // Four by name, one anonymously: five from Finance answered, but only one anonymous answer.
+  for (const [i, p] of people.entries()) await submitSurvey(weeklyActor(p), { answers: [{ questionId: nps.id, value: 7, text: `Finance ${i}`, anonymous: i === 4 }] }, at(1))
+  const anonymous = (await surveyResults(HR_ACTOR, periodId)).questions.find((q) => q.id === nps.id)!.comments.find((c) => c.name === null)!
+  assert.equal(anonymous.department, null)
+  await scrubSmallDepartments(at(2))
+  assert.equal(await prisma.surveyResponse.count({ where: { questionId: nps.id, userId: null, department: { not: null } } }), 0)
+})
+
+test('the last week of a finished round is cleared too, and moving department later does not change it', WEEKLY_DB_TEST, async () => {
+  await loadDefaultSurvey(HR_ACTOR, periodId)
+  const product = Array.from({ length: 5 }, (_, i) => ({ id: `wkt-pr-${i}`, name: `Prod ${i}`, role: 'EMPLOYEE' as const, position: 'Analyst', department: 'Product' }))
+  for (const p of product) await prisma.user.create({ data: { id: p.id, name: p.name, email: `${p.id}@example.test`, role: 'EMPLOYEE', department: 'Product', position: 'Analyst' } })
+  const [nps] = (await mySurvey(ana, at(1))).questions
+  for (const p of product) await submitSurvey(weeklyActor(p), { answers: [{ questionId: nps.id, value: 8, anonymous: true, text: 'x' }] }, at(1))
+  await prisma.user.updateMany({ where: { id: { startsWith: 'wkt-pr-' } }, data: { department: 'Platform' } })
+  await scrubSmallDepartments(at(2))
+  assert.equal(await prisma.surveyResponse.count({ where: { questionId: nps.id, department: 'Product' } }), 5, 'counted by the department stored with the answer')
+  // A late, lone anonymous answer in the round's last week is cleared once the round is closed.
+  const last = await prisma.surveyQuestion.findFirstOrThrow({ where: { periodId, dueWeek: 13 } })
+  await submitSurvey(weeklyActor(W.cara), { answers: [{ questionId: last.id, value: 5, anonymous: true }] }, at(13))
+  await prisma.weeklyCycle.updateMany({ where: { periodId }, data: { status: 'CLOSED' } })
+  await scrubSmallDepartments(at(13, 3))
+  assert.equal(await prisma.surveyResponse.count({ where: { questionId: last.id, department: { not: null } } }), 0)
+})

@@ -2615,9 +2615,6 @@ enum PeerChangeVote {
   REJECTED
 }
 
-/// An employee asks to change their lists for a quarter. Someone with a lead has it reviewed by that lead first (a link in
-/// an email); HR then decides every change. Someone with no lead goes straight to HR. For a peer change the peer is told
-/// and may reply. Tokens are stored hashed.
 /// The monthly self-evaluation question for one month of a quarter (UX spec, section 12): three short parts.
 model SelfReviewQuestion {
   id            String   @id @default(cuid())
@@ -2712,6 +2709,9 @@ enum SelfEvaluationStatus {
   SUBMITTED
 }
 
+/// An employee asks to change their lists for a quarter. Someone with a lead has it reviewed by that lead first (a link in
+/// an email); HR then decides every change. Someone with no lead goes straight to HR. For a peer change the peer is told
+/// and may reply. Tokens are stored hashed.
 model PeerChangeRequest {
   id                String           @id @default(cuid())
   periodId          String

@@ -15,7 +15,7 @@ import { recordAudit } from './audit'
 import { assertHr, byName, loadPeople, personRef, type WeeklyActor } from './context'
 import { findRunningCycle, loadCycle, type CycleWithPeriod } from './cycles'
 import { WeeklyError } from './errors'
-import { deliverOnce, type WeeklySendMail, type WeeklySendResult } from './notifications'
+import { deliverOnce, hrUserIds, type WeeklySendMail, type WeeklySendResult } from './notifications'
 import { mappingOf } from './peer-requests'
 
 export const SELF_REVIEW_MIN_WORDS = 30
@@ -171,7 +171,9 @@ export async function submitSelfReview(
   })
   await recordAudit(prisma, { actorId: actor.id, actorRole: 'EMPLOYEE', action: 'SELF_REVIEW_SUBMIT', objectType: 'SelfReview', objectId: created.id, after: { month: input.month, leads } })
   const month = monthName(cycle, input.month)
-  await deliverOnce(leads.map((leadId) => ({
+  // Leads are emailed; with no lead, HR is (HR sees every submission in the Self-evaluations tab either way).
+  const notify = leads.length ? leads : await hrUserIds()
+  await deliverOnce(notify.map((leadId) => ({
     userId: leadId, kind: 'self-review-submitted' as const, dedupeKey: `self-review:${created.id}:${leadId}`,
     render: (name: string) => renderSelfReviewSubmittedEmail({ name, personName: actor.name, monthName: month, appUrl }),
   })), send)
@@ -257,10 +259,10 @@ export async function adminSelfReviews(actor: WeeklyActor, periodId: string, fil
       reads: r.reads.map((x) => ({ lead: personRef(everyone, x.leadId), readAt: x.readAt?.toISOString() ?? null, reply: x.reply, overdue: !x.readAt && x.remindedAt !== null })),
     }
   })
-  // Missing: participants without an answer for the chosen month, or for any month released so far.
+  // Missing: participants without an answer for the chosen month, or for the month open now (it replaced earlier ones).
   const week = Math.max(1, effectiveWeek(cycle.weekOneStartsOn, cycle.simulatedWeek, now))
   const released = releases.map((w, i) => ({ month: i + 1, week: w })).filter((r) => r.week !== null && r.week <= week).map((r) => r.month)
-  const months = filter.month ? released.filter((m) => m === filter.month) : released
+  const months = filter.month ? released.filter((m) => m === filter.month) : released.slice(-1)
   const submitted = new Set(reviews.map((r) => `${r.userId}|${r.month}`))
   const participants = [...everyone.values()].filter((p) => p.payrollActive && takesPart(p) && inDepartment(p.id))
   const missing = participants.filter((p) => months.some((m) => !submitted.has(`${p.id}|${m}`))).map((p) => personRef(everyone, p.id)).sort(byName)
@@ -285,8 +287,8 @@ export async function remindUnreadSelfReviews(now: Date, send: WeeklySendMail, a
       userId: read.leadId, kind: 'self-review-reminder', dedupeKey: `self-review-reminder:${read.id}`,
       render: (name) => renderSelfReviewSubmittedEmail({ name, personName: person?.name ?? 'Someone', monthName: month, reminder: true, appUrl }),
     }], send)
-    // Not delivered: unclaim, so HR is not told the lead was reminded and the next run tries again.
-    if (result.failed > 0) await prisma.selfReviewRead.updateMany({ where: { id: read.id, remindedAt: now }, data: { remindedAt: null } })
+    // Not delivered (failed, or nobody to send to): unclaim, so HR is not told the lead was reminded.
+    if (result.failed > 0 || result.sent + result.recorded === 0) await prisma.selfReviewRead.updateMany({ where: { id: read.id, remindedAt: now }, data: { remindedAt: null } })
     total = { sent: total.sent + result.sent, recorded: total.recorded + result.recorded, skipped: total.skipped + result.skipped, failed: total.failed + result.failed }
   }
   return total

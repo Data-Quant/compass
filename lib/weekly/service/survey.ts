@@ -1,7 +1,7 @@
 // UX spec, section 11: the weekly company sentiment question. HR keeps a bank per quarter; each week of the round
 // everyone gets the next question, and the last week repeats the eNPS question for a start-and-end comparison. It never
 // counts toward a score. Each answer can be anonymous: stored with no user, and with the department only when at least
-// five people from that department answered that week.
+// five from that department answered that question anonymously that week.
 import type { SurveyQuestionKind } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { cycleWeeks, effectiveWeek, questionWeekCount } from '../calendar'
@@ -207,7 +207,7 @@ export async function surveyResults(actor: WeeklyActor, periodId: string): Promi
     prisma.surveyResponse.findMany({ where: { periodId }, orderBy: { id: 'asc' } }),
   ])
   const people = await loadPeople(responses.flatMap((r) => (r.userId ? [r.userId] : [])))
-  const shownDepartment = await departmentsShown(periodId)
+  const shownDepartment = await anonymousGroups(periodId)
   const questions = bank.filter((q) => q.removedAt === null || responses.some((r) => r.questionId === q.id)).map((q) => {
     const mine = responses.filter((r) => r.questionId === q.id)
     const keys = q.kind === 'NPS' ? Array.from({ length: 11 }, (_, i) => String(i)) : q.kind === 'AGREE' ? ['1', '2', '3', '4', '5'] : q.kind === 'CHOICE' ? q.options : []
@@ -221,42 +221,40 @@ export async function surveyResults(actor: WeeklyActor, periodId: string): Promi
       average: q.kind === 'AGREE' && values.length ? Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 100) / 100 : null,
       comments: mine.flatMap((r) => (r.text ? [{
         text: r.text, choice: r.choice, name: r.userId ? people.get(r.userId)?.name ?? 'Unknown' : null,
-        department: !r.userId && r.department && shownDepartment(r.weekIndex, r.department) ? r.department : null,
+        department: !r.userId && r.department && shownDepartment(r.questionId, r.weekIndex, r.department) ? r.department : null,
       }] : [])),
     }
   })
   return { questions }
 }
 
-/** For each week, how many people from each department answered anything. */
-async function departmentCounts(periodId: string): Promise<Map<string, number>> {
-  const completions = await prisma.surveyCompletion.findMany({ where: { periodId }, select: { userId: true, weekIndex: true } })
-  const people = await loadPeople(completions.map((c) => c.userId))
-  const seen = new Map<string, Set<string>>()
-  for (const c of completions) {
-    const department = people.get(c.userId)?.department
-    if (!department) continue
-    const key = `${c.weekIndex}|${department}`
-    seen.set(key, new Set([...(seen.get(key) ?? []), c.userId]))
-  }
-  return new Map([...seen].map(([key, users]) => [key, users.size]))
+/**
+ * How many anonymous answers each (question, week, department) has. The department of an anonymous answer is shown, and
+ * kept, only when at least five from it answered that question anonymously that week, so named answers from the same
+ * department can never be subtracted to find the anonymous one. Counted by the department stored with the answer.
+ */
+async function anonymousGroups(periodId: string): Promise<(questionId: string, week: number, department: string) => boolean> {
+  const rows = await prisma.surveyResponse.groupBy({ by: ['questionId', 'weekIndex', 'department'], where: { periodId, userId: null, department: { not: null } }, _count: { _all: true } })
+  const counts = new Map(rows.map((r) => [`${r.questionId}|${r.weekIndex}|${r.department}`, r._count._all]))
+  return (questionId, week, department) => (counts.get(`${questionId}|${week}|${department}`) ?? 0) >= MIN_DEPARTMENT_GROUP
 }
 
-async function departmentsShown(periodId: string): Promise<(week: number, department: string) => boolean> {
-  const counts = await departmentCounts(periodId)
-  return (week, department) => (counts.get(`${week}|${department}`) ?? 0) >= MIN_DEPARTMENT_GROUP
-}
-
-/** Daily: once a week is over, an anonymous answer from a department with fewer than five answering loses its department. */
+/**
+ * Daily: once a week is over (or the round has finished), an anonymous answer whose department group is under five
+ * loses its department.
+ */
 export async function scrubSmallDepartments(now: Date): Promise<number> {
-  const cycles = await prisma.weeklyCycle.findMany({ where: { status: { in: ['RUNNING', 'CLOSED'] } }, select: { id: true } })
+  const cycles = await prisma.weeklyCycle.findMany({ where: { status: { not: 'SETUP' } }, select: { id: true } })
   let scrubbed = 0
   for (const { id } of cycles) {
     const cycle = await loadCycle(id)
     const current = effectiveWeek(cycle.weekOneStartsOn, cycle.simulatedWeek, now)
-    const shown = await departmentsShown(cycle.periodId)
-    const rows = await prisma.surveyResponse.findMany({ where: { periodId: cycle.periodId, userId: null, department: { not: null }, weekIndex: { lt: current } }, select: { id: true, weekIndex: true, department: true } })
-    const small = rows.filter((r) => !shown(r.weekIndex, r.department as string)).map((r) => r.id)
+    const shown = await anonymousGroups(cycle.periodId)
+    const rows = await prisma.surveyResponse.findMany({
+      where: { periodId: cycle.periodId, userId: null, department: { not: null }, ...(cycle.status === 'RUNNING' ? { weekIndex: { lt: current } } : {}) },
+      select: { id: true, questionId: true, weekIndex: true, department: true },
+    })
+    const small = rows.filter((r) => !shown(r.questionId, r.weekIndex, r.department as string)).map((r) => r.id)
     if (small.length) scrubbed += (await prisma.surveyResponse.updateMany({ where: { id: { in: small } }, data: { department: null } })).count
   }
   return scrubbed
