@@ -58,26 +58,28 @@ export function renderFormsOpenEmail(input: { name: string; appUrl: string; path
 const ACTION_WORDS = { ADD: 'add', REMOVE: 'remove' } as const
 
 /** A peer change needs this person's approval: one click on the page the link opens. Every value is escaped. */
-/** A peer change: the requester's lead decides it; the peer is told and may say whether they work together. */
-export function renderPeerRequestEmail(input: { name: string; requesterName: string; peerName: string; action: 'ADD' | 'REMOVE'; role: 'PEER' | 'LEAD'; periodName: string; link: string; reminder?: boolean }): { subject: string; html: string } {
+const LIST_WORDS = { PEER: ['as a peer', 'from their peers'], LEAD: ['as their lead', 'as their lead'], REPORT: ['to their team', 'from their team'] } as const
+
+/** A change to someone's lists: their lead reviews it before HR decides; in a peer change the peer is told and may reply. */
+export function renderPeerRequestEmail(input: { name: string; requesterName: string; peerName: string; action: 'ADD' | 'REMOVE'; relation?: 'PEER' | 'LEAD' | 'REPORT'; role: 'PEER' | 'LEAD'; periodName: string; link: string; reminder?: boolean }): { subject: string; html: string } {
   const change = input.action === 'ADD' ? 'add' : 'remove'
-  const verb = input.action === 'ADD' ? 'as a peer' : 'from their peers'
+  const verb = LIST_WORDS[input.relation ?? 'PEER'][input.action === 'ADD' ? 0 : 1]
   const asked = (about: string) => `${input.requesterName} asked to ${change} ${about} ${verb} for ${input.periodName}. Peers evaluate each other during the quarter.`
   if (input.role === 'PEER') {
     return {
       subject: `${input.requesterName} asked to ${change} you ${verb} for ${input.periodName}`,
       html: layout(input.name, [
         escapeHtml(asked('you')),
-        escapeHtml('Their lead decides. You do not need to do anything, but you can tell them whether you work together.'),
+        escapeHtml('Their lead and HR decide. You do not need to do anything, but you can say whether you work together.'),
       ], input.link, 'Reply (optional)'),
     }
   }
   return {
-    subject: `${input.reminder ? 'Reminder: ' : ''}${input.requesterName} asked to ${change} a peer for ${input.periodName}`,
+    subject: `${input.reminder ? 'Reminder: ' : ''}${input.requesterName} asked to change their evaluation list for ${input.periodName}`,
     html: layout(input.name, [
       escapeHtml(asked(input.peerName)),
-      escapeHtml(input.reminder ? 'This has waited 2 working days for your decision, and HR can see that.' : 'As their lead, you decide.'),
-    ], input.link, 'Approve or decline'),
+      escapeHtml(input.reminder ? 'This has waited 2 working days for your review, and HR can see that.' : 'As their lead, please say whether you agree. HR makes the final decision.'),
+    ], input.link, 'Review the request'),
   }
 }
 
@@ -116,7 +118,7 @@ export function renderMappingEmail(input: { name: string; periodName: string; le
       `<strong>Your lead:</strong> ${list(input.leads)}`,
       `<strong>Your reporting team members:</strong> ${list(input.reports)}`,
       `<strong>Your peers:</strong> ${list(input.peers)}`,
-      escapeHtml('If anyone is wrong or missing, ask for a change on the page below. A peer change happens once your lead approves; HR decides changes to your lead or team. If everything is right, say so there.'),
+      escapeHtml('If anyone is wrong or missing, ask for a change on the page below. Your lead reviews each change first, then HR decides. If everything is right, say so there.'),
     ], `${base(input.appUrl)}/evaluations/weekly`, 'Review your mapping'),
   }
 }

@@ -1,8 +1,7 @@
-// UX spec, section 6: while a round is in its review stage everyone sees their lead, team and peers, says they look right
-// or asks to correct them. A peer change takes effect once the employee's lead approves (one click, from an email); the
-// peer is told and may reply, which never blocks it. A change to the employee's lead or team, and a peer change with no
-// lead to decide it, is HR's: apply, decline with a reason, or ask for more information. An approved change is written
-// as period overrides in both directions.
+// UX spec, section 6, with HR's rule: during a round's review stage everyone sees their lead, team and peers, says they
+// look right or asks to correct them. A request from someone with a lead goes to that lead to review first (a link in an
+// email); HR then decides every change, whatever the lead said. Someone with no lead goes straight to HR. For a peer
+// change the peer is told and may reply. An approved change is written as period overrides in both directions.
 import { createHash, randomBytes } from 'node:crypto'
 import type {
   MappingReasonCode, MappingRelation, PeerChangeAction, PeerChangeRequest, PeerChangeStatus, PeerReply, Prisma, RelationshipType,
@@ -82,11 +81,19 @@ async function mappingFor(periodId: string, userId: string): Promise<Mapping> {
 /** Waiting on a lead who has already been reminded: HR sees it flagged. */
 const isOverdue = (r: PeerChangeRequest) => r.status === 'PENDING' && r.approverVote === 'PENDING' && r.remindedAt !== null
 
+/** Who has it now: the lead (to review), HR (to decide), the requester (to answer HR), or nobody (done). */
+function stageOf(r: PeerChangeRequest): PeerRequestView['stage'] {
+  if (r.status === 'NEEDS_INFO') return 'REQUESTER'
+  if (r.status !== 'PENDING') return 'DONE'
+  return r.approverId && r.approverVote === 'PENDING' ? 'LEAD' : 'HR'
+}
+
 function requestView(r: PeerChangeRequest, people: ReadonlyMap<string, { name: string; position: string | null }>): PeerRequestView {
   return {
     id: r.id, action: r.action, relation: r.relation, status: r.status, reasonCode: r.reasonCode, reason: r.reason, decisionNote: r.decisionNote, answer: r.answer,
     createdAt: r.createdAt.toISOString(), requester: personRef(people, r.requesterId), peer: personRef(people, r.peerId),
-    approver: r.approverId ? personRef(people, r.approverId) : null, peerReply: r.peerReply, approverVote: r.approverVote, overdue: isOverdue(r),
+    approver: r.approverId ? personRef(people, r.approverId) : null, peerReply: r.peerReply, approverVote: r.approverVote, leadNote: r.leadNote,
+    stage: stageOf(r), overdue: isOverdue(r),
   }
 }
 
@@ -123,14 +130,17 @@ export async function confirmMyLists(actor: WeeklyActor, now: Date): Promise<{ c
   return { confirmedAt: row.confirmedAt.toISOString() }
 }
 
-type Tokens = { peer: string; approver: string | null }
+type Tokens = { peer: string | null; approver: string | null }
 
 function linkMessages(request: PeerChangeRequest, tokens: Tokens, names: { requester: string; peer: string }, periodName: string, appUrl: string): WeeklyEmailMessage[] {
   const message = (userId: string, role: 'PEER' | 'LEAD', token: string): WeeklyEmailMessage => ({
     userId, kind: 'peer-request', dedupeKey: `peer-request:${request.id}:${userId}`,
-    render: (name) => renderPeerRequestEmail({ name, requesterName: names.requester, peerName: names.peer, action: request.action, role, periodName, link: `${base(appUrl)}/peer-requests/${token}` }),
+    render: (name) => renderPeerRequestEmail({ name, requesterName: names.requester, peerName: names.peer, action: request.action, relation: request.relation, role, periodName, link: `${base(appUrl)}/peer-requests/${token}` }),
   })
-  return [message(request.peerId, 'PEER', tokens.peer), ...(request.approverId && tokens.approver ? [message(request.approverId, 'LEAD', tokens.approver)] : [])]
+  return [
+    ...(tokens.peer ? [message(request.peerId, 'PEER', tokens.peer)] : []),
+    ...(request.approverId && tokens.approver ? [message(request.approverId, 'LEAD', tokens.approver)] : []),
+  ]
 }
 
 export async function requestPeerChange(
@@ -153,9 +163,10 @@ export async function requestPeerChange(
   const mapping = await mappingFor(period.id, actor.id)
   if (input.action === 'REMOVE' && !listFor(mapping, relation).includes(input.peerId)) throw new WeeklyError(`${other.name} is not ${NOT_IN_LIST[relation]} this quarter`)
   if (input.action === 'ADD' && [...mapping.peers, ...mapping.leads, ...mapping.reports, ...mapping.others].includes(input.peerId)) throw new WeeklyError(`${other.name} is already in your mapping this quarter`)
-  // A peer change: the lead decides, the peer is told (HR decides when there is no other lead). A lead or team change: HR.
-  const approverId = relation === 'PEER' ? mapping.leads.find((id) => id !== input.peerId) ?? null : null
-  const tokens: Tokens | null = relation === 'PEER' ? { peer: newToken(), approver: approverId ? newToken() : null } : null
+  // Their lead reviews it first, unless the change is about that lead; with no other lead it goes straight to HR. The peer
+  // in a peer change is told.
+  const approverId = mapping.leads.find((id) => id !== input.peerId) ?? null
+  const tokens: Tokens = { peer: relation === 'PEER' ? newToken() : null, approver: approverId ? newToken() : null }
   const pairLock = [actor.id, input.peerId].sort().join(':')
   const request = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`peer-request:${period.id}:${pairLock}`}))::text`
@@ -166,14 +177,14 @@ export async function requestPeerChange(
     return tx.peerChangeRequest.create({
       data: {
         periodId: period.id, requesterId: actor.id, peerId: input.peerId, action: input.action, relation, reasonCode, reason: input.reason?.trim() || null, createdAt: now,
-        peerTokenHash: tokens ? hash(tokens.peer) : null, approverId, approverTokenHash: tokens?.approver ? hash(tokens.approver) : null,
+        peerTokenHash: tokens.peer ? hash(tokens.peer) : null, approverId, approverTokenHash: tokens.approver ? hash(tokens.approver) : null,
       },
     })
   })
   // Asking for a change means the lists did not look right after all.
   await prisma.mappingConfirmation.deleteMany({ where: { periodId: period.id, userId: actor.id } })
   await recordAudit(prisma, { actorId: actor.id, actorRole: 'EMPLOYEE', action: 'MAPPING_REQUEST', objectType: 'PeerChangeRequest', objectId: request.id, after: { action: input.action, relation, peerId: input.peerId } })
-  if (tokens) await deliverOnce(linkMessages(request, tokens, { requester: actor.name, peer: other.name }, period.name, appUrl), send)
+  if (tokens.peer || tokens.approver) await deliverOnce(linkMessages(request, tokens, { requester: actor.name, peer: other.name }, period.name, appUrl), send)
   const people = await loadPeople([actor.id, input.peerId, approverId ?? ''])
   return requestView(request, people)
 }
@@ -230,23 +241,16 @@ function applyChange(tx: Prisma.TransactionClient, request: PeerChangeRequest, d
   })
 }
 
-type Decider = { hrId: string } | { lead: true }
-
 /**
- * Decides a request, by its lead or by HR. The lead's vote, the status change and both overrides commit together, so an
- * approved request is always fully applied; if someone else decided it at the same moment, nothing changes and null
- * comes back. HR can decide anything open; the lead only a request that is not waiting on HR's question.
+ * HR decides a request. The status change and both overrides commit together, so an approved request is always fully
+ * applied; if HR decided it at the same moment elsewhere, nothing changes and null comes back.
  */
-async function decide(request: PeerChangeRequest, approved: boolean, note: string | null, now: Date, send: WeeklySendMail, appUrl: string, by: Decider): Promise<PeerChangeStatus | null> {
+async function decide(request: PeerChangeRequest, approved: boolean, note: string | null, now: Date, send: WeeklySendMail, appUrl: string, hrId: string): Promise<PeerChangeStatus | null> {
   const status: PeerChangeStatus = approved ? 'APPROVED' : 'REJECTED'
-  const hrId = 'hrId' in by ? by.hrId : null
   const moved = await prisma.$transaction(async (tx) => {
     const updated = await tx.peerChangeRequest.updateMany({
-      where: hrId ? { id: request.id, status: { in: OPEN_STATUSES } } : { id: request.id, status: 'PENDING', approverVote: 'PENDING' },
-      data: {
-        status, decidedAt: now, decisionNote: note,
-        ...(hrId ? { decidedById: hrId } : { approverVote: approved ? 'APPROVED' : 'REJECTED', approverVotedAt: now }),
-      },
+      where: { id: request.id, status: { in: OPEN_STATUSES } },
+      data: { status, decidedAt: now, decisionNote: note, decidedById: hrId },
     })
     if (updated.count > 0 && approved) await applyChange(tx, request, hrId)
     return updated.count
@@ -281,7 +285,7 @@ export async function peerRequestByToken(token: string): Promise<PeerRequestToke
   const period = await prisma.evaluationPeriod.findUnique({ where: { id: request.periodId }, select: { name: true } })
   const peers = (await mappingFor(request.periodId, request.requesterId)).peers.length
   return {
-    requester: personRef(people, request.requesterId), peer: personRef(people, request.peerId), action: request.action, role, status: request.status,
+    requester: personRef(people, request.requesterId), peer: personRef(people, request.peerId), action: request.action, relation: request.relation, role, status: request.status,
     vote: request.approverVote, peerReply: request.peerReply, periodName: period?.name ?? '',
     // Why they asked is for the lead who decides, never for the peer it is about.
     reasonCode: role === 'LEAD' ? request.reasonCode : null, reason: role === 'LEAD' ? request.reason : null,
@@ -289,20 +293,26 @@ export async function peerRequestByToken(token: string): Promise<PeerRequestToke
   }
 }
 
-/** The lead's one-click decision from the email link. A decline gives a reason. */
+/** The lead's review from the email link: agree, or disagree with a reason. It goes to HR either way; HR decides. */
 export async function voteOnPeerRequest(token: string, decision: PeerDecision, note: string | null | undefined, now: Date, send: WeeklySendMail, appUrl: string): Promise<{ status: PeerChangeStatus }> {
+  void send
+  void appUrl
   const { request, role } = await findByToken(token)
-  if (role !== 'LEAD') throw new WeeklyError('Only their lead decides this change', 403)
+  if (role !== 'LEAD') throw new WeeklyError('Only their lead reviews this change', 403)
   await assertLinkOpen(request.periodId)
-  const reason = decision === 'REJECT' ? required(note, 'Give a reason for declining') : null
-  // The vote and the decision are one guarded write, so a second click, a race with HR, or HR's open question changes nothing.
-  const status = await decide(request, decision === 'APPROVE', reason, now, send, appUrl, { lead: true })
-  if (!status) {
+  const leadNote = decision === 'REJECT' ? required(note, 'Give a reason for disagreeing') : note?.trim() || null
+  const vote = decision === 'APPROVE' ? 'APPROVED' : 'REJECTED'
+  // Guarded, so a second click, HR's decision or HR's open question changes nothing.
+  const reviewed = await prisma.peerChangeRequest.updateMany({
+    where: { id: request.id, status: 'PENDING', approverVote: 'PENDING' },
+    data: { approverVote: vote, approverVotedAt: now, leadNote },
+  })
+  if (reviewed.count === 0) {
     const current = await prisma.peerChangeRequest.findUniqueOrThrow({ where: { id: request.id }, select: { status: true } })
-    throw new WeeklyError(current.status === 'NEEDS_INFO' ? 'HR has asked a question about this request; it can be decided once that is answered' : 'This request was already answered', 409)
+    throw new WeeklyError(current.status === 'NEEDS_INFO' ? 'HR has asked a question about this request; you can review it once that is answered' : 'This request was already reviewed', 409)
   }
-  await recordAudit(prisma, { actorId: request.approverId, actorRole: 'LEAD', action: `PEER_VOTE_${status}`, objectType: 'PeerChangeRequest', objectId: request.id })
-  return { status }
+  await recordAudit(prisma, { actorId: request.approverId, actorRole: 'LEAD', action: `MAPPING_LEAD_${vote}`, objectType: 'PeerChangeRequest', objectId: request.id })
+  return { status: 'PENDING' }
 }
 
 /** The peer's optional reply from their link. It can change while the request is open and never decides it. */
@@ -329,7 +339,7 @@ export async function decidePeerRequest(actor: WeeklyActor, requestId: string, d
     return asked
   }
   const reason = decision === 'REJECT' ? required(note, 'Give a reason for declining') : null
-  const status = await decide(request, decision === 'APPROVE', reason, now, send, appUrl, { hrId: actor.id })
+  const status = await decide(request, decision === 'APPROVE', reason, now, send, appUrl, actor.id)
   if (!status) throw new WeeklyError('This request was already decided', 409)
   await audit()
   return { status }
@@ -346,22 +356,23 @@ async function askRequester(request: PeerChangeRequest, question: string, send: 
   return { status: 'NEEDS_INFO' }
 }
 
-/** New links for a peer request still open; the old ones stop working. */
+/** New links for a request still open (the lead's, and the peer's in a peer change); the old ones stop working. */
 export async function resendPeerRequestLinks(actor: WeeklyActor, requestId: string, now: Date, send: WeeklySendMail, appUrl: string): Promise<WeeklySendResult> {
   assertHr(actor)
   const request = await prisma.peerChangeRequest.findUnique({ where: { id: requestId } })
-  if (!request || request.status !== 'PENDING' || request.relation !== 'PEER') throw new WeeklyError('Only a peer request waiting for a decision has links to resend', 409)
-  const result = await sendFreshLinks(request, { peer: true, lead: request.approverVote === 'PENDING' }, send, appUrl, `resend-${now.getTime()}`, false)
+  const hasLinks = request && (request.relation === 'PEER' || request.approverId)
+  if (!request || request.status !== 'PENDING' || !hasLinks) throw new WeeklyError('Only a request waiting for a review has links to resend', 409)
+  const result = await sendFreshLinks(request, { peer: request.relation === 'PEER', lead: request.approverVote === 'PENDING' }, send, appUrl, `resend-${now.getTime()}`, false)
   await recordAudit(prisma, { actorId: actor.id, actorRole: 'HR', action: 'PEER_RESEND', objectType: 'PeerChangeRequest', objectId: requestId })
   return result
 }
 
 /** Replaces the links named and emails them; a link not replaced keeps working. */
 async function sendFreshLinks(request: PeerChangeRequest, which: { peer: boolean; lead: boolean }, send: WeeklySendMail, appUrl: string, key: string, reminder: boolean): Promise<WeeklySendResult> {
-  const tokens = { peer: newToken(), approver: request.approverId && which.lead ? newToken() : null }
+  const tokens: Tokens = { peer: which.peer ? newToken() : null, approver: request.approverId && which.lead ? newToken() : null }
   const updated = await prisma.peerChangeRequest.update({
     where: { id: request.id },
-    data: { ...(which.peer ? { peerTokenHash: hash(tokens.peer) } : {}), ...(tokens.approver ? { approverTokenHash: hash(tokens.approver) } : {}) },
+    data: { ...(tokens.peer ? { peerTokenHash: hash(tokens.peer) } : {}), ...(tokens.approver ? { approverTokenHash: hash(tokens.approver) } : {}) },
   })
   const people = await loadPeople([request.requesterId, request.peerId])
   const period = await prisma.evaluationPeriod.findUnique({ where: { id: request.periodId }, select: { name: true } })
@@ -370,17 +381,17 @@ async function sendFreshLinks(request: PeerChangeRequest, which: { peer: boolean
     .filter((m) => (m.userId === request.peerId ? which.peer : which.lead))
     .map((m) => ({
       ...m, dedupeKey: `${m.dedupeKey}:${key}`,
-      ...(reminder ? { render: (name: string) => renderPeerRequestEmail({ name, requesterName: names.requester, peerName: names.peer, action: request.action, role: 'LEAD', periodName: period?.name ?? '', link: `${base(appUrl)}/peer-requests/${tokens.approver}`, reminder: true }) } : {}),
+      ...(reminder ? { render: (name: string) => renderPeerRequestEmail({ name, requesterName: names.requester, peerName: names.peer, action: request.action, relation: request.relation, role: 'LEAD', periodName: period?.name ?? '', link: `${base(appUrl)}/peer-requests/${tokens.approver}`, reminder: true }) } : {}),
     }))
   return deliverOnce(messages, send)
 }
 
 /**
- * Daily: a lead who has not decided a peer change within 2 working days gets one reminder with a fresh link, and the
+ * Daily: a lead who has not reviewed a request within 2 working days gets one reminder with a fresh link, and the
  * request is flagged to HR. Only rounds still in review, since requests expire when the round opens.
  */
 export async function remindStaleMappingRequests(now: Date, send: WeeklySendMail, appUrl: string): Promise<WeeklySendResult> {
-  const waiting = await prisma.peerChangeRequest.findMany({ where: { relation: 'PEER', status: 'PENDING', approverId: { not: null }, approverVote: 'PENDING', remindedAt: null } })
+  const waiting = await prisma.peerChangeRequest.findMany({ where: { status: 'PENDING', approverId: { not: null }, approverVote: 'PENDING', remindedAt: null } })
   const due = waiting.filter((r) => addWorkingDays(r.createdAt, LEAD_DECISION_WORKING_DAYS, []).getTime() < now.getTime())
   let total: WeeklySendResult = { sent: 0, recorded: 0, skipped: 0, failed: 0 }
   for (const request of due) {

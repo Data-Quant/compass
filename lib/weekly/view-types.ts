@@ -223,6 +223,10 @@ export interface PeerRequestView {
   /** The peer's optional reply; it never blocks the change. */
   peerReply: PeerReplyValue | null
   approverVote: PeerChangeVoteValue
+  /** The lead's reason when they disagreed (or note when they agreed). */
+  leadNote: string | null
+  /** Who has it now: the lead to review, HR to decide, the requester to answer HR, or nobody. */
+  stage: 'LEAD' | 'HR' | 'REQUESTER' | 'DONE'
   /** The lead was reminded after 2 working days without a decision; HR sees it flagged. */
   overdue: boolean
 }
@@ -241,6 +245,7 @@ export interface PeerRequestTokenView {
   requester: PersonRef
   peer: PersonRef
   action: PeerChangeActionValue
+  relation: MappingRelationValue
   role: 'PEER' | 'LEAD'
   status: PeerChangeStatusValue
   /** The lead's decision so far. */

@@ -2612,9 +2612,9 @@ enum PeerChangeVote {
   REJECTED
 }
 
-/// An employee asks to change their lists for a quarter. A peer change takes effect once the employee's lead approves (a
-/// one-click link in an email); the peer is told and may reply. Lead and team changes, and anything without a lead, are
-/// HR's decision. Tokens are stored hashed.
+/// An employee asks to change their lists for a quarter. Someone with a lead has it reviewed by that lead first (a link in
+/// an email); HR then decides every change. Someone with no lead goes straight to HR. For a peer change the peer is told
+/// and may reply. Tokens are stored hashed.
 model PeerChangeRequest {
   id                String           @id @default(cuid())
   periodId          String
@@ -2634,8 +2634,10 @@ model PeerChangeRequest {
   approverVote      PeerChangeVote   @default(PENDING)
   approverVotedAt   DateTime?
   approverTokenHash String?          @unique
-  /// When the lead was reminded after 2 working days without a decision.
+  /// When the lead was reminded after 2 working days without reviewing it.
   remindedAt        DateTime?
+  /// The lead's reason when they disagree (or a note when they agree); HR sees it before deciding.
+  leadNote          String?
   /// The reason for a decline, or HR's question when it needs more information.
   decisionNote      String?
   /// The requester's answer to HR's question; the original reason is kept.
