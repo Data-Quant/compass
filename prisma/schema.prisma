@@ -2650,7 +2650,7 @@ model WeeklyAuditEvent {
   @@index([cycleId, createdAt])
 }
 
-// ─── Weekly evaluations: AI settings and calibration (Part D) ───────────────
+// ─── Weekly evaluations: sentiment survey and mapping review ─────────────────
 
 enum SurveyQuestionKind {
   NPS

@@ -254,7 +254,6 @@ export interface ReviewStageView {
   /** When HR opened the review stage; null before. */
   openedAt: string | null
   reviewEndsAt: string
-  leads: Array<{ lead: PersonRef; status: string; questionsSubmitted: boolean }>
 }
 
 export type RoundStageValue = 'DRAFT' | 'REVIEW' | 'OPEN' | 'CLOSED' | 'RELEASED'

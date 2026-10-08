@@ -1,6 +1,7 @@
 import test, { after, before, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { computePeriodScoreMatrix } from '../lib/analytics/period-score-matrix'
+import { Prisma } from '@prisma/client'
 import { prisma } from '../lib/db'
 import { getResolvedEvaluationAssignments } from '../lib/evaluation-assignments'
 import { calculateWeightedScore } from '../lib/scoring'
@@ -156,4 +157,11 @@ test('closing while end-of-quarter forms are unsubmitted names who has them and 
   assert.equal((await prisma.weeklyCycle.findUniqueOrThrow({ where: { id: cycleId } })).status, 'RUNNING')
   const result = await closeCycle(HR_ACTOR, cycleId, { drops: [], formsAcknowledged: true }, at(13))
   assert.equal(result.counts.ratingRows, 1)
+})
+
+test('a quarter answered under the earlier free-text model cannot be reopened, so its results are never rebuilt without those answers', WEEKLY_DB_TEST, async () => {
+  const prompt = (await releaseWeekOne(cycleId)).find((p) => p.evaluatorId === W.lead.id)!
+  await prisma.weeklyPrompt.update({ where: { id: prompt.id }, data: { options: Prisma.DbNull, status: 'EXPIRED' } })
+  await closeCycle(HR_ACTOR, cycleId, { drops: [] }, at(13))
+  await assert.rejects(reopenCycle(HR_ACTOR, cycleId, at(13, 2)), isError(409, /earlier free-text/))
 })

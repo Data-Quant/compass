@@ -100,11 +100,6 @@ async function checklist(cycle: CycleWithPeriod, stage: RoundStage): Promise<Rou
     const topics = await readyCompetencyCount()
     items.push({ key: 'topics', label: topics > 0 ? `${topics} question topics ready` : 'No question topics are ready yet', done: topics > 0, count: topics, tab: 'advanced' })
   }
-  if (stage === 'REVIEW' || stage === 'OPEN') {
-    const preps = await prisma.preEvaluationLeadPrep.findMany({ where: { periodId: cycle.periodId }, select: { questionsSubmittedAt: true, questionsCarriedForwardAt: true } })
-    const written = preps.filter((p) => p.questionsSubmittedAt || p.questionsCarriedForwardAt).length
-    items.push({ key: 'lead-questions', label: `${written} of ${preps.length} leads wrote their team questions`, done: written === preps.length, count: preps.length - written, tab: 'people' })
-  }
   if (stage === 'REVIEW') {
     const open = await prisma.peerChangeRequest.findMany({ where: { periodId: cycle.periodId, status: { in: OPEN_REQUEST_STATUSES } }, select: { remindedAt: true, approverVote: true } })
     const late = open.filter((r) => r.remindedAt && r.approverVote === 'PENDING').length

@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { getResolvedEvaluationAssignments, type ResolvedEvaluationAssignment } from '@/lib/evaluation-assignments'
 import type { AggregationCounts } from '../aggregation'
@@ -137,6 +138,10 @@ export async function reopenCycle(actor: WeeklyActor, cycleId: string, now: Date
   if (cycle.resultsPublishedAt) throw new WeeklyError('Reports are already released, so this quarter cannot be reopened', 409)
   const period = await prisma.evaluationPeriod.findUniqueOrThrow({ where: { id: cycle.periodId }, select: { isLocked: true } })
   if (period.isLocked) throw new WeeklyError('Unlock the evaluation period first', 409)
+  // Closing again rebuilds the weekly rows from scored answers; free-text answers from before have none, so their
+  // quarter keeps the results it was closed with.
+  const freeText = await prisma.weeklyPrompt.count({ where: { cycleId, kind: 'STANDARD', options: { equals: Prisma.DbNull } } })
+  if (freeText > 0) throw new WeeklyError('This quarter was answered under the earlier free-text questions, so it cannot be reopened', 409)
   if ((await prisma.weeklyCycle.count({ where: { status: 'RUNNING', id: { not: cycleId } } })) > 0) throw new WeeklyError('Another weekly quarter is running', 409)
   await prisma.$transaction(async (tx) => {
     const moved = await tx.weeklyCycle.updateMany({ where: { id: cycleId, status: 'CLOSED', resultsPublishedAt: null }, data: { status: 'RUNNING', closedAt: null } })

@@ -60,7 +60,10 @@ export async function loadStandardBank(actor: WeeklyActor): Promise<{ created: n
     const existing = await prisma.weeklyCompetency.findUnique({ where: { key: topic.key }, select: { id: true } })
     if (existing) continue
     await prisma.$transaction(async (tx) => {
-      const sourceQuestionId = (await existingBankQuestion(tx, topic.perspective, topic.name)) ?? (await createBankQuestion(tx, topic.perspective, topic.name))
+      // A common topic reuses the classic question of its name; a department topic always gets its own, so it never
+      // takes over a question everyone answers.
+      const reused = topic.departments ? null : await existingBankQuestion(tx, topic.perspective, topic.name)
+      const sourceQuestionId = reused ?? (await createBankQuestion(tx, topic.perspective, topic.name))
       await tx.weeklyCompetency.create({
         data: {
           key: topic.key, perspective: topic.perspective, name: topic.name, definition: '', departments: topic.departments ?? [], sourceQuestionId,

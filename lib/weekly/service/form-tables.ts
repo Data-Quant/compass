@@ -56,7 +56,9 @@ async function tableQuestions(periodId: string, evaluatorId: string, type: Relat
   const resolved = await getResolvedEvaluationQuestions({ relationshipType: type, periodId, evaluatorId, evaluateeId })
   if (resolved.error) throw new WeeklyError(resolved.error, 409)
   // A department's own weekly topics apply only to that department, so they are not columns everyone must fill.
-  const departmentOnly = new Set((await prisma.weeklyCompetency.findMany({ where: { NOT: { departments: { isEmpty: true } }, sourceQuestionId: { not: null } }, select: { sourceQuestionId: true } })).map((c) => c.sourceQuestionId))
+  const topics = await prisma.weeklyCompetency.findMany({ where: { sourceQuestionId: { not: null } }, select: { sourceQuestionId: true, departments: true } })
+  const common = new Set(topics.filter((t) => t.departments.length === 0).map((t) => t.sourceQuestionId))
+  const departmentOnly = new Set(topics.filter((t) => t.departments.length > 0 && !common.has(t.sourceQuestionId)).map((t) => t.sourceQuestionId))
   return resolved.questions.filter((q) => q.questionType === 'RATING' && !(q.sourceType === 'GLOBAL' && departmentOnly.has(q.id))).map((q) => {
     const d = q.ratingDescriptions
     return { id: q.id, source: q.sourceType, text: q.questionText, ratingDescriptions: { '1': d?.[1] ?? null, '2': d?.[2] ?? null, '3': d?.[3] ?? null, '4': d?.[4] ?? null } }

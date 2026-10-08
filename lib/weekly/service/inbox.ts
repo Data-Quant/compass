@@ -149,7 +149,8 @@ async function assertFourAllowed(tx: Prisma.TransactionClient, prompt: { id: str
   const sameRelation = { cycleId: prompt.cycleId, evaluatorId: prompt.evaluatorId, relationshipType: { in: types as Prisma.EnumRelationshipTypeFilter['in'] } }
   const pairs = await tx.weeklySlot.findMany({ where: { ...sameRelation, status: { not: 'CANCELLED' } }, distinct: ['evaluateeId'], select: { evaluateeId: true } })
   const limit = fourRatingLimit(pairs.length * QUESTIONS_PER_PAIR)
-  const used = await tx.weeklyResponse.count({ where: { score: TOP_SCORE, prompt: { ...sameRelation, kind: 'STANDARD', status: 'SUBMITTED', id: { not: prompt.id } } } })
+  // Counted over the same pairs as the limit: a 4 about someone no longer evaluated does not use it up.
+  const used = await tx.weeklyResponse.count({ where: { score: TOP_SCORE, prompt: { ...sameRelation, kind: 'STANDARD', status: 'SUBMITTED', id: { not: prompt.id }, slot: { status: { not: 'CANCELLED' } } } } })
   if (used >= limit) {
     throw new WeeklyError(`You've used your ${limit} top rating${limit === 1 ? '' : 's'} for ${CAP_NOUN[perspective]} this quarter. To choose this, change an earlier one.`, 409)
   }
@@ -160,8 +161,15 @@ export async function submitAnswer(actor: WeeklyActor, subject: InboxSubject, pr
   if (prompt.status !== 'OPEN' && prompt.status !== 'DRAFT' && prompt.status !== 'SUBMITTED') throw new WeeklyError('This question can no longer be answered', 409)
   const comment = prompt.kind === 'COMMENT'
   const data = comment ? commentData(input) : choiceData(prompt.options, input)
+  // An answer that already is a 4 can always be saved again (say, to fix its note).
+  const alreadyFour = prompt.status === 'SUBMITTED' && prompt.response?.score === TOP_SCORE
   return prisma.$transaction(async (tx) => {
-    if (!comment && data.score === TOP_SCORE) await assertFourAllowed(tx, prompt)
+    // The cap before the note, so nobody writes a note for a 4 they cannot give.
+    if (!comment && data.score === TOP_SCORE && !alreadyFour) await assertFourAllowed(tx, prompt)
+    if (!comment) {
+      const problem = choiceProblem({ score: data.score ?? 0, note: data.note })
+      if (problem) throw new WeeklyError(problem)
+    }
     const revision = (prompt.response?.revision ?? 0) + 1
     if (prompt.status === 'SUBMITTED') {
       // Guarded on the revision, so two edits at once cannot both win.
@@ -189,10 +197,7 @@ function commentData(input: AnswerInput) {
 function choiceData(options: Prisma.JsonValue, input: AnswerInput) {
   const chosen = parseOptions(options).find((o) => o.id === input.optionId)
   if (!chosen) throw new WeeklyError('Choose one of the statements')
-  const note = input.note?.trim() || null
-  const problem = choiceProblem({ score: chosen.score, note })
-  if (problem) throw new WeeklyError(problem)
-  return { optionId: chosen.id, score: chosen.score, note, commentText: null }
+  return { optionId: chosen.id, score: chosen.score, note: input.note?.trim() || null, commentText: null }
 }
 
 export async function markNotObserved(actor: WeeklyActor, subject: InboxSubject, promptId: string, now: Date): Promise<void> {

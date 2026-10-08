@@ -85,3 +85,18 @@ test('HR adds a question to a topic, and a new topic for chosen departments', WE
   const renamed = (await contentView(HR_ACTOR)).competencies.find((c) => c.id === created.id)!
   assert.deepEqual([renamed.name, renamed.departments], ['Client care and follow-up', []])
 })
+
+test('a department topic never takes over a classic question, and renaming a topic leaves a shared classic question alone', WEEKLY_DB_TEST, async () => {
+  // A classic question with a department topic's name.
+  await prisma.evaluationQuestion.create({ data: { relationshipType: 'DIRECT_REPORT', questionText: 'Creative range', questionType: 'RATING', orderIndex: 990 } })
+  await loadStandardBank(HR_ACTOR)
+  const dept = await prisma.weeklyCompetency.findUniqueOrThrow({ where: { key: 'LEAD.DEPT.D11' } })
+  assert.notEqual((await prisma.evaluationQuestion.findUniqueOrThrow({ where: { id: dept.sourceQuestionId! } })).orderIndex, 990, 'its own question')
+  const quality = await prisma.weeklyCompetency.findUniqueOrThrow({ where: { key: 'LEAD.QUALITY_OF_WORK' } })
+  await updateTopic(HR_ACTOR, quality.id, { name: 'Quality and care' })
+  assert.equal((await prisma.evaluationQuestion.findUniqueOrThrow({ where: { id: quality.sourceQuestionId! } })).questionText, 'Quality of Work', 'the classic bank keeps its wording')
+  const created = await createTopic(HR_ACTOR, { perspective: 'PEER', name: 'Handovers', departments: [], text: 'How does [name] hand over?', options: eight() })
+  await updateTopic(HR_ACTOR, created.id, { name: 'Clean handovers' })
+  const own = await prisma.weeklyCompetency.findUniqueOrThrow({ where: { id: created.id } })
+  assert.equal((await prisma.evaluationQuestion.findUniqueOrThrow({ where: { id: own.sourceQuestionId! } })).questionText, 'Clean handovers', 'a question made for the topic follows it')
+})

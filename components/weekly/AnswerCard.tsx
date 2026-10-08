@@ -16,7 +16,8 @@ import { errorMessage, weeklyRequest, withActingAs } from './weekly-api'
 
 interface AnswerCardProps { prompt: InboxPrompt; actingAs?: string; onChanged: () => Promise<void> }
 
-const NOTE_NEEDED = /note/i
+/** The server's message when a choice needs a note (answer-rules.ts choiceProblem). */
+const NOTE_NEEDED = /^Add a short note/
 
 /**
  * UX spec, section 8: one statement per question, saved on click. Some choices need a short note; the evaluator never
@@ -30,6 +31,8 @@ export function AnswerCard({ prompt, actingAs, onChanged }: AnswerCardProps) {
   const [saving, setSaving] = useState(false)
   const [submitted, setSubmitted] = useState(prompt.status === 'SUBMITTED')
   const [savedNote, setSavedNote] = useState(prompt.answer?.note ?? '')
+  // The choice the server holds; a choice waiting for its note is not saved yet.
+  const [savedOptionId, setSavedOptionId] = useState<string | null>(prompt.status === 'SUBMITTED' ? prompt.answer?.optionId ?? null : null)
   const [confirmSkip, setConfirmSkip] = useState(false)
   const comment = prompt.kind === 'COMMENT'
   const locked = !prompt.canEdit
@@ -42,6 +45,7 @@ export function AnswerCard({ prompt, actingAs, onChanged }: AnswerCardProps) {
       setNoteRequired(false)
       setSubmitted(true)
       setSavedNote((next.note ?? note).trim())
+      if (!comment) setSavedOptionId(next.optionId ?? optionId)
       toast.success('Saved')
       void onChanged()
     } catch (e) {
@@ -51,6 +55,9 @@ export function AnswerCard({ prompt, actingAs, onChanged }: AnswerCardProps) {
         // Keep the choice while they write the note (only possible before the answer was first submitted).
         if (!submitted) await weeklyRequest(answerUrl, { method: 'PUT', body: { optionId: next.optionId ?? optionId, note } }).catch(() => undefined)
       } else {
+        // Not saved (the cap on 4s, a locked quarter): show the answer the server still holds.
+        if (!comment) setOptionId(savedOptionId)
+        setNoteRequired(false)
         toast.error(message)
       }
     } finally {
@@ -86,7 +93,7 @@ export function AnswerCard({ prompt, actingAs, onChanged }: AnswerCardProps) {
           </div>
           <div className="flex flex-wrap gap-2">
             {prompt.overdue && !submitted && <Badge variant="secondary">From week {prompt.weekIndex}</Badge>}
-            {submitted && <Badge>Saved</Badge>}
+            {noteRequired ? <Badge variant="outline">Needs a note</Badge> : submitted && optionId === savedOptionId && <Badge>Saved</Badge>}
           </div>
         </div>
         {comment ? (

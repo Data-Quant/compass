@@ -74,7 +74,8 @@ export async function updateTopic(actor: WeeklyActor, competencyId: string, inpu
       where: { id: competencyId },
       data: { ...(name !== undefined ? { name } : {}), ...(input.departments !== undefined ? { departments: cleanDepartments(input.departments) } : {}) },
     })
-    if (name !== undefined && topic.sourceQuestionId) await tx.evaluationQuestion.update({ where: { id: topic.sourceQuestionId }, data: { questionText: name } })
+    // Only a question HR made for this topic follows its name; the classic bank's own questions keep their wording.
+    if (name !== undefined && topic.sourceQuestionId && topic.key.includes('.HR.')) await tx.evaluationQuestion.update({ where: { id: topic.sourceQuestionId }, data: { questionText: name } })
     await recordAudit(tx, { actorId: actor.id, actorRole: 'HR', action: 'TOPIC_EDIT', objectType: 'WeeklyCompetency', objectId: competencyId, before: { name: topic.name, departments: topic.departments }, after: input })
   })
 }
