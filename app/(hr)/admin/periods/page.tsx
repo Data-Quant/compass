@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
@@ -13,21 +12,11 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Calendar, Plus, Edit2, Trash2, Lock, Unlock, CheckCircle, Clock, Sparkles, ArrowRight } from 'lucide-react'
+import { Calendar, Plus, Edit2, Trash2, Lock, Unlock, CheckCircle } from 'lucide-react'
 
 interface Period {
   id: string; name: string; startDate: string; endDate: string; reviewStartDate: string; isActive: boolean; isLocked?: boolean; createdAt: string
-  preEvaluationTriggeredAt?: string | null
-  preEvaluationTriggerSource?: 'AUTO' | 'MANUAL' | null
   _count?: { evaluations: number; reports: number }
-}
-
-const isPreEvaluationWindowOpen = (reviewStartDate: string) => {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const evaluationStart = new Date(reviewStartDate)
-  evaluationStart.setHours(0, 0, 0, 0)
-  return evaluationStart > today
 }
 
 export default function PeriodsPage() {
@@ -39,7 +28,6 @@ export default function PeriodsPage() {
   const [periodToDelete, setPeriodToDelete] = useState<Period | null>(null)
   const [formData, setFormData] = useState({ name: '', startDate: '', endDate: '', reviewStartDate: '', isActive: false, isLocked: false })
   const [saving, setSaving] = useState(false)
-  const [triggeringPreEvaluation, setTriggeringPreEvaluation] = useState<string | null>(null)
 
   useEffect(() => { loadPeriods() }, [])
 
@@ -101,24 +89,6 @@ export default function PeriodsPage() {
     } catch { toast.error('Failed to update') }
   }
 
-  const handleTriggerPreEvaluation = async (periodId: string) => {
-    setTriggeringPreEvaluation(periodId)
-    try {
-      const res = await fetch('/api/admin/pre-evaluations/trigger', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ periodId }),
-      })
-      const data = await res.json()
-      if (data.error) toast.error(data.error)
-      else {
-        toast.success(`Triggered ${data.prepCount} prep task(s)`)
-        loadPeriods()
-      }
-    } catch { toast.error('Failed to trigger pre-evaluation onboarding') }
-    finally { setTriggeringPreEvaluation(null) }
-  }
-
   if (loading) {
     return (
       <div className="p-6 sm:p-8 max-w-7xl mx-auto">
@@ -141,8 +111,6 @@ export default function PeriodsPage() {
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {periods.map((period, index) => {
-            const canTriggerPreEvaluation = isPreEvaluationWindowOpen(period.reviewStartDate)
-
             return (
               <motion.div key={period.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 * index }}>
                 <Card>
@@ -176,30 +144,6 @@ export default function PeriodsPage() {
                     <div className="flex justify-between"><span>Reports</span><span className="font-medium text-foreground">{period._count?.reports || 0}</span></div>
                   </div>
 
-                  <div className="rounded-lg border bg-muted/30 p-3 mb-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-medium text-foreground">Pre-evaluation onboarding</p>
-                      {period.preEvaluationTriggeredAt ? (
-                        <Badge variant="secondary" className="bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                          Triggered
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary" className="bg-amber-500/10 text-amber-700 dark:text-amber-400">
-                          Not triggered
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      {period.preEvaluationTriggeredAt
-                        ? canTriggerPreEvaluation
-                          ? `Triggered ${formatDate(period.preEvaluationTriggeredAt)}${period.preEvaluationTriggerSource ? ` via ${period.preEvaluationTriggerSource.toLowerCase()}` : ''}.`
-                          : 'Triggered after the cycle window. Create or update a future period to use pre-cycle onboarding.'
-                        : canTriggerPreEvaluation
-                          ? 'No pre-cycle onboarding has been triggered for this period yet.'
-                          : 'Evaluations have already started for this period, so pre-cycle onboarding is no longer available.'}
-                    </p>
-                  </div>
-
                   <div className="flex gap-2 pt-4 border-t border-border">
                     <Button variant="ghost" size="icon" onClick={() => handleOpenModal(period)} className="text-muted-foreground hover:text-foreground" title="Edit">
                       <Edit2 className="w-4 h-4" />
@@ -212,24 +156,6 @@ export default function PeriodsPage() {
                     </Button>
                   </div>
 
-                  <div className="flex flex-wrap gap-2 pt-3">
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href={`/admin/pre-evaluations?periodId=${period.id}`} className="gap-1.5">
-                        Open Prep Queue <ArrowRight className="w-3.5 h-3.5" />
-                      </Link>
-                    </Button>
-                    {!period.preEvaluationTriggeredAt && canTriggerPreEvaluation && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleTriggerPreEvaluation(period.id)}
-                        disabled={triggeringPreEvaluation === period.id}
-                      >
-                        <Sparkles className="w-3.5 h-3.5" />
-                        {triggeringPreEvaluation === period.id ? 'Triggering...' : 'Trigger Prep'}
-                      </Button>
-                    )}
-                  </div>
                   </CardContent>
                 </Card>
               </motion.div>

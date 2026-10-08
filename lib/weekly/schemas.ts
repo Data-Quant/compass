@@ -119,6 +119,7 @@ export const surveyAdminSchema = z.discriminatedUnion('action', [
   }).strict(),
   z.object({ action: z.literal('remove'), questionId: z.string().min(1) }).strict(),
 ])
+export const reviewStageSchema = z.object({ periodId: z.string().min(1) }).strict()
 export const formQuerySchema = z.object({ relationshipType: formRelationshipTypeSchema, evaluateeId: z.string().min(1) })
 
 export const closeActionSchema = z.discriminatedUnion('action', [

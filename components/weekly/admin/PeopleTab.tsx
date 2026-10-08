@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea'
 import type { AdminCyclesResponse, CycleSummary, ParticipantRow, ParticipantsResponse } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest } from '../weekly-api'
 import { PairWindowsCard } from './PairWindowsCard'
+import { ReviewStageCard } from './ReviewStageCard'
 
 const EXCLUSION_LABELS: Record<NonNullable<ParticipantRow['exclusion']>, string> = {
   NOT_EVALUATED: 'Not evaluated (named leader or Partner)',
@@ -47,6 +48,7 @@ export function CyclePicker({ cycles, cycleId, onChange }: { cycles: CycleSummar
 
 export function PeopleTab() {
   const { cycles, cycleId, setCycleId } = useCycles()
+  const periodId = cycles.find((c) => c.id === cycleId)?.periodId ?? ''
   const [data, setData] = useState<ParticipantsResponse | null>(null)
   const [optingIn, setOptingIn] = useState<ParticipantRow | null>(null)
 
@@ -78,6 +80,7 @@ export function PeopleTab() {
   return (
     <div className="space-y-4">
       <CyclePicker cycles={cycles} cycleId={cycleId} onChange={setCycleId} />
+      {periodId && <ReviewStageCard key={periodId} periodId={periodId} />}
       {cycleId && <PairWindowsCard key={cycleId} cycleId={cycleId} />}
       <p className="text-sm text-muted-foreground">Everyone someone evaluates this quarter, and whether they get weekly questions about them.</p>
       <div className="overflow-x-auto rounded-md border">

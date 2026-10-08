@@ -331,31 +331,15 @@ export default function DashboardPage() {
                   <ClipboardList className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                 </div>
                 <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-semibold text-foreground">Pre-evaluation onboarding required</p>
-                    <Badge variant="secondary" className="bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                      {preEvaluationTask.progressCount}/{preEvaluationTask.totalSections}
-                    </Badge>
-                  </div>
+                  <p className="font-semibold text-foreground">Write your two team questions for {preEvaluationTask.period.name}</p>
                   <p className="text-sm text-muted-foreground mt-1">
-                    {preEvaluationTask.period.name} evaluations start on{' '}
-                    {new Date(preEvaluationTask.period.reviewStartDate).toLocaleDateString()}.
-                    Complete your lead questions before evaluations begin.
+                    Due before evaluations start on {new Date(preEvaluationTask.period.reviewStartDate).toLocaleDateString()}.
                   </p>
-                  <div className="mt-3 flex items-center gap-3 max-w-md">
-                    <Progress
-                      value={Math.round((preEvaluationTask.progressCount / preEvaluationTask.totalSections) * 100)}
-                      className="flex-1 h-2"
-                    />
-                    <span className="text-xs text-muted-foreground">
-                      {Math.round((preEvaluationTask.progressCount / preEvaluationTask.totalSections) * 100)}%
-                    </span>
-                  </div>
                 </div>
               </div>
               <Button asChild>
-                <Link href="/pre-evaluation" className="gap-1.5">
-                  Open Task <ArrowRight className="h-3.5 w-3.5" />
+                <Link href="/evaluations/weekly" className="gap-1.5">
+                  Write them <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               </Button>
             </CardContent>

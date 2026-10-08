@@ -850,13 +850,6 @@ export async function getCurrentLeadPrep(userId: string) {
   }
 }
 
-export async function getLeadQuestionSetForPrep(prepId: string) {
-  return prisma.preEvaluationLeadQuestion.findMany({
-    where: { prepId },
-    orderBy: { orderIndex: 'asc' },
-  })
-}
-
 async function getLeadQuestionSetForTeamLead(periodId: string, leadId: string) {
   const prep = await prisma.preEvaluationLeadPrep.findUnique({
     where: {
@@ -1043,106 +1036,6 @@ export async function saveDraftQuestions(
       })),
     })
   }
-}
-
-export function isReminderDay(targetDate: Date, periodStartDate: Date) {
-  return startOfDay(targetDate).getTime() === startOfDay(periodStartDate).getTime()
-}
-
-export async function findDuePreEvaluationPeriods() {
-  const today = startOfDay()
-  const dueDate = new Date(today)
-  dueDate.setDate(dueDate.getDate() + 14)
-  const nextDay = new Date(dueDate)
-  nextDay.setDate(nextDay.getDate() + 1)
-
-  return prisma.evaluationPeriod.findMany({
-    where: {
-      preEvaluationTriggeredAt: null,
-      reviewStartDate: {
-        gte: dueDate,
-        lt: nextDay,
-      },
-    },
-    orderBy: { reviewStartDate: 'asc' },
-  })
-}
-
-export async function markOverduePreEvaluations() {
-  const today = endOfDay()
-  const overduePreps = await prisma.preEvaluationLeadPrep.findMany({
-    where: {
-      completedAt: null,
-      period: {
-        reviewStartDate: {
-          lte: today,
-        },
-      },
-      overdueAt: null,
-    },
-    select: { id: true },
-  })
-
-  if (overduePreps.length === 0) {
-    return { count: 0 }
-  }
-
-  await prisma.preEvaluationLeadPrep.updateMany({
-    where: {
-      id: {
-        in: overduePreps.map((prep) => prep.id),
-      },
-    },
-    data: {
-      overdueAt: new Date(),
-      status: 'OVERDUE',
-    },
-  })
-
-  return { count: overduePreps.length }
-}
-
-export async function getPreEvaluationReminderCandidates(dayOffset: 7 | 1) {
-  const targetDate = startOfDay()
-  targetDate.setDate(targetDate.getDate() + dayOffset)
-  const nextDay = new Date(targetDate)
-  nextDay.setDate(nextDay.getDate() + 1)
-
-  const reminderField =
-    dayOffset === 7 ? 'sevenDayReminderSentAt' : 'oneDayReminderSentAt'
-
-  return prisma.preEvaluationLeadPrep.findMany({
-    where: {
-      completedAt: null,
-      questionsSubmittedAt: null,
-      // Carried-forward preps already have effective questions — don't nag the lead.
-      questionsCarriedForwardAt: null,
-      period: {
-        reviewStartDate: {
-          gte: targetDate,
-          lt: nextDay,
-        },
-      },
-      [reminderField]: null,
-    } as Prisma.PreEvaluationLeadPrepWhereInput,
-    include: {
-      lead: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-        },
-      },
-      period: {
-        select: {
-          id: true,
-          name: true,
-          startDate: true,
-          reviewStartDate: true,
-        },
-      },
-    },
-  })
 }
 
 export async function setPrepReminderSent(prepId: string, reminderType: 'initial' | '7-day' | '1-day') {

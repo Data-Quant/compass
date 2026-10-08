@@ -1719,7 +1719,7 @@ export async function sendPreEvaluationLeadPrepNotification(
   }
 
   const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || '').replace(/\/$/, '')
-  const prepUrl = appBaseUrl ? `${appBaseUrl}/pre-evaluation` : '/pre-evaluation'
+  const prepUrl = appBaseUrl ? `${appBaseUrl}/evaluations/weekly` : '/evaluations/weekly'
   const reviewStartDateLabel = new Date(prep.period.reviewStartDate).toLocaleDateString()
   const daysUntilStart = Math.ceil(
     (new Date(prep.period.reviewStartDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)

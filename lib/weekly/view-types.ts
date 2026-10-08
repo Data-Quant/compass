@@ -430,3 +430,12 @@ export interface SurveyQuestionResult {
   comments: Array<{ text: string; choice: string | null; name: string | null }>
 }
 export interface SurveyResultsResponse { questions: SurveyQuestionResult[] }
+
+export interface ReviewStageView {
+  periodId: string
+  periodName: string
+  /** When HR opened the review stage; null before. */
+  openedAt: string | null
+  reviewEndsAt: string
+  leads: Array<{ lead: PersonRef; status: string; questionsSubmitted: boolean }>
+}

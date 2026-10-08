@@ -43,7 +43,6 @@ import {
   CheckCircle2,
   Clock,
   Eye,
-  ArrowRight,
   ClipboardList,
   ArrowUpDown,
   Loader2,
@@ -518,7 +517,6 @@ function ProgressCell({
 export default function AdminPerformanceOverviewPage() {
   const user = useLayoutUser()
   const [dashboardData, setDashboardData] = useState<any>(null)
-  const [preEvaluationData, setPreEvaluationData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [nameSortDirection, setNameSortDirection] = useState<'asc' | 'desc'>('asc')
@@ -556,7 +554,7 @@ export default function AdminPerformanceOverviewPage() {
 
   useEffect(() => {
     if (user) {
-      Promise.all([loadDashboard(), loadPreEvaluations()]).finally(() => setLoading(false))
+      loadDashboard().finally(() => setLoading(false))
     }
   }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -567,18 +565,6 @@ export default function AdminPerformanceOverviewPage() {
       setDashboardData(data)
     } catch {
       toast.error('Failed to load performance overview')
-    }
-  }
-
-  const loadPreEvaluations = async () => {
-    try {
-      const res = await fetch('/api/admin/pre-evaluations')
-      const data = await res.json()
-      if (!data.error) {
-        setPreEvaluationData(data)
-      }
-    } catch {
-      // silent
     }
   }
 
@@ -872,43 +858,9 @@ export default function AdminPerformanceOverviewPage() {
           </div>
         )}
         <p className="text-muted-foreground mt-2">
-          Review evaluation progress, pre-evaluation readiness, reports, and completion trends in one place.
+          Review evaluation progress, reports, and completion trends in one place.
         </p>
       </motion.div>
-
-      {preEvaluationData?.period && preEvaluationData?.summary?.total > 0 && (
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-          <Card className="border-blue-500/20">
-            <CardContent className="p-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex items-start gap-3">
-                <div className="rounded-full bg-blue-500/10 p-2.5">
-                  <ClipboardList className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-semibold text-foreground">Pre-evaluation onboarding</p>
-                    <Badge variant="secondary" className="bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                      {preEvaluationData.summary.completed}/{preEvaluationData.summary.total} complete
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {preEvaluationData.period.name} evaluations start on{' '}
-                    {new Date(preEvaluationData.period.reviewStartDate).toLocaleDateString()}.
-                    {preEvaluationData.summary.overdue > 0
-                      ? ` ${preEvaluationData.summary.overdue} lead prep(s) are overdue.`
-                      : ' Review outstanding lead prep tasks before evaluations begin.'}
-                  </p>
-                </div>
-              </div>
-              <Button asChild>
-                <Link href={`/admin/pre-evaluations?periodId=${preEvaluationData.period.id}`} className="gap-1.5">
-                  Review Queue <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-        </motion.div>
-      )}
 
       <motion.div
         variants={stagger.container}

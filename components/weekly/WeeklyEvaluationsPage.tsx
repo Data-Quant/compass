@@ -1,6 +1,7 @@
 'use client'
 
 import { FormsSection } from './forms/FormsSection'
+import { LeadQuestionsCard } from './mapping/LeadQuestionsCard'
 import { MyMappingCard } from './mapping/MyMappingCard'
 import { PulseSurveyCard } from './survey/PulseSurveyCard'
 import { WeeklyInbox } from './WeeklyInbox'
@@ -15,6 +16,7 @@ export function WeeklyEvaluationsPage() {
         </p>
       </div>
       <MyMappingCard />
+      <LeadQuestionsCard />
       <FormsSection />
       <WeeklyInbox />
       <PulseSurveyCard />
