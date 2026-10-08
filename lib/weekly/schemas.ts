@@ -133,6 +133,10 @@ export const roundPeopleActionSchema = z.discriminatedUnion('action', [
     relation: z.enum(['PEER', 'LEAD', 'REPORT']), change: z.enum(['ADD', 'REMOVE']), reason: reasonSchema,
   }).strict(),
 ])
+export const roundResultsActionSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('release-report'), employeeId: z.string().min(1) }).strict(),
+  z.object({ action: z.literal('mark-released') }).strict(),
+])
 export const formQuerySchema = z.object({ relationshipType: formRelationshipTypeSchema, evaluateeId: z.string().min(1) })
 
 export const closeActionSchema = z.discriminatedUnion('action', [

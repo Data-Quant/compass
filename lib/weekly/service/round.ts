@@ -11,6 +11,7 @@ import { readyCompetencyCount } from './content'
 import { assertHr, loadPeople, type WeeklyActor } from './context'
 import { createCycle, loadCycle, updateCycle, type CycleWithPeriod } from './cycles'
 import { WeeklyError } from './errors'
+import { formsProgress } from './form-tables'
 import { deliverOnce, type WeeklySendMail } from './notifications'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -94,6 +95,15 @@ async function checklist(cycle: CycleWithPeriod, stage: RoundStage): Promise<Rou
   if (stage === 'REVIEW') {
     const pending = await prisma.peerChangeRequest.count({ where: { periodId: cycle.periodId, status: 'PENDING' } })
     items.push({ key: 'requests', label: pending ? `${pending} change ${pending === 1 ? 'request' : 'requests'} waiting for a decision` : 'No change requests waiting', done: pending === 0, count: pending, tab: 'people' })
+  }
+  if (stage === 'OPEN') {
+    const forms = await formsProgress(cycle.periodId)
+    const left = forms.total - forms.done
+    items.push({ key: 'forms', label: left ? `${left} quarter-end ${left === 1 ? 'form' : 'forms'} left` : 'Quarter-end forms done', done: left === 0, count: left, tab: 'forms' })
+  }
+  if (stage === 'CLOSED') {
+    const sent = await prisma.emailQueue.count({ where: { report: { periodId: cycle.periodId }, emailStatus: 'SENT' } })
+    items.push({ key: 'reports', label: sent ? `${sent} reports sent; release the rest` : 'Reports not released yet', done: false, count: sent, tab: 'results' })
   }
   return items
 }

@@ -471,3 +471,13 @@ export interface RoundView {
   next: RoundNextStep | null
   checklist: RoundChecklistItem[]
 }
+
+export interface RoundResultRow {
+  person: PersonRef
+  department: string | null
+  /** The report's overall score once generated. */
+  score: number | null
+  generatedAt: string | null
+  email: { status: 'PENDING' | 'SENT' | 'FAILED'; sentAt: string | null } | null
+}
+export interface RoundResultsResponse { released: string | null; closed: boolean; emailsOn: boolean; rows: RoundResultRow[] }

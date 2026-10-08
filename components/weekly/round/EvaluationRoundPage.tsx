@@ -25,6 +25,7 @@ import { SurveyTab } from '../admin/SurveyTab'
 import { TestToolsTab } from '../admin/TestToolsTab'
 import { errorMessage, weeklyRequest } from '../weekly-api'
 import { RoundCycleContext } from './RoundContext'
+import { RoundResultsCard } from './RoundResultsCard'
 import { SetupRoundDialog } from './SetupRoundDialog'
 
 type Tab = RoundChecklistItem['tab']
@@ -186,7 +187,10 @@ export function EvaluationRoundPage() {
             <TabsContent value="people" className="pt-4"><PeopleTab /></TabsContent>
             <TabsContent value="progress" className="pt-4"><DashboardTab /></TabsContent>
             <TabsContent value="forms" className="pt-4"><QuarterEvaluationsWorkspace embedded /></TabsContent>
-            <TabsContent value="results" className="pt-4"><CloseTab /></TabsContent>
+            <TabsContent value="results" className="space-y-4 pt-4">
+              <CloseTab />
+              <RoundResultsCard key={view.periodId} periodId={view.periodId} onReleased={async () => { await loadRounds(view.periodId); await loadView() }} />
+            </TabsContent>
             <TabsContent value="advanced" className="pt-4">
               <p className="mb-4 text-sm text-muted-foreground">Tools for the current AI-scored questions. These change in a later step of the overhaul.</p>
               <Tabs defaultValue="content">

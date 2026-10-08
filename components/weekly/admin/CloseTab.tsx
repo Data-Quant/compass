@@ -13,7 +13,7 @@ import { errorMessage, weeklyRequest } from '../weekly-api'
 import { AskAgainButton } from './AskAgainButton'
 import { CyclePicker, useCycles } from './PeopleTab'
 
-type Pending = 'close' | 'reopen' | 'publish' | null
+type Pending = 'close' | 'reopen' | null
 const keyOf = (evaluateeId: string, perspective: string) => `${evaluateeId}|${perspective}`
 
 export function CloseTab() {
@@ -152,11 +152,11 @@ export function CloseTab() {
               </p>
             )}
             {data.resultsPublishedAt ? (
-              <p className="text-sm">Results published {formatKarachiDateTime(data.resultsPublishedAt)}. Challenges close {data.challengeDeadline ? formatKarachiDate(data.challengeDeadline) : '—'}.</p>
+              <p className="text-sm">Reports released {formatKarachiDateTime(data.resultsPublishedAt)}. Challenges close {data.challengeDeadline ? formatKarachiDate(data.challengeDeadline) : '—'}.</p>
             ) : (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm text-muted-foreground">Release the reports below. Until then you can reopen the round.</p>
                 <Button variant="outline" disabled={busy} onClick={() => setPending('reopen')}>Reopen</Button>
-                <Button disabled={busy} onClick={() => setPending('publish')}>Mark results published</Button>
               </div>
             )}
           </CardContent>
@@ -180,18 +180,9 @@ export function CloseTab() {
         onClose={() => setPending(null)}
         onConfirm={() => void act({ action: 'reopen', cycleId }, () => 'Quarter reopened')}
         title="Reopen this quarter?"
-        message="Weekly questions and reviews start again. Groups you dropped stay dropped (remove their overrides on the Performance page to undo). Close again to rewrite the results."
+        message="Weekly questions and reviews start again. Groups you dropped stay dropped. Close again to rewrite the results."
         confirmText="Reopen"
         variant="warning"
-      />
-      <ConfirmDialog
-        isOpen={pending === 'publish'}
-        onClose={() => setPending(null)}
-        onConfirm={() => void act({ action: 'publish', cycleId }, (r) => `Results published. Challenges close ${formatKarachiDate(String(r.challengeDeadline))}`)}
-        title="Mark results published?"
-        message="Send the reports from the Email page first. From now on, people can challenge their results for 10 working days, and the quarter can no longer be reopened."
-        confirmText="Publish results"
-        variant="info"
       />
     </div>
   )
