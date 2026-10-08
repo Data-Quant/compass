@@ -10,8 +10,8 @@ import { Textarea } from '@/components/ui/textarea'
 import type { MySurveyResponse, SurveyQuestionView } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest } from '../weekly-api'
 
-const AGREE = ['Strongly disagree', 'Disagree', 'Neutral', 'Agree', 'Strongly agree']
-interface Answer { value?: number; choice?: string; text?: string }
+const AGREE = ['Strongly disagree', 'Disagree', 'Neither agree nor disagree', 'Agree', 'Strongly agree']
+interface Answer { value?: number; choice?: string; text?: string; anonymous?: boolean }
 
 const choiceClass = (selected: boolean) =>
   `rounded-md border px-3 py-1.5 text-sm ${selected ? 'border-primary bg-primary text-primary-foreground' : 'bg-background hover:bg-muted'}`
@@ -32,7 +32,7 @@ function complete(q: SurveyQuestionView, a: Answer | undefined): boolean {
 function QuestionField({ q, answer, onChange }: { q: SurveyQuestionView; answer: Answer | undefined; onChange: (a: Answer) => void }) {
   const set = (patch: Answer) => onChange({ ...answer, ...patch })
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 rounded-lg border p-4">
       <p className="text-sm font-medium">{q.text}{!q.required && <span className="font-normal text-muted-foreground"> (optional)</span>}</p>
       {q.kind === 'NPS' && (
         <div className="flex flex-wrap gap-1" role="radiogroup" aria-label={q.text}>
@@ -61,18 +61,24 @@ function QuestionField({ q, answer, onChange }: { q: SurveyQuestionView; answer:
         </div>
       )}
       {q.kind === 'AGREE' && needsText(q, answer) && (
-        <Textarea rows={2} maxLength={2000} aria-label="Why do you disagree?" placeholder="Why do you disagree?" value={answer?.text ?? ''} onChange={(e) => set({ text: e.target.value })} />
+        <Textarea rows={2} maxLength={2000} aria-label="Please tell us why." placeholder="Please tell us why." value={answer?.text ?? ''} onChange={(e) => set({ text: e.target.value })} />
+      )}
+      {q.kind === 'NPS' && answer?.value !== undefined && (
+        <Textarea rows={2} maxLength={2000} aria-label="What is the main reason for your score? (optional)" placeholder="What is the main reason for your score? (optional)" value={answer.text ?? ''} onChange={(e) => set({ text: e.target.value })} />
       )}
       {q.kind === 'TEXT' && <Textarea rows={3} maxLength={2000} aria-label={q.text} value={answer?.text ?? ''} onChange={(e) => set({ text: e.target.value })} />}
+      <div className="flex items-center gap-2 pt-1">
+        <Checkbox id={`anon-${q.id}`} checked={answer?.anonymous === true} onCheckedChange={(v) => set({ anonymous: v === true })} />
+        <Label htmlFor={`anon-${q.id}`} className="text-xs font-normal text-muted-foreground">Submit this answer anonymously</Label>
+      </div>
     </div>
   )
 }
 
-/** Section 5: this week's company pulse questions, answered alongside the evaluation questions. */
+/** UX spec, section 11: this week's company sentiment question, confidential to HR and never part of a score. */
 export function PulseSurveyCard() {
   const [data, setData] = useState<MySurveyResponse | null>(null)
   const [answers, setAnswers] = useState<Record<string, Answer>>({})
-  const [anonymous, setAnonymous] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const load = useCallback(async () => {
@@ -94,12 +100,12 @@ export function PulseSurveyCard() {
     if (!data) return
     setSaving(true)
     try {
-      const body = ready.flatMap((q): Array<{ questionId: string; value?: number | null; choice?: string | null; text: string | null }> => {
+      const body = ready.flatMap((q): Array<{ questionId: string; value?: number | null; choice?: string | null; text: string | null; anonymous: boolean }> => {
         const a = answers[q.id]
-        if (q.kind === 'TEXT' && !a?.text?.trim()) return q.required ? [] : [{ questionId: q.id, text: '' }]
-        return [{ questionId: q.id, value: a?.value ?? null, choice: a?.choice ?? null, text: a?.text?.trim() || null }]
+        if (q.kind === 'TEXT' && !a?.text?.trim()) return q.required ? [] : [{ questionId: q.id, text: '', anonymous: false }]
+        return [{ questionId: q.id, value: a?.value ?? null, choice: a?.choice ?? null, text: a?.text?.trim() || null, anonymous: a?.anonymous === true }]
       })
-      await weeklyRequest('/api/weekly/survey', { method: 'POST', body: { anonymous, answers: body } })
+      await weeklyRequest('/api/weekly/survey', { method: 'POST', body: { answers: body } })
       toast.success('Thank you')
       setAnswers({})
       await load()
@@ -114,17 +120,13 @@ export function PulseSurveyCard() {
     <Card>
       <CardContent className="space-y-5 p-5">
         <div>
-          <h2 className="font-semibold">Company pulse</h2>
+          <h2 className="font-semibold">This week’s sentiment question</h2>
           <p className="text-sm text-muted-foreground">{data.notice}</p>
         </div>
         {data.questions.map((q) => (
           <QuestionField key={q.id} q={q} answer={answers[q.id]} onChange={(a) => setAnswers((current) => ({ ...current, [q.id]: a }))} />
         ))}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Checkbox id="pulse-anonymous" checked={anonymous} onCheckedChange={(v) => setAnonymous(v === true)} />
-            <Label htmlFor="pulse-anonymous">Answer anonymously this week</Label>
-          </div>
+        <div className="flex justify-end">
           <Button disabled={saving || missing.length > 0} onClick={() => void submit()}>{saving ? 'Saving…' : 'Submit'}</Button>
         </div>
       </CardContent>

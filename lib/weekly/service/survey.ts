@@ -1,6 +1,7 @@
-// Section 5 of HR's feedback: the weekly company sentiment survey. HR keeps a question bank per quarter; each week
-// everyone gets the next one or two questions (bank size over the question weeks), alongside their evaluation questions.
-// A person can answer a week anonymously: those answers are stored with no user at all.
+// UX spec, section 11: the weekly company sentiment question. HR keeps a bank per quarter; each week of the round
+// everyone gets the next question, and the last week repeats the eNPS question for a start-and-end comparison. It never
+// counts toward a score. Each answer can be anonymous: stored with no user, and with the department only when at least
+// five people from that department answered that week.
 import type { SurveyQuestionKind } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { cycleWeeks, effectiveWeek, questionWeekCount } from '../calendar'
@@ -11,7 +12,9 @@ import { findRunningCycle, loadCycle } from './cycles'
 import { isUniqueViolation } from './db'
 import { WeeklyError } from './errors'
 
-export const CONFIDENTIALITY_NOTICE = 'All responses are confidential to HR. Tick “answer anonymously” and this week’s answers are saved without your name.'
+export const CONFIDENTIALITY_NOTICE = 'Your answer is confidential to HR. It is never shared with your lead, your colleagues or anyone outside HR, and it does not affect your performance evaluation. Tick “Submit this answer anonymously” if you would rather HR did not see your name on it.'
+/** An anonymous answer's department is shown, and kept, only when at least this many from it answered that week. */
+export const MIN_DEPARTMENT_GROUP = 5
 
 interface DefaultQuestion { text: string; kind: SurveyQuestionKind; options?: string[]; required?: boolean; explainChoice?: boolean }
 
@@ -51,9 +54,14 @@ async function activeBank(periodId: string) {
   return prisma.surveyQuestion.findMany({ where: { periodId, removedAt: null }, orderBy: { orderIndex: 'asc' } })
 }
 
-/** One or two a week: the whole bank spread over the question weeks. */
-export function surveyQuestionsPerWeek(bankSize: number, questionWeeks: number): number {
-  return bankSize === 0 ? 0 : Math.max(1, Math.ceil(bankSize / Math.max(1, questionWeeks)))
+/**
+ * One question a week across the round's weeks; the eNPS repeat goes in the last week when there is a week to spare. A
+ * shorter round drops the repeat first, then asks more than one a week.
+ */
+export function surveyDueWeeks(bankSize: number, totalWeeks: number): { weeks: number[]; repeatWeek: number | null } {
+  const weeks = Math.max(1, totalWeeks)
+  const perWeek = Math.max(1, Math.ceil(bankSize / weeks))
+  return { weeks: Array.from({ length: bankSize }, (_, i) => Math.floor(i / perWeek) + 1), repeatWeek: bankSize < weeks ? weeks : null }
 }
 
 async function surveyWeek(now: Date) {
@@ -61,7 +69,7 @@ async function surveyWeek(now: Date) {
   if (!cycle) return null
   const total = cycleWeeks(cycle)
   const week = Math.min(total, Math.max(1, effectiveWeek(cycle.weekOneStartsOn, cycle.simulatedWeek, now)))
-  return { cycle, week, questionWeeks: questionWeekCount(total) }
+  return { cycle, week }
 }
 
 /** This week's questions and any earlier ones not yet answered. Each question keeps the week it was scheduled for. */
@@ -74,7 +82,7 @@ export async function mySurvey(actor: WeeklyActor, now: Date): Promise<MySurveyR
   return { periodName: at.cycle.period.name, week: at.week, questions: due.map(viewOf), notice: CONFIDENTIALITY_NOTICE }
 }
 
-export interface SurveyAnswerInput { questionId: string; value?: number | null; choice?: string | null; text?: string | null }
+export interface SurveyAnswerInput { questionId: string; value?: number | null; choice?: string | null; text?: string | null; anonymous?: boolean }
 
 function checkAnswer(q: { kind: SurveyQuestionKind; options: string[]; explainChoice: boolean; required: boolean; text: string }, a: SurveyAnswerInput): { value: number | null; choice: string | null; text: string | null } {
   const text = a.text?.trim() || null
@@ -96,8 +104,8 @@ function checkAnswer(q: { kind: SurveyQuestionKind; options: string[]; explainCh
   }
 }
 
-/** Saves this week's answers; with `anonymous` they carry no user. A question is answered once. */
-export async function submitSurvey(actor: WeeklyActor, input: { anonymous: boolean; answers: SurveyAnswerInput[] }, now: Date): Promise<{ saved: number }> {
+/** Saves answers; each anonymous one carries no user, only the department. A question is answered once. */
+export async function submitSurvey(actor: WeeklyActor, input: { answers: SurveyAnswerInput[] }, now: Date): Promise<{ saved: number }> {
   const at = await surveyWeek(now)
   if (!at) throw new WeeklyError('There is no survey running', 409)
   const mine = await mySurvey(actor, now)
@@ -106,7 +114,7 @@ export async function submitSurvey(actor: WeeklyActor, input: { anonymous: boole
   // A question HR removed while the form was open is skipped rather than failing the rest.
   const rows = input.answers.filter((a) => bank.has(a.questionId)).map((a) => {
     if (!due.has(a.questionId)) throw new WeeklyError('You already answered this question', 409)
-    return { questionId: a.questionId, ...checkAnswer(bank.get(a.questionId)!, a) }
+    return { questionId: a.questionId, anonymous: a.anonymous === true, ...checkAnswer(bank.get(a.questionId)!, a) }
   })
   if (new Set(rows.map((r) => r.questionId)).size !== rows.length) throw new WeeklyError('Each question can be answered once')
   // Completions record the week only, and answers carry no time and a random id, so an anonymous answer cannot be
@@ -117,7 +125,9 @@ export async function submitSurvey(actor: WeeklyActor, input: { anonymous: boole
       // The completion rows are claimed first, so a double submit fails as a whole.
       await tx.surveyCompletion.createMany({ data: rows.map((r) => ({ periodId: at.cycle.periodId, questionId: r.questionId, userId: actor.id, weekIndex: at.week })) })
       if (answers.length) {
-        await tx.surveyResponse.createMany({ data: answers.map((r) => ({ periodId: at.cycle.periodId, weekIndex: at.week, userId: input.anonymous ? null : actor.id, ...r })) })
+        await tx.surveyResponse.createMany({
+          data: answers.map(({ anonymous, ...r }) => ({ periodId: at.cycle.periodId, weekIndex: at.week, userId: anonymous ? null : actor.id, department: anonymous ? actor.department ?? null : null, ...r })),
+        })
       }
     })
   } catch (error) {
@@ -132,28 +142,32 @@ export async function surveyBank(actor: WeeklyActor, periodId: string): Promise<
   return (await activeBank(periodId)).map(viewOf)
 }
 
-/** The quarter's question weeks (12 when the quarter has no weekly cycle yet) and its current week. */
-async function periodWeeks(periodId: string, now: Date): Promise<{ questionWeeks: number; week: number }> {
+/** The round's weeks (13 when the quarter has no weekly cycle yet) and its current week. */
+async function periodWeeks(periodId: string, now: Date): Promise<{ totalWeeks: number; week: number }> {
   const row = await prisma.weeklyCycle.findUnique({ where: { periodId }, select: { id: true } })
-  if (!row) return { questionWeeks: 12, week: 1 }
+  if (!row) return { totalWeeks: 13, week: 1 }
   const cycle = await loadCycle(row.id)
-  const questionWeeks = questionWeekCount(cycleWeeks(cycle))
-  return { questionWeeks, week: Math.min(questionWeeks, Math.max(1, effectiveWeek(cycle.weekOneStartsOn, cycle.simulatedWeek, now))) }
+  const totalWeeks = cycleWeeks(cycle)
+  return { totalWeeks, week: Math.min(totalWeeks, Math.max(1, effectiveWeek(cycle.weekOneStartsOn, cycle.simulatedWeek, now))) }
 }
 
-/** Loads the standard bank, spread over the quarter's question weeks: one or two a week. */
+/** Loads the standard bank: one question a week, and the eNPS repeat in the last week when the round has room. */
 export async function loadDefaultSurvey(actor: WeeklyActor, periodId: string, now: Date = new Date()): Promise<void> {
   assertHr(actor)
-  const { questionWeeks } = await periodWeeks(periodId, now)
-  const perWeek = surveyQuestionsPerWeek(DEFAULT_SURVEY.length, questionWeeks)
+  const { totalWeeks } = await periodWeeks(periodId, now)
+  const schedule = surveyDueWeeks(DEFAULT_SURVEY.length, totalWeeks)
+  const enps = DEFAULT_SURVEY[0]
   await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`survey-bank:${periodId}`}))::text`
     if ((await tx.surveyQuestion.count({ where: { periodId, removedAt: null } })) > 0) throw new WeeklyError('This quarter already has questions', 409)
+    const toRow = (q: DefaultQuestion, orderIndex: number, dueWeek: number) => ({
+      periodId, orderIndex, dueWeek, text: q.text, kind: q.kind, options: q.options ?? [], required: q.required ?? true, explainChoice: q.explainChoice ?? false,
+    })
     await tx.surveyQuestion.createMany({
-      data: DEFAULT_SURVEY.map((q, i) => ({
-        periodId, orderIndex: i, dueWeek: Math.floor(i / perWeek) + 1, text: q.text, kind: q.kind,
-        options: q.options ?? [], required: q.required ?? true, explainChoice: q.explainChoice ?? false,
-      })),
+      data: [
+        ...DEFAULT_SURVEY.map((q, i) => toRow(q, i, schedule.weeks[i])),
+        ...(schedule.repeatWeek ? [toRow(enps, DEFAULT_SURVEY.length, schedule.repeatWeek)] : []),
+      ],
     })
   })
   await recordAudit(prisma, { actorId: actor.id, actorRole: 'HR', action: 'SURVEY_LOAD_DEFAULT', objectType: 'EvaluationPeriod', objectId: periodId })
@@ -193,6 +207,7 @@ export async function surveyResults(actor: WeeklyActor, periodId: string): Promi
     prisma.surveyResponse.findMany({ where: { periodId }, orderBy: { id: 'asc' } }),
   ])
   const people = await loadPeople(responses.flatMap((r) => (r.userId ? [r.userId] : [])))
+  const shownDepartment = await departmentsShown(periodId)
   const questions = bank.filter((q) => q.removedAt === null || responses.some((r) => r.questionId === q.id)).map((q) => {
     const mine = responses.filter((r) => r.questionId === q.id)
     const keys = q.kind === 'NPS' ? Array.from({ length: 11 }, (_, i) => String(i)) : q.kind === 'AGREE' ? ['1', '2', '3', '4', '5'] : q.kind === 'CHOICE' ? q.options : []
@@ -204,8 +219,45 @@ export async function surveyResults(actor: WeeklyActor, periodId: string): Promi
     return {
       id: q.id, orderIndex: q.orderIndex, text: q.text, kind: q.kind, removed: q.removedAt !== null, responses: mine.length, counts, enps,
       average: q.kind === 'AGREE' && values.length ? Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 100) / 100 : null,
-      comments: mine.flatMap((r) => (r.text ? [{ text: r.text, choice: r.choice, name: r.userId ? people.get(r.userId)?.name ?? 'Unknown' : null }] : [])),
+      comments: mine.flatMap((r) => (r.text ? [{
+        text: r.text, choice: r.choice, name: r.userId ? people.get(r.userId)?.name ?? 'Unknown' : null,
+        department: !r.userId && r.department && shownDepartment(r.weekIndex, r.department) ? r.department : null,
+      }] : [])),
     }
   })
   return { questions }
+}
+
+/** For each week, how many people from each department answered anything. */
+async function departmentCounts(periodId: string): Promise<Map<string, number>> {
+  const completions = await prisma.surveyCompletion.findMany({ where: { periodId }, select: { userId: true, weekIndex: true } })
+  const people = await loadPeople(completions.map((c) => c.userId))
+  const seen = new Map<string, Set<string>>()
+  for (const c of completions) {
+    const department = people.get(c.userId)?.department
+    if (!department) continue
+    const key = `${c.weekIndex}|${department}`
+    seen.set(key, new Set([...(seen.get(key) ?? []), c.userId]))
+  }
+  return new Map([...seen].map(([key, users]) => [key, users.size]))
+}
+
+async function departmentsShown(periodId: string): Promise<(week: number, department: string) => boolean> {
+  const counts = await departmentCounts(periodId)
+  return (week, department) => (counts.get(`${week}|${department}`) ?? 0) >= MIN_DEPARTMENT_GROUP
+}
+
+/** Daily: once a week is over, an anonymous answer from a department with fewer than five answering loses its department. */
+export async function scrubSmallDepartments(now: Date): Promise<number> {
+  const cycles = await prisma.weeklyCycle.findMany({ where: { status: { in: ['RUNNING', 'CLOSED'] } }, select: { id: true } })
+  let scrubbed = 0
+  for (const { id } of cycles) {
+    const cycle = await loadCycle(id)
+    const current = effectiveWeek(cycle.weekOneStartsOn, cycle.simulatedWeek, now)
+    const shown = await departmentsShown(cycle.periodId)
+    const rows = await prisma.surveyResponse.findMany({ where: { periodId: cycle.periodId, userId: null, department: { not: null }, weekIndex: { lt: current } }, select: { id: true, weekIndex: true, department: true } })
+    const small = rows.filter((r) => !shown(r.weekIndex, r.department as string)).map((r) => r.id)
+    if (small.length) scrubbed += (await prisma.surveyResponse.updateMany({ where: { id: { in: small } }, data: { department: null } })).count
+  }
+  return scrubbed
 }

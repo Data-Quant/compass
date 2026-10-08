@@ -47,7 +47,7 @@ function ResultCard({ q, position }: { q: SurveyQuestionResult; position: number
               {q.comments.map((c, i) => (
                 <li key={i} className="rounded-md border p-2">
                   <p className="whitespace-pre-wrap">{c.text}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{c.name ?? 'Anonymous'}{c.choice ? ` · ${c.choice}` : ''}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{c.name ?? (c.department ? `Anonymous · ${c.department}` : 'Anonymous')}{c.choice ? ` · ${c.choice}` : ''}</p>
                 </li>
               ))}
             </ul>
@@ -98,7 +98,7 @@ export function SurveyTab() {
   return (
     <div className="space-y-4">
       <CyclePicker cycles={cycles} cycleId={cycleId} onChange={setCycleId} />
-      <p className="text-sm text-muted-foreground">Everyone gets the next one or two questions each week (the bank spread over the question weeks). Answers are confidential to HR; anonymous ones carry no name.</p>
+      <p className="text-sm text-muted-foreground">Everyone gets one question a week; the last week repeats the eNPS question. Answers are confidential to HR and never part of a score. Anonymous ones carry no name, and show a department only when at least five from it answered that week.</p>
       {bank && bank.length === 0 && (
         <Button onClick={() => void act({ action: 'load-default', periodId }, 'The standard 12 questions are loaded')}>Load the standard 12 questions</Button>
       )}

@@ -274,7 +274,7 @@ export interface SurveyQuestionResult {
   enps: number | null
   average: number | null
   /** name is null for anonymous answers. */
-  comments: Array<{ text: string; choice: string | null; name: string | null }>
+  comments: Array<{ text: string; choice: string | null; name: string | null; department: string | null }>
 }
 export interface SurveyResultsResponse { questions: SurveyQuestionResult[] }
 
@@ -290,7 +290,7 @@ export type RoundStageValue = 'DRAFT' | 'REVIEW' | 'OPEN' | 'CLOSED' | 'RELEASED
 export type RoundAction = 'open-review' | 'open-round' | 'close-round' | 'release'
 export interface RoundSummary { periodId: string; cycleId: string; name: string; stage: RoundStageValue }
 export interface RoundNextStep { action: RoundAction; label: string; sentence: string }
-export interface RoundChecklistItem { key: string; label: string; done: boolean; count?: number; tab: 'overview' | 'people' | 'progress' | 'review' | 'forms' | 'results' | 'advanced' }
+export interface RoundChecklistItem { key: string; label: string; done: boolean; count?: number; tab: 'overview' | 'people' | 'progress' | 'review' | 'self-reviews' | 'forms' | 'results' | 'advanced' }
 export interface RoundView {
   periodId: string
   cycleId: string

@@ -141,3 +141,23 @@ export function renderListChangedEmail(input: { name: string; change: string; ap
     html: layout(input.name, [escapeHtml(input.change), escapeHtml('Answers you already gave still count. Any new questions start next week.')], `${base(input.appUrl)}/evaluations/weekly`, 'See your lists'),
   }
 }
+
+/** A self-evaluation reached the lead (UX spec, section 12). */
+export function renderSelfReviewSubmittedEmail(input: { name: string; personName: string; monthName: string; reminder?: boolean; appUrl: string }): { subject: string; html: string } {
+  return {
+    subject: `${input.reminder ? 'Reminder: ' : ''}${input.personName} has submitted their self-evaluation for ${input.monthName}`,
+    html: layout(input.name, [
+      escapeHtml(input.reminder
+        ? `${input.personName}'s self-evaluation for ${input.monthName} has waited 5 working days for you to read it, and HR can see that.`
+        : `${input.personName} has submitted their self-evaluation for ${input.monthName}. Read it, mark it read, and reply if you want to.`),
+    ], `${base(input.appUrl)}/evaluations/weekly`, 'Read it'),
+  }
+}
+
+/** The lead replied to a self-evaluation. */
+export function renderSelfReviewReplyEmail(input: { name: string; leadName: string; monthName: string; appUrl: string }): { subject: string; html: string } {
+  return {
+    subject: `${input.leadName} replied to your self-evaluation for ${input.monthName}`,
+    html: layout(input.name, [escapeHtml(`${input.leadName} replied to your self-evaluation for ${input.monthName}.`)], `${base(input.appUrl)}/evaluations/weekly`, 'See the reply'),
+  }
+}

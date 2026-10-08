@@ -6,6 +6,8 @@ import { findRunningCycle } from './cycles'
 import { formsOpenFor } from './forms'
 import { deliverOnce, formsOpenMessages, lowEvidenceMessages, questionRecipients, sendQuestionEmails, type WeeklySendMail, type WeeklySendResult } from './notifications'
 import { remindStaleMappingRequests } from './peer-requests'
+import { remindUnreadSelfReviews } from './self-review'
+import { scrubSmallDepartments } from './survey'
 import { releaseWeek, type ReleaseSummary } from './release'
 import { runScoring, type ScoringRunSummary } from './scoring'
 
@@ -19,6 +21,8 @@ export interface WeeklyDailyResult {
   digests: WeeklySendResult | null
   /** Leads reminded about peer changes waiting 2 working days; a round in review has no running cycle yet. */
   mappingReminders: WeeklySendResult | null
+  /** Leads reminded about self-evaluations unread after 5 working days. */
+  selfReviewReminders: WeeklySendResult | null
 }
 
 const MONDAY = 1
@@ -63,8 +67,11 @@ function addResults(a: WeeklySendResult, b: WeeklySendResult): WeeklySendResult 
  */
 export async function runWeeklyDailyJob(send: WeeklySendMail, appUrl: string, now: Date = new Date(), options: { model?: StructuredModel | null } = {}): Promise<WeeklyDailyResult> {
   const mappingReminders = await remindStaleMappingRequests(now, send, appUrl)
+  // Anonymous sentiment answers from small departments lose their department once their week is over.
+  await scrubSmallDepartments(now)
+  const selfReviewReminders = await remindUnreadSelfReviews(now, send, appUrl)
   const cycle = await findRunningCycle()
-  if (!cycle) return { cycleId: null, week: null, released: null, emails: null, scoring: null, digests: null, mappingReminders }
+  if (!cycle) return { cycleId: null, week: null, released: null, emails: null, scoring: null, digests: null, mappingReminders, selfReviewReminders }
   const week = weekIndexAt(cycle.weekOneStartsOn, now)
   const total = cycleWeeks(cycle)
   // Once HR locks the quarter nothing can be answered, so nothing is released or reminded.
@@ -77,5 +84,5 @@ export async function runWeeklyDailyJob(send: WeeklySendMail, appUrl: string, no
     ...(!locked && formsOpenFor(cycle, now) ? await formsOpenMessages(cycle, now, appUrl) : []),
   ]
   const digests = messages.length > 0 ? await deliverOnce(messages, send) : null
-  return { cycleId: cycle.id, week, released, emails, scoring, digests, mappingReminders }
+  return { cycleId: cycle.id, week, released, emails, scoring, digests, mappingReminders, selfReviewReminders }
 }

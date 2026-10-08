@@ -321,6 +321,7 @@ model User {
 
   // Relations
   evaluatorMappings   EvaluatorMapping[] @relation("Evaluator")
+  selfEvaluations     SelfEvaluation[]   @relation("SelfEvaluationEmployee")
   evaluateeMappings   EvaluatorMapping[] @relation("Evaluatee")
   evaluations         Evaluation[]
   weightages          Weightage[]
@@ -569,6 +570,8 @@ model EvaluationPeriod {
   reports                 Report[]
   evaluations             Evaluation[]
   preEvaluationPreps      PreEvaluationLeadPrep[]
+  /// Archive of the retired quarterly self-evaluation form.
+  selfEvaluations         SelfEvaluation[]
   assignmentOverrides     EvaluationPeriodAssignmentOverride[]
   assignmentSnapshots      EvaluationPeriodAssignmentSnapshot[]
   preEvaluationTriggeredBy User?                    @relation("PreEvaluationTriggeredBy", fields: [preEvaluationTriggeredById], references: [id], onDelete: SetNull)
@@ -2615,6 +2618,100 @@ enum PeerChangeVote {
 /// An employee asks to change their lists for a quarter. Someone with a lead has it reviewed by that lead first (a link in
 /// an email); HR then decides every change. Someone with no lead goes straight to HR. For a peer change the peer is told
 /// and may reply. Tokens are stored hashed.
+/// The monthly self-evaluation question for one month of a quarter (UX spec, section 12): three short parts.
+model SelfReviewQuestion {
+  id            String   @id @default(cuid())
+  periodId      String
+  month         Int
+  title         String
+  /// The three boxes' prompts.
+  parts         String[]
+  /// Month 1 offers "I'd like to discuss this with my lead".
+  discussOption Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([periodId, month])
+}
+
+/// A person's monthly self-evaluation. Sent the moment it is submitted, to their leads and HR; never scored or edited.
+model SelfReview {
+  id              String           @id @default(cuid())
+  periodId        String
+  month           Int
+  userId          String
+  questionId      String
+  answers         String[]
+  wantsDiscussion Boolean          @default(false)
+  submittedAt     DateTime
+  reads           SelfReviewRead[]
+
+  @@unique([periodId, month, userId])
+  @@index([periodId, month])
+}
+
+/// One lead's copy of a self-evaluation: whether they have read it, their reply, and the one reminder.
+model SelfReviewRead {
+  id         String     @id @default(cuid())
+  reviewId   String
+  leadId     String
+  readAt     DateTime?
+  reply      String?
+  repliedAt  DateTime?
+  remindedAt DateTime?
+  review     SelfReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@unique([reviewId, leadId])
+  @@index([leadId])
+}
+
+/// Archive: the retired quarterly self-evaluation form's questions. Read-only; the monthly self-evaluation replaces it.
+model SelfEvaluationQuestion {
+  id         String                     @id @default(cuid())
+  section    String
+  prompt     String
+  helpText   String?
+  type       SelfEvaluationQuestionType @default(TEXT)
+  orderIndex Int
+  isActive   Boolean                    @default(true)
+  createdAt  DateTime                   @default(now())
+  updatedAt  DateTime                   @updatedAt
+
+  @@index([isActive, orderIndex])
+}
+
+/// Archive: answers to the retired quarterly self-evaluation form, kept read-only.
+model SelfEvaluation {
+  id          String               @id @default(cuid())
+  periodId    String
+  employeeId  String
+  status      SelfEvaluationStatus @default(DRAFT)
+  answers     Json                 @default("[]")
+  startedAt   DateTime?
+  submittedAt DateTime?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  period   EvaluationPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  employee User             @relation("SelfEvaluationEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([periodId, employeeId])
+  @@index([periodId])
+  @@index([employeeId])
+  @@index([status])
+}
+
+enum SelfEvaluationQuestionType {
+  TEXT
+  LIST
+  GOAL_TABLE
+}
+
+enum SelfEvaluationStatus {
+  DRAFT
+  SUBMITTED
+}
+
 model PeerChangeRequest {
   id                String           @id @default(cuid())
   periodId          String
@@ -2753,6 +2850,8 @@ model SurveyResponse {
   questionId String
   weekIndex  Int
   userId     String?
+  /// Anonymous answers only: the person's department, kept only when at least five from it answered that week.
+  department String?
   value      Int?
   choice     String?
   text       String?

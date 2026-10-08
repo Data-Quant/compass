@@ -96,9 +96,12 @@ export const peerDecisionSchema = z.union([
   z.object({ requestId: z.string().min(1), action: z.literal('resend') }).strict(),
 ])
 const surveyText = z.string().trim().max(2000).nullable().optional()
+/** Each answer is anonymous or not on its own (UX spec, section 11). */
 export const surveySubmitSchema = z.object({
-  anonymous: z.boolean(),
-  answers: z.array(z.object({ questionId: z.string().min(1), value: z.number().int().min(0).max(10).nullable().optional(), choice: z.string().max(200).nullable().optional(), text: surveyText }).strict()).min(1).max(30),
+  answers: z.array(z.object({
+    questionId: z.string().min(1), value: z.number().int().min(0).max(10).nullable().optional(), choice: z.string().max(200).nullable().optional(), text: surveyText,
+    anonymous: z.boolean().optional(),
+  }).strict()).min(1).max(30),
 }).strict()
 export const surveyAdminSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('load-default'), periodId: z.string().min(1) }).strict(),
@@ -153,3 +156,14 @@ export const reviewActionSchema = z.discriminatedUnion('action', [
 ])
 export const reviewFilterSchema = z.enum(['NEEDS_REVIEW', 'FAILED', 'SCORING', 'DECIDED'])
 export const aiModelSchema = z.object({ model: z.string().trim().max(200).nullable() }).strict()
+
+/** The monthly self-evaluation (UX spec, section 12): three parts, sent once. */
+export const selfReviewSubmitSchema = z.object({
+  month: z.number().int().min(1).max(3),
+  answers: z.array(z.string().max(3000)).length(3),
+  wantsDiscussion: z.boolean().default(false),
+}).strict()
+export const selfReviewLeadSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('read'), reviewId: z.string().min(1) }).strict(),
+  z.object({ action: z.literal('reply'), reviewId: z.string().min(1), text: z.string().trim().min(1, 'Write a reply').max(1000) }).strict(),
+])

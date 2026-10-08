@@ -2,6 +2,8 @@
 
 import { FormsSection } from './forms/FormsSection'
 import { MyMappingCard } from './mapping/MyMappingCard'
+import { SelfReviewCard } from './self-review/SelfReviewCard'
+import { TeamSelfReviewsCard } from './self-review/TeamSelfReviewsCard'
 import { PulseSurveyCard } from './survey/PulseSurveyCard'
 import { WeeklyInbox } from './WeeklyInbox'
 
@@ -17,7 +19,9 @@ export function WeeklyEvaluationsPage() {
       <MyMappingCard />
       <FormsSection />
       <WeeklyInbox />
+      <SelfReviewCard />
       <PulseSurveyCard />
+      <TeamSelfReviewsCard />
     </div>
   )
 }
