@@ -562,17 +562,20 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
   }
 
   return (
-    // On large screens the panel is a fixed-height column: Master Lists is pinned and
-    // only the sections beneath it scroll. Below `lg` it falls back to ordinary stacked
-    // flow, because pinning a card on a short screen would leave nothing to scroll.
-    <div className="space-y-4 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:space-y-0 lg:overflow-hidden">
+    // The page scrolls as one document (the layout's <main> is the scroll container).
+    // On large screens Master Lists sticks to the top of that viewport once reached,
+    // so it stays in reach while the sections beneath it scroll past. An earlier
+    // version made the whole tab a fixed-height column clipped with overflow-hidden;
+    // once the hero and tab bar filled the viewport the sections below had no room
+    // and could not be scrolled to at all.
+    <div className="space-y-4">
       {/*
-        Pinned. The max-height is a safety net rather than a design choice: with 0
-        departments, 4 employment types and 3 salary heads it never engages, but these
-        lists grow as HR adds to them, and a pinned card with no ceiling would keep
-        taking room from the scrolling sections until there was none left.
+        Sticky, with a ceiling: departments, employment types and salary heads grow
+        as HR adds to them, and without a max-height the pinned card would eventually
+        cover the sections it is meant to sit above. The background keeps content
+        from showing through the gap beneath the card as it scrolls under.
       */}
-      <div className="lg:max-h-[45vh] lg:shrink-0 lg:overflow-y-auto lg:pb-4">
+      <div className="lg:sticky lg:top-0 lg:z-10 lg:max-h-[45vh] lg:overflow-y-auto lg:bg-background lg:pb-4">
       <Card>
         <CardContent className="p-6 space-y-4">
           <div className="flex items-center justify-between">
@@ -661,8 +664,7 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
       </Card>
       </div>
 
-      {/* Everything below the pinned card scrolls. */}
-      <div className="space-y-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pb-6">
+      <div className="space-y-4 pb-6">
       <Card>
         <CardContent className="p-6">
           <div className="flex items-center justify-between mb-4">

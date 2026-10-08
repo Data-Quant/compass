@@ -216,20 +216,8 @@ export function PayrollDashboard({
   if (loading) return <LoadingScreen message="Loading payroll..." />
 
   return (
-    <div
-      className={
-        activeTab === 'settings'
-          ? 'mx-auto max-w-7xl space-y-6 p-6 sm:p-8 lg:flex lg:h-full lg:flex-col lg:space-y-0 lg:overflow-hidden'
-          : 'mx-auto max-w-7xl space-y-6 p-6 sm:p-8'
-      }
-    >
-      <div
-        className={
-          activeTab === 'settings'
-            ? 'space-y-6 lg:shrink-0'
-            : 'space-y-6'
-        }
-      >
+    <div className="mx-auto max-w-7xl space-y-6 p-6 sm:p-8">
+      <div className="space-y-6">
         {/* Hero Section */}
         <motion.section
           initial={{ opacity: 0, y: 8 }}
@@ -482,14 +470,7 @@ export function PayrollDashboard({
 
         {activeTab === 'attendance' && <PayrollAttendancePanel periods={periods} />}
         {activeTab === 'employees' && <PayrollEmployeesPanel />}
-        {activeTab === 'settings' && (
-          // The panel owns its own scrolling: Master Lists is pinned inside it and only
-          // the sections below it scroll. This wrapper must therefore not scroll as
-          // well, or the pinned card would scroll away with the outer content.
-          <div className="lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden lg:pt-6">
-            <PayrollSettingsPanel canEdit={canEditMaster} />
-          </div>
-        )}
+        {activeTab === 'settings' && <PayrollSettingsPanel canEdit={canEditMaster} />}
 
       {/* Import Dialog */}
       <PayrollImportDialog
