@@ -51,6 +51,10 @@ export function weeklyActor(person: WeeklyTestPerson): WeeklyActor {
 
 export async function resetWeeklyTestData(db: PrismaClient): Promise<void> {
   if (!isKpiTestDatabase(process.env.DATABASE_URL)) throw new Error('Refusing to reset a database that is not compass_kpi_test')
+  await db.weeklyAiSettings.deleteMany()
+  await db.weeklyScoreReview.deleteMany()
+  await db.weeklyAiScore.deleteMany()
+  await db.weeklyScoringJob.deleteMany()
   await db.weeklyResponse.deleteMany()
   await db.weeklyPrompt.deleteMany()
   await db.weeklyRelease.deleteMany()

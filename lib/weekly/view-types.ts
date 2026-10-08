@@ -107,6 +107,29 @@ export interface ParticipantRow {
 export type RoundWarningKey = 'NO_LEAD' | 'FEW_PEERS'
 export interface ParticipantsResponse { cycleId: string; rows: ParticipantRow[] }
 
+/** An answer in HR's review: the full scale with levels, the choice, the note, the model's score and HR's decision. */
+export interface ReviewItem {
+  responseId: string
+  revision: number
+  weekIndex: number
+  topic: string
+  perspective: Perspective
+  state: AnswerStateValue
+  evaluator: PersonRef
+  evaluatee: PersonRef
+  question: string
+  statements: Array<{ id: string; text: string; level: number }>
+  chosen: { id: string; text: string; level: number }
+  note: string | null
+  ai: { score: number; rationale: string; model: string } | null
+  decision: { action: 'ACCEPTED' | 'ADJUSTED'; finalScore: number; reason: string | null; reviewer: string; at: string } | null
+  jobError: string | null
+  /** This evaluator's confirmed 4s in this relationship (other answers) and their limit; partners are exempt. */
+  fours: { used: number; limit: number; exempt: boolean }
+}
+export type AnswerStateValue = 'SCORING' | 'FAILED' | 'NEEDS_REVIEW' | 'DECIDED'
+export interface ReviewQueueResponse { cycleId: string; counts: Record<AnswerStateValue, number>; items: ReviewItem[] }
+
 export interface CoverageView { evaluatee: PersonRef; perspective: Perspective; satisfied: number; total: number; evaluatorsContributing: number; share: number; lowEvidence: boolean }
 export interface EvaluatorStatsView { evaluator: PersonRef; released: number; answered: number; notObserved: number; open: number; overdue: number; responseRate: number | null }
 export interface DriftView { evaluator: PersonRef; perspective: Perspective; difference: number; count: number }
@@ -160,6 +183,8 @@ export interface CloseViewResponse {
   periodLocked: boolean
   closedAt: string | null
   resultsPublishedAt: string | null
+  /** Answers still with the model, failed, or waiting for HR: the quarter cannot close until all are decided. */
+  blockers: { scoring: number; failed: number; needsReview: number }
   /** Unanswered questions; they expire at close. */
   openPrompts: number
   /** `outstanding`: names of the evaluators who still have forms to submit. */
@@ -260,7 +285,7 @@ export type RoundStageValue = 'DRAFT' | 'REVIEW' | 'OPEN' | 'CLOSED' | 'RELEASED
 export type RoundAction = 'open-review' | 'open-round' | 'close-round' | 'release'
 export interface RoundSummary { periodId: string; cycleId: string; name: string; stage: RoundStageValue }
 export interface RoundNextStep { action: RoundAction; label: string; sentence: string }
-export interface RoundChecklistItem { key: string; label: string; done: boolean; count?: number; tab: 'overview' | 'people' | 'progress' | 'forms' | 'results' | 'advanced' }
+export interface RoundChecklistItem { key: string; label: string; done: boolean; count?: number; tab: 'overview' | 'people' | 'progress' | 'review' | 'forms' | 'results' | 'advanced' }
 export interface RoundView {
   periodId: string
   cycleId: string

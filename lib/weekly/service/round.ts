@@ -15,6 +15,7 @@ import { readyCompetencyCount } from './content'
 import { assertHr, loadPeople, type WeeklyActor } from './context'
 import { createCycle, loadCycle, updateCycle, type CycleWithPeriod } from './cycles'
 import { WeeklyError } from './errors'
+import { loadAnswerRecords } from './answer-states'
 import { formsProgress } from './form-tables'
 import { deliverOnce, type WeeklySendMail } from './notifications'
 
@@ -108,6 +109,11 @@ async function checklist(cycle: CycleWithPeriod, stage: RoundStage): Promise<Rou
     items.push(await confirmationsItem(cycle.periodId))
   }
   if (stage === 'OPEN') {
+    const answers = await loadAnswerRecords({ cycleId: cycle.id })
+    // HR reviews every score; answers still with the model come to HR shortly.
+    const waiting = answers.filter((r) => r.state === 'NEEDS_REVIEW' || r.state === 'FAILED').length
+    const label = waiting ? `${waiting} answer${waiting === 1 ? '' : 's'} waiting for your review` : 'Nothing waiting for your review'
+    items.push({ key: 'review', label, done: answers.every((r) => r.state === 'DECIDED'), count: waiting, tab: 'review' })
     const forms = await formsProgress(cycle.periodId)
     const left = forms.total - forms.done
     items.push({ key: 'forms', label: left ? `${left} quarter-end ${left === 1 ? 'form' : 'forms'} left` : 'Quarter-end forms done', done: left === 0, count: left, tab: 'forms' })

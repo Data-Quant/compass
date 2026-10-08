@@ -58,7 +58,7 @@ export function ContentTab() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          {data.competencies.length} topics · {ready} ready to ask. Each question offers 8 statements; the one an evaluator picks is the score.
+          {data.competencies.length} topics · {ready} ready to ask. Each question offers 8 statements; the level of the one an evaluator picks guides the model’s score, which you then review.
         </p>
         <Button variant="outline" disabled={loading} onClick={() => void loadStandard()}>{loading ? 'Loading…' : 'Load the standard question bank'}</Button>
       </div>

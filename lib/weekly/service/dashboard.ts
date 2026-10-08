@@ -57,7 +57,7 @@ export async function dashboardView(actor: WeeklyActor, cycleId: string, now: Da
   const cycle = await loadCycle(cycleId)
   const summary = cycleSummary(cycle, now)
   const [records, coverage, evaluators] = await Promise.all([loadAnswerRecords({ cycleId }), coverageRows(cycleId), evaluatorStats(cycleId, summary.currentWeek)])
-  const drift = evaluatorDrift(records.map((r) => ({ evaluatorId: r.evaluatorId, perspective: r.perspective, finalScore: r.score })))
+  const drift = evaluatorDrift(records.flatMap((r) => (r.score === null ? [] : [{ evaluatorId: r.evaluatorId, perspective: r.perspective, finalScore: r.score }])))
   const people = await loadPeople(drift.map((d) => d.evaluatorId))
   return {
     cycle: summary,

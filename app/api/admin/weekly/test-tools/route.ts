@@ -3,9 +3,11 @@ import { guardWeeklyMutation, requireWeeklySession } from '@/lib/weekly/http'
 import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
 import { testToolSchema } from '@/lib/weekly/schemas'
 import { actorFromUser } from '@/lib/weekly/service/context'
-import { askPairNow, fillSynthetic, pairsFor, releaseNextWeek, releaseWeekFor, resetCycle } from '@/lib/weekly/service/test-tools'
+import { askPairNow, fillSynthetic, pairsFor, releaseNextWeek, releaseWeekFor, resetCycle, scoreNow } from '@/lib/weekly/service/test-tools'
 
 export const runtime = 'nodejs'
+// "Score now" runs for up to 50 s plus one model call (45 s).
+export const maxDuration = 120
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,6 +24,8 @@ export async function POST(request: NextRequest) {
       case 'reset':
         await resetCycle(actor, input.cycleId)
         return NextResponse.json({ success: true })
+      case 'score-now':
+        return NextResponse.json({ success: true, ...(await scoreNow(actor, input.cycleId, now)) })
       case 'pairs':
         return NextResponse.json({ success: true, pairs: await pairsFor(actor, input.cycleId, input.evaluatorId, now) })
       case 'release-for':

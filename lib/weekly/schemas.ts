@@ -46,6 +46,7 @@ export const testToolSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('release-next-week'), cycleId: z.string().min(1) }).strict(),
   z.object({ action: z.literal('fill-synthetic'), cycleId: z.string().min(1), evaluatorId: z.string().min(1).optional() }).strict(),
   z.object({ action: z.literal('reset'), cycleId: z.string().min(1) }).strict(),
+  z.object({ action: z.literal('score-now'), cycleId: z.string().min(1) }).strict(),
   z.object({ action: z.literal('pairs'), cycleId: z.string().min(1), evaluatorId: z.string().min(1) }).strict(),
   z.object({ action: z.literal('release-for'), cycleId: z.string().min(1), evaluatorId: z.string().min(1) }).strict(),
   z.object({ action: z.literal('ask-pair'), cycleId: z.string().min(1), evaluatorId: z.string().min(1), evaluateeId: z.string().min(1) }).strict(),
@@ -142,3 +143,13 @@ export const closeActionSchema = z.discriminatedUnion('action', [
 ])
 export type CloseActionInput = z.infer<typeof closeActionSchema>
 
+
+const halfPoint = z.number().refine((v) => v >= 1 && v <= 4 && Number.isInteger(v * 2), 'Scores go from 1 to 4 in half points')
+/** HR's review of an answer: accept the model's score, set it (with a reason), or send a failed answer back to the model. */
+export const reviewActionSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('accept'), responseId: z.string().min(1), revision: z.number().int().min(1), reason: z.string().trim().max(500).optional() }).strict(),
+  z.object({ action: z.literal('set-score'), responseId: z.string().min(1), revision: z.number().int().min(1), score: halfPoint, reason: z.string().trim().min(3, 'Give a reason').max(500) }).strict(),
+  z.object({ action: z.literal('retry'), responseId: z.string().min(1) }).strict(),
+])
+export const reviewFilterSchema = z.enum(['NEEDS_REVIEW', 'FAILED', 'SCORING', 'DECIDED'])
+export const aiModelSchema = z.object({ model: z.string().trim().max(200).nullable() }).strict()

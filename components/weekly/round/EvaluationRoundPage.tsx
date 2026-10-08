@@ -13,10 +13,12 @@ import { formatKarachiDate } from '@/lib/weekly/format'
 import { ROUND_STAGE_LABELS, ROUND_STAGES } from '@/lib/weekly/round-stage'
 import type { RoundChecklistItem, RoundSummary, RoundView, WeeklyMeResponse } from '@/lib/weekly/view-types'
 import { QuarterEvaluationsWorkspace } from '../form-tables/QuarterEvaluationsWorkspace'
+import { AiModelTab } from '../admin/AiModelTab'
 import { CloseTab } from '../admin/CloseTab'
 import { ContentTab } from '../admin/ContentTab'
 import { DashboardTab } from '../admin/DashboardTab'
 import { PeopleTab } from '../admin/PeopleTab'
+import { ReviewTab } from '../admin/ReviewTab'
 import { SurveyTab } from '../admin/SurveyTab'
 import { TestToolsTab } from '../admin/TestToolsTab'
 import { errorMessage, weeklyRequest } from '../weekly-api'
@@ -26,7 +28,7 @@ import { SetupRoundDialog } from './SetupRoundDialog'
 
 type Tab = RoundChecklistItem['tab']
 const TABS: Array<{ value: Tab; label: string }> = [
-  { value: 'overview', label: 'Overview' }, { value: 'people', label: 'People' }, { value: 'progress', label: 'Progress' },
+  { value: 'overview', label: 'Overview' }, { value: 'people', label: 'People' }, { value: 'progress', label: 'Progress' }, { value: 'review', label: 'Review answers' },
   { value: 'forms', label: 'Quarter-end forms' }, { value: 'results', label: 'Close and release' }, { value: 'advanced', label: 'Advanced' },
 ]
 
@@ -185,6 +187,7 @@ export function EvaluationRoundPage() {
             </TabsContent>
             <TabsContent value="people" className="pt-4"><PeopleTab /></TabsContent>
             <TabsContent value="progress" className="pt-4"><DashboardTab /></TabsContent>
+            <TabsContent value="review" className="pt-4"><ReviewTab /></TabsContent>
             <TabsContent value="forms" className="pt-4"><QuarterEvaluationsWorkspace /></TabsContent>
             <TabsContent value="results" className="space-y-4 pt-4">
               <CloseTab />
@@ -194,10 +197,12 @@ export function EvaluationRoundPage() {
               <Tabs value={advanced} onValueChange={setAdvanced}>
                 <TabsList className="flex-wrap">
                   <TabsTrigger value="content">Questions</TabsTrigger>
+                  <TabsTrigger value="ai">AI model</TabsTrigger>
                   <TabsTrigger value="survey">Pulse survey</TabsTrigger>
                   {testTools && <TabsTrigger value="test">Test tools</TabsTrigger>}
                 </TabsList>
                 <TabsContent value="content"><ContentTab /></TabsContent>
+                <TabsContent value="ai"><AiModelTab /></TabsContent>
                 <TabsContent value="survey"><SurveyTab /></TabsContent>
                 {testTools && <TabsContent value="test"><TestToolsTab /></TabsContent>}
               </Tabs>

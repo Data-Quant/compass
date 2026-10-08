@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { getResolvedEvaluationAssignments, type ResolvedEvaluationAssignment } from '@/lib/evaluation-assignments'
 import type { AggregationCounts } from '../aggregation'
-import { categoryKey, dropCandidates } from '../close-rules'
+import { categoryKey, closeBlockers, dropCandidates, hasBlockers, type CloseBlockers } from '../close-rules'
 import { isWeeklyRelationshipType, perspectiveOf, type Perspective } from '../perspectives'
 import type { CloseViewResponse } from '../view-types'
 import { aggregateCycle, hasLeftBy, type DropRecord } from './aggregate'
@@ -38,10 +38,19 @@ async function weeklyCategories(cycle: CycleWithPeriod, now: Date): Promise<Map<
 function confirmedCounts(records: readonly AnswerRecord[]): Map<string, number> {
   const counts = new Map<string, number>()
   for (const r of records) {
+    if (r.score === null) continue
     const key = categoryKey(r.evaluateeId, r.perspective)
     counts.set(key, (counts.get(key) ?? 0) + 1)
   }
   return counts
+}
+
+function describe(blockers: CloseBlockers): string {
+  return [
+    blockers.scoring && `${blockers.scoring} still being scored by the model`,
+    blockers.failed && `${blockers.failed} the model could not score`,
+    blockers.needsReview && `${blockers.needsReview} HR has not decided yet`,
+  ].filter(Boolean).join(', ')
 }
 
 export async function closeView(actor: WeeklyActor, cycleId: string, now: Date): Promise<CloseViewResponse> {
@@ -50,6 +59,7 @@ export async function closeView(actor: WeeklyActor, cycleId: string, now: Date):
   const period = await prisma.evaluationPeriod.findUniqueOrThrow({ where: { id: cycle.periodId }, select: { isLocked: true } })
   const running = cycle.status === 'RUNNING'
   const records = running ? await loadAnswerRecords({ cycleId }) : []
+  const blockers = closeBlockers(records.map((r) => r.state))
   const categories = running ? await weeklyCategories(cycle, now) : new Map<string, Category>()
   const candidates = dropCandidates([...categories.values()], confirmedCounts(records))
   const [people, openPrompts, progress, coverage, lastRun] = await Promise.all([
@@ -67,6 +77,7 @@ export async function closeView(actor: WeeklyActor, cycleId: string, now: Date):
     periodLocked: period.isLocked,
     closedAt: cycle.closedAt?.toISOString() ?? null,
     resultsPublishedAt: cycle.resultsPublishedAt?.toISOString() ?? null,
+    blockers,
     openPrompts,
     forms: { open: formsOpenFor(cycle, now), opensAt: formsOpenDate(cycle).toISOString(), total: progress.total, done: progress.done, outstanding },
     dropCandidates: candidates
@@ -77,7 +88,7 @@ export async function closeView(actor: WeeklyActor, cycleId: string, now: Date):
       id: lastRun.id, at: lastRun.createdAt.toISOString(), runBy: runner?.name ?? 'Unknown',
       counts: lastRun.counts as unknown as AggregationCounts, drops: Array.isArray(lastRun.drops) ? lastRun.drops.length : 0,
     },
-    canClose: running && !period.isLocked,
+    canClose: running && !period.isLocked && !hasBlockers(blockers),
   }
 }
 
@@ -92,6 +103,7 @@ export async function closeCycle(
   if (cycle.status !== 'RUNNING') throw new WeeklyError('This quarter is already closed', 409)
   const view = await closeView(actor, cycleId, now)
   if (view.periodLocked) throw new WeeklyError('Unlock the evaluation period first: a locked period ignores dropped groups', 409)
+  if (hasBlockers(view.blockers)) throw new WeeklyError(`Every answer needs HR's decision first: ${describe(view.blockers)}`, 409)
   // Forms cannot be filled once the quarter closes, and a missing form's group keeps its weight, so HR confirms knowingly.
   if (view.forms.outstanding.length > 0 && input.formsAcknowledged !== true) {
     const missing = view.forms.total - view.forms.done

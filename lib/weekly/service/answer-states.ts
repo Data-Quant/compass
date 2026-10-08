@@ -1,8 +1,9 @@
-// Submitted weekly answers with their scores. A multiple-choice answer is scored the moment it is given (UX spec,
-// section 8), so there is no scoring or review state: an answer either has a score or is a comment.
-import type { RelationshipType, WeeklyPromptKind } from '@prisma/client'
+// Submitted multiple-choice answers with where each stands: being scored by the model, failed, waiting for HR, or
+// decided. Only HR's decision on an answer's current revision counts; an edit sends it back through scoring and review.
+import type { RelationshipType, WeeklyAiScore, WeeklyPromptKind, WeeklyScoreReview } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { perspectiveOf, type Perspective } from '../perspectives'
+import { answerState, type AnswerState } from '../review-rules'
 import type { Db } from './db'
 
 export interface AnswerRecord {
@@ -18,13 +19,22 @@ export interface AnswerRecord {
   relationshipType: RelationshipType
   kind: WeeklyPromptKind
   weekIndex: number
+  revision: number
   submittedAt: Date | null
-  /** The chosen statement's score, 1 to 4 in half points. */
-  score: number
+  /** The chosen statement's level: the model's starting point, not the score. */
+  level: number
+  job: { status: string; error: string | null } | null
+  aiScore: WeeklyAiScore | null
+  review: WeeklyScoreReview | null
+  state: AnswerState
+  /** HR's confirmed score; null until HR decides. */
+  score: number | null
 }
 
-/** Every submitted multiple-choice answer, with its score. No notes. */
-export async function loadAnswerRecords(filter: { cycleId?: string; evaluateeId?: string; evaluatorId?: string }, db: Db = prisma): Promise<AnswerRecord[]> {
+const latestFirst = <T extends { createdAt: Date }>(rows: readonly T[]) => [...rows].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+
+/** Every submitted multiple-choice answer. Sequential queries on purpose: `db` may be an interactive transaction. */
+export async function loadAnswerRecords(filter: { cycleId?: string; evaluateeId?: string; evaluatorId?: string; responseIds?: readonly string[] }, db: Db = prisma): Promise<AnswerRecord[]> {
   const prompts = await db.weeklyPrompt.findMany({
     where: {
       ...(filter.cycleId ? { cycleId: filter.cycleId } : {}),
@@ -32,22 +42,35 @@ export async function loadAnswerRecords(filter: { cycleId?: string; evaluateeId?
       ...(filter.evaluatorId ? { evaluatorId: filter.evaluatorId } : {}),
       status: 'SUBMITTED',
       kind: 'STANDARD',
-      response: { is: { score: { not: null } } },
+      response: { is: { level: { not: null }, ...(filter.responseIds ? { id: { in: [...filter.responseIds] } } : {}) } },
     },
     select: {
       id: true, cycleId: true, slotId: true, evaluatorId: true, evaluateeId: true, relationshipType: true, kind: true, weekIndex: true,
-      response: { select: { id: true, submittedAt: true, score: true } },
+      response: { select: { id: true, submittedAt: true, level: true, revision: true } },
       slot: { select: { competencyId: true, competency: { select: { name: true, perspective: true } } } },
     },
     orderBy: [{ weekIndex: 'asc' }, { createdAt: 'asc' }],
   })
+  const ids = prompts.flatMap((p) => (p.response ? [p.response.id] : []))
+  if (ids.length === 0) return []
+  const jobs = await db.weeklyScoringJob.findMany({ where: { responseId: { in: ids } } })
+  const scores = latestFirst(await db.weeklyAiScore.findMany({ where: { responseId: { in: ids } } }))
+  const reviews = latestFirst(await db.weeklyScoreReview.findMany({ where: { responseId: { in: ids } } }))
   return prompts.flatMap((p): AnswerRecord[] => {
-    if (!p.response || p.response.score === null) return []
+    const r = p.response
+    if (!r || r.level === null) return []
+    const current = <T extends { responseId: string; revision: number }>(row: T) => row.responseId === r.id && row.revision === r.revision
+    const job = jobs.find(current) ?? null
+    const aiScore = scores.find(current) ?? null
+    const review = reviews.find(current) ?? null
     return [{
-      responseId: p.response.id, promptId: p.id, cycleId: p.cycleId, slotId: p.slotId, competencyId: p.slot?.competencyId ?? null,
+      responseId: r.id, promptId: p.id, cycleId: p.cycleId, slotId: p.slotId, competencyId: p.slot?.competencyId ?? null,
       topic: p.slot?.competency.name ?? 'Question', perspective: perspectiveOf(p.relationshipType) ?? p.slot?.competency.perspective ?? 'PEER',
       evaluatorId: p.evaluatorId, evaluateeId: p.evaluateeId, relationshipType: p.relationshipType, kind: p.kind, weekIndex: p.weekIndex,
-      submittedAt: p.response.submittedAt, score: p.response.score,
+      revision: r.revision, submittedAt: r.submittedAt, level: r.level,
+      job: job && { status: job.status, error: job.error }, aiScore, review,
+      state: answerState({ jobStatus: job?.status ?? null, hasAiScore: aiScore !== null, hasReview: review !== null }),
+      score: review?.finalScore ?? null,
     }]
   })
 }

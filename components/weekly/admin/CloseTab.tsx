@@ -87,7 +87,15 @@ export function CloseTab() {
           <Card>
             <CardContent className="space-y-2 p-4">
               <h2 className="font-semibold">Before closing</h2>
-              <p className="text-sm">Every answer already has its score. Closing stops answers and writes the scores into the quarter’s results.</p>
+              {data.blockers.scoring + data.blockers.failed + data.blockers.needsReview === 0 ? (
+                <p className="text-sm">Every answer has a confirmed score. Closing stops answers and writes the scores into the quarter’s results.</p>
+              ) : (
+                <ul className="list-disc pl-5 text-sm">
+                  {data.blockers.needsReview > 0 && <li>{data.blockers.needsReview} answers wait for your review.</li>}
+                  {data.blockers.failed > 0 && <li>{data.blockers.failed} answers the model could not score: score them yourself in Review answers.</li>}
+                  {data.blockers.scoring > 0 && <li>{data.blockers.scoring} answers are still with the model.</li>}
+                </ul>
+              )}
               {data.openPrompts > 0 && <p className="text-sm text-muted-foreground">{data.openPrompts} unanswered questions will expire.</p>}
             </CardContent>
           </Card>

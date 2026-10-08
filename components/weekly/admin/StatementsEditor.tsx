@@ -1,7 +1,7 @@
 'use client'
 
-// A question's 8 statements and their scores (UX spec, section 8). HR sees them in score order; evaluators see them
-// shuffled, without scores.
+// A question's 8 statements and their levels (UX spec, section 8). A level is HR's hidden guide for the model that
+// scores answers; evaluators see the statements shuffled, without levels.
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { MCQ_LEVELS, MCQ_OPTION_COUNT, optionsProblem, type McqStatement } from '@/lib/weekly/mcq'
@@ -21,13 +21,13 @@ export function StatementsEditor({ statements, onChange, disabled, label }: Prop
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted-foreground">
-        {MCQ_OPTION_COUNT} statements, one per score from 1 to 4 in half points, with one level repeated in other words. Evaluators see them shuffled and never see the scores.
+        {MCQ_OPTION_COUNT} statements, one per level from 1 to 4 in half points, with one level repeated in other words. The level guides the model that scores answers; evaluators see the statements shuffled and never see levels.
       </p>
       <ul className="space-y-1.5">
         {statements.map((statement, index) => (
           <li key={index} className="flex items-center gap-2">
             <Select value={String(statement.score)} disabled={disabled} onValueChange={(v) => set(index, { score: Number(v) })}>
-              <SelectTrigger className="h-8 w-20 shrink-0" aria-label={`${label}: score of statement ${index + 1}`}><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-8 w-20 shrink-0" aria-label={`${label}: level of statement ${index + 1}`}><SelectValue /></SelectTrigger>
               <SelectContent>{MCQ_LEVELS.map((level) => <SelectItem key={level} value={String(level)}>{level}</SelectItem>)}</SelectContent>
             </Select>
             <Input className="h-8" value={statement.text} maxLength={300} disabled={disabled} aria-label={`${label}: statement ${index + 1}`} onChange={(e) => set(index, { text: e.target.value })} />

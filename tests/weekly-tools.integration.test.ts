@@ -38,7 +38,7 @@ test('synthetic answers choose a middling statement for every open question', WE
   assert.deepEqual(await fillSynthetic(HR_ACTOR, cycleId, undefined, at(1)), { answered: 2 })
   const prompts = await prisma.weeklyPrompt.findMany()
   assert.ok(prompts.every((p) => p.status === 'SUBMITTED'))
-  const scores = (await prisma.weeklyResponse.findMany()).map((r) => r.score)
+  const scores = (await prisma.weeklyResponse.findMany()).map((r) => r.level)
   assert.equal(scores.length, 3)
   assert.ok(scores.every((s) => s !== null && s >= 2 && s <= 3.5))
   assert.ok((await prisma.weeklyAuditEvent.count({ where: { action: 'TEST_FILL' } })) >= 2)

@@ -32,7 +32,8 @@ export async function aggregateCycle(
   )
   const scores: ConfirmedScore[] = records.flatMap((r) => {
     const competency = r.competencyId ? competencies.get(r.competencyId) : undefined
-    if (!competency) return []
+    // Only HR's confirmed scores count.
+    if (!competency || r.score === null) return []
     return [{ evaluatorId: r.evaluatorId, evaluateeId: r.evaluateeId, questionId: competency.sourceQuestionId, leadQuestionId: competency.sourceLeadQuestionId, score: r.score }]
   })
   const commentPrompts = await tx.weeklyPrompt.findMany({

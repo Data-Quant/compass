@@ -1,13 +1,14 @@
-// UX spec, section 8: each weekly question offers 8 statements. Seven map to 1, 1.5, 2, 2.5, 3, 3.5 and 4; the eighth
-// repeats one of those levels in other words, so position never reveals the score. The chosen statement is the score.
+// UX spec, section 8: each weekly question offers 8 statements. Seven map to levels 1, 1.5, 2, 2.5, 3, 3.5 and 4; the
+// eighth repeats one of those levels in other words. The chosen statement's level guides the model's score, which HR
+// reviews (HR's decision); evaluators never see levels.
 import type { Perspective } from './perspectives'
 import { stableHash } from './hash'
 
 export const MCQ_LEVELS = [1, 1.5, 2, 2.5, 3, 3.5, 4] as const
 export const MCQ_OPTION_COUNT = 8
-/** A note is required for the extreme scores; it never changes the score. */
+/** A note is required for the extreme statements; the model reads it when scoring. */
 const NOTE_REQUIRED = new Set<number>([1, 1.5, 4])
-/** The 10% cap on 4s (D-Q4), per evaluator and relationship for the quarter. */
+/** The 10% cap on 4s (D-Q4), per evaluator and relationship for the quarter, applied when HR confirms scores. */
 const FOUR_RATING_SHARE = 0.1
 
 export interface McqStatement { text: string; score: number }
@@ -25,9 +26,9 @@ export interface McqBankTopic {
 export function optionsProblem(options: readonly McqStatement[]): string | null {
   if (options.length !== MCQ_OPTION_COUNT) return `A question needs ${MCQ_OPTION_COUNT} statements`
   if (options.some((o) => !o.text.trim())) return 'A statement is empty'
-  if (options.some((o) => !(MCQ_LEVELS as readonly number[]).includes(o.score))) return 'Scores go from 1 to 4 in half points'
+  if (options.some((o) => !(MCQ_LEVELS as readonly number[]).includes(o.score))) return 'Levels go from 1 to 4 in half points'
   const missing = MCQ_LEVELS.filter((level) => !options.some((o) => o.score === level))
-  if (missing.length) return `No statement scores ${missing.join(', ')}`
+  if (missing.length) return `No statement at level ${missing.join(', ')}`
   return null
 }
 

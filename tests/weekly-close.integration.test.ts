@@ -11,7 +11,7 @@ import { submitForm } from '../lib/weekly/service/form-submit'
 import { formDetail, openForms } from '../lib/weekly/service/forms'
 import { submitAnswer } from '../lib/weekly/service/inbox'
 import { releaseWeek } from '../lib/weekly/service/release'
-import { answerAs, releaseWeekOne } from './helpers/weekly-answers'
+import { answerAs, releaseWeekOne, scoreAndConfirm } from './helpers/weekly-answers'
 import { leadEvidenceIn } from './helpers/weekly-close-fixtures'
 import { F, seedFormFixtures } from './helpers/weekly-form-fixtures'
 import { at, HR_ACTOR, startedCycle } from './helpers/weekly-fixtures'
@@ -37,9 +37,11 @@ after(async () => {
 const leadEvidence = () => leadEvidenceIn(cycleId)
 const weeklyRows = (evaluateeId?: string) => prisma.evaluation.findMany({ where: { periodId, source: 'AI_WEEKLY', ...(evaluateeId ? { evaluateeId } : {}) }, orderBy: { createdAt: 'asc' } })
 
-test('answers are scored as they are given, so the quarter can close at once; a locked period cannot', WEEKLY_DB_TEST, async () => {
+test('the quarter closes once every answer is scored and decided; a locked period cannot', WEEKLY_DB_TEST, async () => {
   const prompt = (await releaseWeekOne(cycleId)).find((p) => p.evaluatorId === W.lead.id)!
   await answerAs(prompt, 3)
+  assert.equal((await closeView(HR_ACTOR, cycleId, at(13))).canClose, false, 'not scored yet')
+  await scoreAndConfirm(cycleId)
   assert.equal((await closeView(HR_ACTOR, cycleId, at(13))).canClose, true)
   await prisma.evaluationPeriod.update({ where: { id: periodId }, data: { isLocked: true } })
   assert.equal((await closeView(HR_ACTOR, cycleId, at(13))).canClose, false)
@@ -47,7 +49,7 @@ test('answers are scored as they are given, so the quarter can close at once; a 
   await assert.rejects(closeView(weeklyActor(W.lead), cycleId, at(13)), isError(403))
 })
 
-test('closing turns the chosen scores and comments into weekly rows, expires open questions and records the run', WEEKLY_DB_TEST, async () => {
+test('closing turns the confirmed scores and comments into weekly rows, expires open questions and records the run', WEEKLY_DB_TEST, async () => {
   const { evaluateeId } = await leadEvidence()
   await releaseWeek(cycleId, 12, at(12))
   const comment = await prisma.weeklyPrompt.findFirstOrThrow({ where: { cycleId, kind: 'COMMENT', evaluatorId: W.lead.id, evaluateeId } })
@@ -109,6 +111,7 @@ test('reopening and closing again replaces the weekly rows and leaves the form r
   // Reopened and not locked: the lead changes their answer.
   const answered = await prisma.weeklyResponse.findUniqueOrThrow({ where: { id: responseId }, include: { prompt: true } })
   await answerAs(answered.prompt, 2, at(13, 2))
+  await scoreAndConfirm(cycleId, at(13, 2))
   await closeCycle(HR_ACTOR, cycleId, { drops: [], formsAcknowledged: true }, at(13, 3))
   const ratings = (await weeklyRows(evaluateeId)).filter((r) => r.ratingValue !== null)
   assert.deepEqual(ratings.map((r) => r.ratingValue), [2])
@@ -144,6 +147,7 @@ test('several answers about one person on one topic are averaged into one row', 
     data: { cycleId, slotId: prompt.slotId, evaluatorId: W.lead.id, evaluateeId: prompt.evaluateeId, relationshipType: prompt.relationshipType, weekIndex: 4, textSnapshot: prompt.textSnapshot, options: prompt.options ?? undefined, releasedAt: at(4) },
   })
   await answerAs(again, 2, at(4))
+  await scoreAndConfirm(cycleId, at(4))
   await closeCycle(HR_ACTOR, cycleId, { drops: [] }, at(13))
   assert.deepEqual((await weeklyRows(prompt.evaluateeId)).map((r) => r.ratingValue), [2.5])
 })

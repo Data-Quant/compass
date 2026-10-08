@@ -2395,7 +2395,8 @@ model WeeklyCompetencyPrompt {
   competencyId String
   variant      String
   text         String
-  /// The 8 statements, each { id, text, score } with scores 1 to 4 in half points (UX spec, section 8).
+  /// The 8 statements, each { id, text, score }: score is the statement's level, 1 to 4 in half points, a hidden guide
+  /// for the model that scores answers (UX spec, section 8). Evaluators never see it.
   options      Json?
   isActive     Boolean          @default(true)
   /// Removed by HR after it was asked: kept so earlier answers keep their question, hidden from the bank.
@@ -2441,7 +2442,7 @@ model WeeklyPrompt {
   promptVariantId  String?
   questionId       String?
   textSnapshot     String
-  /// The statements as this evaluator sees them: shuffled once at release, with their scores.
+  /// The statements as this evaluator sees them: shuffled once at release, with their levels.
   options          Json?
   status           WeeklyPromptStatus @default(OPEN)
   releasedAt       DateTime
@@ -2454,6 +2455,69 @@ model WeeklyPrompt {
   @@unique([cycleId, evaluatorId, evaluateeId, relationshipType, questionId])
   @@index([cycleId, evaluatorId, status])
   @@index([slotId, weekIndex])
+}
+
+/// A scoring run for one revision of an answer: the model reads it and proposes a score.
+model WeeklyScoringJob {
+  id         String    @id @default(cuid())
+  responseId String
+  revision   Int
+  status     String    @default("PENDING")
+  attempts   Int       @default(0)
+  runAfter   DateTime  @default(now())
+  leaseUntil DateTime?
+  leaseToken String?
+  error      String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([responseId, revision])
+  @@index([status, runAfter])
+}
+
+/// The model's score for one revision of an answer, with its reason. HR confirms or changes every one.
+model WeeklyAiScore {
+  id            String   @id @default(cuid())
+  responseId    String
+  revision      Int
+  model         String
+  promptVersion String
+  score         Float
+  rationale     String
+  inputTokens   Int      @default(0)
+  outputTokens  Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  @@unique([responseId, revision, model, promptVersion])
+  @@index([responseId])
+}
+
+enum WeeklyReviewAction {
+  ACCEPTED
+  ADJUSTED
+}
+
+/// HR's decision on one revision of an answer. Only a decision on the answer's current revision counts.
+model WeeklyScoreReview {
+  id         String             @id @default(cuid())
+  responseId String
+  revision   Int
+  aiScoreId  String?
+  action     WeeklyReviewAction
+  finalScore Float
+  reason     String?
+  reviewerId String
+  createdAt  DateTime           @default(now())
+
+  @@index([responseId, createdAt])
+}
+
+/// Which Fireworks model scores answers. One row, id 'default'; without it the environment's FIREWORKS_MODEL is used.
+model WeeklyAiSettings {
+  id          String   @id @default("default")
+  activeModel String?
+  updatedById String?
+  updatedAt   DateTime @updatedAt
 }
 
 model WeeklyRelease {
@@ -2471,9 +2535,9 @@ model WeeklyResponse {
   id          String       @id @default(cuid())
   promptId    String       @unique
   commentText String?
-  /// The statement chosen, its score (fixed by the statement) and the evaluator's note.
+  /// The statement chosen, its level (HR's hidden guide for the model, not the score) and the evaluator's note.
   optionId    String?
-  score       Float?
+  level       Float?
   note        String?
   revision    Int          @default(0)
   submittedAt DateTime?

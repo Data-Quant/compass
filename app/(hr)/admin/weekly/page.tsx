@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 // The weekly admin page became the Evaluation round page; old links (emails, bookmarks) land on the matching tab.
 const TABS: Record<string, string> = {
   setup: 'tab=overview', people: 'tab=people', dashboard: 'tab=progress', close: 'tab=results',
-  content: 'tab=advanced&sub=content', review: 'tab=progress', live: 'tab=progress', ai: 'tab=advanced&sub=content',
+  content: 'tab=advanced&sub=content', review: 'tab=review', live: 'tab=review', ai: 'tab=advanced&sub=ai',
   challenges: 'tab=results', survey: 'tab=advanced&sub=survey', test: 'tab=advanced&sub=test',
 }
 

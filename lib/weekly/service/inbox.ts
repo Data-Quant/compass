@@ -1,14 +1,13 @@
 // An evaluator's weekly questions (UX spec, section 8). Each question offers 8 statements in a shuffled order fixed at
-// release; choosing one saves the answer with that statement's score. A note is required for 1, 1.5 and 4, and the
-// 10% cap on 4s applies per relationship. Answers can change until HR locks the quarter.
+// release; choosing one saves the answer with that statement's level and queues the model, whose score HR reviews. A
+// note is required for the extreme statements. Answers can change until HR locks the quarter.
 import type { Prisma, WeeklyPrompt, WeeklyResponse } from '@prisma/client'
 import { prisma } from '@/lib/db'
-import { isFourRatingCapExempt } from '@/lib/evaluation-rating-quota'
 import { afterNotObserved, canEditSubmitted, choiceProblem, commentProblem, evaluatorStatus, RECENTLY_SUBMITTED_MS } from '../answer-rules'
 import { cycleWeeks, effectiveWeek } from '../calendar'
 import { areWeeklyTestToolsEnabled } from '../flag'
-import { fourRatingLimit, parseOptions } from '../mcq'
-import { perspectiveOf, type Perspective } from '../perspectives'
+import { parseOptions } from '../mcq'
+import { perspectiveOf } from '../perspectives'
 import { QUESTIONS_PER_PAIR } from '../scheduler'
 import type { AnswerInput } from '../schemas'
 import type { AnswerView, ChoiceView, EvaluateeProgress, HistoryGroup, HistoryResponse, InboxPrompt, InboxResponse } from '../view-types'
@@ -16,12 +15,12 @@ import { recordAudit } from './audit'
 import { byName, isHrActor, loadPeople, personRef, type WeeklyActor } from './context'
 import { cycleSummary, findRunningCycle, loadCycle } from './cycles'
 import { WeeklyError } from './errors'
+import { queueScoring } from './scoring'
 
 export interface InboxSubject { evaluatorId: string; actingAs: boolean }
 
 const ANSWERED = 'This question was already answered'
 const LOCKED = 'This quarter is locked, so answers can no longer change'
-const TOP_SCORE = 4
 const promptInclude = { response: true, slot: { select: { competency: { select: { name: true } } } } } as const satisfies Prisma.WeeklyPromptInclude
 type PromptRow = WeeklyPrompt & { response: WeeklyResponse | null; slot: { competency: { name: string } } | null }
 
@@ -136,40 +135,16 @@ export async function saveDraft(actor: WeeklyActor, subject: InboxSubject, promp
   return { savedAt: now.toISOString() }
 }
 
-const CAP_NOUN: Record<Perspective, string> = { LEAD: 'your team members', UPWARD: 'your lead', PEER: 'peers' }
-
-/** D-Q4: at most 10% of an evaluator's questions in one relationship may be 4s this quarter. */
-async function assertFourAllowed(tx: Prisma.TransactionClient, prompt: { id: string; cycleId: string; evaluatorId: string; relationshipType: string }): Promise<void> {
-  const perspective = perspectiveOf(prompt.relationshipType as Parameters<typeof perspectiveOf>[0]) ?? 'PEER'
-  const evaluator = await tx.user.findUnique({ where: { id: prompt.evaluatorId }, select: { name: true, position: true } })
-  if (evaluator && isFourRatingCapExempt(evaluator)) return
-  // Serialises this evaluator's 4s, so two at once cannot both slip under the cap.
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`weekly-fours:${prompt.cycleId}:${prompt.evaluatorId}`}))::text`
-  const types = perspective === 'PEER' ? ['PEER', 'CROSS_DEPARTMENT'] : [prompt.relationshipType]
-  const sameRelation = { cycleId: prompt.cycleId, evaluatorId: prompt.evaluatorId, relationshipType: { in: types as Prisma.EnumRelationshipTypeFilter['in'] } }
-  const pairs = await tx.weeklySlot.findMany({ where: { ...sameRelation, status: { not: 'CANCELLED' } }, distinct: ['evaluateeId'], select: { evaluateeId: true } })
-  const limit = fourRatingLimit(pairs.length * QUESTIONS_PER_PAIR)
-  // Counted over the same pairs as the limit: a 4 about someone no longer evaluated does not use it up.
-  const used = await tx.weeklyResponse.count({ where: { score: TOP_SCORE, prompt: { ...sameRelation, kind: 'STANDARD', status: 'SUBMITTED', id: { not: prompt.id }, slot: { status: { not: 'CANCELLED' } } } } })
-  if (used >= limit) {
-    throw new WeeklyError(`You've used your ${limit} top rating${limit === 1 ? '' : 's'} for ${CAP_NOUN[perspective]} this quarter. To choose this, change an earlier one.`, 409)
-  }
-}
-
 export async function submitAnswer(actor: WeeklyActor, subject: InboxSubject, promptId: string, input: AnswerInput, now: Date): Promise<{ status: 'SUBMITTED'; revision: number }> {
   const prompt = await ownPrompt(subject.evaluatorId, promptId)
   if (prompt.status !== 'OPEN' && prompt.status !== 'DRAFT' && prompt.status !== 'SUBMITTED') throw new WeeklyError('This question can no longer be answered', 409)
   const comment = prompt.kind === 'COMMENT'
   const data = comment ? commentData(input) : choiceData(prompt.options, input)
-  // An answer that already is a 4 can always be saved again (say, to fix its note).
-  const alreadyFour = prompt.status === 'SUBMITTED' && prompt.response?.score === TOP_SCORE
+  if (!comment) {
+    const problem = choiceProblem({ score: data.level ?? 0, note: data.note })
+    if (problem) throw new WeeklyError(problem)
+  }
   return prisma.$transaction(async (tx) => {
-    // The cap before the note, so nobody writes a note for a 4 they cannot give.
-    if (!comment && data.score === TOP_SCORE && !alreadyFour) await assertFourAllowed(tx, prompt)
-    if (!comment) {
-      const problem = choiceProblem({ score: data.score ?? 0, note: data.note })
-      if (problem) throw new WeeklyError(problem)
-    }
     const revision = (prompt.response?.revision ?? 0) + 1
     if (prompt.status === 'SUBMITTED') {
       // Guarded on the revision, so two edits at once cannot both win.
@@ -180,7 +155,12 @@ export async function submitAnswer(actor: WeeklyActor, subject: InboxSubject, pr
       if (moved.count === 0) throw new WeeklyError(ANSWERED, 409)
       await tx.weeklyResponse.upsert({ where: { promptId }, create: { promptId, ...data, revision, submittedAt: now }, update: { ...data, revision, submittedAt: now } })
     }
-    if (!comment && prompt.slotId) await tx.weeklySlot.update({ where: { id: prompt.slotId }, data: { status: 'SATISFIED' } })
+    if (!comment) {
+      // The model scores this revision; HR then reviews it.
+      const response = await tx.weeklyResponse.findUniqueOrThrow({ where: { promptId }, select: { id: true } })
+      await queueScoring(tx, response.id, revision)
+      if (prompt.slotId) await tx.weeklySlot.update({ where: { id: prompt.slotId }, data: { status: 'SATISFIED' } })
+    }
     if (subject.actingAs) {
       await recordAudit(tx, { cycleId: prompt.cycleId, actorId: actor.id, actorRole: 'HR', action: 'TEST_ACT_AS_SUBMIT', objectType: 'WeeklyPrompt', objectId: promptId, after: { evaluatorId: subject.evaluatorId } })
     }
@@ -191,13 +171,13 @@ export async function submitAnswer(actor: WeeklyActor, subject: InboxSubject, pr
 function commentData(input: AnswerInput) {
   const problem = commentProblem(input.commentText)
   if (problem) throw new WeeklyError(problem)
-  return { optionId: null, score: null, note: null, commentText: (input.commentText ?? '').trim() }
+  return { optionId: null, level: null, note: null, commentText: (input.commentText ?? '').trim() }
 }
 
 function choiceData(options: Prisma.JsonValue, input: AnswerInput) {
   const chosen = parseOptions(options).find((o) => o.id === input.optionId)
   if (!chosen) throw new WeeklyError('Choose one of the statements')
-  return { optionId: chosen.id, score: chosen.score, note: input.note?.trim() || null, commentText: null }
+  return { optionId: chosen.id, level: chosen.score, note: input.note?.trim() || null, commentText: null }
 }
 
 export async function markNotObserved(actor: WeeklyActor, subject: InboxSubject, promptId: string, now: Date): Promise<void> {

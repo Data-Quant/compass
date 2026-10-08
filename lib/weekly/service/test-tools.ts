@@ -10,6 +10,8 @@ import { stableHash } from '../hash'
 import { parseOptions } from '../mcq'
 import { loadPeople } from './context'
 import { askable, releaseWeek, standardPromptData, syncSlots, type ReleaseSummary } from './release'
+import { resolveActiveModel } from './ai-settings'
+import { runScoring, type ScoringRunSummary } from './scoring'
 import { PERSPECTIVE_LABELS } from '../perspectives'
 import { nextVariant, pickTopic } from '../scheduler'
 
@@ -64,6 +66,16 @@ export async function resetCycle(actor: WeeklyActor, cycleId: string): Promise<v
     prisma.weeklyCycle.update({ where: { id: cycleId }, data: { simulatedWeek: null } }),
   ])
   await recordAudit(prisma, { cycleId, actorId: actor.id, actorRole: 'HR', action: 'TEST_RESET', objectType: 'WeeklyCycle', objectId: cycleId })
+}
+
+/** Previews have no cron: scores this cycle's waiting answers now with the active model (the stand-in when forced). */
+export async function scoreNow(actor: WeeklyActor, cycleId: string, now: Date): Promise<ScoringRunSummary> {
+  assertTestTools(actor)
+  await loadCycle(cycleId)
+  const responses = await prisma.weeklyResponse.findMany({ where: { prompt: { cycleId, kind: 'STANDARD' } }, select: { id: true } })
+  const summary = await runScoring({ model: await resolveActiveModel(), budgetMs: 50_000, responseIds: responses.map((r) => r.id), clock: () => now })
+  await recordAudit(prisma, { cycleId, actorId: actor.id, actorRole: 'HR', action: 'TEST_SCORE_NOW', objectType: 'WeeklyCycle', objectId: cycleId, after: summary })
+  return summary
 }
 
 function currentWeek(cycle: Awaited<ReturnType<typeof loadCycle>>, now: Date): number {

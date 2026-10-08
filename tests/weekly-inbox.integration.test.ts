@@ -47,14 +47,15 @@ test('each evaluator sees only their own questions: 8 statements, no scores, the
   await assert.rejects(saveDraft(weeklyActor(W.ana), { evaluatorId: W.ana.id, actingAs: false }, prompt.id, { note: 'x' }, at(1)), isStatus(404))
 })
 
-test('the order is shuffled once at release and kept; the chosen statement sets the score', WEEKLY_DB_TEST, async () => {
+test('the order is shuffled once at release and kept; the chosen statement’s level is stored and the model is asked to score it', WEEKLY_DB_TEST, async () => {
   const promptId = await leadPromptId()
   const stored = parseOptions((await prisma.weeklyPrompt.findUniqueOrThrow({ where: { id: promptId } })).options)
   assert.deepEqual((await inboxView(W.lead.id, at(1, 3))).prompts[0].options.map((o) => o.id), stored.map((o) => o.id))
   assert.notDeepEqual(stored.map((o) => o.score), [...stored.map((o) => o.score)].sort(), 'not in score order')
   assert.deepEqual(await choose(promptId, 2.5), { status: 'SUBMITTED', revision: 1 })
   const response = await prisma.weeklyResponse.findUniqueOrThrow({ where: { promptId } })
-  assert.equal(response.score, 2.5)
+  assert.equal(response.level, 2.5)
+  assert.equal(await prisma.weeklyScoringJob.count({ where: { responseId: response.id, revision: 1, status: 'PENDING' } }), 1)
   const prompt = await prisma.weeklyPrompt.findUniqueOrThrow({ where: { id: promptId }, include: { slot: true } })
   assert.equal(prompt.slot?.status, 'SATISFIED')
 })
@@ -75,34 +76,18 @@ test('a draft keeps a note typed before choosing, and a late autosave after subm
   assert.equal((await inboxView(W.lead.id, at(1))).prompts[0].answer?.note, 'Thinking about it')
   await choose(promptId, 3)
   await assert.rejects(saveDraft(lead, leadSubject, promptId, { note: 'overwritten' }, at(1)), isStatus(409))
-  assert.equal((await prisma.weeklyResponse.findUniqueOrThrow({ where: { promptId } })).score, 3)
+  assert.equal((await prisma.weeklyResponse.findUniqueOrThrow({ where: { promptId } })).level, 3)
 })
 
 test('an answer can be changed any time until HR locks the quarter', WEEKLY_DB_TEST, async () => {
   const promptId = await leadPromptId()
   await choose(promptId, 2)
   assert.equal((await choose(promptId, 3, null, at(9))).revision, 2, 'weeks later')
-  assert.equal((await prisma.weeklyResponse.findUniqueOrThrow({ where: { promptId } })).score, 3)
+  assert.equal((await prisma.weeklyResponse.findUniqueOrThrow({ where: { promptId } })).level, 3)
   assert.equal((await historyView(W.lead.id)).groups.flatMap((g) => g.entries).find((e) => e.id === promptId)?.canEdit, true)
   await prisma.evaluationPeriod.updateMany({ data: { isLocked: true } })
   await assert.rejects(choose(promptId, 2, null, at(10)), /locked/)
   assert.equal((await historyView(W.lead.id)).groups.flatMap((g) => g.entries).find((e) => e.id === promptId)?.canEdit, false)
-})
-
-test('at most 10% of an evaluator’s questions in one relationship can be 4s; a partner is exempt', WEEKLY_DB_TEST, async () => {
-  const first = await leadPromptId()
-  await choose(first, 4, 'Their checklist is now used by the whole team.')
-  await releaseWeek(cycleId, 2, at(2))
-  const second = (await inboxView(W.lead.id, at(2))).prompts.find((p) => p.id !== first && p.status === 'OPEN')!
-  // The lead evaluates two people as a lead: 10 questions a quarter, so one 4.
-  await assert.rejects(choose(second.id, 4, 'Also excellent.', at(2)), /You've used your 1 top rating for your team members this quarter/)
-  await choose(second.id, 3.5, null, at(2))
-  // Changing the first answer frees the 4.
-  await choose(first, 3, null, at(2))
-  await choose(second.id, 4, 'Also excellent.', at(2))
-  await prisma.user.update({ where: { id: W.lead.id }, data: { position: 'Junior Partner' } })
-  await choose(first, 4, 'Exempt as a partner.', at(2))
-  assert.equal(await prisma.weeklyResponse.count({ where: { score: 4 } }), 2)
 })
 
 test('not observed snoozes the topic three weeks; a second time closes it', WEEKLY_DB_TEST, async () => {
@@ -146,27 +131,4 @@ test('progress counts the five questions a quarter about each person and moves o
   await choose(promptId, 2)
   const after = (await inboxView(W.lead.id, at(1))).progress.find((p) => p.evaluatee.id === evaluateeId)!
   assert.deepEqual([after.answered, after.satisfied, after.total], [1, 1, QUESTIONS_PER_PAIR])
-})
-
-test('re-saving an existing 4 (to fix its note) is never blocked by the cap, and the cap is checked before asking for a note', WEEKLY_DB_TEST, async () => {
-  const first = await leadPromptId()
-  await choose(first, 4, 'Their checklist is now used by the whole team.')
-  await choose(first, 4, 'Reworded note.', at(1, 2))
-  assert.equal((await prisma.weeklyResponse.findUniqueOrThrow({ where: { promptId: first } })).note, 'Reworded note.')
-  await releaseWeek(cycleId, 2, at(2))
-  const second = (await inboxView(W.lead.id, at(2))).prompts.find((p) => p.id !== first && p.status === 'OPEN')!
-  await assert.rejects(choose(second.id, 4, null, at(2)), /top rating/, 'the cap, not the note, is what stops it')
-})
-
-test('a 4 on a pair that is no longer evaluated does not use up the cap', WEEKLY_DB_TEST, async () => {
-  const first = await leadPromptId()
-  await choose(first, 4, 'Excellent.')
-  const firstPrompt = await prisma.weeklyPrompt.findUniqueOrThrow({ where: { id: first } })
-  await releaseWeek(cycleId, 2, at(2))
-  const other = (await inboxView(W.lead.id, at(2))).prompts.find((p) => p.id !== first && p.status === 'OPEN' && p.evaluatee.id !== firstPrompt.evaluateeId)!
-  assert.ok(other, 'week 2 asks about the other team member')
-  await assert.rejects(choose(other.id, 4, 'Also excellent.', at(2)), /top rating/)
-  // The first person is no longer evaluated by the lead: that 4 no longer counts.
-  await prisma.weeklySlot.updateMany({ where: { evaluatorId: W.lead.id, evaluateeId: firstPrompt.evaluateeId }, data: { status: 'CANCELLED' } })
-  await choose(other.id, 4, 'Also excellent.', at(2))
 })

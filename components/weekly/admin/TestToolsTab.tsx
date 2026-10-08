@@ -76,6 +76,7 @@ export function TestToolsTab() {
               <>
                 <Button disabled={busy} onClick={() => void run({ action: 'release-next-week', cycleId }, (r) => `Week ${String(r.week)} released: ${String(r.promptsCreated)} questions`)}>Release next week now</Button>
                 <Button disabled={busy} variant="outline" onClick={() => void run({ action: 'fill-synthetic', cycleId }, (r) => `${String(r.answered)} questions answered`)}>Answer every open question</Button>
+                <Button disabled={busy} variant="outline" onClick={() => void run({ action: 'score-now', cycleId }, (r) => `${String(r.scored)} scored, ${String(r.failed)} failed, ${String(r.remaining)} still waiting`)}>Score waiting answers now</Button>
                 <Button disabled={busy} variant="ghost" onClick={() => setConfirmReset(true)}>Reset this cycle</Button>
               </>
             )}
@@ -88,7 +89,7 @@ export function TestToolsTab() {
           <CardContent className="space-y-3 p-4">
             <div>
               <p className="font-semibold">Ask someone now</p>
-              <p className="text-sm text-muted-foreground">For a live demo. “Release this week for them” gives the evaluator this week’s questions, about a random few of the people they evaluate. “Ask this pair now” gives them their next question about one person. Each answer is scored the moment it is chosen.</p>
+              <p className="text-sm text-muted-foreground">For a live demo. “Release this week for them” gives the evaluator this week’s questions, about a random few of the people they evaluate. “Ask this pair now” gives them their next question about one person. The model scores each answer right after it is given; review the scores in Review answers.</p>
             </div>
             <div className="flex flex-wrap items-end gap-3">
               <Select value={pair.evaluatorId} onValueChange={(evaluatorId) => void chooseEvaluator(evaluatorId)}>
