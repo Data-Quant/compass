@@ -5,7 +5,7 @@ import { roundStage } from '../lib/weekly/round-stage'
 import { setupRoundSchema } from '../lib/weekly/schemas'
 import { syncFromQuestionBank } from '../lib/weekly/service/content'
 import { WeeklyError } from '../lib/weekly/service/errors'
-import { myMapping, requestPeerChange } from '../lib/weekly/service/peer-requests'
+import { confirmMyLists, decidePeerRequest, myMapping, requestPeerChange } from '../lib/weekly/service/peer-requests'
 import { openReviewStage } from '../lib/weekly/service/review-stage'
 import { openRound, roundsList, roundView, setupRound } from '../lib/weekly/service/round'
 import { approveAllContent, at, HR_ACTOR } from './helpers/weekly-fixtures'
@@ -56,18 +56,28 @@ test('opening the round needs the review stage; undecided requests expire; emplo
   await assert.rejects(openRound(HR_ACTOR, periodId, at(1), send, APP), /review stage/)
   await openReviewStage(HR_ACTOR, periodId, at(1), send, APP)
   assert.equal((await roundView(HR_ACTOR, periodId, at(1))).stage, 'REVIEW')
-  const pending = await requestPeerChange(weeklyActor(W.ana), { peerId: W.ben.id, action: 'REMOVE' }, at(1), send, APP)
+  const pending = await requestPeerChange(weeklyActor(W.ana), { peerId: W.ben.id, action: 'REMOVE', reasonCode: 'WRONG_PERSON' }, at(1), send, APP)
   const review = await roundView(HR_ACTOR, periodId, at(1))
   assert.equal(review.next?.action, 'open-round')
   assert.ok(review.checklist.some((c) => c.key === 'requests' && !c.done && c.count === 1))
+  // A request HR asked about is still waiting for a decision, and expires too.
+  const asked = await requestPeerChange(weeklyActor(W.cara), { peerId: W.lead.id, action: 'ADD', relation: 'LEAD' }, at(1), send, APP)
+  await decidePeerRequest(HR_ACTOR, asked.id, 'NEEDS_INFO', 'Since when?', at(1), send, APP)
+  assert.equal((await roundView(HR_ACTOR, periodId, at(1))).checklist.find((c) => c.key === 'requests')?.count, 2)
+  // Who has said their lists look right: a count, which never blocks opening.
+  await confirmMyLists(weeklyActor(W.ana), at(1))
+  const confirmations = (await roundView(HR_ACTOR, periodId, at(1))).checklist.find((c) => c.key === 'confirmations')!
+  assert.match(confirmations.label, /^1 of 3 people said their lists look right/)
+  assert.deepEqual([confirmations.done, confirmations.count], [false, 2])
 
   await openRound(HR_ACTOR, periodId, at(1), send, APP)
   const open = await roundView(HR_ACTOR, periodId, at(1))
   assert.equal(open.stage, 'OPEN')
   assert.equal((await prisma.peerChangeRequest.findUniqueOrThrow({ where: { id: pending.id } })).status, 'EXPIRED')
+  assert.equal((await prisma.peerChangeRequest.findUniqueOrThrow({ where: { id: asked.id } })).status, 'EXPIRED')
   assert.equal((await prisma.evaluationPeriod.findUniqueOrThrow({ where: { id: periodId } })).isActive, true)
   assert.equal((await myMapping(weeklyActor(W.ana), at(1))).period.locked, true, 'lists are read-only once the round is open')
-  await assert.rejects(requestPeerChange(weeklyActor(W.ana), { peerId: W.ben.id, action: 'REMOVE' }, at(1), send, APP), /HR/)
+  await assert.rejects(requestPeerChange(weeklyActor(W.ana), { peerId: W.ben.id, action: 'REMOVE', reasonCode: 'WRONG_PERSON' }, at(1), send, APP), /HR/)
   await assert.rejects(openRound(HR_ACTOR, periodId, at(1), send, APP), isStatus(409))
 })
 

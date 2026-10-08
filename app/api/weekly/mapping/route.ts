@@ -2,9 +2,9 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { sendMail } from '@/lib/email'
 import { guardWeeklyMutation, requireWeeklySession } from '@/lib/weekly/http'
 import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
-import { cancelPeerRequestSchema, peerRequestSchema } from '@/lib/weekly/schemas'
+import { cancelPeerRequestSchema, mappingActionSchema, peerRequestSchema } from '@/lib/weekly/schemas'
 import { actorFromUser } from '@/lib/weekly/service/context'
-import { cancelPeerRequest, myMapping, requestPeerChange } from '@/lib/weekly/service/peer-requests'
+import { answerPeerRequest, cancelPeerRequest, confirmMyLists, myMapping, requestPeerChange } from '@/lib/weekly/service/peer-requests'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,13 +19,27 @@ export async function GET() {
   }
 }
 
-/** Asks to add or remove a peer; the peer and the requester's lead are emailed a one-click approval. */
+/** Asks to change a list: a peer change goes to the requester's lead (the peer is told); a lead or team change to HR. */
 export async function POST(request: NextRequest) {
   try {
     const user = await requireWeeklySession()
     await guardWeeklyMutation(request, user.id)
     const input = peerRequestSchema.parse(await request.json())
     return NextResponse.json({ success: true, request: await requestPeerChange(actorFromUser(user), input, new Date(), sendMail, appUrlOf(request)) })
+  } catch (error) {
+    return weeklyErrorResponse(error)
+  }
+}
+
+/** Says the lists look right, or answers HR's question on a request. */
+export async function PATCH(request: NextRequest) {
+  try {
+    const user = await requireWeeklySession()
+    await guardWeeklyMutation(request, user.id)
+    const input = mappingActionSchema.parse(await request.json())
+    const actor = actorFromUser(user)
+    if (input.action === 'confirm') return NextResponse.json({ success: true, ...(await confirmMyLists(actor, new Date())) })
+    return NextResponse.json({ success: true, request: await answerPeerRequest(actor, input.requestId, input.reason) })
   } catch (error) {
     return weeklyErrorResponse(error)
   }

@@ -38,11 +38,12 @@ export function RoundPeopleTable({ cycleId, rows, exclusionLabels, onChanged, on
   const shown = useMemo(() => rows.filter((r) => (!onlyWarnings || open(r)) && r.person.name.toLowerCase().includes(filter.toLowerCase())), [rows, onlyWarnings, filter])
   const included = rows.filter((r) => !r.exclusion).length
   const warnings = rows.filter(open).length
+  const confirmed = rows.filter((r) => !r.exclusion && r.confirmedAt).length
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">{included} included · {rows.length - included} not evaluated · {warnings} with something to check</p>
+        <p className="text-sm text-muted-foreground">{included} included · {rows.length - included} not evaluated · {warnings} with something to check · {confirmed} said their lists look right</p>
         <div className="flex items-center gap-2">
           <Input className="h-8 w-48" placeholder="Find a person" aria-label="Find a person" value={filter} onChange={(e) => setFilter(e.target.value)} />
           <Button size="sm" variant={onlyWarnings ? 'default' : 'outline'} onClick={() => setOnlyWarnings((v) => !v)}>Only to check</Button>
@@ -66,6 +67,7 @@ export function RoundPeopleTable({ cycleId, rows, exclusionLabels, onChanged, on
                 <td className="space-y-1 p-2">
                   {row.exclusion ? <Badge variant="outline">{exclusionLabels[row.exclusion]}</Badge> : <Badge variant="secondary">Included</Badge>}
                   {row.optedIn && <p className="text-xs text-muted-foreground">Opted in: {row.optInReason}</p>}
+                  {!row.exclusion && <p className="text-xs text-muted-foreground">{row.confirmedAt ? 'Said lists look right' : 'Has not confirmed lists'}</p>}
                   {row.warnings.map((w) => (
                     <div key={w.key} className="flex flex-wrap items-center gap-1">
                       <Badge variant={w.acceptedReason ? 'outline' : 'destructive'}>{WARNINGS[w.key]}</Badge>

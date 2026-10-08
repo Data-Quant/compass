@@ -6,11 +6,11 @@ import { isWeeklyEnabled } from '@/lib/weekly/flag'
 import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
 import { peerVoteSchema } from '@/lib/weekly/schemas'
 import { WeeklyError } from '@/lib/weekly/service/errors'
-import { peerRequestByToken, voteOnPeerRequest } from '@/lib/weekly/service/peer-requests'
+import { peerRequestByToken, replyToPeerRequest, voteOnPeerRequest } from '@/lib/weekly/service/peer-requests'
 
 export const dynamic = 'force-dynamic'
 
-// No session: the unguessable token in the emailed link identifies the approver, and each link votes once.
+// No session: the unguessable token in the emailed link identifies the lead (who decides once) or the peer (who may reply).
 type Params = { params: Promise<{ token: string }> }
 
 async function limit(request: NextRequest): Promise<void> {
@@ -37,9 +37,14 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (!isWeeklyEnabled()) throw new WeeklyError('Not found', 404)
     assertSameOrigin(request.headers, request.url)
     await limit(request)
-    const { decision } = peerVoteSchema.parse(await request.json())
+    const input = peerVoteSchema.parse(await request.json())
+    const { token } = await params
+    if ('reply' in input) {
+      await replyToPeerRequest(token, input.reply, new Date())
+      return NextResponse.json({ success: true })
+    }
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || request.nextUrl.origin
-    return NextResponse.json({ success: true, ...(await voteOnPeerRequest((await params).token, decision, new Date(), sendMail, appUrl)) })
+    return NextResponse.json({ success: true, ...(await voteOnPeerRequest(token, input.decision, input.note, new Date(), sendMail, appUrl)) })
   } catch (error) {
     return weeklyErrorResponse(error)
   }

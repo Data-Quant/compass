@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { prisma } from '../lib/db'
 import { acceptRoundWarning, changeRoundMapping, participantsView } from '../lib/weekly/service/round-people'
 import { WeeklyError } from '../lib/weekly/service/errors'
+import { confirmMyLists } from '../lib/weekly/service/peer-requests'
 import { at, HR_ACTOR, reviewStageCycle } from './helpers/weekly-fixtures'
 import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST, weeklyActor } from './helpers/weekly-test-db'
 
@@ -35,6 +36,13 @@ test('each person shows their lead, team and peers, with warnings for no lead an
   assert.deepEqual(lead.warnings.map((w) => w.key).sort(), ['FEW_PEERS', 'NO_LEAD'])
   // Cara has no mapping at all, and is still listed so HR can see the gap.
   assert.deepEqual((await row(W.cara.id)).warnings.map((w) => w.key).sort(), ['FEW_PEERS', 'NO_LEAD'])
+})
+
+test('HR sees who has said their lists look right', WEEKLY_DB_TEST, async () => {
+  assert.equal((await row(W.ana.id)).confirmedAt, null)
+  await confirmMyLists(weeklyActor(W.ana), at(1, 2))
+  assert.equal((await row(W.ana.id)).confirmedAt, at(1, 2).toISOString())
+  assert.equal((await row(W.ben.id)).confirmedAt, null)
 })
 
 test('HR accepts a warning with a reason, and it shows as accepted', WEEKLY_DB_TEST, async () => {

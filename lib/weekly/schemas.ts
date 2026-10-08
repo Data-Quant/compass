@@ -96,11 +96,21 @@ export const pairWindowSchema = z.object({
   relationshipType: z.enum(['TEAM_LEAD', 'DIRECT_REPORT', 'PEER', 'CROSS_DEPARTMENT']),
   startWeek: z.number().int().min(1).max(26), weeks: z.number().int().min(1).max(26),
 }).strict()
-export const peerRequestSchema = z.object({ peerId: z.string().min(1), action: z.enum(['ADD', 'REMOVE']), relation: z.enum(['PEER', 'LEAD', 'REPORT']).default('PEER'), reason: z.string().trim().max(500).optional() }).strict()
+export const peerRequestSchema = z.object({ peerId: z.string().min(1), action: z.enum(['ADD', 'REMOVE']), relation: z.enum(['PEER', 'LEAD', 'REPORT']).default('PEER'), reasonCode: z.enum(['NO_LONGER_WORK_TOGETHER', 'WRONG_PERSON', 'OTHER']).optional(), reason: z.string().trim().max(500).optional() }).strict()
 export const cancelPeerRequestSchema = z.object({ requestId: z.string().min(1) }).strict()
-export const peerVoteSchema = z.object({ decision: z.enum(['APPROVE', 'REJECT']) }).strict()
+/** The employee's own actions on their lists: say they look right, or answer HR's question on a request. */
+export const mappingActionSchema = z.union([
+  z.object({ action: z.literal('confirm') }).strict(),
+  z.object({ action: z.literal('answer'), requestId: z.string().min(1), reason: z.string().trim().min(1).max(500) }).strict(),
+])
+const decisionNote = z.string().trim().max(500).nullable().optional()
+/** From an emailed link: the lead decides, the peer replies. */
+export const peerVoteSchema = z.union([
+  z.object({ decision: z.enum(['APPROVE', 'REJECT']), note: decisionNote }).strict(),
+  z.object({ reply: z.enum(['WORK_TOGETHER', 'NOT_WORK_TOGETHER']) }).strict(),
+])
 export const peerDecisionSchema = z.union([
-  z.object({ requestId: z.string().min(1), decision: z.enum(['APPROVE', 'REJECT']) }).strict(),
+  z.object({ requestId: z.string().min(1), decision: z.enum(['APPROVE', 'REJECT', 'NEEDS_INFO']), note: decisionNote }).strict(),
   z.object({ requestId: z.string().min(1), action: z.literal('resend') }).strict(),
 ])
 const surveyText = z.string().trim().max(2000).nullable().optional()

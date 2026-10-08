@@ -13,9 +13,8 @@ import { assertHr, byName, loadPeople, personRef, type WeeklyActor } from './con
 import { loadCycle } from './cycles'
 import { WeeklyError } from './errors'
 import { deliverOnce, type WeeklySendMail } from './notifications'
-import { applyMappingChange, mappingOf } from './peer-requests'
+import { applyMappingChange, mappingOf, MIN_PEERS } from './peer-requests'
 
-const MIN_PEERS = 2
 
 export async function participantsView(actor: WeeklyActor, cycleId: string, now: Date): Promise<ParticipantsResponse> {
   assertHr(actor)
@@ -23,11 +22,13 @@ export async function participantsView(actor: WeeklyActor, cycleId: string, now:
   const assignments = (await getResolvedEvaluationAssignments(cycle.periodId)).filter((a) => isWeeklyRelationshipType(a.relationshipType))
   // Everyone active is listed, so someone with no lists at all shows up as a gap rather than being missed.
   const active = await prisma.user.findMany({ where: { OR: [{ payrollProfile: null }, { payrollProfile: { isPayrollActive: true } }] }, select: { id: true } })
-  const [people, optIns, accepted] = await Promise.all([
+  const [people, optIns, accepted, confirmations] = await Promise.all([
     loadPeople([...active.map((u) => u.id), ...assignments.flatMap((a) => [a.evaluatorId, a.evaluateeId])]),
     prisma.weeklyParticipantOverride.findMany({ where: { cycleId, optIn: true } }),
     prisma.roundWarningAcceptance.findMany({ where: { cycleId } }),
+    prisma.mappingConfirmation.findMany({ where: { periodId: cycle.periodId } }),
   ])
+  const confirmedAt = new Map(confirmations.map((c) => [c.userId, c.confirmedAt.toISOString()]))
   const optInFor = new Map(optIns.map((o) => [o.userId, o]))
   const total = cycleWeeks(cycle)
   const refs = (ids: string[]) => ids.map((id) => personRef(people, id)).sort(byName)
@@ -43,6 +44,7 @@ export async function participantsView(actor: WeeklyActor, cycleId: string, now:
       optedIn: Boolean(optIn),
       optInReason: optIn?.reason ?? null,
       leads: refs(mapping.leads), reports: refs(mapping.reports), peers: refs(mapping.peers),
+      confirmedAt: confirmedAt.get(person.id) ?? null,
       warnings: keys.map((key) => ({ key, acceptedReason: accepted.find((a) => a.userId === person.id && a.warning === key)?.reason ?? null })),
     }
   })

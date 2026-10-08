@@ -2620,6 +2620,21 @@ enum PeerChangeStatus {
   CANCELLED
   /// Not decided before the round opened.
   EXPIRED
+  /// HR asked the requester a question; the requester's answer puts it back to PENDING.
+  NEEDS_INFO
+}
+
+/// The peer's optional reply to a peer change. It is shown to the lead and HR and never blocks the change.
+enum PeerReply {
+  WORK_TOGETHER
+  NOT_WORK_TOGETHER
+}
+
+/// Why someone asks to remove a peer.
+enum MappingReasonCode {
+  NO_LONGER_WORK_TOGETHER
+  WRONG_PERSON
+  OTHER
 }
 
 /// What the request changes: a peer (the peer and the lead approve), or the person's lead or a team member (HR decides).
@@ -2635,8 +2650,9 @@ enum PeerChangeVote {
   REJECTED
 }
 
-/// An employee asks to add or remove a peer for a quarter. It takes effect once the peer and the employee's lead both
-/// approve (each by a one-click link in an email), or HR decides it. Tokens are stored hashed.
+/// An employee asks to change their lists for a quarter. A peer change takes effect once the employee's lead approves (a
+/// one-click link in an email); the peer is told and may reply. Lead and team changes, and anything without a lead, are
+/// HR's decision. Tokens are stored hashed.
 model PeerChangeRequest {
   id                String           @id @default(cuid())
   periodId          String
@@ -2645,16 +2661,23 @@ model PeerChangeRequest {
   action            PeerChangeAction
   relation          MappingRelation  @default(PEER)
   reason            String?
+  reasonCode        MappingReasonCode?
   status            PeerChangeStatus @default(PENDING)
-  peerVote          PeerChangeVote   @default(PENDING)
-  peerVotedAt       DateTime?
-  /// Only peer requests have voting links.
+  peerReply         PeerReply?
+  peerRepliedAt     DateTime?
+  /// Only peer requests have links: the peer's to reply, the lead's to decide.
   peerTokenHash     String?          @unique
   /// The requester's lead; null when they have none, and HR decides.
   approverId        String?
   approverVote      PeerChangeVote   @default(PENDING)
   approverVotedAt   DateTime?
   approverTokenHash String?          @unique
+  /// When the lead was reminded after 2 working days without a decision.
+  remindedAt        DateTime?
+  /// The reason for a decline, or HR's question when it needs more information.
+  decisionNote      String?
+  /// The requester's answer to HR's question; the original reason is kept.
+  answer            String?
   decidedById       String?
   decidedAt         DateTime?
   createdAt         DateTime         @default(now())
@@ -2662,6 +2685,16 @@ model PeerChangeRequest {
 
   @@index([periodId, status])
   @@index([requesterId])
+}
+
+/// Someone said their lists for a quarter look right during the review stage.
+model MappingConfirmation {
+  id          String   @id @default(cuid())
+  periodId    String
+  userId      String
+  confirmedAt DateTime @default(now())
+
+  @@unique([periodId, userId])
 }
 
 /// HR accepted a mapping warning for a person in a round (e.g. no lead because they report to a partner).

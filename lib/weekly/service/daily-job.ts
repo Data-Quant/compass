@@ -10,6 +10,7 @@ import {
   deliverOnce, formsOpenMessages, lengthBiasMessages, lowEvidenceMessages, questionRecipients, scoringFailedMessages, sendQuestionEmails,
   type WeeklySendMail, type WeeklySendResult,
 } from './notifications'
+import { remindStaleMappingRequests } from './peer-requests'
 import { releaseWeek, type ReleaseSummary } from './release'
 import { runScoring, type ScoringRunSummary } from './scoring'
 
@@ -22,6 +23,8 @@ export interface WeeklyDailyResult {
   autoAccepted: number
   digests: WeeklySendResult | null
   calibration: CalibrationProgress[]
+  /** Leads reminded about peer changes waiting 2 working days; a round in review has no running cycle yet. */
+  mappingReminders: WeeklySendResult | null
 }
 
 const MONDAY = 1
@@ -78,8 +81,9 @@ export async function runWeeklyDailyJob(
   const started = Date.now()
   const clock = () => new Date(now.getTime() + (Date.now() - started))
   const calibrate = () => continueCalibrationRuns(CALIBRATION_DAILY_BUDGET_MS, { resolveModel: options.resolveModel, clock })
+  const mappingReminders = await remindStaleMappingRequests(now, send, appUrl)
   const cycle = await findRunningCycle()
-  if (!cycle) return { cycleId: null, week: null, released: null, emails: null, scoring: null, autoAccepted: 0, digests: null, calibration: await calibrate() }
+  if (!cycle) return { cycleId: null, week: null, released: null, emails: null, scoring: null, autoAccepted: 0, digests: null, calibration: await calibrate(), mappingReminders }
   const model = options.model !== undefined ? options.model : await resolveActiveModel()
   const { accepted } = await autoAcceptDue(clock(), { cycleId: cycle.id })
   const week = weekIndexAt(cycle.weekOneStartsOn, now)
@@ -96,5 +100,5 @@ export async function runWeeklyDailyJob(
   ]
   const digests = messages.length > 0 ? await deliverOnce(messages, send) : null
   const calibration = await calibrate()
-  return { cycleId: cycle.id, week, released, emails, scoring, autoAccepted: accepted, digests, calibration }
+  return { cycleId: cycle.id, week, released, emails, scoring, autoAccepted: accepted, digests, calibration, mappingReminders }
 }

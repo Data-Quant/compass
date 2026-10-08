@@ -99,6 +99,8 @@ export interface ParticipantRow {
   leads: PersonRef[]
   reports: PersonRef[]
   peers: PersonRef[]
+  /** When they said their lists look right during review; null if they have not. */
+  confirmedAt: string | null
   /** Mapping gaps HR should fix or accept; acceptedReason is set once accepted. */
   warnings: Array<{ key: RoundWarningKey; acceptedReason: string | null }>
 }
@@ -379,7 +381,9 @@ export interface PersonScoreView {
 export interface PairWindowView { evaluator: PersonRef; evaluatee: PersonRef; relationshipType: string; startWeek: number; weeks: number }
 
 export type PeerChangeActionValue = 'ADD' | 'REMOVE'
-export type PeerChangeStatusValue = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'EXPIRED'
+export type PeerChangeStatusValue = 'PENDING' | 'NEEDS_INFO' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'EXPIRED'
+export type PeerReplyValue = 'WORK_TOGETHER' | 'NOT_WORK_TOGETHER'
+export type MappingReasonCodeValue = 'NO_LONGER_WORK_TOGETHER' | 'WRONG_PERSON' | 'OTHER'
 export type PeerChangeVoteValue = 'PENDING' | 'APPROVED' | 'REJECTED'
 export type MappingRelationValue = 'PEER' | 'LEAD' | 'REPORT'
 export interface PeerRequestView {
@@ -388,14 +392,22 @@ export interface PeerRequestView {
   /** A peer, the requester's lead, or one of their team members. */
   relation: MappingRelationValue
   status: PeerChangeStatusValue
+  reasonCode: MappingReasonCodeValue | null
   reason: string | null
+  /** Why it was declined, or HR's question while it needs more information. */
+  decisionNote: string | null
+  /** The requester's answer to HR's question. */
+  answer: string | null
   createdAt: string
   requester: PersonRef
   peer: PersonRef
   /** The requester's lead, who approves a peer change; null when HR decides. */
   approver: PersonRef | null
-  peerVote: PeerChangeVoteValue
+  /** The peer's optional reply; it never blocks the change. */
+  peerReply: PeerReplyValue | null
   approverVote: PeerChangeVoteValue
+  /** The lead was reminded after 2 working days without a decision; HR sees it flagged. */
+  overdue: boolean
 }
 export interface MyMappingResponse {
   period: { id: string; name: string; locked: boolean }
@@ -405,6 +417,8 @@ export interface MyMappingResponse {
   requests: PeerRequestView[]
   /** People who could be added as a peer. */
   candidates: PersonRef[]
+  /** When they said their lists look right; null until they do. */
+  confirmedAt: string | null
 }
 export interface PeerRequestTokenView {
   requester: PersonRef
@@ -412,9 +426,14 @@ export interface PeerRequestTokenView {
   action: PeerChangeActionValue
   role: 'PEER' | 'LEAD'
   status: PeerChangeStatusValue
+  /** The lead's decision so far. */
   vote: PeerChangeVoteValue
+  peerReply: PeerReplyValue | null
   periodName: string
+  reasonCode: MappingReasonCodeValue | null
   reason: string | null
+  /** How many peers the requester would have after this change. */
+  peersLeft: number
 }
 
 export type SurveyKindValue = 'NPS' | 'AGREE' | 'CHOICE' | 'TEXT'

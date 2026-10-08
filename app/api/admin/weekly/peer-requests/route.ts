@@ -17,7 +17,7 @@ export async function GET() {
   }
 }
 
-/** HR approves or rejects a peer request outright, whatever the votes so far, or sends fresh approval links. */
+/** HR applies a request, declines it with a reason, asks the requester a question, or sends fresh links. */
 export async function POST(request: NextRequest) {
   try {
     const user = await requireWeeklySession({ admin: true })
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     const input = peerDecisionSchema.parse(await request.json())
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || request.nextUrl.origin
     if ('action' in input) return NextResponse.json({ success: true, ...(await resendPeerRequestLinks(actorFromUser(user), input.requestId, new Date(), sendMail, appUrl)) })
-    return NextResponse.json({ success: true, ...(await decidePeerRequest(actorFromUser(user), input.requestId, input.decision, new Date(), sendMail, appUrl)) })
+    return NextResponse.json({ success: true, ...(await decidePeerRequest(actorFromUser(user), input.requestId, input.decision, input.note, new Date(), sendMail, appUrl)) })
   } catch (error) {
     return weeklyErrorResponse(error)
   }

@@ -1,9 +1,13 @@
 // The Evaluation round page (UX spec, section 4): one round = one evaluation period and its weekly cycle. HR moves it
 // Draft → Review → Open → Closed → Released; this service derives the stage, says what is next, and makes the moves.
 import { prisma } from '@/lib/db'
+import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import { parseCalendarDate } from '../../kpi/calendar'
 import { cycleWeeks, effectiveWeek, startOfKarachiDay, weekStartsAt } from '../calendar'
+import { isOutsideRedesign } from '../eligibility'
 import { renderRequestExpiredEmail } from '../emails'
+import { isWeeklyRelationshipType } from '../perspectives'
+import { OPEN_REQUEST_STATUSES } from '../request-status'
 import { roundStage, type RoundStage } from '../round-stage'
 import type { RoundChecklistItem, RoundNextStep, RoundSummary, RoundView } from '../view-types'
 import { recordAudit } from './audit'
@@ -81,6 +85,15 @@ const NEXT: Record<RoundStage, RoundNextStep | null> = {
   RELEASED: null,
 }
 
+/** How many people with lists said they look right. A count only: it never blocks opening the round. */
+async function confirmationsItem(periodId: string): Promise<RoundChecklistItem> {
+  const assignments = (await getResolvedEvaluationAssignments(periodId)).filter((a) => isWeeklyRelationshipType(a.relationshipType))
+  const people = await loadPeople(assignments.flatMap((a) => [a.evaluatorId, a.evaluateeId]))
+  const mapped = [...people.values()].filter((p) => p.payrollActive && !isOutsideRedesign(p)).map((p) => p.id)
+  const confirmed = await prisma.mappingConfirmation.count({ where: { periodId, userId: { in: mapped } } })
+  return { key: 'confirmations', label: `${confirmed} of ${mapped.length} people said their lists look right`, done: confirmed >= mapped.length, count: mapped.length - confirmed, tab: 'people' }
+}
+
 async function checklist(cycle: CycleWithPeriod, stage: RoundStage): Promise<RoundChecklistItem[]> {
   const items: RoundChecklistItem[] = []
   if (stage === 'DRAFT') {
@@ -93,8 +106,11 @@ async function checklist(cycle: CycleWithPeriod, stage: RoundStage): Promise<Rou
     items.push({ key: 'lead-questions', label: `${written} of ${preps.length} leads wrote their team questions`, done: written === preps.length, count: preps.length - written, tab: 'people' })
   }
   if (stage === 'REVIEW') {
-    const pending = await prisma.peerChangeRequest.count({ where: { periodId: cycle.periodId, status: 'PENDING' } })
-    items.push({ key: 'requests', label: pending ? `${pending} change ${pending === 1 ? 'request' : 'requests'} waiting for a decision` : 'No change requests waiting', done: pending === 0, count: pending, tab: 'people' })
+    const open = await prisma.peerChangeRequest.findMany({ where: { periodId: cycle.periodId, status: { in: OPEN_REQUEST_STATUSES } }, select: { remindedAt: true, approverVote: true } })
+    const late = open.filter((r) => r.remindedAt && r.approverVote === 'PENDING').length
+    const waiting = open.length ? `${open.length} change ${open.length === 1 ? 'request' : 'requests'} waiting for a decision${late ? ` (${late} past 2 working days)` : ''}` : 'No change requests waiting'
+    items.push({ key: 'requests', label: waiting, done: open.length === 0, count: open.length, tab: 'people' })
+    items.push(await confirmationsItem(cycle.periodId))
   }
   if (stage === 'OPEN') {
     const forms = await formsProgress(cycle.periodId)
@@ -135,8 +151,9 @@ export async function openRound(actor: WeeklyActor, periodId: string, now: Date,
   if (stage === 'DRAFT') throw new WeeklyError('Open the review stage first, so people can check their lists', 409)
   if (stage !== 'REVIEW') throw new WeeklyError('This round is already open', 409)
   await updateCycle(actor, cycle.id, { action: 'start' })
-  const pending = await prisma.peerChangeRequest.findMany({ where: { periodId, status: 'PENDING' } })
-  if (pending.length) await prisma.peerChangeRequest.updateMany({ where: { id: { in: pending.map((r) => r.id) } }, data: { status: 'EXPIRED', decidedAt: now } })
+  const pending = await prisma.peerChangeRequest.findMany({ where: { periodId, status: { in: OPEN_REQUEST_STATUSES } } })
+  // Guarded on still being open, so a request decided in the meantime keeps its decision.
+  if (pending.length) await prisma.peerChangeRequest.updateMany({ where: { id: { in: pending.map((r) => r.id) }, status: { in: OPEN_REQUEST_STATUSES } }, data: { status: 'EXPIRED', decidedAt: now } })
   await prisma.$transaction([
     prisma.evaluationPeriod.updateMany({ where: { id: { not: periodId } }, data: { isActive: false } }),
     prisma.evaluationPeriod.update({ where: { id: periodId }, data: { isActive: true } }),
