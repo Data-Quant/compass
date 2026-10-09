@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { motion } from 'framer-motion'
+import { Reveal } from '@/components/motion/Reveal'
 import type { EvaluationsCardView } from '@/lib/weekly/service/dashboard-card'
 import { weeklyRequest } from './weekly-api'
 import { FormsSection } from './forms/FormsSection'
@@ -21,22 +21,22 @@ export function WeeklyEvaluationsPage() {
   }, [])
   return (
     <div className="mx-auto max-w-4xl space-y-8 p-6 sm:p-8">
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: [0.32, 0.72, 0, 1] }}>
-        <h1 className="font-display text-3xl font-bold text-foreground">Evaluations</h1>
-        <p className="mt-1.5 max-w-2xl text-muted-foreground">
+      <header>
+        <h1 className="font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Evaluations</h1>
+        <p className="mt-2 max-w-2xl leading-relaxed text-muted-foreground">
           A few short questions each week about the people you work with. Pick the statement that best fits what you have seen; if you have not worked with them on it, say so.
         </p>
-      </motion.div>
-      {checkingLists && <MyMappingCard />}
+      </header>
+      {checkingLists && <Reveal><MyMappingCard /></Reveal>}
       {/* The weekly set, in the spec's order: the questions, the month's self-evaluation, then the sentiment question last. */}
       <section aria-label="This week" className="space-y-6">
-        <WeeklyInbox />
-        <SelfReviewCard />
-        <PulseSurveyCard />
+        <Reveal index={1}><WeeklyInbox /></Reveal>
+        <Reveal index={2}><SelfReviewCard /></Reveal>
+        <Reveal index={3}><PulseSurveyCard /></Reveal>
       </section>
-      <TeamSelfReviewsCard />
-      {!checkingLists && <MyMappingCard />}
-      <FormsSection />
+      <Reveal><TeamSelfReviewsCard /></Reveal>
+      {!checkingLists && <Reveal><MyMappingCard /></Reveal>}
+      <Reveal><FormsSection /></Reveal>
     </div>
   )
 }
