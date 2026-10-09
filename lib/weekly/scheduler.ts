@@ -6,7 +6,7 @@
 // A week holds at most WEEKLY_QUESTION_CAP new questions, unless that could not finish everyone by the end of the
 // quarter (see weeklyCap).
 import { questionWeekCount } from './calendar'
-import { stableHash } from './hash'
+import { shuffleHash } from './hash'
 
 export const QUESTIONS_PER_PAIR = 5
 export const MAX_WEEKS_WITHOUT_ASKING = 3
@@ -38,7 +38,7 @@ export interface WeekPlanInput {
   pairs: readonly SchedulablePair[]
 }
 
-const shuffleKey = (seed: string, week: number, key: string) => stableHash(`${seed}|${week}|${key}`)
+const shuffleKey = (seed: string, week: number, key: string) => shuffleHash(`${seed}|${week}|${key}`)
 
 const startOf = (p: SchedulablePair) => p.window?.startWeek ?? 1
 

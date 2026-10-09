@@ -74,3 +74,18 @@ test('department names match however they are written: case, spaces, "&" or "and
   assert.equal(sameDepartment('Human Resources', 'HR Ops'), false)
   assert.equal(sameDepartment('Design', null), false)
 })
+
+test('the shuffle is fair: statements almost never stay in score order, and each position is equally likely', () => {
+  const options = Array.from({ length: 8 }, (_, i) => ({ id: `o${i + 1}` }))
+  const runs = 8000
+  let inOrder = 0
+  let firstStays = 0
+  for (let i = 0; i < runs; i += 1) {
+    const ids = shuffleOptions(options, `slot${i * 7919}|${1 + (i % 13)}`).map((o) => o.id)
+    if (ids.join() === 'o1,o2,o3,o4,o5,o6,o7,o8') inOrder += 1
+    if (ids[0] === 'o1') firstStays += 1
+  }
+  // A fair shuffle leaves 8 statements in order 1 time in 40,320.
+  assert.ok(inOrder <= 2, `${inOrder} of ${runs} stayed in score order`)
+  assert.ok(Math.abs(firstStays - runs / 8) < runs / 8 * 0.15, `o1 first ${firstStays} times, expected about ${runs / 8}`)
+})

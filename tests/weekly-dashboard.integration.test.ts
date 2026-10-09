@@ -39,8 +39,8 @@ test('the dashboard shows coverage and response rates', WEEKLY_DB_TEST, async ()
   const view = await dashboardView(HR_ACTOR, cycleId, at(2))
   assert.equal(view.cycle.currentWeek, 2)
   const leadGroup = view.coverage.find((c) => c.evaluatee.id === prompts.get(W.lead.id)!.evaluateeId && c.perspective === 'LEAD')!
-  // Three common topics and four Product topics.
-  assert.deepEqual([leadGroup.satisfied, leadGroup.total, leadGroup.lowEvidence], [1, 7, true])
+  // Three common topics and Product's two (section 9: five topics per team member).
+  assert.deepEqual([leadGroup.satisfied, leadGroup.total, leadGroup.lowEvidence], [1, 5, true])
   const stats = new Map(view.evaluators.map((e) => [e.evaluator.id, e]))
   assert.deepEqual([stats.get(W.lead.id)!.answered, stats.get(W.lead.id)!.responseRate], [1, 1])
   assert.deepEqual([stats.get(W.ben.id)!.notObserved, stats.get(W.ben.id)!.responseRate], [1, 1])

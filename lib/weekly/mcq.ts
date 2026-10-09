@@ -2,7 +2,7 @@
 // eighth repeats one of those levels in other words. The chosen statement's level guides the model's score, which HR
 // reviews (HR's decision); evaluators never see levels.
 import type { Perspective } from './perspectives'
-import { stableHash } from './hash'
+import { shuffleHash } from './hash'
 
 export const MCQ_LEVELS = [1, 1.5, 2, 2.5, 3, 3.5, 4] as const
 export const MCQ_OPTION_COUNT = 8
@@ -43,7 +43,7 @@ export function withOptionIds(options: readonly McqStatement[]): McqOption[] {
 
 /** The order one evaluator sees for one question: shuffled by the seed, the same every time. */
 export function shuffleOptions<T extends { id: string }>(options: readonly T[], seed: string): T[] {
-  return [...options].sort((a, b) => stableHash(`${seed}|${a.id}`) - stableHash(`${seed}|${b.id}`) || a.id.localeCompare(b.id))
+  return [...options].sort((a, b) => shuffleHash(`${seed}|${a.id}`) - shuffleHash(`${seed}|${b.id}`) || a.id.localeCompare(b.id))
 }
 
 export function fourRatingLimit(questions: number): number {

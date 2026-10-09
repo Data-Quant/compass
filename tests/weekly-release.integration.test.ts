@@ -26,8 +26,8 @@ test('slots follow the mappings in both directions, with each perspective’s to
   await releaseWeek(cycleId, 1, at(1))
   const slots = await prisma.weeklySlot.findMany({ include: { competency: true } })
   const leadAboutAna = slots.filter((s) => s.evaluatorId === W.lead.id && s.evaluateeId === W.ana.id)
-  // Three common topics, and Ana is in Product: its four department topics, no other department's.
-  assert.equal(leadAboutAna.length, 7)
+  // Section 9: three common topics, and Ana is in Product: its two department topics, no other department's.
+  assert.equal(leadAboutAna.length, 5)
   assert.ok(leadAboutAna.every((s) => s.competency.departments.length === 0 || s.competency.departments.includes('Product')))
   assert.ok(leadAboutAna.every((s) => s.relationshipType === 'TEAM_LEAD' && s.competency.perspective === 'LEAD'))
   const anaAboutLead = slots.filter((s) => s.evaluatorId === W.ana.id && s.evaluateeId === W.lead.id)
@@ -36,7 +36,8 @@ test('slots follow the mappings in both directions, with each perspective’s to
   const peerSlots = slots.filter((s) => s.relationshipType === 'PEER')
   assert.equal(peerSlots.length, 6)
   assert.ok(peerSlots.every((s) => s.competency.perspective === 'PEER'))
-  assert.equal(slots.length, 28)
+  // 2 pairs x 5 lead topics, 2 x 4 upward, 6 peer slots.
+  assert.equal(slots.length, 24)
 })
 
 test('week 1 gives each evaluator a paced question about one of the people they evaluate', WEEKLY_DB_TEST, async () => {
