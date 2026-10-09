@@ -14,6 +14,8 @@ import { CyclePicker, useCycles } from './PeopleTab'
 
 type ToolResult = Record<string, unknown>
 
+const questions = (n: number) => `${n} ${n === 1 ? "question" : "questions"}`
+
 export function TestToolsTab() {
   const { cycles, cycleId, setCycleId } = useCycles()
   const [people, setPeople] = useState<ParticipantRow[]>([])
@@ -74,7 +76,7 @@ export function TestToolsTab() {
           <div className="flex flex-wrap gap-2">
             {cycleId && (
               <>
-                <Button disabled={busy} onClick={() => void run({ action: 'release-next-week', cycleId }, (r) => `Week ${String(r.week)} released: ${String(r.promptsCreated)} questions`)}>Release next week now</Button>
+                <Button disabled={busy} onClick={() => void run({ action: 'release-next-week', cycleId }, (r) => `Week ${String(r.week)} released: ${questions(Number(r.promptsCreated))}`)}>Release next week now</Button>
                 <Button disabled={busy} variant="outline" onClick={() => void run({ action: 'fill-synthetic', cycleId }, (r) => `${String(r.answered)} questions answered`)}>Answer every open question</Button>
                 <Button disabled={busy} variant="outline" onClick={() => void run({ action: 'score-now', cycleId }, (r) => `${String(r.scored)} scored, ${String(r.failed)} failed, ${String(r.remaining)} still waiting`)}>Score waiting answers now</Button>
                 <Button disabled={busy} variant="ghost" onClick={() => setConfirmReset(true)}>Reset this cycle</Button>
@@ -100,7 +102,7 @@ export function TestToolsTab() {
                 <SelectTrigger className="w-60" aria-label="About"><SelectValue placeholder="About whom" /></SelectTrigger>
                 <SelectContent>{pairOptions.map((o) => <SelectItem key={`${o.evaluatee.id}-${o.perspective}`} value={o.evaluatee.id}>{o.evaluatee.name} · {o.perspective}</SelectItem>)}</SelectContent>
               </Select>
-              <Button disabled={busy || !pair.evaluatorId} variant="outline" onClick={() => void run({ action: 'release-for', cycleId, evaluatorId: pair.evaluatorId }, (r) => (r.evaluatorsReleased === 0 ? `Week ${String(r.week)} was already released for them` : `Week ${String(r.week)}: ${String(r.promptsCreated)} questions`))}>Release this week for them</Button>
+              <Button disabled={busy || !pair.evaluatorId} variant="outline" onClick={() => void run({ action: 'release-for', cycleId, evaluatorId: pair.evaluatorId }, (r) => (r.evaluatorsReleased === 0 ? `Week ${String(r.week)} was already released for them` : `Week ${String(r.week)}: ${questions(Number(r.promptsCreated))}`))}>Release this week for them</Button>
               <Button disabled={busy || !pair.evaluatorId || !pair.evaluateeId} onClick={() => void run({ action: 'ask-pair', cycleId, ...pair }, () => 'Question asked')}>Ask this pair now</Button>
             </div>
           </CardContent>
