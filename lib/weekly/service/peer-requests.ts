@@ -20,7 +20,7 @@ import { addWorkingDays } from '../working-days'
 import { recordAudit } from './audit'
 import { assertHr, loadPeople, personRef, type WeeklyActor } from './context'
 import { WeeklyError } from './errors'
-import { deliverOnce, hrUserIds, type WeeklyEmailMessage, type WeeklySendMail, type WeeklySendResult } from './notifications'
+import { deliverOnce, deliverSafely, hrUserIds, type WeeklyEmailMessage, type WeeklySendMail, type WeeklySendResult } from './notifications'
 import { periodRoundStage } from './round'
 
 export type PeerDecision = 'APPROVE' | 'REJECT'
@@ -194,7 +194,7 @@ export async function requestPeerChange(
     userId: actor.id, kind: 'peer-request-received', dedupeKey: `peer-request-received:${request.id}`,
     render: (name) => renderRequestReceivedEmail({ name, otherName: other.name, action: input.action, relation, leadName: approverId ? people.get(approverId)?.name ?? null : null, appUrl }),
   }]
-  await deliverOnce([
+  await deliverSafely('mapping request', async () => [
     ...linkMessages(request, tokens, { requester: actor.name, peer: other.name }, period.name, appUrl),
     ...received,
     ...(approverId ? [] : await hrMessages(request, appUrl)),
@@ -287,7 +287,7 @@ async function decide(request: PeerChangeRequest, approved: boolean, note: strin
   const name = (id: string) => people.get(id)?.name ?? 'the person'
   // A peer hears either way, as they were told about the request; a lead or team member hears once it is applied.
   const tellOther = request.relation === 'PEER' || approved
-  await deliverOnce([
+  await deliverSafely('mapping decision', () => [
     {
       userId: request.requesterId, kind: 'peer-request-outcome', dedupeKey: `peer-request-outcome:${request.id}`,
       render: (to) => renderPeerOutcomeEmail({ name: to, peerName: name(request.peerId), action: request.action, relation: request.relation, approved, note, appUrl }),
@@ -346,7 +346,7 @@ export async function voteOnPeerRequest(token: string, decision: PeerDecision, n
     throw new WeeklyError(current.status === 'NEEDS_INFO' ? 'HR has asked a question about this request; you can review it once that is answered' : 'This request was already reviewed', 409)
   }
   await recordAudit(prisma, { actorId: request.approverId, actorRole: 'LEAD', action: `MAPPING_LEAD_${vote}`, objectType: 'PeerChangeRequest', objectId: request.id })
-  await deliverOnce(await hrMessages(await prisma.peerChangeRequest.findUniqueOrThrow({ where: { id: request.id } }), appUrl), send)
+  await deliverSafely('mapping review', async () => hrMessages(await prisma.peerChangeRequest.findUniqueOrThrow({ where: { id: request.id } }), appUrl), send)
   return { status: 'PENDING' }
 }
 
@@ -362,10 +362,11 @@ export async function replyToPeerRequest(token: string, reply: PeerReply, now: D
   const people = await loadPeople([request.requesterId, request.peerId])
   const names = { peerName: people.get(request.peerId)?.name ?? 'The peer', requesterName: people.get(request.requesterId)?.name ?? 'the requester' }
   const message = (userId: string, forHr: boolean): WeeklyEmailMessage => ({
-    userId, kind: 'peer-request-reply', dedupeKey: `peer-request-reply:${request.id}:${reply}:${userId}`,
+    // Keyed by the moment of the reply, so changing back to an earlier answer is heard too.
+    userId, kind: 'peer-request-reply', dedupeKey: `peer-request-reply:${request.id}:${now.getTime()}:${userId}`,
     render: (name) => renderPeerReplyEmail({ name, ...names, worksTogether: reply === 'WORK_TOGETHER', forHr, appUrl }),
   })
-  await deliverOnce([...(request.approverId ? [message(request.approverId, false)] : []), ...(await hrUserIds()).map((id) => message(id, true))], send)
+  await deliverSafely('peer reply', async () => [...(request.approverId ? [message(request.approverId, false)] : []), ...(await hrUserIds()).map((id) => message(id, true))], send)
 }
 
 /** HR applies a request, declines it with a reason, or asks the requester a question. */

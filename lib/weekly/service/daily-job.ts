@@ -4,12 +4,12 @@ import { resolveActiveModel } from './ai-settings'
 import { cycleWeeks, karachiWeekday, questionWeekCount, weekIndexAt } from '../calendar'
 import { findRunningCycle, type CycleWithPeriod } from './cycles'
 import { formsOpenFor } from './forms'
-import { deliverOnce, formsOpenMessages, lowEvidenceMessages, questionRecipients, sendQuestionEmails, type WeeklySendMail, type WeeklySendResult } from './notifications'
+import { deliverSafely, formsOpenMessages, lowEvidenceMessages, questionRecipients, sendQuestionEmails, type WeeklyEmailMessage, type WeeklySendMail, type WeeklySendResult } from './notifications'
 import { remindStaleMappingRequests } from './peer-requests'
 import { remindUnreadSelfReviews } from './self-review'
 import { scrubSmallDepartments } from './survey'
 import { releaseWeek, type ReleaseSummary } from './release'
-import { behindMessages, hrDigestMessages, joinerMessages, reviewReminderMessages, roundClosesOn } from './round-notices'
+import { announceRoundClosed, behindMessages, hrDigestMessages, joinerMessages, reviewReminderMessages, roundClosesOn, roundOpenedMessages } from './round-notices'
 import { runScoring, type ScoringRunSummary } from './scoring'
 
 export interface WeeklyDailyResult {
@@ -67,14 +67,45 @@ function addResults(a: WeeklySendResult, b: WeeklySendResult): WeeklySendResult 
   return { sent: a.sent + b.sent, recorded: a.recorded + b.recorded, skipped: a.skipped + b.skipped, failed: a.failed + b.failed }
 }
 
-/** While the round runs: people behind on Wednesday, HR's digest on Monday from week 2, and late joiners' leads any day. */
-async function roundNoticeMessages(cycle: CycleWithPeriod, week: number, total: number, now: Date, appUrl: string) {
+/** Closed rounds are announced again for this long, so a failed "closed" email is sent by a later run. */
+const CLOSED_CATCH_UP_MS = 7 * 24 * 60 * 60 * 1000
+
+/** A builder that throws is logged and skipped, so one failing email never stops the release, scoring or the others. */
+async function built(label: string, build: () => Promise<WeeklyEmailMessage[]>): Promise<WeeklyEmailMessage[]> {
+  try {
+    return await build()
+  } catch (error) {
+    console.error(`[weekly] could not build the ${label} emails`, { error })
+    return []
+  }
+}
+
+/**
+ * While the round runs. Each email is due from its day for the rest of the cycle week (the key spans the week), so a
+ * missed or failed run is caught up: "behind" from Wednesday, HR's digest from Monday (from week 2). Late joiners' leads
+ * any day.
+ */
+async function roundNoticeMessages(cycle: CycleWithPeriod, week: number, total: number, now: Date, appUrl: string): Promise<WeeklyEmailMessage[]> {
   const weekday = karachiWeekday(now)
+  const fromWednesday = weekday === SUNDAY || weekday >= WEDNESDAY
   return [
-    ...(weekday === WEDNESDAY ? await behindMessages(cycle, week, appUrl) : []),
-    ...(weekday === MONDAY && week >= 2 ? await hrDigestMessages(cycle, week, lowEvidenceWeek(total), appUrl) : []),
-    ...(await joinerMessages(cycle, week, now, appUrl)),
+    ...(fromWednesday ? await built('behind', () => behindMessages(cycle, week, appUrl)) : []),
+    ...(week >= 2 ? await built('HR digest', () => hrDigestMessages(cycle, week, lowEvidenceWeek(total), appUrl)) : []),
+    ...(await built('late joiner', () => joinerMessages(cycle, week, now, appUrl))),
   ]
+}
+
+/** Only a round HR opened from the round page was announced; one started any other way (test tools) never is. */
+async function openedByHr(cycleId: string): Promise<boolean> {
+  return (await prisma.weeklyAuditEvent.count({ where: { cycleId, action: 'ROUND_OPEN' } })) > 0
+}
+
+/** "Closed" emails for rounds closed in the last week; deliverOnce skips everyone already told. */
+async function announceRecentlyClosed(now: Date, send: WeeklySendMail, appUrl: string): Promise<void> {
+  const closed = await prisma.weeklyCycle.findMany({ where: { status: 'CLOSED', closedAt: { gte: new Date(now.getTime() - CLOSED_CATCH_UP_MS) } }, select: { id: true } })
+  for (const { id } of closed) {
+    await announceRoundClosed(id, send, appUrl).catch((error: unknown) => console.error('[weekly] round closed emails failed', { cycleId: id, error }))
+  }
 }
 
 /**
@@ -88,8 +119,9 @@ export async function runWeeklyDailyJob(send: WeeklySendMail, appUrl: string, no
   // Anonymous sentiment answers from small departments lose their department once their week is over.
   await scrubSmallDepartments(now)
   const selfReviewReminders = await remindUnreadSelfReviews(now, send, appUrl)
-  const reviewReminderList = await reviewReminderMessages(now, appUrl)
-  const reviewReminders = reviewReminderList.length ? await deliverOnce(reviewReminderList, send) : null
+  const reviewReminderList = await built('review reminder', () => reviewReminderMessages(now, appUrl))
+  const reviewReminders = reviewReminderList.length ? await deliverSafely('review reminder', () => reviewReminderList, send) : null
+  await announceRecentlyClosed(now, send, appUrl)
   const cycle = await findRunningCycle()
   if (!cycle) return { cycleId: null, week: null, released: null, emails: null, scoring: null, digests: null, mappingReminders, selfReviewReminders, reviewReminders }
   const week = weekIndexAt(cycle.weekOneStartsOn, now)
@@ -102,9 +134,11 @@ export async function runWeeklyDailyJob(send: WeeklySendMail, appUrl: string, no
   const scoring = await runScoring({ model, budgetMs: DAILY_SCORING_BUDGET_MS })
   const messages = [
     ...(week === lowEvidenceWeek(total) ? await lowEvidenceMessages(cycle.id, appUrl) : []),
-    ...(!locked && formsOpenFor(cycle, now) ? await formsOpenMessages(cycle, now, appUrl) : []),
+    ...(!locked && formsOpenFor(cycle, now) ? await built('forms open', () => formsOpenMessages(cycle, now, appUrl)) : []),
     ...(running ? await roundNoticeMessages(cycle, week, total, now, appUrl) : []),
+    // "Started" is sent when HR opens the round; this catches up anyone that send missed.
+    ...(!locked && week <= 1 && (await openedByHr(cycle.id)) ? await built('round opened', () => roundOpenedMessages(cycle, now, appUrl)) : []),
   ]
-  const digests = messages.length > 0 ? await deliverOnce(messages, send) : null
+  const digests = messages.length > 0 ? await deliverSafely('daily', () => messages, send) : null
   return { cycleId: cycle.id, week, released, emails, scoring, digests, mappingReminders, selfReviewReminders, reviewReminders }
 }

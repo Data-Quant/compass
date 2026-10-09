@@ -375,3 +375,14 @@ test('a declined peer change reaches the peer with HR’s reason; an applied tea
   await decidePeerRequest(HR_ACTOR, team.id, 'APPROVE', null, at(1, 3), applied.send, APP)
   assert.deepEqual(applied.sent.filter((m) => m.to === email(W.cara.id)).map((m) => m.subject), ['Your lead for Q4 2026 (weekly test) is now Layla Mercer'])
 })
+
+test('a peer who changes their answer back is heard again', WEEKLY_DB_TEST, async () => {
+  const mail = mailbox()
+  await requestPeerChange(ana, removeBen, at(1), mail.send, APP)
+  const token = tokenFor(mail, email(W.ben.id))
+  const replies = mailbox()
+  await replyToPeerRequest(token, 'WORK_TOGETHER', at(1, 2), replies.send, APP)
+  await replyToPeerRequest(token, 'NOT_WORK_TOGETHER', at(1, 3), replies.send, APP)
+  await replyToPeerRequest(token, 'WORK_TOGETHER', at(1, 4), replies.send, APP)
+  assert.equal(replies.sent.filter((m) => m.to === email(W.lead.id)).length, 3)
+})

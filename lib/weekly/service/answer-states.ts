@@ -33,6 +33,16 @@ export interface AnswerRecord {
 
 const latestFirst = <T extends { createdAt: Date }>(rows: readonly T[]) => [...rows].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
 
+/** The first row for each answer revision (rows come latest first where that matters). */
+function byRevision<T extends { responseId: string; revision: number }>(rows: readonly T[]): Map<string, T> {
+  const map = new Map<string, T>()
+  for (const row of rows) {
+    const key = `${row.responseId}:${row.revision}`
+    if (!map.has(key)) map.set(key, row)
+  }
+  return map
+}
+
 /** Every submitted multiple-choice answer. Sequential queries on purpose: `db` may be an interactive transaction. */
 export async function loadAnswerRecords(filter: { cycleId?: string; evaluateeId?: string; evaluatorId?: string; responseIds?: readonly string[] }, db: Db = prisma): Promise<AnswerRecord[]> {
   const prompts = await db.weeklyPrompt.findMany({
@@ -53,16 +63,16 @@ export async function loadAnswerRecords(filter: { cycleId?: string; evaluateeId?
   })
   const ids = prompts.flatMap((p) => (p.response ? [p.response.id] : []))
   if (ids.length === 0) return []
-  const jobs = await db.weeklyScoringJob.findMany({ where: { responseId: { in: ids } } })
-  const scores = latestFirst(await db.weeklyAiScore.findMany({ where: { responseId: { in: ids } } }))
-  const reviews = latestFirst(await db.weeklyScoreReview.findMany({ where: { responseId: { in: ids } } }))
+  const jobs = byRevision(await db.weeklyScoringJob.findMany({ where: { responseId: { in: ids } } }))
+  const scores = byRevision(latestFirst(await db.weeklyAiScore.findMany({ where: { responseId: { in: ids } } })))
+  const reviews = byRevision(latestFirst(await db.weeklyScoreReview.findMany({ where: { responseId: { in: ids } } })))
   return prompts.flatMap((p): AnswerRecord[] => {
     const r = p.response
     if (!r || r.level === null) return []
-    const current = <T extends { responseId: string; revision: number }>(row: T) => row.responseId === r.id && row.revision === r.revision
-    const job = jobs.find(current) ?? null
-    const aiScore = scores.find(current) ?? null
-    const review = reviews.find(current) ?? null
+    const key = `${r.id}:${r.revision}`
+    const job = jobs.get(key) ?? null
+    const aiScore = scores.get(key) ?? null
+    const review = reviews.get(key) ?? null
     return [{
       responseId: r.id, promptId: p.id, cycleId: p.cycleId, slotId: p.slotId, competencyId: p.slot?.competencyId ?? null,
       topic: p.slot?.competency.name ?? 'Question', perspective: perspectiveOf(p.relationshipType) ?? p.slot?.competency.perspective ?? 'PEER',

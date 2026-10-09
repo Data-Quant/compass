@@ -112,6 +112,6 @@ export function renderJoinerEmail(input: { name: string; joinerName: string; per
 export function renderRoundClosedEmail(input: { name: string; periodName: string; appUrl: string }): Email {
   return {
     subject: `${input.periodName} evaluations are closed`,
-    html: layout(input.name, [escapeHtml('Thank you for your answers. HR will share your report when it is ready.')], `${base(input.appUrl)}${MY_PAGE}`, 'See your answers'),
+    html: layout(input.name, [escapeHtml('No more questions can be answered. HR will share your report when it is ready.')], `${base(input.appUrl)}${MY_PAGE}`, 'See your answers'),
   }
 }

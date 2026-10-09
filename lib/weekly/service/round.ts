@@ -17,7 +17,7 @@ import { createCycle, loadCycle, updateCycle, type CycleWithPeriod } from './cyc
 import { WeeklyError } from './errors'
 import { loadAnswerRecords } from './answer-states'
 import { formsProgress } from './form-tables'
-import { deliverOnce, type WeeklySendMail } from './notifications'
+import { deliverSafely, type WeeklySendMail } from './notifications'
 import { roundOpenedMessages } from './round-notices'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -160,9 +160,11 @@ export async function openRound(actor: WeeklyActor, periodId: string, now: Date,
     prisma.evaluationPeriod.updateMany({ where: { id: { not: periodId } }, data: { isActive: false } }),
     prisma.evaluationPeriod.update({ where: { id: periodId }, data: { isActive: true } }),
   ])
+  await recordAudit(prisma, { cycleId: cycle.id, actorId: actor.id, actorRole: 'HR', action: 'ROUND_OPEN', objectType: 'EvaluationPeriod', objectId: periodId, after: { expired: pending.length } })
   const people = await loadPeople(pending.flatMap((r) => [r.requesterId, r.peerId]))
   const name = (id: string) => people.get(id)?.name ?? 'the person'
-  await deliverOnce([
+  // The round is open whatever happens to the emails; the daily job catches up any "started" email that failed.
+  await deliverSafely('round opened', async () => [
     ...pending.map((r) => ({
       userId: r.requesterId, kind: 'peer-request-outcome' as const, dedupeKey: `peer-request-expired:${r.id}`,
       render: (to: string) => renderRequestExpiredEmail({ name: to, otherName: name(r.peerId), appUrl }),
@@ -174,7 +176,6 @@ export async function openRound(actor: WeeklyActor, periodId: string, now: Date,
     })),
     ...(await roundOpenedMessages(await loadCycle(cycle.id), now, appUrl)),
   ], send)
-  await recordAudit(prisma, { cycleId: cycle.id, actorId: actor.id, actorRole: 'HR', action: 'ROUND_OPEN', objectType: 'EvaluationPeriod', objectId: periodId, after: { expired: pending.length } })
 }
 
 /**

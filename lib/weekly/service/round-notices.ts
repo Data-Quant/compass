@@ -77,11 +77,11 @@ export async function roundOpenedMessages(cycle: CycleWithPeriod, now: Date, app
   }))
 }
 
-/** Once the round is closed: everyone who was asked questions in it hears so, once. */
+/** Once the round is closed: everyone who was asked questions in it (not only cancelled ones) hears so, once. */
 export async function announceRoundClosed(cycleId: string, send: WeeklySendMail, appUrl: string): Promise<WeeklySendResult> {
   const cycle = await loadCycle(cycleId)
   if (cycle.status !== 'CLOSED') return { sent: 0, recorded: 0, skipped: 0, failed: 0 }
-  const evaluators = await prisma.weeklyPrompt.groupBy({ by: ['evaluatorId'], where: { cycleId } })
+  const evaluators = await prisma.weeklyPrompt.groupBy({ by: ['evaluatorId'], where: { cycleId, status: { not: 'CANCELLED' } } })
   return deliverOnce(evaluators.map(({ evaluatorId }) => ({
     userId: evaluatorId, kind: 'weekly-round-closed' as const, dedupeKey: `weekly-round-closed:${cycleId}:${evaluatorId}`,
     render: (name: string) => renderRoundClosedEmail({ name, periodName: cycle.period.name, appUrl }),

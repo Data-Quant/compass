@@ -97,10 +97,27 @@ export async function deliverOnce(messages: readonly WeeklyEmailMessage[], send:
     } catch (error) {
       console.error('[weekly] email failed', { userId: message.userId, kind: message.kind, error })
       await prisma.weeklyNotification.delete({ where: { dedupeKey: message.dedupeKey } })
+        .catch((cleanup: unknown) => console.error('[weekly] could not release the email key', { dedupeKey: message.dedupeKey, cleanup }))
       result.failed += 1
     }
   }
   return result
+}
+
+const NOTHING_SENT: WeeklySendResult = { sent: 0, recorded: 0, skipped: 0, failed: 0 }
+
+/**
+ * For emails after a change has committed: building or sending them never fails the change. Anything that goes wrong
+ * is logged and counted as failed.
+ */
+export async function deliverSafely(label: string, build: () => Promise<readonly WeeklyEmailMessage[]> | readonly WeeklyEmailMessage[], send: WeeklySendMail): Promise<WeeklySendResult> {
+  try {
+    const messages = await build()
+    return messages.length ? await deliverOnce(messages, send) : NOTHING_SENT
+  } catch (error) {
+    console.error(`[weekly] ${label} emails failed`, { error })
+    return { ...NOTHING_SENT, failed: 1 }
+  }
 }
 
 export async function hrUserIds(): Promise<string[]> {
