@@ -600,8 +600,8 @@ export default function UsersPage() {
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
           <Card className="mb-6">
             <CardContent className="p-4">
-              <div className="flex flex-wrap gap-4">
-                <div className="relative flex-1 min-w-[200px]">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="relative w-full flex-1 sm:min-w-[240px]">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
                     type="text"
@@ -612,7 +612,7 @@ export default function UsersPage() {
                   />
                 </div>
                 <Select value={filterRole || '__all__'} onValueChange={(v) => setFilterRole(v === '__all__' ? '' : v)}>
-                  <SelectTrigger className="min-w-[140px]">
+                  <SelectTrigger className="w-full sm:w-44">
                     <SelectValue placeholder="All Roles" />
                   </SelectTrigger>
                     <SelectContent>
@@ -625,7 +625,7 @@ export default function UsersPage() {
                     </SelectContent>
                   </Select>
                 <Select value={filterDepartment || '__all__'} onValueChange={(v) => setFilterDepartment(v === '__all__' ? '' : v)}>
-                  <SelectTrigger className="min-w-[140px]">
+                  <SelectTrigger className="w-full sm:w-44">
                     <SelectValue placeholder="All Departments" />
                   </SelectTrigger>
                   <SelectContent>
