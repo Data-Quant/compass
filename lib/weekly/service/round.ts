@@ -1,7 +1,7 @@
 // The Evaluation round page (UX spec, section 4): one round = one evaluation period and its weekly cycle. HR moves it
 // Draft → Review → Open → Closed → Released; this service derives the stage, says what is next, and makes the moves.
 import { prisma } from '@/lib/db'
-import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
+import { getResolvedEvaluationAssignments, snapshotEvaluationPeriodAssignments } from '@/lib/evaluation-assignments'
 import { parseCalendarDate } from '../../kpi/calendar'
 import { cycleWeeks, effectiveWeek, startOfKarachiDay, weekStartsAt } from '../calendar'
 import { isOutsideRedesign } from '../eligibility'
@@ -175,4 +175,27 @@ export async function openRound(actor: WeeklyActor, periodId: string, now: Date,
     ...(await roundOpenedMessages(await loadCycle(cycle.id), now, appUrl)),
   ], send)
   await recordAudit(prisma, { cycleId: cycle.id, actorId: actor.id, actorRole: 'HR', action: 'ROUND_OPEN', objectType: 'EvaluationPeriod', objectId: periodId, after: { expired: pending.length } })
+}
+
+/**
+ * HR locks a round once it is open: answers, lists and forms can no longer change, and the lists are kept as they are
+ * now (the same snapshot the Periods page took). Unlocking an old quarter is refused while another one is active.
+ */
+export async function setRoundLock(actor: WeeklyActor, periodId: string, locked: boolean): Promise<void> {
+  assertHr(actor)
+  const cycle = await cycleForPeriod(periodId)
+  if (!cycle) throw new WeeklyError('This quarter has no evaluation round', 404)
+  const stage = await stageOf(cycle)
+  if (stage === 'DRAFT' || stage === 'REVIEW') throw new WeeklyError('Lock a round once it is open', 409)
+  const period = await prisma.evaluationPeriod.findUniqueOrThrow({ where: { id: periodId }, select: { isLocked: true, isActive: true } })
+  if (period.isLocked === locked) throw new WeeklyError(locked ? 'This round is already locked' : 'This round is not locked', 409)
+  if (!locked && !period.isActive) {
+    const active = await prisma.evaluationPeriod.findFirst({ where: { isActive: true, id: { not: periodId } }, select: { name: true } })
+    throw new WeeklyError(active ? `This round cannot be unlocked while ${active.name} is active` : 'Make this quarter active before unlocking it', 409)
+  }
+  await prisma.$transaction(async (tx) => {
+    if (locked) await snapshotEvaluationPeriodAssignments(periodId, tx)
+    await tx.evaluationPeriod.update({ where: { id: periodId }, data: { isLocked: locked } })
+  }, { timeout: 60_000 })
+  await recordAudit(prisma, { cycleId: cycle.id, actorId: actor.id, actorRole: 'HR', action: locked ? 'ROUND_LOCK' : 'ROUND_UNLOCK', objectType: 'EvaluationPeriod', objectId: periodId })
 }

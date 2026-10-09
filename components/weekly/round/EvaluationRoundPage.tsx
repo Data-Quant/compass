@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Check, ChevronRight, Circle, CircleDot } from 'lucide-react'
+import { Check, ChevronRight, Circle, CircleDot, Lock } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -59,6 +59,7 @@ export function EvaluationRoundPage() {
   const [advanced, setAdvanced] = useState('content')
   const [settingUp, setSettingUp] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  const [locking, setLocking] = useState(false)
   const [busy, setBusy] = useState(false)
   const [testTools, setTestTools] = useState(false)
 
@@ -103,6 +104,20 @@ export function EvaluationRoundPage() {
       await loadView()
     } catch (e) {
       toast.error(errorMessage(e, 'Could not move the round on'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function setLock(locked: boolean) {
+    setBusy(true)
+    try {
+      await weeklyRequest(`/api/admin/rounds/${periodId}`, { method: 'POST', body: { action: locked ? 'lock' : 'unlock' } })
+      toast.success(locked ? 'Round locked' : 'Round unlocked')
+      setLocking(false)
+      await loadView()
+    } catch (e) {
+      toast.error(errorMessage(e, locked ? 'Could not lock the round' : 'Could not unlock the round'))
     } finally {
       setBusy(false)
     }
@@ -156,7 +171,13 @@ export function EvaluationRoundPage() {
                   {view.currentWeek ? ` · now in week ${view.currentWeek}` : ''}
                 </p>
               </div>
-              {view.next && <Button disabled={busy} onClick={primary}>{view.next.label}</Button>}
+              <div className="flex flex-wrap items-center gap-2">
+                {view.locked && <Badge variant="outline" className="gap-1"><Lock className="h-3 w-3" aria-hidden /> Locked</Badge>}
+                {view.stage !== 'DRAFT' && view.stage !== 'REVIEW' && (
+                  <Button variant="outline" disabled={busy} onClick={() => setLocking(true)}>{view.locked ? 'Unlock' : 'Lock'}</Button>
+                )}
+                {view.next && <Button disabled={busy} onClick={primary}>{view.next.label}</Button>}
+              </div>
             </div>
             {view.checklist.length > 0 && (
               <ul className="flex flex-wrap gap-2">
@@ -222,12 +243,25 @@ export function EvaluationRoundPage() {
           }}
         />
       )}
+      {locking && view && (
+        <ConfirmDialog
+          isOpen
+          title={view.locked ? 'Unlock this round?' : 'Lock this round?'}
+          message={view.locked
+            ? 'Answers, lists and quarter-end forms can change again, and the daily questions and reminders resume while the round is open.'
+            : 'Nobody can answer, change an answer, change a list or fill in a form until you unlock it. The daily questions and reminders stop. Use it to freeze the quarter once it is final.'}
+          confirmText={view.locked ? 'Unlock' : 'Lock'}
+          variant={view.locked ? 'info' : 'warning'}
+          onConfirm={() => void setLock(!view.locked)}
+          onClose={() => setLocking(false)}
+        />
+      )}
       {confirming && view?.next && (
         <ConfirmDialog
           isOpen
           title={view.next.label}
           message={view.next.action === 'open-review'
-            ? 'Everyone in the round is sent their lists to check, and leads are asked for their two team questions. Requests can be made until you open the round.'
+            ? `Everyone in the round is emailed their lead, team and peers to check${view.reviewDeadline ? ` by ${formatKarachiDate(view.reviewDeadline)}` : ''}. They can ask for changes until you open the round.`
             : pending > 0
               ? `${pending} change ${pending === 1 ? 'request has' : 'requests have'} not been decided. Opening the round lets them expire and tells the people who asked. Decide them in People first if they matter.`
               : 'Weekly questions start on week 1. After this, list changes are made by HR only.'}

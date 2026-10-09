@@ -5,7 +5,7 @@ import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
 import { roundActionSchema } from '@/lib/weekly/schemas'
 import { actorFromUser } from '@/lib/weekly/service/context'
 import { openReviewStage } from '@/lib/weekly/service/review-stage'
-import { openRound, roundView } from '@/lib/weekly/service/round'
+import { openRound, roundView, setRoundLock } from '@/lib/weekly/service/round'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,7 +20,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
   }
 }
 
-/** The stage moves: open the review stage, then open the round. Closing and releasing use the close API. */
+/** The stage moves (open the review stage, then the round) and locking. Closing and releasing use the close API. */
 export async function POST(request: NextRequest, { params }: Params) {
   try {
     const user = await requireWeeklySession({ admin: true })
@@ -30,6 +30,10 @@ export async function POST(request: NextRequest, { params }: Params) {
     const periodId = (await params).periodId
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || request.nextUrl.origin
     if (action === 'open-review') return NextResponse.json({ success: true, ...(await openReviewStage(actor, periodId, new Date(), sendMail, appUrl)) })
+    if (action === 'lock' || action === 'unlock') {
+      await setRoundLock(actor, periodId, action === 'lock')
+      return NextResponse.json({ success: true })
+    }
     await openRound(actor, periodId, new Date(), sendMail, appUrl)
     return NextResponse.json({ success: true })
   } catch (error) {

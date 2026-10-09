@@ -120,7 +120,7 @@ export const setupRoundSchema = z.object({
   name: z.string().trim().min(2, 'Name the quarter').max(80), startDate: dateSchema, endDate: dateSchema, weekOneStartsOn: dateSchema,
   questionWeeks: z.number().int().min(1).max(26).optional(), reviewDeadline: dateSchema.optional(),
 }).strict()
-export const roundActionSchema = z.object({ action: z.enum(['open-review', 'open-round']) }).strict()
+export const roundActionSchema = z.object({ action: z.enum(['open-review', 'open-round', 'lock', 'unlock']) }).strict()
 export const roundPeopleActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('accept-warning'), cycleId: z.string().min(1), userId: z.string().min(1), warning: z.enum(['NO_LEAD', 'FEW_PEERS']), reason: reasonSchema }).strict(),
   z.object({

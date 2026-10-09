@@ -68,7 +68,7 @@ export function CloseTab() {
         <CyclePicker cycles={cycles} cycleId={cycleId} onChange={setCycleId} />
         <Badge variant={running ? 'default' : 'secondary'}>{running ? `Running · week ${data.cycle.currentWeek} of ${data.cycle.totalWeeks}` : 'Closed'}</Badge>
       </div>
-      {data.periodLocked && <p className="text-sm text-destructive">The evaluation period is locked. Unlock it on the Periods page before closing: a locked period ignores dropped groups.</p>}
+      {data.periodLocked && <p className="text-sm text-destructive">This round is locked. Unlock it at the top of this page before closing: a locked round ignores dropped groups.</p>}
 
       <Card>
         <CardContent className="space-y-2 p-4">

@@ -7,7 +7,7 @@ import { loadStandardBank } from '../lib/weekly/service/content'
 import { WeeklyError } from '../lib/weekly/service/errors'
 import { confirmMyLists, decidePeerRequest, myMapping, requestPeerChange } from '../lib/weekly/service/peer-requests'
 import { openReviewStage } from '../lib/weekly/service/review-stage'
-import { openRound, roundsList, roundView, setupRound } from '../lib/weekly/service/round'
+import { openRound, roundsList, roundView, setRoundLock, setupRound } from '../lib/weekly/service/round'
 import { at, HR_ACTOR } from './helpers/weekly-fixtures'
 import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST, weeklyActor } from './helpers/weekly-test-db'
 
@@ -83,4 +83,27 @@ test('opening the round needs the review stage; undecided requests expire; emplo
 test('the setup form accepts real dates and rejects others', () => {
   assert.equal(setupRoundSchema.safeParse({ name: 'Q1 2027', startDate: '2027-01-01', endDate: '2027-03-31', weekOneStartsOn: '2027-01-04' }).success, true)
   assert.equal(setupRoundSchema.safeParse({ name: 'Q1 2027', startDate: 'dddd-dd-dd', endDate: '2027-03-31', weekOneStartsOn: '2027-01-04' }).success, false)
+})
+
+test('HR locks an open round, which freezes its lists as they are, and can unlock it again', WEEKLY_DB_TEST, async () => {
+  const { periodId } = await setupRound(HR_ACTOR, SETUP, at(1))
+  await openReviewStage(HR_ACTOR, periodId, at(1), send, APP)
+  await assert.rejects(setRoundLock(HR_ACTOR, periodId, true), /once it is open/)
+  await openRound(HR_ACTOR, periodId, at(1), send, APP)
+  await assert.rejects(setRoundLock(weeklyActor(W.ana), periodId, true), isStatus(403))
+  await setRoundLock(HR_ACTOR, periodId, true)
+  assert.equal((await roundView(HR_ACTOR, periodId, at(1))).locked, true)
+  assert.ok(await prisma.evaluationPeriodAssignmentSnapshot.count({ where: { periodId } }) > 0, 'the lists are kept as they were at the lock')
+  await assert.rejects(setRoundLock(HR_ACTOR, periodId, true), isStatus(409))
+  await setRoundLock(HR_ACTOR, periodId, false)
+  assert.equal((await roundView(HR_ACTOR, periodId, at(1))).locked, false)
+  // An old quarter is not reopened while another one is running.
+  await setRoundLock(HR_ACTOR, periodId, true)
+  const other = await prisma.evaluationPeriod.create({ data: { name: 'Q2 2027', startDate: new Date('2027-04-01'), endDate: new Date('2027-06-30'), reviewStartDate: new Date('2027-07-05'), isActive: false } })
+  await prisma.$transaction([
+    prisma.evaluationPeriod.update({ where: { id: periodId }, data: { isActive: false } }),
+    prisma.evaluationPeriod.update({ where: { id: other.id }, data: { isActive: true } }),
+  ])
+  await assert.rejects(setRoundLock(HR_ACTOR, periodId, false), /Q2 2027 is active/)
+  await prisma.evaluationPeriod.delete({ where: { id: other.id } })
 })
