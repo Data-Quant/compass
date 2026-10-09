@@ -84,6 +84,8 @@ export const cancelPeerRequestSchema = z.object({ requestId: z.string().min(1) }
 export const mappingActionSchema = z.union([
   z.object({ action: z.literal('confirm') }).strict(),
   z.object({ action: z.literal('answer'), requestId: z.string().min(1), reason: z.string().trim().min(1).max(500) }).strict(),
+  z.object({ action: z.literal('review'), requestId: z.string().min(1), decision: z.enum(['APPROVE', 'REJECT']), note: z.string().trim().max(500).nullable().optional() }).strict(),
+  z.object({ action: z.literal('reply'), requestId: z.string().min(1), reply: z.enum(['WORK_TOGETHER', 'NOT_WORK_TOGETHER']) }).strict(),
 ])
 const decisionNote = z.string().trim().max(500).nullable().optional()
 /** From an emailed link: the lead decides, the peer replies. */

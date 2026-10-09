@@ -5,7 +5,7 @@ import { getResolvedEvaluationAssignments } from '../lib/evaluation-assignments'
 import { WeeklyError } from '../lib/weekly/service/errors'
 import {
   adminPeerRequests, answerPeerRequest, cancelPeerRequest, confirmMyLists, decidePeerRequest, myMapping, peerRequestByToken, remindStaleMappingRequests,
-  replyToPeerRequest, requestPeerChange, resendPeerRequestLinks, sendMappingEmails, voteOnPeerRequest,
+  replyAsPeer, replyToPeerRequest, requestPeerChange, resendPeerRequestLinks, reviewTeamRequest, sendMappingEmails, voteOnPeerRequest,
 } from '../lib/weekly/service/peer-requests'
 import { at, HR_ACTOR, reviewStageCycle } from './helpers/weekly-fixtures'
 import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST, weeklyActor } from './helpers/weekly-test-db'
@@ -439,4 +439,19 @@ test('an approved lead or team change also updates the live mappings, so the nex
   const peer = await requestPeerChange(ana, removeBen, at(1), mailbox().send, APP)
   await decidePeerRequest(HR_ACTOR, peer.id, 'APPROVE', null, at(1, 2), mailbox().send, APP)
   assert.equal(await prisma.evaluatorMapping.count({ where: { evaluatorId: W.ana.id, evaluateeId: W.ben.id, relationshipType: 'PEER' } }), 1, 'peer changes stay with the quarter')
+})
+
+test('a lead reviews a team member’s change from the evaluations page too, and the peer replies there (section 13)', WEEKLY_DB_TEST, async () => {
+  const request = await requestPeerChange(ana, removeBen, at(1), mailbox().send, APP)
+  const lead = weeklyActor(W.lead)
+  const ben = weeklyActor(W.ben)
+  assert.deepEqual((await myMapping(lead, at(1))).toReview.map((r) => r.id), [request.id])
+  assert.deepEqual((await myMapping(ben, at(1))).aboutMe.map((r) => r.id), [request.id])
+  await assert.rejects(reviewTeamRequest(ben, request.id, 'APPROVE', null, at(1, 2), mailbox().send, APP), isStatus(404))
+  await assert.rejects(replyAsPeer(lead, request.id, 'WORK_TOGETHER', at(1, 2), mailbox().send, APP), isStatus(404))
+  await replyAsPeer(ben, request.id, 'WORK_TOGETHER', at(1, 2), mailbox().send, APP)
+  await reviewTeamRequest(lead, request.id, 'REJECT', 'They still pair weekly', at(1, 2), mailbox().send, APP)
+  const seen = (await adminPeerRequests(HR_ACTOR)).requests.find((r) => r.id === request.id)!
+  assert.deepEqual([seen.stage, seen.approverVote, seen.leadNote, seen.peerReply], ['HR', 'REJECTED', 'They still pair weekly', 'WORK_TOGETHER'])
+  assert.deepEqual((await myMapping(lead, at(1, 2))).toReview, [], 'reviewed once')
 })

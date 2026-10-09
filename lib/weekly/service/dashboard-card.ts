@@ -7,6 +7,14 @@ import { roundStage } from '../round-stage'
 import { loadCycle } from './cycles'
 import type { WeeklyActor } from './context'
 import { mySelfReview, teamSelfReviews } from './self-review'
+import { OPEN_REQUEST_STATUSES } from '../request-status'
+import { loadPeople, isHrActor } from './context'
+import { loadAnswerRecords } from './answer-states'
+import { formsOpenFor } from './forms'
+import { formsProgress } from './form-tables'
+import { lateJoiners, roundClosesOn } from './round-notices'
+import type { RoundStage } from '../round-stage'
+import type { CycleWithPeriod } from './cycles'
 
 export type EvaluationsCardState = 'CHECK_LISTS' | 'THIS_WEEK' | 'CAUGHT_UP' | 'CLOSED'
 export interface EvaluationsCardView {
@@ -17,11 +25,58 @@ export interface EvaluationsCardView {
   href: string
   /** "Your self-evaluation for October is waiting", when it is. */
   selfReview: string | null
-  /** For a lead: unread self-evaluations from their team. */
-  leadNotices: string[]
+  /**
+   * One line for each emailed event that still needs the person (UX spec, section 13: every email has a matching card):
+   * changes to review or about them, recent outcomes and HR changes, late joiners, open forms, and for HR what waits on HR.
+   */
+  notices: CardNotice[]
 }
+export interface CardNotice { text: string; href: string }
 
 const HREF = '/evaluations/weekly'
+const HR_ROUND = '/admin/evaluation-round'
+/** Outcomes and HR's changes stay on the card for a week. */
+const RECENT_MS = 7 * 24 * 60 * 60 * 1000
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+
+async function cardNotices(actor: WeeklyActor, cycle: CycleWithPeriod, stage: RoundStage, now: Date): Promise<CardNotice[]> {
+  const periodId = cycle.periodId
+  const since = new Date(now.getTime() - RECENT_MS)
+  const [toReview, aboutMe, decided, hrChanges, selfReviews] = await Promise.all([
+    prisma.peerChangeRequest.findMany({ where: { periodId, approverId: actor.id, status: 'PENDING', approverVote: 'PENDING' }, orderBy: { createdAt: 'asc' } }),
+    prisma.peerChangeRequest.findMany({ where: { periodId, peerId: actor.id, relation: 'PEER', status: { in: OPEN_REQUEST_STATUSES } }, orderBy: { createdAt: 'asc' } }),
+    prisma.peerChangeRequest.findMany({ where: { periodId, requesterId: actor.id, status: { in: ['APPROVED', 'REJECTED'] }, decidedAt: { gte: since, lte: now } } }),
+    prisma.evaluationPeriodAssignmentOverride.count({ where: { periodId, note: { startsWith: 'HR:' }, createdAt: { gte: since }, OR: [{ evaluatorId: actor.id }, { evaluateeId: actor.id }] } }),
+    teamSelfReviews(actor),
+  ])
+  const people = await loadPeople([...toReview, ...aboutMe, ...decided].flatMap((r) => [r.requesterId, r.peerId]))
+  const name = (id: string) => people.get(id)?.name ?? 'Someone'
+  const notices: CardNotice[] = [
+    ...toReview.map((r) => ({ text: `${name(r.requesterId)} asked to change their evaluation lists: review it`, href: HREF })),
+    ...aboutMe.map((r) => ({ text: `${name(r.requesterId)} asked to ${r.action === 'ADD' ? 'add you as a peer' : 'remove you as a peer'}`, href: HREF })),
+    ...decided.map((r) => ({ text: `${r.status === 'APPROVED' ? 'Approved' : 'Not approved'}: your request about ${name(r.peerId)}`, href: HREF })),
+    ...(hrChanges > 0 ? [{ text: 'HR changed your evaluation lists', href: HREF }] : []),
+    ...selfReviews.items.filter((i) => !i.readAt).map((i) => ({ text: `${i.person.name} has submitted their self-evaluation for ${i.monthName}`, href: HREF })),
+  ]
+  if (stage === 'OPEN') {
+    for (const { joiner, leads } of await lateJoiners(cycle, now)) {
+      if (leads.includes(actor.id)) notices.push({ text: `${joiner.name} isn’t in this round; give feedback in person`, href: HREF })
+    }
+    if (formsOpenFor(cycle, now) && (await formsProgress(periodId, now)).pendingEvaluatorIds.includes(actor.id)) {
+      notices.push({ text: 'Your quarter-end forms are open', href: isHrActor(actor) ? `${HR_ROUND}?tab=forms` : HREF })
+    }
+  }
+  if (isHrActor(actor)) {
+    const open = await prisma.peerChangeRequest.findMany({ where: { periodId, status: 'PENDING' }, select: { approverId: true, approverVote: true } })
+    const forHr = open.filter((r) => !r.approverId || r.approverVote !== 'PENDING').length
+    if (forHr) notices.push({ text: `${plural(forHr, 'list change', 'list changes')} waiting for your decision`, href: `${HR_ROUND}?tab=people` })
+    if (stage === 'OPEN') {
+      const waiting = (await loadAnswerRecords({ cycleId: cycle.id })).filter((r) => r.state === 'NEEDS_REVIEW' || r.state === 'FAILED').length
+      if (waiting) notices.push({ text: `${plural(waiting, 'answer', 'answers')} waiting for your review`, href: `${HR_ROUND}?tab=review` })
+    }
+  }
+  return notices
+}
 const DAY_MS = 24 * 60 * 60 * 1000
 const shortDate = (date: Date) => date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'Asia/Karachi' })
 const longDay = (date: Date) => date.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short', timeZone: 'Asia/Karachi' })
@@ -47,9 +102,8 @@ export async function evaluationsCard(actor: WeeklyActor, now: Date): Promise<Ev
   const cycle = await loadCycle(row.id)
   const period = await prisma.evaluationPeriod.findUniqueOrThrow({ where: { id: cycle.periodId }, select: { name: true, preEvaluationTriggeredAt: true } })
   const stage = roundStage({ cycleStatus: cycle.status, reviewOpenedAt: period.preEvaluationTriggeredAt, resultsPublishedAt: cycle.resultsPublishedAt })
-  const leadNotices = (await teamSelfReviews(actor)).items.filter((i) => !i.readAt).map((i) => `${i.person.name} has submitted their self-evaluation for ${i.monthName}`)
-  const base = { href: HREF, selfReview: null, leadNotices }
   if (stage === 'DRAFT') return null
+  const base = { href: HREF, selfReview: null, notices: await cardNotices(actor, cycle, stage, now) }
   if (stage === 'CLOSED' || stage === 'RELEASED') return { ...base, state: 'CLOSED', message: 'Round closed. HR will share your report.', detail: null }
   if (stage === 'REVIEW') {
     const confirmed = await prisma.mappingConfirmation.findUnique({ where: { periodId_userId: { periodId: cycle.periodId, userId: actor.id } } })
@@ -70,6 +124,8 @@ export async function evaluationsCard(actor: WeeklyActor, now: Date): Promise<Ev
   return {
     ...base, selfReview, state: 'THIS_WEEK',
     message: `This week: ${progress.done} of ${progress.total} done, due ${longDay(sunday)}`,
-    detail: progress.carried ? `${progress.carried} from last week` : null,
+    detail: week === total
+      ? `Last week of the round: ${progress.open} ${progress.open === 1 ? 'question' : 'questions'} left before ${roundClosesOn(cycle)}`
+      : progress.carried ? `${progress.carried} from last week` : null,
   }
 }

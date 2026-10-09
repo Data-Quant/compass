@@ -254,6 +254,10 @@ export interface MyMappingResponse {
   candidates: PersonRef[]
   /** When they said their lists look right; null until they do. */
   confirmedAt: string | null
+  /** As a lead: team members' changes waiting for this person's review. */
+  toReview: PeerRequestView[]
+  /** As a peer: changes about this person, without the requester's reason; they may reply. */
+  aboutMe: PeerRequestView[]
 }
 export interface PeerRequestTokenView {
   requester: PersonRef

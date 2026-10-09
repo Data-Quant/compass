@@ -20,6 +20,52 @@ const SECTIONS: Record<MappingRelationValue, { title: string; hint: string; add:
   PEER: { title: 'Your peers', hint: 'People you work alongside', add: 'Add a peer', noun: 'peer' },
 }
 const ORDER: MappingRelationValue[] = ['LEAD', 'REPORT', 'PEER']
+const CHANGE: Record<MappingRelationValue, [string, string]> = { PEER: ['add as a peer', 'remove from their peers'], LEAD: ['add as their lead', 'remove as their lead'], REPORT: ['add to their team', 'remove from their team'] }
+
+type Run = (action: () => Promise<unknown>, success: string, failure: string) => Promise<boolean>
+
+/**
+ * Section 13: what the card's notices point to. A team member's change for this lead to review (HR then decides), and
+ * a peer change about this person, who may say whether they work together. The same as the emailed links.
+ */
+function WaitingForYou({ toReview, aboutMe, saving, run }: { toReview: PeerRequestView[]; aboutMe: PeerRequestView[]; saving: boolean; run: Run }) {
+  const [disagreeing, setDisagreeing] = useState<string | null>(null)
+  const [note, setNote] = useState('')
+  const patch = (body: object) => weeklyRequest('/api/weekly/mapping', { method: 'PATCH', body })
+  return (
+    <section className="space-y-3 rounded-lg border border-sky-300 bg-sky-50/50 p-4 dark:border-sky-900 dark:bg-sky-950/20">
+      <h3 className="font-semibold">Waiting for you</h3>
+      {toReview.map((r) => (
+        <div key={r.id} className="space-y-2 text-sm">
+          <p><span className="font-medium">{r.requester.name}</span> asked to {CHANGE[r.relation][r.action === 'ADD' ? 0 : 1]}: <span className="font-medium">{r.peer.name}</span>.{r.reason ? ` “${r.reason}”` : ''} As their lead, do you agree? HR makes the final decision.</p>
+          {disagreeing === r.id ? (
+            <div className="space-y-2">
+              <Textarea rows={2} maxLength={500} aria-label="Why you disagree" placeholder="Why you disagree (HR sees this)" value={note} onChange={(e) => setNote(e.target.value)} />
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => setDisagreeing(null)}>Cancel</Button>
+                <Button size="sm" disabled={saving || !note.trim()} onClick={() => void run(() => patch({ action: 'review', requestId: r.id, decision: 'REJECT', note: note.trim() }), 'Sent to HR', 'Could not send your review').then((ok) => { if (ok) { setDisagreeing(null); setNote('') } })}>Send to HR</Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <Button size="sm" disabled={saving} onClick={() => void run(() => patch({ action: 'review', requestId: r.id, decision: 'APPROVE' }), 'Sent to HR', 'Could not send your review')}>I agree</Button>
+              <Button size="sm" variant="outline" disabled={saving} onClick={() => { setDisagreeing(r.id); setNote('') }}>I disagree</Button>
+            </div>
+          )}
+        </div>
+      ))}
+      {aboutMe.map((r) => (
+        <div key={r.id} className="space-y-2 text-sm">
+          <p><span className="font-medium">{r.requester.name}</span> asked to {r.action === 'ADD' ? 'add you as a peer' : 'remove you as a peer'}. Their lead and HR decide; you can say whether you work together.{r.peerReply ? ` You said you ${r.peerReply === 'WORK_TOGETHER' ? 'do' : 'don’t'} work together.` : ''}</p>
+          <div className="flex gap-2">
+            <Button size="sm" variant={r.peerReply === 'WORK_TOGETHER' ? 'default' : 'outline'} disabled={saving} onClick={() => void run(() => patch({ action: 'reply', requestId: r.id, reply: 'WORK_TOGETHER' }), 'Reply sent', 'Could not send your reply')}>We work together</Button>
+            <Button size="sm" variant={r.peerReply === 'NOT_WORK_TOGETHER' ? 'default' : 'outline'} disabled={saving} onClick={() => void run(() => patch({ action: 'reply', requestId: r.id, reply: 'NOT_WORK_TOGETHER' }), 'Reply sent', 'Could not send your reply')}>We don’t work together</Button>
+          </div>
+        </div>
+      ))}
+    </section>
+  )
+}
 const REASONS: Record<MappingReasonCodeValue, string> = { NO_LONGER_WORK_TOGETHER: 'We no longer work together', WRONG_PERSON: 'Wrong person', OTHER: 'Other' }
 const MIN_PEERS = 2
 const isOpen = (r: PeerRequestView) => r.status === 'PENDING' || r.status === 'NEEDS_INFO'
@@ -98,6 +144,9 @@ export function MyMappingCard() {
   return (
     <Card>
       <CardContent className="space-y-5 p-5">
+        {(data.toReview.length > 0 || data.aboutMe.length > 0) && (
+          <WaitingForYou toReview={data.toReview} aboutMe={data.aboutMe} saving={saving} run={run} />
+        )}
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
             <h2 className="text-lg font-semibold">Your evaluation lists · {data.period.name}</h2>

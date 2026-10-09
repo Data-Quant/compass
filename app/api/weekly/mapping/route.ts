@@ -4,7 +4,7 @@ import { guardWeeklyMutation, requireWeeklySession } from '@/lib/weekly/http'
 import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
 import { cancelPeerRequestSchema, mappingActionSchema, peerRequestSchema } from '@/lib/weekly/schemas'
 import { actorFromUser } from '@/lib/weekly/service/context'
-import { answerPeerRequest, cancelPeerRequest, confirmMyLists, myMapping, requestPeerChange } from '@/lib/weekly/service/peer-requests'
+import { answerPeerRequest, cancelPeerRequest, confirmMyLists, myMapping, replyAsPeer, requestPeerChange, reviewTeamRequest } from '@/lib/weekly/service/peer-requests'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/** Says the lists look right, or answers HR's question on a request. */
+/** Says the lists look right, answers HR's question, reviews a team member's change, or replies to one about them. */
 export async function PATCH(request: NextRequest) {
   try {
     const user = await requireWeeklySession()
@@ -39,6 +39,12 @@ export async function PATCH(request: NextRequest) {
     const input = mappingActionSchema.parse(await request.json())
     const actor = actorFromUser(user)
     if (input.action === 'confirm') return NextResponse.json({ success: true, ...(await confirmMyLists(actor, new Date())) })
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || request.nextUrl.origin
+    if (input.action === 'review') return NextResponse.json({ success: true, ...(await reviewTeamRequest(actor, input.requestId, input.decision, input.note, new Date(), sendMail, appUrl)) })
+    if (input.action === 'reply') {
+      await replyAsPeer(actor, input.requestId, input.reply, new Date(), sendMail, appUrl)
+      return NextResponse.json({ success: true })
+    }
     return NextResponse.json({ success: true, request: await answerPeerRequest(actor, input.requestId, input.reason) })
   } catch (error) {
     return weeklyErrorResponse(error)

@@ -114,6 +114,9 @@ export async function myMapping(actor: WeeklyActor, now: Date): Promise<MyMappin
   const period = await mappingPeriod()
   const mapping = await mappingFor(period.id, actor.id)
   const requests = await prisma.peerChangeRequest.findMany({ where: { periodId: period.id, requesterId: actor.id }, orderBy: { createdAt: 'desc' } })
+  // Changes waiting for this person: to review as the lead, or about them as the peer (without the requester's reason).
+  const toReview = await prisma.peerChangeRequest.findMany({ where: { periodId: period.id, approverId: actor.id, status: 'PENDING', approverVote: 'PENDING' }, orderBy: { createdAt: 'asc' } })
+  const aboutMe = await prisma.peerChangeRequest.findMany({ where: { periodId: period.id, peerId: actor.id, relation: 'PEER', status: { in: OPEN_STATUSES } }, orderBy: { createdAt: 'asc' } })
   const open = requests.filter((r) => OPEN_STATUSES.includes(r.status)).map((r) => r.peerId)
   const candidates = await prisma.user.findMany({
     where: { id: { notIn: [actor.id, ...mapping.peers, ...mapping.leads, ...mapping.reports, ...open] }, OR: [{ payrollProfile: null }, { payrollProfile: { isPayrollActive: true } }] },
@@ -121,7 +124,7 @@ export async function myMapping(actor: WeeklyActor, now: Date): Promise<MyMappin
     orderBy: { name: 'asc' },
   })
   const confirmation = await prisma.mappingConfirmation.findUnique({ where: { periodId_userId: { periodId: period.id, userId: actor.id } } })
-  const people = await loadPeople([...mapping.leads, ...mapping.reports, ...mapping.peers, ...requests.flatMap((r) => [r.requesterId, r.peerId, r.approverId ?? ''])])
+  const people = await loadPeople([...mapping.leads, ...mapping.reports, ...mapping.peers, ...[...requests, ...toReview, ...aboutMe].flatMap((r) => [r.requesterId, r.peerId, r.approverId ?? ''])])
   const refs = (ids: string[]): PersonRef[] => ids.map((id) => personRef(people, id)).sort((a, b) => a.name.localeCompare(b.name))
   return {
     period: { id: period.id, name: period.name, locked: period.isLocked || !(await inReview(period.id)) },
@@ -130,6 +133,8 @@ export async function myMapping(actor: WeeklyActor, now: Date): Promise<MyMappin
     // Only people in the round: not 3E, not partners HR fills in for, not leavers (UX spec, section 6).
     candidates: await inRound(candidates, now),
     confirmedAt: confirmation?.confirmedAt.toISOString() ?? null,
+    toReview: toReview.map((r) => requestView(r, people)),
+    aboutMe: aboutMe.map((r) => ({ ...requestView(r, people), reason: null, reasonCode: null, leadNote: null, decisionNote: null, answer: null })),
   }
 }
 
@@ -358,6 +363,17 @@ export async function peerRequestByToken(token: string): Promise<PeerRequestToke
 export async function voteOnPeerRequest(token: string, decision: PeerDecision, note: string | null | undefined, now: Date, send: WeeklySendMail, appUrl: string): Promise<{ status: PeerChangeStatus }> {
   const { request, role } = await findByToken(token)
   if (role !== 'LEAD') throw new WeeklyError('Only their lead reviews this change', 403)
+  return leadReview(request, decision, note, now, send, appUrl)
+}
+
+/** The same review from the lead's evaluations page (section 13: the card points there). Only the request's lead. */
+export async function reviewTeamRequest(actor: WeeklyActor, requestId: string, decision: PeerDecision, note: string | null | undefined, now: Date, send: WeeklySendMail, appUrl: string): Promise<{ status: PeerChangeStatus }> {
+  const request = await prisma.peerChangeRequest.findFirst({ where: { id: requestId, approverId: actor.id } })
+  if (!request) throw new WeeklyError('Request not found', 404)
+  return leadReview(request, decision, note, now, send, appUrl)
+}
+
+async function leadReview(request: PeerChangeRequest, decision: PeerDecision, note: string | null | undefined, now: Date, send: WeeklySendMail, appUrl: string): Promise<{ status: PeerChangeStatus }> {
   await assertLinkOpen(request.periodId)
   const leadNote = decision === 'REJECT' ? required(note, 'Give a reason for disagreeing') : note?.trim() || null
   const vote = decision === 'APPROVE' ? 'APPROVED' : 'REJECTED'
@@ -379,6 +395,17 @@ export async function voteOnPeerRequest(token: string, decision: PeerDecision, n
 export async function replyToPeerRequest(token: string, reply: PeerReply, now: Date, send: WeeklySendMail, appUrl: string): Promise<void> {
   const { request, role } = await findByToken(token)
   if (role !== 'PEER') throw new WeeklyError('This link is for deciding the request, not replying to it', 403)
+  return peerReplies(request, reply, now, send, appUrl)
+}
+
+/** The same reply from the peer's evaluations page. Only the peer a peer change is about. */
+export async function replyAsPeer(actor: WeeklyActor, requestId: string, reply: PeerReply, now: Date, send: WeeklySendMail, appUrl: string): Promise<void> {
+  const request = await prisma.peerChangeRequest.findFirst({ where: { id: requestId, peerId: actor.id, relation: 'PEER' } })
+  if (!request) throw new WeeklyError('Request not found', 404)
+  return peerReplies(request, reply, now, send, appUrl)
+}
+
+async function peerReplies(request: PeerChangeRequest, reply: PeerReply, now: Date, send: WeeklySendMail, appUrl: string): Promise<void> {
   await assertLinkOpen(request.periodId)
   const updated = await prisma.peerChangeRequest.updateMany({ where: { id: request.id, status: { in: OPEN_STATUSES } }, data: { peerReply: reply, peerRepliedAt: now } })
   if (updated.count === 0) throw new WeeklyError('This request was already decided', 409)

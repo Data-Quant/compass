@@ -28,7 +28,7 @@ export function WeeklyQuestionsCard() {
   if (!card) return null
   const look = LOOK[card.state]
   const Icon = look.icon
-  const action = look.action ?? (card.selfReview || card.leadNotices.length ? 'Open' : null)
+  const action = look.action ?? (card.selfReview || card.notices.length ? 'Open' : null)
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
       <Card>
@@ -40,8 +40,10 @@ export function WeeklyQuestionsCard() {
               <p className="font-semibold text-foreground">{card.message}</p>
               {card.detail && <p className="text-sm text-muted-foreground">{card.detail}</p>}
               {card.selfReview && <p className="flex items-center gap-1.5 text-sm"><NotebookPen className="h-3.5 w-3.5 text-muted-foreground" /> {card.selfReview}</p>}
-              {card.leadNotices.slice(0, 3).map((notice) => <p key={notice} className="text-sm text-muted-foreground">{notice}</p>)}
-              {card.leadNotices.length > 3 && <p className="text-sm text-muted-foreground">and {card.leadNotices.length - 3} more</p>}
+              {card.notices.slice(0, 3).map((notice) => (
+                <p key={notice.text}><Link href={notice.href} className="text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">{notice.text}</Link></p>
+              ))}
+              {card.notices.length > 3 && <p className="text-sm text-muted-foreground">and {card.notices.length - 3} more</p>}
             </div>
           </div>
           {action && (

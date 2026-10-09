@@ -148,10 +148,10 @@ export async function hrDigestMessages(cycle: CycleWithPeriod, week: number, low
 }
 
 /** A late joiner's leads: told once that they are not in the round, and reminded to give feedback 2 weeks before it closes. */
-export async function joinerMessages(cycle: CycleWithPeriod, week: number, now: Date, appUrl: string): Promise<WeeklyEmailMessage[]> {
-  const joined = await prisma.user.findMany({ where: { payrollProfile: { joiningDate: { gte: cycle.weekOneStartsOn } } }, select: { id: true } })
+/** People left out of the round for joining after it opened (section 7), with their leads. */
+export async function lateJoiners(cycle: CycleWithPeriod, now: Date): Promise<Array<{ joiner: { id: string; name: string }; leads: string[] }>> {
+  const joined = await prisma.user.findMany({ where: { payrollProfile: { joiningDate: { gte: roundOpensAt(cycle) } } }, select: { id: true } })
   if (joined.length === 0) return []
-  const total = cycleWeeks(cycle)
   const [people, optIns] = await Promise.all([
     loadPeople(joined.map((u) => u.id)),
     prisma.weeklyParticipantOverride.findMany({ where: { cycleId: cycle.id, optIn: true }, select: { userId: true } }),
@@ -160,9 +160,16 @@ export async function joinerMessages(cycle: CycleWithPeriod, week: number, now: 
   const late = [...people.values()].filter((p) => !isOutsideRedesign(p) && evaluateeExclusion(p, { now, opensAt: roundOpensAt(cycle), optedIn: optedIn.has(p.id) }) === 'JOINED_LATE')
   if (late.length === 0) return []
   const assignments = await getResolvedEvaluationAssignments(cycle.periodId)
+  return late.map((joiner) => ({ joiner: { id: joiner.id, name: joiner.name }, leads: mappingOf(joiner.id, assignments).leads }))
+}
+
+export async function joinerMessages(cycle: CycleWithPeriod, week: number, now: Date, appUrl: string): Promise<WeeklyEmailMessage[]> {
+  const late = await lateJoiners(cycle, now)
+  if (late.length === 0) return []
+  const total = cycleWeeks(cycle)
   const closesOn = roundClosesOn(cycle)
   const remind = week >= total - 1
-  return late.flatMap((joiner) => mappingOf(joiner.id, assignments).leads.flatMap((leadId) => {
+  return late.flatMap(({ joiner, leads }) => leads.flatMap((leadId) => {
     const message = (reminder: boolean): WeeklyEmailMessage => ({
       userId: leadId, kind: 'weekly-joiner', dedupeKey: `weekly-joiner${reminder ? '-reminder' : ''}:${cycle.id}:${joiner.id}:${leadId}`,
       render: (name) => renderJoinerEmail({ name, joinerName: joiner.name, periodName: cycle.period.name, closesOn, reminder, appUrl }),
