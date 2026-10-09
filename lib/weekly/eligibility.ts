@@ -1,6 +1,5 @@
 import { isThreeEDepartment } from '../company-branding'
 import { shouldReceiveConstantEvaluations } from '../evaluation-profile-rules'
-import { joinedTooLate } from './calendar'
 import { isHrFilledPartner } from './partners'
 
 export interface PersonFacts {
@@ -20,7 +19,7 @@ export const EXCLUSION_LABELS: Record<ExclusionReason, string> = {
   FILLED_BY_HR: 'Partner: HR fills in their evaluations',
   INACTIVE: 'No longer active',
   LEFT: 'Has left',
-  JOINED_LATE: 'Joined with fewer than 6 weeks left',
+  JOINED_LATE: 'Joined after the round opened',
 }
 
 function leftReason(person: PersonFacts, now: Date): ExclusionReason | null {
@@ -34,20 +33,28 @@ export function isOutsideRedesign(person: Pick<PersonFacts, 'department'>): bool
   return isThreeEDepartment(person.department)
 }
 
-export function evaluatorExclusion(person: PersonFacts, now: Date): ExclusionReason | null {
+/** UX spec, section 7: anyone whose joining date is after the round opens is left out of it, unless HR opts them in. */
+export function joinedAfterOpen(person: Pick<PersonFacts, 'joiningDate'>, ctx: { opensAt: Date; optedIn: boolean }): boolean {
+  return !ctx.optedIn && person.joiningDate !== null && person.joiningDate > ctx.opensAt
+}
+
+/** Who answers questions. With the round's `ctx`, a joiner after it opened answers none (section 7). */
+export function evaluatorExclusion(person: PersonFacts, now: Date, ctx?: { opensAt: Date; optedIn: boolean }): ExclusionReason | null {
   if (isOutsideRedesign(person)) return 'NOT_EVALUATED'
   // Their evaluations are filled in by HR at the end of the quarter, so they get no weekly questions.
   if (isHrFilledPartner(person.name)) return 'FILLED_BY_HR'
-  return leftReason(person, now)
+  const left = leftReason(person, now)
+  if (left) return left
+  return ctx && joinedAfterOpen(person, ctx) ? 'JOINED_LATE' : null
 }
 
 export function evaluateeExclusion(
   person: PersonFacts,
-  ctx: { now: Date; weekOneStartsOn: Date; totalWeeks: number; optedIn: boolean },
+  ctx: { now: Date; opensAt: Date; optedIn: boolean },
 ): ExclusionReason | null {
   if (!shouldReceiveConstantEvaluations(person)) return 'NOT_EVALUATED'
   const left = leftReason(person, ctx.now)
   if (left) return left
-  if (!ctx.optedIn && joinedTooLate(person.joiningDate, ctx.weekOneStartsOn, ctx.totalWeeks)) return 'JOINED_LATE'
+  if (joinedAfterOpen(person, ctx)) return 'JOINED_LATE'
   return null
 }

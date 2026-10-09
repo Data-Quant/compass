@@ -85,13 +85,17 @@ test('a leaver’s questions are cancelled, as evaluator and as the person asked
   assert.ok(summary.slotsCancelled > 0)
 })
 
-test('a late joiner is left out until HR opts them in', WEEKLY_DB_TEST, async () => {
-  await prisma.payrollEmployeeProfile.create({ data: { userId: W.ana.id, joiningDate: at(7) } })
-  await releaseWeek(cycleId, 7, at(7))
-  assert.equal(await prisma.weeklySlot.count({ where: { evaluateeId: W.ana.id, status: { not: 'CANCELLED' } } }), 0)
+test('someone who joined after the round opened evaluates nobody and nobody evaluates them, until HR opts them in', WEEKLY_DB_TEST, async () => {
+  // Joined in week 2: under the old rule (6 question weeks left) they were in; the spec leaves them out.
+  await prisma.payrollEmployeeProfile.create({ data: { userId: W.ana.id, joiningDate: at(2) } })
+  await releaseWeek(cycleId, 2, at(2, 2))
+  const live = (where: object) => prisma.weeklySlot.count({ where: { ...where, status: { not: 'CANCELLED' } } })
+  assert.equal(await live({ evaluateeId: W.ana.id }), 0, 'nobody evaluates them')
+  assert.equal(await live({ evaluatorId: W.ana.id }), 0, 'they evaluate nobody')
   await setOptIn(HR_ACTOR, { cycleId, userId: W.ana.id, reason: 'Transferred in' })
-  await releaseWeek(cycleId, 8, at(8))
-  assert.ok((await prisma.weeklySlot.count({ where: { evaluateeId: W.ana.id, status: 'OPEN' } })) > 0)
+  await releaseWeek(cycleId, 3, at(3))
+  assert.ok((await live({ evaluateeId: W.ana.id })) > 0)
+  assert.ok((await live({ evaluatorId: W.ana.id })) > 0)
 })
 
 test('catch-up weeks add one optional comment question per pair and text question', WEEKLY_DB_TEST, async () => {

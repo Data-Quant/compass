@@ -111,7 +111,7 @@ export function renderJoinerEmail(input: { name: string; joinerName: string; per
   return {
     subject: `${input.joinerName} isn’t in the ${input.periodName} evaluations`,
     html: layout(input.name, [
-      escapeHtml(`${input.joinerName} joined with too few weeks left to be evaluated this quarter, so nobody is asked about them.`),
+      escapeHtml(`${input.joinerName} joined after this round opened, so they are not part of it: nobody is asked about them and they get no questions.`),
       escapeHtml('Please give them feedback in person. They will be in the next round.'),
     ], link, 'Open evaluations'),
   }

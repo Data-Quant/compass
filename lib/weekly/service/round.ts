@@ -13,7 +13,7 @@ import type { RoundChecklistItem, RoundNextStep, RoundSummary, RoundView } from 
 import { recordAudit } from './audit'
 import { readyCompetencyCount } from './content'
 import { assertHr, loadPeople, personRef, type WeeklyActor } from './context'
-import { createCycle, loadCycle, updateCycle, type CycleWithPeriod } from './cycles'
+import { createCycle, loadCycle, roundOpensAt, updateCycle, type CycleWithPeriod } from './cycles'
 import { WeeklyError } from './errors'
 import { loadAnswerRecords } from './answer-states'
 import { formsProgress } from './form-tables'
@@ -151,7 +151,7 @@ async function peopleCounts(cycle: CycleWithPeriod, now: Date): Promise<{ includ
   const active = await prisma.user.findMany({ where: { OR: [{ payrollProfile: null }, { payrollProfile: { isPayrollActive: true } }] }, select: { id: true } })
   const optedIn = new Set((await prisma.weeklyParticipantOverride.findMany({ where: { cycleId: cycle.id, optIn: true }, select: { userId: true } })).map((o) => o.userId))
   const people = [...(await loadPeople(active.map((u) => u.id))).values()].filter((p) => !isOutsideRedesign(p))
-  const included = people.filter((p) => evaluateeExclusion(p, { now, weekOneStartsOn: cycle.weekOneStartsOn, totalWeeks: cycleWeeks(cycle), optedIn: optedIn.has(p.id) }) === null).length
+  const included = people.filter((p) => evaluateeExclusion(p, { now, opensAt: roundOpensAt(cycle), optedIn: optedIn.has(p.id) }) === null).length
   return { included, excluded: people.length - included }
 }
 

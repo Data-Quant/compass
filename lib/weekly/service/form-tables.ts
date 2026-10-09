@@ -5,7 +5,6 @@ import { getDeptEvaluationPoolContext, groupDeptAssignmentsByDepartment, pickRep
 import { prisma } from '@/lib/db'
 import { getResolvedEvaluationAssignmentForPair, getResolvedEvaluationAssignments, type ResolvedEvaluationAssignment } from '@/lib/evaluation-assignments'
 import { getResolvedEvaluationQuestions } from '@/lib/pre-evaluation'
-import { cycleWeeks } from '../calendar'
 import { evaluateeExclusion, isOutsideRedesign } from '../eligibility'
 import { formatKarachiDate } from '../format'
 import { hrFilledPartnerNames, isHrFilledPartner } from '../partners'
@@ -14,7 +13,7 @@ import type { FormInput } from '../schemas'
 import type { FormStatusValue, FormTableKind, FormTableQuestion, FormTableRow, FormTablesResponse, FormTableView, PersonRef } from '../view-types'
 import { recordAudit } from './audit'
 import { assertHr, loadPeople, type WeeklyActor } from './context'
-import { cycleSummary, findRunningCycle, loadCycle, type CycleWithPeriod } from './cycles'
+import { cycleSummary, findRunningCycle, loadCycle, roundOpensAt, type CycleWithPeriod } from './cycles'
 import { WeeklyError } from './errors'
 import { assertFourRatingQuota, HR_SLOT_CLOSED, writeFormRows } from './form-submit'
 import { formsOpenDate, formsOpenFor, formStatuses, formUnits } from './forms'
@@ -33,9 +32,8 @@ function unitOf(assignment: ResolvedEvaluationAssignment, evaluateeIds: string[]
 async function evaluatedIds(cycle: CycleWithPeriod, ids: Iterable<string>, now: Date): Promise<Set<string>> {
   const people = await loadPeople(ids)
   const optIns = new Set((await prisma.weeklyParticipantOverride.findMany({ where: { cycleId: cycle.id, optIn: true }, select: { userId: true } })).map((o) => o.userId))
-  const total = cycleWeeks(cycle)
   return new Set([...people.values()]
-    .filter((p) => !isOutsideRedesign(p) && !evaluateeExclusion(p, { now, weekOneStartsOn: cycle.weekOneStartsOn, totalWeeks: total, optedIn: optIns.has(p.id) }))
+    .filter((p) => !isOutsideRedesign(p) && !evaluateeExclusion(p, { now, opensAt: roundOpensAt(cycle), optedIn: optIns.has(p.id) }))
     .map((p) => p.id))
 }
 

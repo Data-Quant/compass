@@ -3,7 +3,6 @@
 import type { MappingRelation, PeerChangeAction } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
-import { cycleWeeks } from '../calendar'
 import { evaluateeExclusion, isOutsideRedesign } from '../eligibility'
 import { renderListChangedEmail } from '../emails'
 import { isWeeklyRelationshipType } from '../perspectives'
@@ -12,7 +11,7 @@ import { resolveImportedName, normalizeImportedName } from '@/lib/mapping-import
 import type { ListImportChange, ListImportResult, ParticipantsResponse, QuarterEndType, RoundWarningKey } from '../view-types'
 import { recordAudit } from './audit'
 import { assertHr, byName, loadPeople, personRef, type WeeklyActor } from './context'
-import { loadCycle } from './cycles'
+import { loadCycle, roundOpensAt } from './cycles'
 import { WeeklyError } from './errors'
 import { deliverOnce, type WeeklySendMail } from './notifications'
 import { applyMappingChange, mappingOf, MIN_PEERS } from './peer-requests'
@@ -38,11 +37,10 @@ export async function participantsView(actor: WeeklyActor, cycleId: string, now:
   ])
   const confirmedAt = new Map(confirmations.map((c) => [c.userId, c.confirmedAt.toISOString()]))
   const optInFor = new Map(optIns.map((o) => [o.userId, o]))
-  const total = cycleWeeks(cycle)
   const refs = (ids: string[]) => ids.map((id) => personRef(people, id)).sort(byName)
   const rows = [...people.values()].filter((person) => !isOutsideRedesign(person)).map((person) => {
     const optIn = optInFor.get(person.id)
-    const exclusion = evaluateeExclusion(person, { now, weekOneStartsOn: cycle.weekOneStartsOn, totalWeeks: total, optedIn: Boolean(optIn) })
+    const exclusion = evaluateeExclusion(person, { now, opensAt: roundOpensAt(cycle), optedIn: Boolean(optIn) })
     const mapping = mappingOf(person.id, assignments)
     const keys: RoundWarningKey[] = exclusion ? [] : [...(mapping.leads.length === 0 ? (['NO_LEAD'] as const) : []), ...(mapping.peers.length < MIN_PEERS ? (['FEW_PEERS'] as const) : [])]
     return {

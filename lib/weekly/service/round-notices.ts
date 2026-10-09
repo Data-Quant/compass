@@ -13,7 +13,7 @@ import { isWeeklyRelationshipType } from '../perspectives'
 import { OPEN_REQUEST_STATUSES } from '../request-status'
 import { addWorkingDays } from '../working-days'
 import { loadAnswerRecords } from './answer-states'
-import { loadCycle, type CycleWithPeriod } from './cycles'
+import { loadCycle, roundOpensAt, type CycleWithPeriod } from './cycles'
 import { lowEvidenceRows } from './dashboard'
 import { loadPeople } from './context'
 import { deliverOnce, hrUserIds, type WeeklyEmailMessage, type WeeklySendMail, type WeeklySendResult } from './notifications'
@@ -71,7 +71,8 @@ export async function roundOpenedMessages(cycle: CycleWithPeriod, now: Date, app
   const people = await loadPeople(assignments.map((a) => a.evaluatorId))
   const weeks = cycleWeeks(cycle)
   const closesOn = roundClosesOn(cycle)
-  return [...people.values()].filter((p) => evaluatorExclusion(p, now) === null).map((p) => ({
+  const optedIn = new Set((await prisma.weeklyParticipantOverride.findMany({ where: { cycleId: cycle.id, optIn: true }, select: { userId: true } })).map((o) => o.userId))
+  return [...people.values()].filter((p) => evaluatorExclusion(p, now, { opensAt: roundOpensAt(cycle), optedIn: optedIn.has(p.id) }) === null).map((p) => ({
     userId: p.id, kind: 'weekly-round-opened' as const, dedupeKey: `weekly-round-opened:${cycle.id}:${p.id}`,
     render: (name: string) => renderRoundOpenedEmail({ name, periodName: cycle.period.name, weeks, closesOn, appUrl }),
   }))
@@ -156,7 +157,7 @@ export async function joinerMessages(cycle: CycleWithPeriod, week: number, now: 
     prisma.weeklyParticipantOverride.findMany({ where: { cycleId: cycle.id, optIn: true }, select: { userId: true } }),
   ])
   const optedIn = new Set(optIns.map((o) => o.userId))
-  const late = [...people.values()].filter((p) => !isOutsideRedesign(p) && evaluateeExclusion(p, { now, weekOneStartsOn: cycle.weekOneStartsOn, totalWeeks: total, optedIn: optedIn.has(p.id) }) === 'JOINED_LATE')
+  const late = [...people.values()].filter((p) => !isOutsideRedesign(p) && evaluateeExclusion(p, { now, opensAt: roundOpensAt(cycle), optedIn: optedIn.has(p.id) }) === 'JOINED_LATE')
   if (late.length === 0) return []
   const assignments = await getResolvedEvaluationAssignments(cycle.periodId)
   const closesOn = roundClosesOn(cycle)

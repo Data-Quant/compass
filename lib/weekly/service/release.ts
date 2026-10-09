@@ -9,7 +9,7 @@ import { nextVariant, pickTopic, planWeek, type PairWindow, type SchedulableTopi
 import { loadReadyCompetencies, type ReadyCompetency } from './content'
 import { toJson } from './db'
 import { loadPeople } from './context'
-import { loadCycle, type CycleWithPeriod } from './cycles'
+import { loadCycle, roundOpensAt, type CycleWithPeriod } from './cycles'
 import { isUniqueViolation } from './db'
 import { WeeklyError } from './errors'
 import { defaultWindow, pairWindowKey, pairWindows } from './pair-windows'
@@ -33,7 +33,7 @@ export async function syncSlots(cycle: CycleWithPeriod, now: Date, week: number 
   const assignments = (await getResolvedEvaluationAssignments(cycle.periodId)).filter((a) => isWeeklyRelationshipType(a.relationshipType))
   const people = await loadPeople(assignments.flatMap((a) => [a.evaluatorId, a.evaluateeId]))
   const optIns = new Set((await prisma.weeklyParticipantOverride.findMany({ where: { cycleId: cycle.id, optIn: true } })).map((o) => o.userId))
-  const total = cycleWeeks(cycle)
+  const opensAt = roundOpensAt(cycle)
   const pairs: LivePair[] = []
   const desired: SlotKeyed[] = []
   for (const a of assignments) {
@@ -41,8 +41,8 @@ export async function syncSlots(cycle: CycleWithPeriod, now: Date, week: number 
     const evaluatee = people.get(a.evaluateeId)
     const perspective = perspectiveOf(a.relationshipType)
     if (!evaluator || !evaluatee || !perspective || a.evaluatorId === a.evaluateeId) continue
-    if (evaluatorExclusion(evaluator, now)) continue
-    if (evaluateeExclusion(evaluatee, { now, weekOneStartsOn: cycle.weekOneStartsOn, totalWeeks: total, optedIn: optIns.has(evaluatee.id) })) continue
+    if (evaluatorExclusion(evaluator, now, { opensAt, optedIn: optIns.has(evaluator.id) })) continue
+    if (evaluateeExclusion(evaluatee, { now, opensAt, optedIn: optIns.has(evaluatee.id) })) continue
     const relationshipType = a.relationshipType as WeeklyRelationshipType
     pairs.push({ evaluatorId: a.evaluatorId, evaluateeId: a.evaluateeId, relationshipType, perspective })
     const topics = (ready.global.get(perspective) ?? []).filter((topic) => appliesTo(topic, evaluatee.department))

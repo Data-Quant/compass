@@ -37,6 +37,14 @@ export function cycleSummary(cycle: CycleWithPeriod, now: Date): CycleSummary {
   }
 }
 
+/**
+ * When the round counts as open for joiners (UX spec, section 7): when HR opened it, or week 1 if that came first (a
+ * round opened late still leaves out people who joined after its questions began).
+ */
+export function roundOpensAt(cycle: { startedAt: Date | null; weekOneStartsOn: Date }): Date {
+  return cycle.startedAt && cycle.startedAt < cycle.weekOneStartsOn ? cycle.startedAt : cycle.weekOneStartsOn
+}
+
 /** At most one cycle runs at a time (enforced when starting). */
 export async function findRunningCycle(db: Db = prisma): Promise<CycleWithPeriod | null> {
   const cycle = await db.weeklyCycle.findFirst({ where: { status: 'RUNNING' }, orderBy: { weekOneStartsOn: 'desc' } })
@@ -107,7 +115,7 @@ export async function updateCycle(actor: WeeklyActor, cycleId: string, input: Up
     if ((await prisma.weeklyCycle.count({ where: { status: 'RUNNING' } })) > 0) throw new WeeklyError('Another weekly cycle is already running', 409)
     if ((await readyCompetencyCount()) === 0) throw new WeeklyError('Load the question bank before starting: no topic has questions ready to ask', 409)
     return prisma.$transaction(async (tx) => {
-      const started = await tx.weeklyCycle.update({ where: { id: cycle.id }, data: { status: 'RUNNING' } })
+      const started = await tx.weeklyCycle.update({ where: { id: cycle.id }, data: { status: 'RUNNING', startedAt: new Date() } })
       await recordAudit(tx, { cycleId: cycle.id, actorId: actor.id, actorRole: 'HR', action: 'CYCLE_START', objectType: 'WeeklyCycle', objectId: cycle.id })
       return started
     })

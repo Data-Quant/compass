@@ -6,8 +6,6 @@ const DAY_MS = 24 * 60 * 60 * 1000
 export const WEEK_MS = 7 * DAY_MS
 /** The last weeks of a cycle are for catch-up and the optional comment questions. */
 export const CATCH_UP_WEEKS = 2
-/** D17: a joiner needs at least this many question weeks to be evaluated. */
-export const LATE_JOINER_MIN_WEEKS = 6
 
 export function startOfKarachiDay(date: CalendarDate): Date {
   return new Date(Date.UTC(date.year, date.month - 1, date.day) - KARACHI_OFFSET_MS)
@@ -63,13 +61,3 @@ export function effectiveWeek(weekOneStartsOn: Date, simulatedWeek: number | nul
   return Math.max(weekIndexAt(weekOneStartsOn, now), simulatedWeek ?? 0)
 }
 
-/**
- * D17: a joiner is late when fewer question weeks are left than the minimum. In a cycle shorter than the
- * minimum, someone present for every question week is never late (only later joiners are).
- */
-export function joinedTooLate(joiningDate: Date | null, weekOneStartsOn: Date, total: number): boolean {
-  if (!joiningDate) return false
-  const questionWeeks = questionWeekCount(total)
-  const joinWeek = Math.max(1, weekIndexAt(weekOneStartsOn, joiningDate))
-  return questionWeeks - joinWeek + 1 < Math.min(LATE_JOINER_MIN_WEEKS, questionWeeks)
-}

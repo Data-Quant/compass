@@ -2353,6 +2353,8 @@ model WeeklyCycle {
   id                 String            @id @default(cuid())
   periodId           String            @unique
   weekOneStartsOn    DateTime
+  /// When HR opened the round (the cycle started); joiners after it are left out (UX spec, section 7).
+  startedAt          DateTime?
   questionWeeks      Int
   /// The date the review stage should finish by (employees check their lists, leads write questions).
   reviewDeadline     DateTime?

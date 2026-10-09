@@ -20,7 +20,7 @@ const EXCLUSION_LABELS: Record<NonNullable<ParticipantRow['exclusion']>, string>
   FILLED_BY_HR: 'Partner: HR fills in their evaluations',
   INACTIVE: 'No longer active',
   LEFT: 'Has left',
-  JOINED_LATE: 'Joined with fewer than 6 weeks left',
+  JOINED_LATE: 'Joined after the round opened',
 }
 
 /** The cycles, and the one being worked on: the Evaluation round page's round when inside it. */

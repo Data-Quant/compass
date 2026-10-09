@@ -9,7 +9,7 @@ const weekOne = new Date('2026-10-04T19:00:00.000Z')
 const person = (overrides: Partial<PersonFacts> = {}): PersonFacts => ({
   id: 'p', name: 'Pat Doe', department: 'Product', position: 'Analyst', payrollActive: true, exitDate: null, joiningDate: null, ...overrides,
 })
-const ctx = { now, weekOneStartsOn: weekOne, totalWeeks: 13, optedIn: false }
+const ctx = { now, opensAt: weekOne, optedIn: false }
 
 test('relationship types map to perspectives and question banks', () => {
   assert.equal(perspectiveOf('TEAM_LEAD'), 'LEAD')
@@ -41,10 +41,15 @@ test('leavers neither evaluate nor get evaluated', () => {
   assert.equal(evaluatorExclusion(person(), now), null)
 })
 
-test('late joiners are left out unless HR opts them in', () => {
-  const late = person({ joiningDate: new Date('2026-11-16T05:00:00.000Z') })
+test('anyone who joined after the round opened is left out both ways, unless HR opts them in (section 7)', () => {
+  const late = person({ joiningDate: new Date('2026-10-12T05:00:00.000Z') })
   assert.equal(evaluateeExclusion(late, ctx), 'JOINED_LATE')
+  assert.equal(evaluatorExclusion(late, now, { opensAt: weekOne, optedIn: false }), 'JOINED_LATE')
   assert.equal(evaluateeExclusion(late, { ...ctx, optedIn: true }), null)
+  assert.equal(evaluatorExclusion(late, now, { opensAt: weekOne, optedIn: true }), null)
+  const before = person({ joiningDate: new Date('2026-09-01T05:00:00.000Z') })
+  assert.equal(evaluateeExclusion(before, ctx), null)
+  assert.equal(evaluatorExclusion(before, now, { opensAt: weekOne, optedIn: false }), null)
 })
 
 test('3E is outside the redesign entirely: never asked, never asking, never listed', () => {
