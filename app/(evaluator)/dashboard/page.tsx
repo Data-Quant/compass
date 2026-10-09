@@ -1,7 +1,7 @@
 ﻿'use client'
 
 import { useEffect, useState } from 'react'
-import { PERSPECTIVE_LABELS } from '@/lib/weekly/perspectives'
+import { RELATIONSHIP_WORDS } from '@/lib/weekly/perspectives'
 import type { InboxResponse } from '@/lib/weekly/view-types'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
@@ -279,7 +279,8 @@ export default function DashboardPage() {
   // â”€â”€â”€ Computed stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const weeklyProgress = weekly?.progress ?? []
-  const openQuestions = (weekly?.prompts ?? []).filter((p) => p.status !== 'SUBMITTED').length
+  // Counted as the Evaluations card counts the week, so the two always agree.
+  const openQuestions = weekly?.week ? weekly.week.total - weekly.week.done : (weekly?.prompts ?? []).filter((p) => p.status !== 'SUBMITTED').length
   const topicsTotal = weeklyProgress.reduce((sum, row) => sum + row.total, 0)
   const topicsAnswered = weeklyProgress.reduce((sum, row) => sum + row.answered, 0)
   const evaluationPercent = topicsTotal > 0
@@ -357,7 +358,7 @@ export default function DashboardPage() {
       >
         <motion.div variants={stagger.item}>
           <StatsCard
-            title="Questions to answer"
+            title="Open this week"
             value={openQuestions}
             icon={<ClipboardCheck className="w-5 h-5" />}
           />
@@ -380,7 +381,7 @@ export default function DashboardPage() {
         </motion.div>
         <motion.div variants={stagger.item}>
           <StatsCard
-            title="Topics answered"
+            title="Quarter progress"
             value={evaluationPercent}
             suffix="%"
             icon={<Target className="w-5 h-5" />}
@@ -604,7 +605,7 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <ClipboardCheck className="h-5 w-5 text-primary" />
-                  <h2 className="text-lg font-semibold text-foreground">Weekly evaluations</h2>
+                  <h2 className="text-lg font-semibold text-foreground">Who you evaluate</h2>
                 </div>
                 <Badge variant="secondary">{weekly?.cycle ? weekly.cycle.periodName : 'Not running'}</Badge>
               </div>
@@ -613,12 +614,6 @@ export default function DashboardPage() {
                 <p className="text-sm text-muted-foreground">You have nobody to evaluate this quarter.</p>
               ) : (
                 <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <Progress value={evaluationPercent} className="flex-1 h-2" />
-                    <span className="text-sm font-medium text-foreground w-12 text-right">
-                      {evaluationPercent}%
-                    </span>
-                  </div>
 
                   <div className="space-y-2 max-h-[200px] overflow-y-auto">
                     {weeklyProgress.slice(0, 6).map((row) => (
@@ -631,10 +626,10 @@ export default function DashboardPage() {
                           <UserAvatar name={row.evaluatee.name} size="xs" />
                           <div>
                             <p className="text-sm font-medium text-foreground">{row.evaluatee.name}</p>
-                            <p className="text-xs text-muted-foreground">{PERSPECTIVE_LABELS[row.perspective]}</p>
+                            <p className="text-xs text-muted-foreground">{RELATIONSHIP_WORDS[row.perspective]}</p>
                           </div>
                         </div>
-                        <span className="text-xs text-muted-foreground shrink-0">{row.answered} of {row.total} topics</span>
+                        <span className="text-xs text-muted-foreground shrink-0">{row.answered} of {row.total} questions</span>
                       </Link>
                     ))}
                   </div>

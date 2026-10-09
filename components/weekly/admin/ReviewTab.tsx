@@ -8,7 +8,7 @@ import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/ui/modal'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -17,7 +17,7 @@ import { PERSPECTIVE_LABELS } from '@/lib/weekly/perspectives'
 import type { AnswerStateValue, ReviewItem, ReviewQueueResponse } from '@/lib/weekly/view-types'
 import { cn } from '@/lib/utils'
 import { errorMessage, weeklyRequest } from '../weekly-api'
-import { CyclePicker, useCycles } from './PeopleTab'
+import { CyclePicker, NoRound, useCycles } from './PeopleTab'
 
 const FILTERS: Array<{ value: AnswerStateValue; label: string }> = [
   { value: 'NEEDS_REVIEW', label: 'To review' }, { value: 'FAILED', label: 'Model failed' }, { value: 'SCORING', label: 'With the model' }, { value: 'DECIDED', label: 'Decided' },
@@ -25,7 +25,7 @@ const FILTERS: Array<{ value: AnswerStateValue; label: string }> = [
 type Setting = { item: ReviewItem; score: string; reason: string; confirmFour: boolean }
 
 export function ReviewTab() {
-  const { cycles, cycleId, setCycleId } = useCycles()
+  const { cycles, cycleId, setCycleId, loaded } = useCycles()
   const [filter, setFilter] = useState<AnswerStateValue>('NEEDS_REVIEW')
   const [data, setData] = useState<ReviewQueueResponse | null>(null)
   const [busy, setBusy] = useState(false)
@@ -65,6 +65,26 @@ export function ReviewTab() {
     else void post({ action: 'accept', responseId: item.responseId, revision: item.revision, aiScoreId: item.ai?.id }, `Confirmed ${item.ai?.score}`)
   }
 
+  /** The model agreed with the statement the evaluator chose, and no cap on 4s is crossed: safe to confirm together. */
+  const agreeing = (data?.items ?? []).filter((i) => i.ai && !i.decision && i.ai.score === i.chosen.level && !(i.ai.score === 4 && !i.fours.exempt && i.fours.used >= i.fours.limit))
+  async function confirmAgreeing() {
+    setBusy(true)
+    let confirmed = 0
+    try {
+      // One at a time through the same check as a single confirmation; a 4 can use up the cap along the way.
+      for (const item of agreeing) {
+        await weeklyRequest('/api/admin/weekly/review', { method: 'POST', body: { action: 'accept', responseId: item.responseId, revision: item.revision, aiScoreId: item.ai?.id } })
+        confirmed += 1
+      }
+      toast.success(`Confirmed ${confirmed} ${confirmed === 1 ? 'answer' : 'answers'}`)
+    } catch (e) {
+      toast.error(`${confirmed} confirmed; then: ${errorMessage(e, 'could not confirm the rest')}`)
+    } finally {
+      setBusy(false)
+      await load()
+    }
+  }
+
   async function submitSetting() {
     if (!setting) return
     const { item, score, reason, confirmFour } = setting
@@ -74,7 +94,7 @@ export function ReviewTab() {
     if (await post(body, `Score set to ${score}`)) setSetting(null)
   }
 
-  if (cycles.length === 0) return <p className="text-sm text-muted-foreground">No round is running yet.</p>
+  if (!cycleId) return <NoRound loaded={loaded} />
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -87,7 +107,12 @@ export function ReviewTab() {
           ))}
         </div>
       </div>
-      <p className="text-sm text-muted-foreground">The model scores each answer from the statement the evaluator chose, their note and their earlier answers about the same person. Nothing counts until you confirm it.</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-2xl text-sm text-muted-foreground">The model scores each answer from the statement the evaluator chose, their note and their earlier answers about the same person. Nothing counts until you confirm it.</p>
+        {filter === 'NEEDS_REVIEW' && agreeing.length > 1 && (
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => void confirmAgreeing()}>Confirm the {agreeing.length} that match the chosen statement</Button>
+        )}
+      </div>
       {!data ? <p className="text-sm text-muted-foreground">Loading…</p> : data.items.length === 0 ? <p className="text-sm text-muted-foreground">Nothing here.</p> : (
         <div className="space-y-3">
           {data.items.map((item) => (
@@ -111,14 +136,14 @@ export function ReviewTab() {
               <div className="space-y-1.5">
                 <Label htmlFor="review-score">Score</Label>
                 <Select value={setting.score} onValueChange={(score) => setSetting({ ...setting, score })}>
-                  <SelectTrigger id="review-score" className="w-32"><SelectValue /></SelectTrigger>
-                  <SelectContent>{MCQ_LEVELS.map((l) => <SelectItem key={l} value={String(l)}>{l}</SelectItem>)}</SelectContent>
+                  <SelectTrigger id="review-score" className="w-80"><SelectValue /></SelectTrigger>
+                  <SelectContent>{MCQ_LEVELS.map((l) => <SelectItem key={l} value={String(l)}>{l} · {levelMeaning(l)}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
             )}
             <div className="space-y-1.5">
               <Label htmlFor="review-reason">Reason</Label>
-              <Input id="review-reason" value={setting.reason} maxLength={500} onChange={(e) => setSetting({ ...setting, reason: e.target.value })} />
+              <Textarea id="review-reason" rows={2} value={setting.reason} maxLength={500} placeholder="What makes this the right score (the evaluator will not see it)" onChange={(e) => setSetting({ ...setting, reason: e.target.value })} />
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setSetting(null)}>Cancel</Button>

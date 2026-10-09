@@ -25,25 +25,33 @@ export function NumberTicker({
   });
   const isInView = useInView(ref, { once: true, margin: "0px" });
 
+  const format = (n: number) =>
+    Intl.NumberFormat("en-US", {
+      minimumFractionDigits: decimalPlaces,
+      maximumFractionDigits: decimalPlaces,
+    }).format(Number(n.toFixed(decimalPlaces)));
+
   useEffect(() => {
-    if (isInView) {
-      setTimeout(() => {
-        motionValue.set(direction === "down" ? 0 : value);
-      }, delay * 1000);
-    }
-  }, [motionValue, isInView, delay, value, direction]);
+    if (!isInView) return;
+    const target = direction === "down" ? 0 : value;
+    const start = setTimeout(() => motionValue.set(target), delay * 1000);
+    // The spring emits nothing when the value does not move (a 0 stayed blank) and can stop short of a value that
+    // arrives later; once it should be done, show the exact number.
+    const settle = setTimeout(() => {
+      if (ref.current) ref.current.textContent = format(target);
+    }, delay * 1000 + 1500);
+    return () => {
+      clearTimeout(start);
+      clearTimeout(settle);
+    };
+  }, [motionValue, isInView, delay, value, direction]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(
     () =>
       springValue.on("change", (latest) => {
-        if (ref.current) {
-          ref.current.textContent = Intl.NumberFormat("en-US", {
-            minimumFractionDigits: decimalPlaces,
-            maximumFractionDigits: decimalPlaces,
-          }).format(Number(latest.toFixed(decimalPlaces)));
-        }
+        if (ref.current) ref.current.textContent = format(latest);
       }),
-    [springValue, decimalPlaces]
+    [springValue, decimalPlaces] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   return (
