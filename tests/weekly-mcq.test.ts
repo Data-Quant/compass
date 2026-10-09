@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { levelMeaning } from '../lib/weekly/levels'
+import { sameDepartment } from '../lib/weekly/departments'
 import { STANDARD_MCQ_BANK } from '../lib/weekly/content/mcq-bank'
 import { fourRatingLimit, MCQ_LEVELS, noteRequired, optionsProblem, personalise, shuffleOptions, withOptionIds } from '../lib/weekly/mcq'
 
@@ -49,4 +50,27 @@ test('every level has its Compass meaning for HR (section 8)', () => {
   assert.equal(levelMeaning(1.5), 'Below expectations; needs regular follow-up')
   assert.equal(levelMeaning(3.5), 'Exceeds, with impact beyond their own work')
   assert.ok(MCQ_LEVELS.every((l) => levelMeaning(l) !== ''))
+})
+
+test('a lead answers 3 common topics (2 questions each) and 2 topics for each department (1 question each) (section 9)', () => {
+  const lead = STANDARD_MCQ_BANK.filter((t) => t.perspective === 'LEAD')
+  const common = lead.filter((t) => t.departments === null)
+  assert.deepEqual(common.map((t) => [t.name, t.questions.length]), [['Quality of Work', 2], ['Initiative & Proactivity', 2], ['Team Collaboration', 2]])
+  const byDepartment = new Map<string, string[]>()
+  for (const t of lead.filter((x) => x.departments !== null)) {
+    assert.equal(t.questions.length, 1, t.name)
+    for (const d of t.departments ?? []) byDepartment.set(d, [...(byDepartment.get(d) ?? []), t.key])
+  }
+  assert.deepEqual(Object.fromEntries(byDepartment), {
+    Technology: ['LEAD.DEPT.D1', 'LEAD.DEPT.D2'], 'Human Resources': ['LEAD.DEPT.D3', 'LEAD.DEPT.D4'], Operations: ['LEAD.DEPT.D5', 'LEAD.DEPT.D6'],
+    Product: ['LEAD.DEPT.D7', 'LEAD.DEPT.D8'], 'Growth and Strategy': ['LEAD.DEPT.D9', 'LEAD.DEPT.D10'], Design: ['LEAD.DEPT.D11', 'LEAD.DEPT.D12'],
+    'Value Creation': ['LEAD.DEPT.D14', 'LEAD.DEPT.D15'], Executive: ['LEAD.DEPT.D14', 'LEAD.DEPT.D15'],
+  })
+})
+
+test('department names match however they are written: case, spaces, "&" or "and"', () => {
+  assert.equal(sameDepartment('Growth and Strategy', 'Growth & Strategy'), true)
+  assert.equal(sameDepartment('Growth and Strategy', '  growth AND  strategy '), true)
+  assert.equal(sameDepartment('Human Resources', 'HR Ops'), false)
+  assert.equal(sameDepartment('Design', null), false)
 })

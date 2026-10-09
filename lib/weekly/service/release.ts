@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import { cycleWeeks, effectiveWeek, isCatchUpWeek } from '../calendar'
+import { sameDepartment } from '../departments'
 import { evaluateeExclusion, evaluatorExclusion } from '../eligibility'
 import { optionsProblem, parseOptions, personalise, shuffleOptions } from '../mcq'
 import { bankForPerspective, isWeeklyRelationshipType, perspectiveOf, type Perspective, type WeeklyRelationshipType } from '../perspectives'
@@ -20,7 +21,6 @@ export interface ReleaseSummary { week: number; slotsCreated: number; slotsCance
 type SlotKeyed = { evaluatorId: string; evaluateeId: string; relationshipType: string; competencyId: string }
 const pairKey = (p: { evaluatorId: string; evaluateeId: string; relationshipType: string }) => `${p.evaluatorId}|${p.evaluateeId}|${p.relationshipType}`
 const slotKey = (s: SlotKeyed) => `${pairKey(s)}|${s.competencyId}`
-const sameDepartment = (a: string, b: string | null) => a.trim().toLowerCase() === (b ?? '').trim().toLowerCase()
 /** A department topic is asked only about people in one of its departments. */
 const appliesTo = (topic: ReadyCompetency, department: string | null) => topic.departments.length === 0 || topic.departments.some((d) => sameDepartment(d, department))
 

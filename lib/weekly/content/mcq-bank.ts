@@ -630,7 +630,7 @@ export const STANDARD_MCQ_BANK: readonly McqBankTopic[] = [
     perspective: "LEAD",
     name: "Use of team tools",
     departments: [
-      "Product"
+      "Growth and Strategy"
     ],
     questions: [
       {
@@ -677,7 +677,7 @@ export const STANDARD_MCQ_BANK: readonly McqBankTopic[] = [
     perspective: "LEAD",
     name: "Contribution to fundraising",
     departments: [
-      "Product"
+      "Growth and Strategy"
     ],
     questions: [
       {
