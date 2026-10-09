@@ -104,7 +104,7 @@ export function PeerRequestsAdminCard() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
             <h2 className="text-lg font-semibold">Change requests · {data.period.name}</h2>
-            <p className="text-sm text-muted-foreground">Requests from people with a lead come here after their lead reviews them. You make the final call. Changes apply to this round; to make one permanent, update the <a className="underline" href="/admin/mappings">mappings</a>.</p>
+            <p className="text-sm text-muted-foreground">Requests from people with a lead come here after their lead reviews them. You make the final call. A lead or team change you apply also updates the live <a className="underline" href="/admin/mappings">mappings</a>, so the next quarter starts with it; a peer change applies to this round only.</p>
           </div>
           <Button variant="outline" size="sm" disabled={busy} onClick={() => void emailLists()}><Mail className="mr-1.5 h-4 w-4" /> Email everyone their lists</Button>
         </div>

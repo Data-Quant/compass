@@ -420,3 +420,23 @@ test('HR sees when removing a peer would leave someone with fewer than 2 peers',
   const [request] = (await adminPeerRequests(HR_ACTOR)).requests
   assert.equal(request.peersAfter, 0)
 })
+
+const live = (lead: string, member: string) => prisma.evaluatorMapping.count({ where: { OR: [
+  { evaluatorId: lead, evaluateeId: member, relationshipType: 'TEAM_LEAD' },
+  { evaluatorId: member, evaluateeId: lead, relationshipType: 'DIRECT_REPORT' },
+] } })
+
+test('an approved lead or team change also updates the live mappings, so the next quarter starts with it (D-L1); a peer change does not', WEEKLY_DB_TEST, async () => {
+  const added = await requestPeerChange(weeklyActor(W.cara), { peerId: W.lead.id, action: 'ADD', relation: 'LEAD', reason: 'Moved to Layla’s team' }, at(1), mailbox().send, APP)
+  await decidePeerRequest(HR_ACTOR, added.id, 'APPROVE', null, at(1, 2), mailbox().send, APP)
+  assert.equal(await live(W.lead.id, W.cara.id), 2)
+  const removed = await requestPeerChange(weeklyActor(W.lead), { peerId: W.ben.id, action: 'REMOVE', relation: 'REPORT', reason: 'Ben moved to Design' }, at(1), mailbox().send, APP)
+  await decidePeerRequest(HR_ACTOR, removed.id, 'APPROVE', null, at(1, 2), mailbox().send, APP)
+  assert.equal(await live(W.lead.id, W.ben.id), 0)
+  const declined = await requestPeerChange(weeklyActor(W.lead), { peerId: W.ana.id, action: 'REMOVE', relation: 'REPORT', reason: 'Ana moved' }, at(1), mailbox().send, APP)
+  await decidePeerRequest(HR_ACTOR, declined.id, 'REJECT', 'Ana stays', at(1, 2), mailbox().send, APP)
+  assert.equal(await live(W.lead.id, W.ana.id), 2, 'a declined change leaves them as they were')
+  const peer = await requestPeerChange(ana, removeBen, at(1), mailbox().send, APP)
+  await decidePeerRequest(HR_ACTOR, peer.id, 'APPROVE', null, at(1, 2), mailbox().send, APP)
+  assert.equal(await prisma.evaluatorMapping.count({ where: { evaluatorId: W.ana.id, evaluateeId: W.ben.id, relationshipType: 'PEER' } }), 1, 'peer changes stay with the quarter')
+})

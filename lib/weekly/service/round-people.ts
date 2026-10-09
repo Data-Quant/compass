@@ -94,7 +94,7 @@ export async function changeRoundMapping(
   const person = people.get(input.userId)
   const other = people.get(input.otherId)
   if (!person || !other) throw new WeeklyError('Person not found', 404)
-  await prisma.$transaction((tx) => applyMappingChange(tx, { periodId: cycle.periodId, ...input, note: `HR: ${reason}`, by: actor.id }))
+  await prisma.$transaction((tx) => applyMappingChange(tx, { periodId: cycle.periodId, ...input, note: `HR: ${reason}`, by: actor.id, live: true }))
   await recordAudit(prisma, { cycleId, actorId: actor.id, actorRole: 'HR', action: 'ROUND_MAPPING_CHANGE', objectType: 'User', objectId: input.userId, after: input })
   const stage = await periodRoundStage(cycle.periodId)
   // Mid-round, unanswered questions between people no longer paired are cancelled now, not at the next daily run.

@@ -150,7 +150,7 @@ function ChangeListsDialog({ cycleId, row, people, onClose, onSaved }: { cycleId
         <div className="space-y-1">
           <Label htmlFor="change-reason">Reason</Label>
           <Textarea id="change-reason" rows={2} required minLength={3} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />
-          <p className="text-xs text-muted-foreground">Applies to this round in both directions. Answers already given still count; new questions start next week.</p>
+          <p className="text-xs text-muted-foreground">Applies to this round in both directions; a lead or team change also updates the live mappings for future quarters. Answers already given still count; new questions start next week.</p>
         </div>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>

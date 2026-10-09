@@ -129,3 +129,10 @@ test('when HR removes someone mid-round, their unanswered questions about each o
   assert.equal(await prisma.weeklySlot.count({ where: { ...pair, status: 'OPEN' } }), 0, 'no more questions between them')
   assert.equal(await prisma.weeklyPrompt.count({ where: { ...pair, status: { in: ['OPEN', 'DRAFT'] } } }), 0, 'unanswered ones are cancelled')
 })
+
+test('HR’s own lead change updates the live mappings too; the spreadsheet import stays with the round', WEEKLY_DB_TEST, async () => {
+  await changeRoundMapping(HR_ACTOR, cycleId, { userId: W.cara.id, otherId: W.lead.id, relation: 'LEAD', action: 'ADD', reason: 'Joined Layla’s team' }, at(1), send, APP)
+  assert.equal(await prisma.evaluatorMapping.count({ where: { evaluatorId: W.lead.id, evaluateeId: W.cara.id, relationshipType: 'TEAM_LEAD' } }), 1)
+  await importRoundLists(HR_ACTOR, cycleId, csv('Name,Team Lead 1\nBen Okafor,\n'), true)
+  assert.equal(await prisma.evaluatorMapping.count({ where: { evaluatorId: W.lead.id, evaluateeId: W.ben.id, relationshipType: 'TEAM_LEAD' } }), 1, 'the import changed the round only')
+})

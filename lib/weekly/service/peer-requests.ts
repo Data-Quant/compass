@@ -8,6 +8,7 @@ import type {
 } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
+import { createLogicalEvaluatorMapping } from '@/lib/evaluation-mappings'
 import {
   renderChangeForOtherEmail, renderMappingEmail, renderMappingQuestionEmail, renderPeerOutcomeEmail, renderPeerReplyEmail, renderPeerRequestEmail, renderRequestForHrEmail,
   renderRequestReceivedEmail,
@@ -256,11 +257,24 @@ function overridesFor(relation: MappingRelation, me: string, them: string): Arra
   }
 }
 
-/** Writes a change to someone's lists for one quarter, as overrides in both directions. */
+/**
+ * Writes a change to someone's lists for one quarter, as overrides in both directions. With `live`, a lead or team
+ * change also updates the live mappings, so the next quarter starts with it (D-L1); peer changes stay with the quarter.
+ */
 export async function applyMappingChange(
   tx: Prisma.TransactionClient,
-  input: { periodId: string; userId: string; otherId: string; relation: MappingRelation; action: PeerChangeAction; note: string; by: string | null },
+  input: { periodId: string; userId: string; otherId: string; relation: MappingRelation; action: PeerChangeAction; note: string; by: string | null; live?: boolean },
 ): Promise<void> {
+  if (input.live && input.relation !== 'PEER') {
+    const [lead, member] = input.relation === 'LEAD' ? [input.otherId, input.userId] : [input.userId, input.otherId]
+    if (input.action === 'ADD') await createLogicalEvaluatorMapping(tx, { evaluatorId: lead, evaluateeId: member, relationshipType: 'TEAM_LEAD' })
+    else {
+      await tx.evaluatorMapping.deleteMany({ where: { OR: [
+        { evaluatorId: lead, evaluateeId: member, relationshipType: 'TEAM_LEAD' },
+        { evaluatorId: member, evaluateeId: lead, relationshipType: 'DIRECT_REPORT' },
+      ] } })
+    }
+  }
   for (const pair of overridesFor(input.relation, input.userId, input.otherId)) {
     const key = { periodId: input.periodId, ...pair }
     await tx.evaluationPeriodAssignmentOverride.upsert({
@@ -274,7 +288,7 @@ export async function applyMappingChange(
 function applyChange(tx: Prisma.TransactionClient, request: PeerChangeRequest, decidedById: string | null): Promise<void> {
   return applyMappingChange(tx, {
     periodId: request.periodId, userId: request.requesterId, otherId: request.peerId, relation: request.relation, action: request.action,
-    note: `Mapping request ${request.id}`, by: decidedById,
+    note: `Mapping request ${request.id}`, by: decidedById, live: true,
   })
 }
 
