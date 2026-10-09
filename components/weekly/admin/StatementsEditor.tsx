@@ -5,10 +5,23 @@
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { levelMeaning } from '@/lib/weekly/levels'
-import { MCQ_LEVELS, MCQ_OPTION_COUNT, optionsProblem, type McqStatement } from '@/lib/weekly/mcq'
+import { MCQ_LEVELS, MCQ_OPTION_COUNT, optionsProblem, statementWarnings, type McqStatement } from '@/lib/weekly/mcq'
 
 /** A blank question: one statement per level, plus the repeat at 2.5 for HR to reword. */
 export const BLANK_STATEMENTS: McqStatement[] = [...MCQ_LEVELS, 2.5].sort((a, b) => a - b).map((score) => ({ text: '', score }))
+
+/** UX spec, section 10.3. */
+const WRITING_RULES = [
+  'Describe what is seen, not a judgement: "It arrives late more often than not", not "Below average".',
+  'One idea per step: each half point changes one thing (how often, how much follow-up, how far the effect reaches).',
+  'Adjacent steps must be distinguishable: someone choosing between 2.5 and 3 can say exactly why.',
+  'The repeat is a true equal: the same level from a different angle, never slightly better or worse.',
+  'Vary the repeated level across 1.5 to 3.5, so no level is always the doubled one.',
+  'A 4 describes an effect beyond the two people involved.',
+  'A 2 reads as normal: someone fully doing their job.',
+  'Same length, same tone: no statement should look like the obvious right answer.',
+  'Fit the observer: peers see handoffs and day-to-day contact; leads see outcomes; team members see direction and support.',
+] as const
 
 export function statementsProblem(statements: readonly McqStatement[]): string | null {
   return optionsProblem(statements)
@@ -19,6 +32,7 @@ interface Props { statements: McqStatement[]; onChange: (next: McqStatement[]) =
 export function StatementsEditor({ statements, onChange, disabled, label }: Props) {
   const set = (index: number, patch: Partial<McqStatement>) => onChange(statements.map((s, i) => (i === index ? { ...s, ...patch } : s)))
   const problem = optionsProblem(statements)
+  const warnings = problem ? [] : statementWarnings(statements)
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted-foreground">
@@ -36,6 +50,11 @@ export function StatementsEditor({ statements, onChange, disabled, label }: Prop
         ))}
       </ul>
       {problem && <p className="text-xs text-amber-700 dark:text-amber-400">{problem}</p>}
+      {warnings.map((w) => <p key={w} className="text-xs text-amber-700 dark:text-amber-400">Check: {w}</p>)}
+      <details className="text-xs text-muted-foreground">
+        <summary className="cursor-pointer">Rules for writing statements</summary>
+        <ul className="mt-1 list-disc space-y-0.5 pl-5">{WRITING_RULES.map((rule) => <li key={rule}>{rule}</li>)}</ul>
+      </details>
     </div>
   )
 }

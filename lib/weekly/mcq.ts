@@ -32,6 +32,37 @@ export function optionsProblem(options: readonly McqStatement[]): string | null 
   return null
 }
 
+/** The repeated level belongs between these (UX spec, 10.3: "spread repeats across 1.5 to 3.5"). */
+const REPEAT_RANGE = [1.5, 3.5] as const
+/** A statement this many times the typical length stands out once shuffled (10.3: "same length, same tone"). */
+const LENGTH_FACTOR = 2
+
+/**
+ * Section 10.3's checkable writing rules, as warnings: HR can still save. The rest (describe what is seen, one idea per
+ * step, reach at 4) need a person's judgement and are shown to HR as a checklist.
+ */
+export function statementWarnings(options: readonly McqStatement[]): string[] {
+  const warnings: string[] = []
+  const repeated = [...new Set(options.map((o) => o.score))].filter((level) => options.filter((o) => o.score === level).length > 1)
+  for (const level of repeated) {
+    if (level < REPEAT_RANGE[0] || level > REPEAT_RANGE[1]) warnings.push(`Repeat a level between ${REPEAT_RANGE[0]} and ${REPEAT_RANGE[1]}, not ${level}`)
+  }
+  const lengths = options.map((o) => o.text.trim().length).sort((a, b) => a - b)
+  const median = lengths.length ? (lengths[Math.floor((lengths.length - 1) / 2)] + lengths[Math.ceil((lengths.length - 1) / 2)]) / 2 : 0
+  options.forEach((o, i) => {
+    if (median > 0 && o.text.trim().length > LENGTH_FACTOR * median) warnings.push(`Statement ${i + 1} is much longer than the others; keep them a similar length so none stands out`)
+  })
+  const seen = new Map<string, number>()
+  options.forEach((o, i) => {
+    const key = o.text.trim().toLowerCase()
+    if (!key) return
+    const first = seen.get(key)
+    if (first !== undefined) warnings.push(`Statements ${first + 1} and ${i + 1} say the same thing; the repeat should describe the level in other words`)
+    else seen.set(key, i)
+  })
+  return warnings
+}
+
 export function noteRequired(score: number): boolean {
   return NOTE_REQUIRED.has(score)
 }

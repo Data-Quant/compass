@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { levelMeaning } from '../lib/weekly/levels'
 import { sameDepartment } from '../lib/weekly/departments'
 import { STANDARD_MCQ_BANK } from '../lib/weekly/content/mcq-bank'
-import { fourRatingLimit, MCQ_LEVELS, noteRequired, optionsProblem, personalise, shuffleOptions, withOptionIds } from '../lib/weekly/mcq'
+import { fourRatingLimit, MCQ_LEVELS, statementWarnings, noteRequired, optionsProblem, personalise, shuffleOptions, withOptionIds } from '../lib/weekly/mcq'
 
 const eight = (scores: number[]) => scores.map((score, i) => ({ text: `Statement ${i}`, score }))
 const VALID = eight([1, 1.5, 2, 2.5, 2.5, 3, 3.5, 4])
@@ -88,4 +88,15 @@ test('the shuffle is fair: statements almost never stay in score order, and each
   // A fair shuffle leaves 8 statements in order 1 time in 40,320.
   assert.ok(inOrder <= 2, `${inOrder} of ${runs} stayed in score order`)
   assert.ok(Math.abs(firstStays - runs / 8) < runs / 8 * 0.15, `o1 first ${firstStays} times, expected about ${runs / 8}`)
+})
+
+test('HR is warned, without being stopped, when statements break the writing rules (section 10.3)', () => {
+  const at = (scores: number[], texts?: string[]) => scores.map((score, i) => ({ text: texts?.[i] ?? `Statement number ${i + 1}`, score }))
+  assert.deepEqual(statementWarnings(at([1, 1.5, 2, 2.5, 2.5, 3, 3.5, 4])), [])
+  assert.deepEqual(statementWarnings(at([1, 1, 1.5, 2, 2.5, 3, 3.5, 4])), ['Repeat a level between 1.5 and 3.5, not 1'])
+  const long = 'This statement is very much longer than every other statement in the question, which gives it away.'
+  assert.deepEqual(statementWarnings(at([1, 1.5, 2, 2.5, 2.5, 3, 3.5, 4], ['Short one', 'Short two', 'Short three', 'Short four', 'Short five', 'Short six', 'Short seven', long])),
+    ['Statement 8 is much longer than the others; keep them a similar length so none stands out'])
+  assert.deepEqual(statementWarnings(at([1, 1.5, 2, 2.5, 2.5, 3, 3.5, 4], ['A', 'B', 'C', 'D', 'D', 'F', 'G', 'H'])), ['Statements 4 and 5 say the same thing; the repeat should describe the level in other words'])
+  assert.ok(STANDARD_MCQ_BANK.every((t) => t.questions.every((q) => !statementWarnings(q.options).some((w) => w.startsWith('Repeat')))), 'the bank follows the repeat rule')
 })
