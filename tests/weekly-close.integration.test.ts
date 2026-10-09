@@ -11,6 +11,7 @@ import { submitForm } from '../lib/weekly/service/form-submit'
 import { formDetail, openForms } from '../lib/weekly/service/forms'
 import { submitAnswer } from '../lib/weekly/service/inbox'
 import { releaseWeek } from '../lib/weekly/service/release'
+import { decideAnswer } from '../lib/weekly/service/review-queue'
 import { answerAs, releaseWeekOne, scoreAndConfirm } from './helpers/weekly-answers'
 import { leadEvidenceIn } from './helpers/weekly-close-fixtures'
 import { F, seedFormFixtures } from './helpers/weekly-form-fixtures'
@@ -108,10 +109,9 @@ test('reopening and closing again replaces the weekly rows and leaves the form r
   // The chief's other forms and Ana's HR form are still unsubmitted: HR closes anyway.
   await closeCycle(HR_ACTOR, cycleId, { drops: [], formsAcknowledged: true }, at(13))
   await reopenCycle(HR_ACTOR, cycleId, at(13, 2))
-  // Reopened and not locked: the lead changes their answer.
-  const answered = await prisma.weeklyResponse.findUniqueOrThrow({ where: { id: responseId }, include: { prompt: true } })
-  await answerAs(answered.prompt, 2, at(13, 2))
-  await scoreAndConfirm(cycleId, at(13, 2))
+  // Reopened: the lead's week is long locked, so HR changes the score, with a reason.
+  const answered = await prisma.weeklyResponse.findUniqueOrThrow({ where: { id: responseId } })
+  await decideAnswer(HR_ACTOR, responseId, { action: 'SET_SCORE', score: 2, reason: 'Corrected after reopening', revision: answered.revision }, at(13, 2))
   await closeCycle(HR_ACTOR, cycleId, { drops: [], formsAcknowledged: true }, at(13, 3))
   const ratings = (await weeklyRows(evaluateeId)).filter((r) => r.ratingValue !== null)
   assert.deepEqual(ratings.map((r) => r.ratingValue), [2])

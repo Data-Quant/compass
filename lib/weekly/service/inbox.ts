@@ -21,6 +21,7 @@ export interface InboxSubject { evaluatorId: string; actingAs: boolean }
 
 const ANSWERED = 'This question was already answered'
 const LOCKED = 'This quarter is locked, so answers can no longer change'
+const WEEK_LOCKED = 'This week is locked. Only HR can change this answer now.'
 const promptInclude = { response: true, slot: { select: { competency: { select: { name: true } } } } } as const satisfies Prisma.WeeklyPromptInclude
 type PromptRow = WeeklyPrompt & { response: WeeklyResponse | null; slot: { competency: { name: string } } | null }
 
@@ -114,15 +115,32 @@ export async function inboxView(evaluatorId: string, now: Date): Promise<InboxRe
       id: p.id, weekIndex: p.weekIndex, kind: p.kind, status: p.status as InboxPrompt['status'], text: p.textSnapshot, topic: topicOf(p),
       perspective: perspectiveOf(p.relationshipType) ?? 'PEER', evaluatee: personRef(people, p.evaluateeId), options: choicesOf(p), answer: answerView(p.response),
       submittedAt: submittedAt?.toISOString() ?? null,
-      canEdit: p.status === 'SUBMITTED' ? canEditSubmitted({ submittedAt, periodLocked: locked }) : !locked,
+      canEdit: p.status === 'SUBMITTED' ? canEditSubmitted({ submittedAt, periodLocked: locked, weekOneStartsOn: cycle.weekOneStartsOn, now }) : !locked,
       overdue: p.weekIndex < summary.currentWeek,
     }
   })
-  return { cycle: summary, prompts: view, progress }
+  const submission = await prisma.weeklyWeekSubmission.findUnique({ where: { cycleId_evaluatorId_weekIndex: { cycleId: cycle.id, evaluatorId, weekIndex: summary.currentWeek } } })
+  return { cycle: summary, prompts: view, progress, weekSubmittedAt: submission?.submittedAt.toISOString() ?? null }
+}
+
+/**
+ * "Submit this week" (UX spec, section 5): once every question asked so far has an answer (or is marked not observed).
+ * Answers already count as they are saved; this marks the week done. Submitting again keeps the first time.
+ */
+export async function submitWeek(subject: InboxSubject, now: Date): Promise<{ submittedAt: string }> {
+  const cycle = await findRunningCycle()
+  if (!cycle) throw new WeeklyError('Weekly evaluations are not running right now', 409)
+  if (await periodLocked(cycle.periodId)) throw new WeeklyError(LOCKED, 409)
+  const week = cycleSummary(cycle, now).currentWeek
+  const unanswered = await prisma.weeklyPrompt.count({ where: { cycleId: cycle.id, evaluatorId: subject.evaluatorId, kind: 'STANDARD', weekIndex: { lte: week }, status: { in: ['OPEN', 'DRAFT'] } } })
+  if (unanswered > 0) throw new WeeklyError(`Answer every question first: ${unanswered} still ${unanswered === 1 ? 'needs' : 'need'} an answer`, 409)
+  const key = { cycleId: cycle.id, evaluatorId: subject.evaluatorId, weekIndex: week }
+  const row = await prisma.weeklyWeekSubmission.upsert({ where: { cycleId_evaluatorId_weekIndex: key }, create: { ...key, submittedAt: now }, update: {} })
+  return { submittedAt: row.submittedAt.toISOString() }
 }
 
 async function ownPrompt(evaluatorId: string, promptId: string) {
-  const prompt = await prisma.weeklyPrompt.findUnique({ where: { id: promptId }, include: { response: true, cycle: { select: { status: true, periodId: true } } } })
+  const prompt = await prisma.weeklyPrompt.findUnique({ where: { id: promptId }, include: { response: true, cycle: { select: { status: true, periodId: true, weekOneStartsOn: true } } } })
   if (!prompt || prompt.evaluatorId !== evaluatorId) throw new WeeklyError('Question not found', 404)
   if (prompt.cycle.status !== 'RUNNING') throw new WeeklyError('This quarter’s weekly evaluations are closed', 409)
   if (await periodLocked(prompt.cycle.periodId)) throw new WeeklyError(LOCKED, 409)
@@ -153,6 +171,9 @@ export async function submitAnswer(actor: WeeklyActor, subject: InboxSubject, pr
   if (!comment) {
     const problem = choiceProblem({ score: data.level ?? 0, note: data.note })
     if (problem) throw new WeeklyError(problem)
+  }
+  if (prompt.status === 'SUBMITTED' && !canEditSubmitted({ submittedAt: prompt.response?.submittedAt ?? null, periodLocked: false, weekOneStartsOn: prompt.cycle.weekOneStartsOn, now })) {
+    throw new WeeklyError(WEEK_LOCKED, 409)
   }
   // Saving the same choice, note or comment again changes nothing, so HR's decision stands.
   const current = prompt.response
@@ -218,7 +239,7 @@ export async function markNotObserved(actor: WeeklyActor, subject: InboxSubject,
   })
 }
 
-export async function historyView(evaluatorId: string): Promise<HistoryResponse> {
+export async function historyView(evaluatorId: string, now: Date = new Date()): Promise<HistoryResponse> {
   const cycle = await employeeRound()
   if (!cycle) return { cycle: null, groups: [] }
   const closed = cycle.status === 'CLOSED'
@@ -235,10 +256,10 @@ export async function historyView(evaluatorId: string): Promise<HistoryResponse>
         {
           id: p.id, weekIndex: p.weekIndex, kind: p.kind, topic: topicOf(p), text: p.textSnapshot, status: evaluatorStatus(p.status),
           options: choicesOf(p), answer: answerView(p.response), submittedAt: p.response?.submittedAt?.toISOString() ?? null,
-          canEdit: !closed && p.status === 'SUBMITTED' && canEditSubmitted({ submittedAt: p.response?.submittedAt ?? null, periodLocked: locked }),
+          canEdit: !closed && p.status === 'SUBMITTED' && canEditSubmitted({ submittedAt: p.response?.submittedAt ?? null, periodLocked: locked, weekOneStartsOn: cycle.weekOneStartsOn, now }),
         },
       ],
     })
   }
-  return { cycle: cycleSummary(cycle, new Date()), groups: [...groups.values()].sort((a, b) => byName(a.evaluatee, b.evaluatee)) }
+  return { cycle: cycleSummary(cycle, now), groups: [...groups.values()].sort((a, b) => byName(a.evaluatee, b.evaluatee)) }
 }

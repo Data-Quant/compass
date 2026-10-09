@@ -74,9 +74,10 @@ test('changing an answer after HR decided scores it again and sends it back to H
   const { prompt, responseId } = await leadAnswer(2)
   await score()
   await decideAnswer(HR_ACTOR, responseId, { action: 'ACCEPT', revision: (await record(responseId))!.revision }, at(1, 3))
-  await answerAs(prompt, 3, at(2))
+  // Still within the week it was given.
+  await answerAs(prompt, 3, at(1, 5))
   assert.deepEqual([(await record(responseId))?.state, (await record(responseId))?.score], ['SCORING', null])
-  await score(fakeModel(), at(2, 1))
+  await score(fakeModel(), at(1, 6))
   assert.equal((await record(responseId))?.state, 'NEEDS_REVIEW')
 })
 
@@ -182,7 +183,7 @@ test('saving the same choice and note again keeps HR’s decision', WEEKLY_DB_TE
   const { prompt, responseId } = await leadAnswer(2)
   await score()
   await decideAnswer(HR_ACTOR, responseId, { action: 'ACCEPT', revision: (await record(responseId))!.revision }, at(1, 3))
-  await answerAs(prompt, 2, at(2))
+  await answerAs(prompt, 2, at(1, 5))
   assert.deepEqual([(await record(responseId))?.state, (await record(responseId))?.score], ['DECIDED', 2])
 })
 

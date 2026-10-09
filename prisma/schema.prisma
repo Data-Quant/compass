@@ -2366,6 +2366,7 @@ model WeeklyCycle {
   updatedAt          DateTime          @updatedAt
   slots              WeeklySlot[]
   prompts            WeeklyPrompt[]
+  weekSubmissions    WeeklyWeekSubmission[]
 }
 
 model WeeklyCompetency {
@@ -2532,6 +2533,18 @@ model WeeklyRelease {
   createdAt   DateTime @default(now())
 
   @@unique([cycleId, weekIndex, evaluatorId])
+}
+
+/// "Submit this week" (UX spec, section 5): when an evaluator submitted a week. Answers save on click either way.
+model WeeklyWeekSubmission {
+  id          String      @id @default(cuid())
+  cycleId     String
+  evaluatorId String
+  weekIndex   Int
+  submittedAt DateTime
+  cycle       WeeklyCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+
+  @@unique([cycleId, evaluatorId, weekIndex])
 }
 
 model WeeklyResponse {

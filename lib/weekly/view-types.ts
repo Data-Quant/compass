@@ -45,7 +45,7 @@ export interface InboxPrompt {
 /** Per person: questions answered (or not observed) and answered with a choice (satisfied), of the quarter's questions. */
 export interface EvaluateeProgress { evaluatee: PersonRef; perspective: Perspective; answered: number; satisfied: number; total: number }
 
-export interface InboxResponse { cycle: CycleSummary | null; prompts: InboxPrompt[]; progress: EvaluateeProgress[] }
+export interface InboxResponse { cycle: CycleSummary | null; prompts: InboxPrompt[]; progress: EvaluateeProgress[]; /** When this week was submitted; null until then. */ weekSubmittedAt?: string | null }
 
 export interface HistoryEntry {
   id: string

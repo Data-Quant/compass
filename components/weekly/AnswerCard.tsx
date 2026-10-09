@@ -136,7 +136,7 @@ export function AnswerCard({ prompt, actingAs, onChanged }: AnswerCardProps) {
               <Textarea id={`${prompt.id}-note`} rows={2} maxLength={4000} value={note} disabled={locked} placeholder="Add anything that explains your choice." onChange={(e) => setNote(e.target.value)} />
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-xs text-muted-foreground">{locked ? 'Locked by HR' : submitted ? 'You can change this until HR locks the quarter.' : 'Your choice saves as soon as you pick it.'}</p>
+              <p className="text-xs text-muted-foreground">{locked ? (submitted ? 'Locked. Only HR can change this answer now.' : 'Locked by HR') : submitted ? 'Saved. You can change it until Sunday.' : 'Your choice saves as soon as you pick it.'}</p>
               <div className="flex flex-wrap gap-2">
                 {!submitted && <Button variant="link" size="sm" className="h-auto p-0" onClick={() => setConfirmSkip(true)}>I haven’t worked with them closely enough on this to say</Button>}
                 {optionId && !locked && (noteRequired || noteChanged) && (

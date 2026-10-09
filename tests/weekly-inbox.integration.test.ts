@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { prisma } from '../lib/db'
 import { parseOptions } from '../lib/weekly/mcq'
 import { WeeklyError } from '../lib/weekly/service/errors'
-import { historyView, inboxView, markNotObserved, resolveSubject, saveDraft, submitAnswer } from '../lib/weekly/service/inbox'
+import { historyView, inboxView, markNotObserved, resolveSubject, saveDraft, submitAnswer, submitWeek } from '../lib/weekly/service/inbox'
 import { QUESTIONS_PER_PAIR } from '../lib/weekly/scheduler'
 import { releaseWeek } from '../lib/weekly/service/release'
 import { optionWithScore } from './helpers/weekly-answers'
@@ -79,15 +79,33 @@ test('a draft keeps a note typed before choosing, and a late autosave after subm
   assert.equal((await prisma.weeklyResponse.findUniqueOrThrow({ where: { promptId } })).level, 3)
 })
 
-test('an answer can be changed any time until HR locks the quarter', WEEKLY_DB_TEST, async () => {
+test('an answer can be changed until the Sunday of the week it was given; then the week is locked', WEEKLY_DB_TEST, async () => {
   const promptId = await leadPromptId()
-  await choose(promptId, 2)
-  assert.equal((await choose(promptId, 3, null, at(9))).revision, 2, 'weeks later')
+  await choose(promptId, 2, null, at(1, 2))
+  assert.equal((await choose(promptId, 3, null, at(1, 7, 18))).revision, 2, 'still Sunday')
   assert.equal((await prisma.weeklyResponse.findUniqueOrThrow({ where: { promptId } })).level, 3)
-  assert.equal((await historyView(W.lead.id)).groups.flatMap((g) => g.entries).find((e) => e.id === promptId)?.canEdit, true)
+  const entry = async (now: Date) => (await historyView(W.lead.id, now)).groups.flatMap((g) => g.entries).find((e) => e.id === promptId)
+  assert.equal((await entry(at(1, 7)))?.canEdit, true)
+  await assert.rejects(choose(promptId, 2, null, at(2)), /locked/, 'Monday of the next week')
+  assert.equal((await entry(at(2)))?.canEdit, false)
+  assert.equal((await inboxView(W.lead.id, at(1, 3))).prompts.find((p) => p.id === promptId)?.canEdit, true)
+})
+
+test('the quarter lock freezes answers even within their week', WEEKLY_DB_TEST, async () => {
+  const promptId = await leadPromptId()
+  await choose(promptId, 2, null, at(1, 2))
   await prisma.evaluationPeriod.updateMany({ data: { isLocked: true } })
-  await assert.rejects(choose(promptId, 2, null, at(10)), /locked/)
-  assert.equal((await historyView(W.lead.id)).groups.flatMap((g) => g.entries).find((e) => e.id === promptId)?.canEdit, false)
+  await assert.rejects(choose(promptId, 3, null, at(1, 3)), /locked/)
+})
+
+test('Submit this week works once every question has an answer, and says until when answers can change', WEEKLY_DB_TEST, async () => {
+  await assert.rejects(submitWeek(leadSubject, at(1, 2)), /Answer every question/)
+  await choose(await leadPromptId(), 3, null, at(1, 2))
+  const done = await submitWeek(leadSubject, at(1, 3))
+  assert.equal(done.submittedAt, at(1, 3).toISOString())
+  assert.equal((await inboxView(W.lead.id, at(1, 3))).weekSubmittedAt, at(1, 3).toISOString())
+  assert.equal((await submitWeek(leadSubject, at(1, 4))).submittedAt, at(1, 3).toISOString(), 'submitting again keeps the first time')
+  assert.equal((await inboxView(W.lead.id, at(2))).weekSubmittedAt, null, 'a new week starts unsubmitted')
 })
 
 test('not observed snoozes the topic three weeks; a second time closes it', WEEKLY_DB_TEST, async () => {

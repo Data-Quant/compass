@@ -1,6 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { weekLabel } from '@/lib/weekly/format'
@@ -27,6 +29,36 @@ const DUE = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Karachi', weekday
 /** The Sunday that ends the week: "Sunday 11 Oct". */
 function dueDate(weekOneStartsOn: string, week: number): string {
   return DUE.format(new Date(new Date(weekOneStartsOn).getTime() + week * 7 * 86_400_000 - 1)).replace(',', '')
+}
+
+/** UX spec, section 5: "Submit this week", enabled once every performance question has an answer. */
+function SubmitWeek({ submittedAt, unanswered, actingAs, onSubmitted }: { submittedAt: string | null; unanswered: number; actingAs?: string; onSubmitted: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false)
+  if (submittedAt) {
+    return (
+      <p className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
+        Submitted. You can edit until Sunday. Next questions Monday.
+      </p>
+    )
+  }
+  async function submit() {
+    setBusy(true)
+    try {
+      await weeklyRequest(withActingAs('/api/weekly/inbox', actingAs), { method: 'POST', body: {} })
+      toast.success('Week submitted')
+      await onSubmitted()
+    } catch (e) {
+      toast.error(errorMessage(e, 'Could not submit the week'))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-3 border-t pt-4">
+      {unanswered > 0 && <p className="text-sm text-muted-foreground">Answer {unanswered === 1 ? 'the last question' : `the other ${unanswered} questions`} to submit.</p>}
+      <Button disabled={busy || unanswered > 0} onClick={() => void submit()}>{busy ? 'Submitting…' : 'Submit this week'}</Button>
+    </div>
+  )
 }
 
 export function WeeklyInbox({ actingAs }: { actingAs?: string }) {
@@ -72,6 +104,8 @@ export function WeeklyInbox({ actingAs }: { actingAs?: string }) {
   const doneThisWeek = thisWeek.filter((p) => p.status === 'SUBMITTED').length
   const carriedCount = carried.reduce((n, g) => n + g.prompts.length, 0)
   const due = dueDate(data.cycle.weekOneStartsOn, week)
+  // The comment questions are optional; every performance question needs an answer (or "not observed") to submit.
+  const unanswered = data.prompts.filter((p) => p.kind === 'STANDARD' && p.status !== 'SUBMITTED').length
 
   return (
     <div className="space-y-6">
@@ -86,11 +120,6 @@ export function WeeklyInbox({ actingAs }: { actingAs?: string }) {
           <TabsTrigger value="progress">Progress</TabsTrigger>
         </TabsList>
         <TabsContent value="inbox" className="space-y-6">
-          {open === 0 && data.prompts.length > 0 && (
-            <p className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
-              All done for this week. You can change an answer until HR locks the quarter. Next questions Monday.
-            </p>
-          )}
           {carriedCount > 0 && (
             <section className="space-y-4 rounded-lg border border-amber-300 p-4 dark:border-amber-800">
               <h2 className="font-semibold">{carriedCount} unanswered from last week <span className="text-sm font-normal text-muted-foreground">· they count like any other; this week’s set is not doubled</span></h2>
@@ -113,6 +142,9 @@ export function WeeklyInbox({ actingAs }: { actingAs?: string }) {
               ))}
             </section>
           ))}
+          {data.prompts.length > 0 && (
+            <SubmitWeek submittedAt={data.weekSubmittedAt ?? null} unanswered={unanswered} actingAs={actingAs} onSubmitted={load} />
+          )}
         </TabsContent>
         <TabsContent value="history">
           <HistoryList key={version} actingAs={actingAs} />

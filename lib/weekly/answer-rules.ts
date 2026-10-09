@@ -1,3 +1,4 @@
+import { weekIndexAt, weekStartsAt } from './calendar'
 import { noteRequired } from './mcq'
 
 export const MAX_FIELD_CHARS = 4000
@@ -15,9 +16,14 @@ export function commentProblem(text: string | null | undefined): string | null {
   return (text ?? '').trim() ? null : 'Write a comment, or skip it'
 }
 
-/** A submitted answer stays editable until HR locks the quarter (HR's feedback, section 1). */
-export function canEditSubmitted(input: { submittedAt: Date | null; periodLocked: boolean }): boolean {
-  return input.submittedAt !== null && !input.periodLocked
+/**
+ * UX spec, section 5: an answer can be changed until the Sunday of the week it was first given (a carried-over question
+ * answered later gets that later week); after that only HR changes it, with a reason. The quarter lock freezes all.
+ */
+export function canEditSubmitted(input: { submittedAt: Date | null; periodLocked: boolean; weekOneStartsOn: Date; now: Date }): boolean {
+  if (input.submittedAt === null || input.periodLocked) return false
+  const week = Math.max(1, weekIndexAt(input.weekOneStartsOn, input.submittedAt))
+  return input.now.getTime() < weekStartsAt(input.weekOneStartsOn, week + 1).getTime()
 }
 
 export type NotObservedOutcome =
