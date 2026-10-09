@@ -13,7 +13,7 @@ import type { AnswerInput } from '../schemas'
 import type { AnswerView, ChoiceView, EvaluateeProgress, HistoryGroup, HistoryResponse, InboxPrompt, InboxResponse } from '../view-types'
 import { recordAudit } from './audit'
 import { byName, isHrActor, loadPeople, personRef, type WeeklyActor } from './context'
-import { cycleSummary, findRunningCycle, loadCycle } from './cycles'
+import { cycleSummary, findRunningCycle, loadCycle, type CycleWithPeriod } from './cycles'
 import { WeeklyError } from './errors'
 import { queueScoring } from './scoring'
 
@@ -49,6 +49,14 @@ function topicOf(prompt: PromptRow): string {
   return prompt.kind === 'COMMENT' ? 'Comment (optional)' : prompt.slot?.competency.name ?? 'Question'
 }
 
+/** The round employees see: the running one, else the last one closed (its history stays readable until the next opens). */
+async function employeeRound(): Promise<CycleWithPeriod | null> {
+  const running = await findRunningCycle()
+  if (running) return running
+  const closed = await prisma.weeklyCycle.findFirst({ where: { status: 'CLOSED' }, orderBy: { closedAt: 'desc' }, select: { id: true } })
+  return closed ? loadCycle(closed.id) : null
+}
+
 async function periodLocked(periodId: string): Promise<boolean> {
   return (await prisma.evaluationPeriod.findUnique({ where: { id: periodId }, select: { isLocked: true } }))?.isLocked ?? false
 }
@@ -82,9 +90,11 @@ async function progressFor(cycleId: string, evaluatorId: string): Promise<Evalua
 }
 
 export async function inboxView(evaluatorId: string, now: Date): Promise<InboxResponse> {
-  const cycle = await findRunningCycle()
+  const cycle = await employeeRound()
   if (!cycle) return { cycle: null, prompts: [], progress: [] }
   const summary = cycleSummary(cycle, now)
+  // A closed round has nothing to answer; the page says so and the history stays readable.
+  if (cycle.status === 'CLOSED') return { cycle: summary, prompts: [], progress: await progressFor(cycle.id, evaluatorId) }
   const prompts: PromptRow[] = await prisma.weeklyPrompt.findMany({
     where: {
       cycleId: cycle.id, evaluatorId,
@@ -209,8 +219,9 @@ export async function markNotObserved(actor: WeeklyActor, subject: InboxSubject,
 }
 
 export async function historyView(evaluatorId: string): Promise<HistoryResponse> {
-  const cycle = await findRunningCycle()
+  const cycle = await employeeRound()
   if (!cycle) return { cycle: null, groups: [] }
+  const closed = cycle.status === 'CLOSED'
   const prompts: PromptRow[] = await prisma.weeklyPrompt.findMany({ where: { cycleId: cycle.id, evaluatorId }, include: promptInclude, orderBy: [{ weekIndex: 'desc' }, { createdAt: 'desc' }] })
   const [people, locked] = await Promise.all([loadPeople(prompts.map((p) => p.evaluateeId)), periodLocked(cycle.periodId)])
   const groups = new Map<string, HistoryGroup>()
@@ -224,7 +235,7 @@ export async function historyView(evaluatorId: string): Promise<HistoryResponse>
         {
           id: p.id, weekIndex: p.weekIndex, kind: p.kind, topic: topicOf(p), text: p.textSnapshot, status: evaluatorStatus(p.status),
           options: choicesOf(p), answer: answerView(p.response), submittedAt: p.response?.submittedAt?.toISOString() ?? null,
-          canEdit: p.status === 'SUBMITTED' && canEditSubmitted({ submittedAt: p.response?.submittedAt ?? null, periodLocked: locked }),
+          canEdit: !closed && p.status === 'SUBMITTED' && canEditSubmitted({ submittedAt: p.response?.submittedAt ?? null, periodLocked: locked }),
         },
       ],
     })

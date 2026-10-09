@@ -132,3 +132,17 @@ test('progress counts the five questions a quarter about each person and moves o
   const after = (await inboxView(W.lead.id, at(1))).progress.find((p) => p.evaluatee.id === evaluateeId)!
   assert.deepEqual([after.answered, after.satisfied, after.total], [1, 1, QUESTIONS_PER_PAIR])
 })
+
+test('once the round closes, the page says so and keeps a read-only history of answers', WEEKLY_DB_TEST, async () => {
+  const promptId = await leadPromptId()
+  await choose(promptId, 3)
+  await prisma.weeklyPrompt.updateMany({ where: { cycleId, status: { in: ['OPEN', 'DRAFT'] } }, data: { status: 'EXPIRED' } })
+  await prisma.weeklyCycle.update({ where: { id: cycleId }, data: { status: 'CLOSED', closedAt: at(14) } })
+  const inbox = await inboxView(W.lead.id, at(14))
+  assert.deepEqual([inbox.cycle?.status, inbox.prompts.length], ['CLOSED', 0])
+  const history = await historyView(W.lead.id)
+  assert.equal(history.cycle?.status, 'CLOSED')
+  const entries = history.groups.flatMap((g) => g.entries)
+  assert.ok(entries.some((e) => e.id === promptId && e.status === 'SUBMITTED'))
+  assert.ok(entries.every((e) => !e.canEdit), 'read-only once closed')
+})
