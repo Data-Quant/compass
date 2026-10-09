@@ -34,6 +34,7 @@ export function AnswerCard({ prompt, actingAs, onChanged }: AnswerCardProps) {
   // The choice the server holds; a choice waiting for its note is not saved yet.
   const [savedOptionId, setSavedOptionId] = useState<string | null>(prompt.status === 'SUBMITTED' ? prompt.answer?.optionId ?? null : null)
   const [confirmSkip, setConfirmSkip] = useState(false)
+  const [noteOpen, setNoteOpen] = useState(false)
   const comment = prompt.kind === 'COMMENT'
   const locked = !prompt.canEdit
   const answerUrl = withActingAs(`/api/weekly/prompts/${prompt.id}/answer`, actingAs)
@@ -119,22 +120,26 @@ export function AnswerCard({ prompt, actingAs, onChanged }: AnswerCardProps) {
                     disabled={locked || saving}
                     onClick={() => choose(option.id)}
                     className={cn(
-                      'flex w-full items-start gap-3 rounded-md border px-3 py-2 text-left text-sm transition-colors',
-                      selected ? 'border-primary bg-primary/5' : 'hover:bg-muted/60',
+                      'flex w-full items-start gap-3 rounded-xl border px-3.5 py-2.5 text-left text-sm transition-[background-color,border-color,transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.995]',
+                      selected ? 'border-primary bg-primary/[0.06] text-foreground' : 'border-border/70 hover:border-border hover:bg-muted/50',
                       (locked || saving) && 'cursor-not-allowed opacity-70',
                     )}
                   >
-                    <span aria-hidden className={cn('mt-0.5 h-4 w-4 shrink-0 rounded-full border', selected && 'border-[5px] border-primary')} />
+                    <span aria-hidden className={cn('mt-0.5 h-4 w-4 shrink-0 rounded-full border transition-[border-width,border-color] duration-200', selected ? 'border-[5px] border-primary' : 'border-muted-foreground/40')} />
                     <span>{option.text}</span>
                   </button>
                 )
               })}
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor={`${prompt.id}-note`}>{noteRequired ? 'Note (needed for this choice)' : 'Note (optional)'}</Label>
-              {noteRequired && <p className="text-xs text-amber-700 dark:text-amber-400">Add one sentence on what you saw, then save.</p>}
-              <Textarea id={`${prompt.id}-note`} rows={2} maxLength={4000} value={note} disabled={locked} placeholder="Add anything that explains your choice." onChange={(e) => setNote(e.target.value)} />
-            </div>
+            {noteRequired || noteOpen || note.trim() ? (
+              <div className="space-y-1.5">
+                <Label htmlFor={`${prompt.id}-note`}>{noteRequired ? 'Note (needed for this choice)' : 'Note (optional)'}</Label>
+                {noteRequired && <p className="text-xs text-amber-700 dark:text-amber-400">Add one sentence on what you saw, then save.</p>}
+                <Textarea id={`${prompt.id}-note`} rows={2} maxLength={4000} value={note} disabled={locked} autoFocus={noteOpen && !note} placeholder="Add anything that explains your choice." onChange={(e) => setNote(e.target.value)} />
+              </div>
+            ) : (
+              !locked && <Button variant="link" size="sm" className="h-auto p-0 text-muted-foreground" onClick={() => setNoteOpen(true)}>Add a note</Button>
+            )}
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs text-muted-foreground">{locked ? (submitted ? 'Locked. Only HR can change this answer now.' : 'Locked by HR') : submitted ? 'Saved. You can change it until Sunday.' : 'Your choice saves as soon as you pick it.'}</p>
               <div className="flex flex-wrap gap-2">

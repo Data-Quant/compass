@@ -7,7 +7,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { PERSPECTIVE_LABELS } from '@/lib/weekly/perspectives'
 import type { CoverageView, DashboardResponse } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest } from '../weekly-api'
-import { CyclePicker, useCycles } from './PeopleTab'
+import { CyclePicker, NoRound, useCycles } from './PeopleTab'
 
 const percent = (value: number | null) => (value === null ? '—' : `${Math.round(value * 100)}%`)
 
@@ -56,7 +56,7 @@ function ProgressTable({ label, rows }: { label: string; rows: Array<{ key: stri
 }
 
 export function DashboardTab() {
-  const { cycles, cycleId, setCycleId } = useCycles()
+  const { cycles, cycleId, setCycleId, loaded } = useCycles()
   const [data, setData] = useState<DashboardResponse | null>(null)
   const [reminding, setReminding] = useState(false)
 
@@ -86,7 +86,7 @@ export function DashboardTab() {
     void load()
   }, [load])
 
-  if (cycles.length === 0) return <p className="text-sm text-muted-foreground">Create a cycle in Setup to see the dashboard.</p>
+  if (!cycleId) return <NoRound loaded={loaded} />
   if (!data) return <p className="text-sm text-muted-foreground">Loading…</p>
   const low = data.coverage.filter((c) => c.lowEvidence)
   return (
@@ -107,10 +107,17 @@ export function DashboardTab() {
           <ProgressTable label="Department" rows={data.byDepartment.map((d) => ({ key: d.department, name: `${d.department} (${d.evaluators})`, asked: d.asked, answered: d.answered }))} />
         </Section>
       </div>
-      <Section title="Low evidence">
-        <p className="text-sm text-muted-foreground">Under 60% of a group’s topics have an answer. HR is emailed this list in week {Math.max(1, data.cycle.questionWeeks - 1)}.</p>
-        <CoverageTable rows={low} />
-      </Section>
+      {data.cycle.currentWeek >= Math.max(1, data.cycle.questionWeeks - 1) ? (
+        <Section title="Low evidence">
+          <p className="text-sm text-muted-foreground">Under 60% of a group’s topics have an answer. HR is emailed this list in week {Math.max(1, data.cycle.questionWeeks - 1)}.</p>
+          <CoverageTable rows={low} />
+        </Section>
+      ) : (
+        <details className="rounded-xl border p-4">
+          <summary className="cursor-pointer text-sm font-medium">Low evidence: {low.length} {low.length === 1 ? 'group' : 'groups'} so far <span className="font-normal text-muted-foreground">(expected early; it matters from week {Math.max(1, data.cycle.questionWeeks - 1)})</span></summary>
+          <div className="mt-3"><CoverageTable rows={low} /></div>
+        </details>
+      )}
       <Section title="Evaluators">
         <table className="w-full text-sm">
           <thead><tr className="text-left text-muted-foreground"><th className="py-1">Evaluator</th><th>Asked</th><th>Answered</th><th>Not observed</th><th>Open</th><th>Overdue</th><th>Response rate</th></tr></thead>

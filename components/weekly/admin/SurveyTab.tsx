@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import type { SurveyKindValue, SurveyQuestionResult, SurveyQuestionView, SurveyResultsResponse } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest } from '../weekly-api'
-import { CyclePicker, useCycles } from './PeopleTab'
+import { CyclePicker, NoRound, useCycles } from './PeopleTab'
 
 const KIND_LABELS: Record<SurveyKindValue, string> = { NPS: '0 to 10', AGREE: 'Agree scale', CHOICE: 'Multiple choice', TEXT: 'Written answer' }
 const AGREE = ['Strongly disagree', 'Disagree', 'Neutral', 'Agree', 'Strongly agree']
@@ -60,7 +60,7 @@ function ResultCard({ q, position }: { q: SurveyQuestionResult; position: number
 
 /** HR: this quarter's sentiment question bank, and the results so far. */
 export function SurveyTab() {
-  const { cycles, cycleId, setCycleId } = useCycles()
+  const { cycles, cycleId, setCycleId, loaded } = useCycles()
   const periodId = cycles.find((c) => c.id === cycleId)?.periodId ?? ''
   const [bank, setBank] = useState<SurveyQuestionView[] | null>(null)
   const [results, setResults] = useState<SurveyResultsResponse | null>(null)
@@ -94,7 +94,7 @@ export function SurveyTab() {
     }
   }
 
-  if (cycles.length === 0) return <p className="text-sm text-muted-foreground">Create a cycle in Setup first.</p>
+  if (!cycleId) return <NoRound loaded={loaded} />
   return (
     <div className="space-y-4">
       <CyclePicker cycles={cycles} cycleId={cycleId} onChange={setCycleId} />

@@ -10,13 +10,13 @@ import { formatKarachiDate, formatKarachiDateTime } from '@/lib/weekly/format'
 import { PERSPECTIVE_LABELS } from '@/lib/weekly/perspectives'
 import type { CloseViewResponse } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest } from '../weekly-api'
-import { CyclePicker, useCycles } from './PeopleTab'
+import { CyclePicker, NoRound, useCycles } from './PeopleTab'
 
 type Pending = 'close' | 'reopen' | null
 const keyOf = (evaluateeId: string, perspective: string) => `${evaluateeId}|${perspective}`
 
 export function CloseTab() {
-  const { cycles, cycleId, setCycleId } = useCycles()
+  const { cycles, cycleId, setCycleId, loaded } = useCycles()
   const [data, setData] = useState<CloseViewResponse | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [pending, setPending] = useState<Pending>(null)
@@ -58,7 +58,7 @@ export function CloseTab() {
     })
   }
 
-  if (cycles.length === 0) return <p className="text-sm text-muted-foreground">Create a cycle in Setup first.</p>
+  if (!cycleId) return <NoRound loaded={loaded} />
   if (!data) return <p className="text-sm text-muted-foreground">Loading…</p>
   const running = data.cycle.status === 'RUNNING'
   const drops = data.dropCandidates.filter((c) => selected.has(keyOf(c.evaluatee.id, c.perspective))).map((c) => ({ evaluateeId: c.evaluatee.id, perspective: c.perspective }))

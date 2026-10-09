@@ -120,14 +120,14 @@ export function PulseSurveyCard() {
     <Card>
       <CardContent className="space-y-5 p-5">
         <div>
-          <h2 className="font-semibold">This week’s sentiment question</h2>
-          <p className="text-sm text-muted-foreground">{data.notice}</p>
+          <h2 className="font-display text-xl font-semibold">How is Plutus 21 for you?</h2>
+          <p className="text-xs leading-relaxed text-muted-foreground">{data.notice}</p>
         </div>
         {data.questions.map((q) => (
           <QuestionField key={q.id} q={q} answer={answers[q.id]} onChange={(a) => setAnswers((current) => ({ ...current, [q.id]: a }))} />
         ))}
         <div className="flex justify-end">
-          <Button disabled={saving || missing.length > 0} onClick={() => void submit()}>{saving ? 'Saving…' : 'Submit'}</Button>
+          <Button disabled={saving || missing.length > 0} onClick={() => void submit()}>{saving ? 'Sending…' : 'Send answers'}</Button>
         </div>
       </CardContent>
     </Card>

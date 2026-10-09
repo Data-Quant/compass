@@ -45,7 +45,13 @@ export interface InboxPrompt {
 /** Per person: questions answered (or not observed) and answered with a choice (satisfied), of the quarter's questions. */
 export interface EvaluateeProgress { evaluatee: PersonRef; perspective: Perspective; answered: number; satisfied: number; total: number }
 
-export interface InboxResponse { cycle: CycleSummary | null; prompts: InboxPrompt[]; progress: EvaluateeProgress[]; /** When this week was submitted; null until then. */ weekSubmittedAt?: string | null }
+export interface InboxResponse {
+  cycle: CycleSummary | null; prompts: InboxPrompt[]; progress: EvaluateeProgress[]
+  /** When this week was submitted; null until then. */
+  weekSubmittedAt?: string | null
+  /** This week, counted as the dashboard card counts it. */
+  week?: { done: number; total: number; carried: number }
+}
 
 export interface HistoryEntry {
   id: string
@@ -335,6 +341,8 @@ export interface RoundView {
   checklist: RoundChecklistItem[]
   /** In Draft, for the "open review stage" summary: who is in the round and who is not evaluated. */
   people?: { included: number; excluded: number }
+  /** While open: how the round is going (HR's overview). */
+  health?: { asked: number; answered: number; behind: number; waitingReview: number; openRequests: number; unreadSelfReviews: number }
   /** In Review, for the "open round" summary: the requests that would expire. */
   pendingRequests?: Array<{ id: string; requester: PersonRef; other: PersonRef; relation: 'PEER' | 'LEAD' | 'REPORT'; action: 'ADD' | 'REMOVE' }>
 }

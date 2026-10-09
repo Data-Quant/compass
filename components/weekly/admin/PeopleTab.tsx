@@ -28,6 +28,7 @@ export function useCycles() {
   const roundCycleId = useRoundCycle()
   const [cycles, setCycles] = useState<CycleSummary[]>([])
   const [chosen, setCycleId] = useState('')
+  const [loaded, setLoaded] = useState(false)
   const cycleId = roundCycleId ?? chosen
   useEffect(() => {
     weeklyRequest<AdminCyclesResponse>('/api/admin/weekly/cycles')
@@ -37,8 +38,14 @@ export function useCycles() {
         if (preferred) setCycleId(preferred.id)
       })
       .catch((e: unknown) => toast.error(errorMessage(e, 'Could not load cycles')))
+      .finally(() => setLoaded(true))
   }, [])
-  return { cycles, cycleId, setCycleId }
+  return { cycles, cycleId, setCycleId, loaded }
+}
+
+/** Shown while a tab has no round to work on: loading, or no round set up yet. */
+export function NoRound({ loaded }: { loaded: boolean }) {
+  return <p className="text-sm text-muted-foreground">{loaded ? 'Set up a round first.' : 'Loading…'}</p>
 }
 
 export function CyclePicker({ cycles, cycleId, onChange }: { cycles: CycleSummary[]; cycleId: string; onChange: (id: string) => void }) {
@@ -53,7 +60,7 @@ export function CyclePicker({ cycles, cycleId, onChange }: { cycles: CycleSummar
 }
 
 export function PeopleTab() {
-  const { cycles, cycleId, setCycleId } = useCycles()
+  const { cycles, cycleId, setCycleId, loaded } = useCycles()
   const periodId = cycles.find((c) => c.id === cycleId)?.periodId ?? ''
   const [data, setData] = useState<ParticipantsResponse | null>(null)
   const [optingIn, setOptingIn] = useState<ParticipantRow | null>(null)
@@ -82,7 +89,7 @@ export function PeopleTab() {
     }
   }
 
-  if (cycles.length === 0) return <p className="text-sm text-muted-foreground">Create a cycle in Setup first.</p>
+  if (!cycleId) return <NoRound loaded={loaded} />
   if (!data) return <p className="text-sm text-muted-foreground">Loading people…</p>
   return (
     <div className="space-y-4">

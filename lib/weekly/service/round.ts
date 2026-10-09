@@ -18,7 +18,9 @@ import { WeeklyError } from './errors'
 import { loadAnswerRecords } from './answer-states'
 import { formsProgress } from './form-tables'
 import { deliverSafely, type WeeklySendMail } from './notifications'
-import { roundOpenedMessages } from './round-notices'
+import { roundHealth, roundOpenedMessages } from './round-notices'
+import { formsOpenDate, formsOpenFor } from './forms'
+import { formatKarachiDate } from '../format'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 /** Classic reports still read a period's "evaluations start" date; for a round it is a few days after the quarter. */
@@ -96,7 +98,7 @@ async function confirmationsItem(periodId: string): Promise<RoundChecklistItem> 
   return { key: 'confirmations', label: `${confirmed} of ${mapped.length} people said their lists look right`, done: confirmed >= mapped.length, count: mapped.length - confirmed, tab: 'people' }
 }
 
-async function checklist(cycle: CycleWithPeriod, stage: RoundStage): Promise<RoundChecklistItem[]> {
+async function checklist(cycle: CycleWithPeriod, stage: RoundStage, now: Date): Promise<RoundChecklistItem[]> {
   const items: RoundChecklistItem[] = []
   if (stage === 'DRAFT') {
     const topics = await readyCompetencyCount()
@@ -115,9 +117,11 @@ async function checklist(cycle: CycleWithPeriod, stage: RoundStage): Promise<Rou
     const waiting = answers.filter((r) => r.state === 'NEEDS_REVIEW' || r.state === 'FAILED').length
     const label = waiting ? `${waiting} answer${waiting === 1 ? '' : 's'} waiting for your review` : 'Nothing waiting for your review'
     items.push({ key: 'review', label, done: answers.every((r) => r.state === 'DECIDED'), count: waiting, tab: 'review' })
-    const forms = await formsProgress(cycle.periodId)
+    const forms = await formsProgress(cycle.periodId, now)
     const left = forms.total - forms.done
-    items.push({ key: 'forms', label: left ? `${left} quarter-end ${left === 1 ? 'form' : 'forms'} left` : 'Quarter-end forms done', done: left === 0, count: left, tab: 'forms' })
+    // Before the forms open there is nothing to be done yet, so the item is not shown as done.
+    if (!formsOpenFor(cycle, now)) items.push({ key: 'forms', label: `Quarter-end forms open ${formatKarachiDate(formsOpenDate(cycle).toISOString())}`, done: false, count: 0, tab: 'forms' })
+    else items.push({ key: 'forms', label: left ? `${left} quarter-end ${left === 1 ? 'form' : 'forms'} left` : 'Quarter-end forms done', done: left === 0, count: left, tab: 'forms' })
   }
   if (stage === 'CLOSED') {
     const sent = await prisma.emailQueue.count({ where: { report: { periodId: cycle.periodId }, emailStatus: 'SENT' } })
@@ -140,11 +144,14 @@ export async function roundView(actor: WeeklyActor, periodId: string, now: Date)
     reviewOpenedAt: period.preEvaluationTriggeredAt?.toISOString() ?? null, reviewDeadline: cycle.reviewDeadline?.toISOString() ?? null,
     questionWeeks: cycle.questionWeeks, totalWeeks: total,
     currentWeek: stage === 'OPEN' ? Math.min(total, Math.max(1, effectiveWeek(cycle.weekOneStartsOn, cycle.simulatedWeek, now))) : null,
-    next: NEXT[stage], checklist: await checklist(cycle, stage),
+    next: NEXT[stage], checklist: await checklist(cycle, stage, now),
     ...(stage === 'DRAFT' ? { people: await peopleCounts(cycle, now) } : {}),
     ...(stage === 'REVIEW' ? { pendingRequests: await pendingRequests(periodId) } : {}),
+    ...(stage === 'OPEN' ? { health: await roundHealth(cycle, { through: weekNow(cycle, now), current: weekNow(cycle, now) }) } : {}),
   }
 }
+
+const weekNow = (cycle: CycleWithPeriod, now: Date) => Math.min(cycleWeeks(cycle), Math.max(1, effectiveWeek(cycle.weekOneStartsOn, cycle.simulatedWeek, now)))
 
 /** Everyone active who is evaluated in the round, and who is not (UX spec, HR step 3). */
 async function peopleCounts(cycle: CycleWithPeriod, now: Date): Promise<{ included: number; excluded: number }> {

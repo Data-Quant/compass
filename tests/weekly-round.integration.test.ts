@@ -119,3 +119,15 @@ test('before opening each stage HR sees what it means: who is in the round, then
   const review = await roundView(HR_ACTOR, periodId, at(1))
   assert.deepEqual(review.pendingRequests?.map((r) => `${r.requester.name} → ${r.other.name}`), ['Ana Torvik → Ben Okafor'])
 })
+
+test('an open round shows its health on the overview, and forms are not "done" before they open', WEEKLY_DB_TEST, async () => {
+  const { periodId } = await setupRound(HR_ACTOR, SETUP, at(1))
+  await openReviewStage(HR_ACTOR, periodId, at(1), send, APP)
+  await openRound(HR_ACTOR, periodId, at(1), send, APP)
+  const view = await roundView(HR_ACTOR, periodId, new Date('2027-01-12T05:00:00.000Z'))
+  assert.equal(typeof view.health?.asked, 'number')
+  assert.deepEqual(Object.keys(view.health ?? {}).sort(), ['answered', 'asked', 'behind', 'openRequests', 'unreadSelfReviews', 'waitingReview'])
+  const forms = view.checklist.find((c) => c.key === 'forms')!
+  assert.equal(forms.done, false)
+  assert.match(forms.label, /^Quarter-end forms open /)
+})

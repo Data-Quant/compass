@@ -124,22 +124,37 @@ export async function behindMessages(cycle: CycleWithPeriod, week: number, appUr
   ]
 }
 
-/** HR's Monday digest, about the weeks before this one. Low evidence is counted from the week HR is first told about it. */
-export async function hrDigestMessages(cycle: CycleWithPeriod, week: number, lowEvidenceFrom: number, appUrl: string): Promise<WeeklyEmailMessage[]> {
-  const past = { cycleId: cycle.id, weekIndex: { lt: week } }
-  const [asked, answered, behind, answers, openRequests, unreadSelfReviews, lowEvidence] = await Promise.all([
-    prisma.weeklyPrompt.count({ where: { ...past, status: { not: 'CANCELLED' } } }),
-    prisma.weeklyPrompt.count({ where: { ...past, status: { in: [...ANSWERED_PROMPT] } } }),
-    behindCounts(cycle.id, week),
+export interface RoundHealth { asked: number; answered: number; behind: number; waitingReview: number; openRequests: number; unreadSelfReviews: number }
+
+/**
+ * The round's health, for HR's digest and the round page's overview: questions asked and answered through a week,
+ * people 2+ weeks behind at the current week, and what waits on HR.
+ */
+export async function roundHealth(cycle: CycleWithPeriod, weeks: { through: number; current: number }): Promise<RoundHealth> {
+  const asked = { cycleId: cycle.id, weekIndex: { lte: weeks.through } }
+  const [askedCount, answered, behind, answers, openRequests, unreadSelfReviews] = await Promise.all([
+    prisma.weeklyPrompt.count({ where: { ...asked, status: { not: 'CANCELLED' } } }),
+    prisma.weeklyPrompt.count({ where: { ...asked, status: { in: [...ANSWERED_PROMPT] } } }),
+    behindCounts(cycle.id, weeks.current),
     loadAnswerRecords({ cycleId: cycle.id }),
     prisma.peerChangeRequest.count({ where: { periodId: cycle.periodId, status: { in: OPEN_REQUEST_STATUSES } } }),
     prisma.selfReviewRead.count({ where: { readAt: null, remindedAt: { not: null }, review: { periodId: cycle.periodId } } }),
+  ])
+  return {
+    asked: askedCount, answered, behind: behind.size, openRequests, unreadSelfReviews,
+    waitingReview: answers.filter((r) => r.state === 'NEEDS_REVIEW' || r.state === 'FAILED').length,
+  }
+}
+
+/** HR's Monday digest, about the weeks before this one. Low evidence is counted from the week HR is first told about it. */
+export async function hrDigestMessages(cycle: CycleWithPeriod, week: number, lowEvidenceFrom: number, appUrl: string): Promise<WeeklyEmailMessage[]> {
+  const [health, lowEvidence] = await Promise.all([
+    roundHealth(cycle, { through: week - 1, current: week }),
     week >= lowEvidenceFrom ? lowEvidenceRows(cycle.id) : Promise.resolve([]),
   ])
   const facts = {
-    periodName: cycle.period.name, week, totalWeeks: cycleWeeks(cycle), asked, answered, behind: behind.size,
-    waitingReview: answers.filter((r) => r.state === 'NEEDS_REVIEW' || r.state === 'FAILED').length,
-    lowEvidence: new Set(lowEvidence.map((r) => r.evaluatee.id)).size, openRequests, unreadSelfReviews,
+    ...health, periodName: cycle.period.name, week, totalWeeks: cycleWeeks(cycle),
+    lowEvidence: new Set(lowEvidence.map((r) => r.evaluatee.id)).size,
   }
   return (await hrUserIds()).map((userId) => ({
     userId, kind: 'weekly-hr-digest' as const, dedupeKey: `weekly-hr-digest:${cycle.id}:week-${week}:${userId}`,

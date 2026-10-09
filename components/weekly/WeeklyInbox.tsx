@@ -1,6 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { ArrowLeft, ArrowRight, CircleCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -8,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { weekLabel } from '@/lib/weekly/format'
 import { RELATIONSHIP_WORDS, type Perspective } from '@/lib/weekly/perspectives'
 import type { InboxPrompt, InboxResponse } from '@/lib/weekly/view-types'
+import { cn } from '@/lib/utils'
 import { AnswerCard } from './AnswerCard'
 import { HistoryList } from './HistoryList'
 import { WeeklyProgress } from './WeeklyProgress'
@@ -36,9 +39,10 @@ function SubmitWeek({ submittedAt, unanswered, actingAs, onSubmitted }: { submit
   const [busy, setBusy] = useState(false)
   if (submittedAt) {
     return (
-      <p className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
-        Submitted. You can edit until Sunday. Next questions Monday.
-      </p>
+      <div className="flex items-center gap-3 rounded-xl border border-emerald-300/70 bg-emerald-50/70 p-4 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
+        <CircleCheck className="h-5 w-5 shrink-0" aria-hidden />
+        <p><span className="font-medium">Submitted.</span> You can edit until Sunday. Next questions Monday.</p>
+      </div>
     )
   }
   async function submit() {
@@ -98,7 +102,7 @@ export function WeeklyInbox({ actingAs }: { actingAs?: string }) {
   if (error) return <p className="text-sm text-destructive">{error}</p>
   if (!data) return <p className="text-sm text-muted-foreground">Loading questions…</p>
   if (!data.cycle) {
-    return <Card><CardContent className="p-6 text-sm text-muted-foreground">Weekly evaluations are not running right now.</CardContent></Card>
+    return <Card><CardContent className="p-6 text-sm text-muted-foreground">Weekly questions start once HR opens the round.</CardContent></Card>
   }
   if (data.cycle.status === 'CLOSED') {
     return (
@@ -108,55 +112,114 @@ export function WeeklyInbox({ actingAs }: { actingAs?: string }) {
       </div>
     )
   }
-  const open = data.prompts.filter((p) => p.status !== 'SUBMITTED').length
-  const thisWeek = data.prompts.filter((p) => p.weekIndex === week)
-  const doneThisWeek = thisWeek.filter((p) => p.status === 'SUBMITTED').length
+  const thisWeek = data.week ?? { done: 0, total: 0, carried: 0 }
   const carriedCount = carried.reduce((n, g) => n + g.prompts.length, 0)
   const due = dueDate(data.cycle.weekOneStartsOn, week)
   // The comment questions are optional; every performance question needs an answer (or "not observed") to submit.
   const unanswered = data.prompts.filter((p) => p.kind === 'STANDARD' && p.status !== 'SUBMITTED').length
+  const percent = thisWeek.total ? Math.round((thisWeek.done / thisWeek.total) * 100) : 0
+  const current = queue[at]
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-sm text-muted-foreground">{data.cycle.periodName} · {weekLabel(data.cycle)}</p>
-        <p className="text-sm">{thisWeek.length ? `This week: ${doneThisWeek} of ${thisWeek.length} done · due ${due}` : open === 0 ? 'All caught up' : `${open} question${open === 1 ? '' : 's'} to answer`}</p>
-      </div>
+      <Card className="overflow-hidden">
+        <CardContent className="space-y-4 p-5">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="space-y-1">
+              <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">{data.cycle.periodName} · {weekLabel(data.cycle)}</p>
+              <h2 className="font-display text-2xl font-semibold text-foreground">This week</h2>
+            </div>
+            {thisWeek.total > 0 && <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">Due {due}</span>}
+          </div>
+          {thisWeek.total > 0 ? (
+            <div className="space-y-1.5">
+              <div className="h-1.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={thisWeek.done} aria-valuemin={0} aria-valuemax={thisWeek.total} aria-label="Questions done this week">
+                <div className="h-full origin-left rounded-full bg-primary transition-transform duration-700 ease-[cubic-bezier(0.32,0.72,0,1)]" style={{ transform: `scaleX(${percent / 100})` }} />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">{thisWeek.done} of {thisWeek.total} done</span>
+                {thisWeek.carried > 0 && ` · ${thisWeek.carried} from last week`}
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No questions this week. New ones arrive on Mondays.</p>
+          )}
+        </CardContent>
+      </Card>
       <Tabs defaultValue="inbox">
         <TabsList>
-          <TabsTrigger value="inbox">This week</TabsTrigger>
+          <TabsTrigger value="inbox">Questions</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
           <TabsTrigger value="progress">Progress</TabsTrigger>
         </TabsList>
-        <TabsContent value="inbox" className="space-y-6">
+        <TabsContent value="inbox" className="space-y-5">
           {queue.length > 0 && (
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-medium">{allAtOnce ? `${queue.length} questions` : `This week · ${at + 1} of ${queue.length} · due ${due}`}</p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              {allAtOnce ? <p className="text-sm font-medium">{queue.length} {queue.length === 1 ? 'question' : 'questions'}</p> : (
+                <div className="flex items-center gap-3">
+                  <p className="text-sm font-medium tabular-nums">Question {at + 1} of {queue.length}</p>
+                  {queue.length > 1 && (
+                    <div className="flex items-center gap-1.5" role="group" aria-label="Go to a question">
+                      {queue.map((p, i) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          aria-label={`Question ${i + 1}${p.status === 'SUBMITTED' ? ', answered' : ''}`}
+                          aria-current={i === at ? 'step' : undefined}
+                          onClick={() => setCurrentId(p.id)}
+                          className={cn(
+                            'h-2 rounded-full transition-[width,background-color] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
+                            i === at ? 'w-5 bg-primary' : p.status === 'SUBMITTED' ? 'w-2 bg-primary/40' : 'w-2 bg-muted-foreground/25 hover:bg-muted-foreground/45',
+                          )}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <Button variant="link" size="sm" className="h-auto p-0" onClick={() => setAllAtOnce((v) => !v)}>{allAtOnce ? 'One at a time' : 'See all at once'}</Button>
             </div>
           )}
-          {!allAtOnce && queue.length > 0 && (
-            <div className="space-y-3">
-              {isCarried(queue[at]) && <p className="text-xs font-medium text-amber-700 dark:text-amber-400">From last week</p>}
-              <AnswerCard key={`${queue[at].id}-${queue[at].status}-${version}`} prompt={queue[at]} actingAs={actingAs} onChanged={load} />
+          {!allAtOnce && current && (
+            <div className="space-y-4">
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={current.id}
+                  initial={{ opacity: 0, x: 16 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -16 }}
+                  transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
+                >
+                  <AnswerCard key={`${current.id}-${current.status}-${version}`} prompt={current} actingAs={actingAs} onChanged={load} />
+                </motion.div>
+              </AnimatePresence>
               <div className="flex justify-between gap-2">
-                <Button variant="outline" disabled={at === 0} onClick={() => setCurrentId(queue[at - 1].id)}>Back</Button>
-                <Button variant={queue[at].status === 'SUBMITTED' ? 'default' : 'outline'} disabled={at >= queue.length - 1} onClick={() => setCurrentId(queue[at + 1].id)}>Next</Button>
+                {at > 0 ? (
+                  <Button variant="outline" className="gap-1.5" onClick={() => setCurrentId(queue[at - 1].id)}>
+                    <ArrowLeft className="h-4 w-4" aria-hidden /> Back
+                  </Button>
+                ) : <span />}
+                {/* On the last question there is no Next: what follows is Submit this week. */}
+                {at < queue.length - 1 && (
+                  <Button variant={current.status === 'SUBMITTED' ? 'default' : 'outline'} className="gap-1.5" onClick={() => setCurrentId(queue[at + 1].id)}>
+                    Next <ArrowRight className="h-4 w-4" aria-hidden />
+                  </Button>
+                )}
               </div>
             </div>
           )}
           {allAtOnce && carriedCount > 0 && (
-            <section className="space-y-4 rounded-lg border border-amber-300 p-4 dark:border-amber-800">
+            <section className="space-y-4 rounded-xl border border-amber-300/70 p-4 dark:border-amber-800">
               <h2 className="font-semibold">{carriedCount} unanswered from last week <span className="text-sm font-normal text-muted-foreground">· they count like any other; this week’s set is not doubled</span></h2>
               {carried.map((group) => (
                 <div key={group.key} className="space-y-3">
-                  <h3 className="text-sm font-semibold">{group.name} <span className="font-normal text-muted-foreground">· {RELATIONSHIP_WORDS[group.perspective]} · From last week</span></h3>
+                  <h3 className="text-sm font-semibold">{group.name} <span className="font-normal text-muted-foreground">· {RELATIONSHIP_WORDS[group.perspective]}</span></h3>
                   {group.prompts.map((prompt) => <AnswerCard key={`${prompt.id}-${prompt.status}-${version}`} prompt={prompt} actingAs={actingAs} onChanged={load} />)}
                 </div>
               ))}
             </section>
           )}
-          {queue.length === 0 && <p className="text-sm text-muted-foreground">No questions right now. New ones arrive on Mondays.</p>}
+          {queue.length === 0 && thisWeek.total > 0 && <p className="text-sm text-muted-foreground">Everything for this week is answered. Earlier answers are in History.</p>}
           {allAtOnce && groups.map((group) => (
             <section key={group.key} className="space-y-3">
               <h2 className="font-semibold">
@@ -167,7 +230,7 @@ export function WeeklyInbox({ actingAs }: { actingAs?: string }) {
               ))}
             </section>
           ))}
-          {data.prompts.length > 0 && (
+          {thisWeek.total > 0 && (
             <SubmitWeek submittedAt={data.weekSubmittedAt ?? null} unanswered={unanswered} actingAs={actingAs} onSubmitted={load} />
           )}
         </TabsContent>

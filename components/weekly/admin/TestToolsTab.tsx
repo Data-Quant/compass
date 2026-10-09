@@ -81,7 +81,7 @@ export function TestToolsTab() {
               </>
             )}
           </div>
-          {cycles.length === 0 && <p className="text-sm text-muted-foreground">Create a cycle in Setup to release weeks and fill answers.</p>}
+          {cycles.length === 0 && <p className="text-sm text-muted-foreground">Set up a round to release weeks and fill answers.</p>}
         </CardContent>
       </Card>
       {cycleId && (

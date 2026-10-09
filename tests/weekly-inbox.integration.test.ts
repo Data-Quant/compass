@@ -164,3 +164,10 @@ test('once the round closes, the page says so and keeps a read-only history of a
   assert.ok(entries.some((e) => e.id === promptId && e.status === 'SUBMITTED'))
   assert.ok(entries.every((e) => !e.canEdit), 'read-only once closed')
 })
+
+test('the page counts the week the same way as the dashboard card: done of total, with carried-over questions', WEEKLY_DB_TEST, async () => {
+  const promptId = await leadPromptId()
+  assert.deepEqual((await inboxView(W.lead.id, at(1, 2))).week, { done: 0, total: 1, carried: 0 })
+  await choose(promptId, 3, null, at(1, 2))
+  assert.deepEqual((await inboxView(W.lead.id, at(1, 3))).week, { done: 1, total: 1, carried: 0 })
+})

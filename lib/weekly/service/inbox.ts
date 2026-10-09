@@ -14,6 +14,8 @@ import type { AnswerView, ChoiceView, EvaluateeProgress, HistoryGroup, HistoryRe
 import { recordAudit } from './audit'
 import { byName, isHrActor, loadPeople, personRef, type WeeklyActor } from './context'
 import { cycleSummary, findRunningCycle, loadCycle, type CycleWithPeriod } from './cycles'
+import { weekProgress } from './week-progress'
+import { weekStartsAt } from '../calendar'
 import { WeeklyError } from './errors'
 import { queueScoring } from './scoring'
 
@@ -120,7 +122,8 @@ export async function inboxView(evaluatorId: string, now: Date): Promise<InboxRe
     }
   })
   const submission = await prisma.weeklyWeekSubmission.findUnique({ where: { cycleId_evaluatorId_weekIndex: { cycleId: cycle.id, evaluatorId, weekIndex: summary.currentWeek } } })
-  return { cycle: summary, prompts: view, progress, weekSubmittedAt: submission?.submittedAt.toISOString() ?? null }
+  const { done, total, carried } = await weekProgress(cycle.id, evaluatorId, summary.currentWeek, weekStartsAt(cycle.weekOneStartsOn, summary.currentWeek))
+  return { cycle: summary, prompts: view, progress, weekSubmittedAt: submission?.submittedAt.toISOString() ?? null, week: { done, total, carried } }
 }
 
 /**

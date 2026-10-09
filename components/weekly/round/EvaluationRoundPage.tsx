@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatKarachiDate } from '@/lib/weekly/format'
 import { ROUND_STAGE_LABELS, ROUND_STAGES } from '@/lib/weekly/round-stage'
+import { cn } from '@/lib/utils'
 import type { RoundChecklistItem, RoundSummary, RoundView, WeeklyMeResponse } from '@/lib/weekly/view-types'
 import { QuarterEvaluationsWorkspace } from '../form-tables/QuarterEvaluationsWorkspace'
 import { AiModelTab } from '../admin/AiModelTab'
@@ -51,6 +52,51 @@ function Stepper({ view }: { view: RoundView }) {
 }
 
 /** UX spec, section 4: HR runs the whole round from here. It always says what is next, with one button for it. */
+/** HR's overview while the round runs: the week, how much is answered, who is behind, and what waits on HR. */
+function RoundHealthPanel({ view, onOpen }: { view: RoundView; onOpen: (tab: Tab) => void }) {
+  const health = view.health!
+  const week = view.currentWeek ?? 1
+  // A round opened ahead of week 1 has not started its questions yet.
+  const started = Date.now() >= new Date(view.weekOneStartsOn).getTime()
+  const answeredShare = health.asked ? Math.round((health.answered / health.asked) * 100) : 0
+  const tiles: Array<{ label: string; value: string; hint: string; tab: Tab | null; alert: boolean }> = [
+    { label: 'Answered', value: `${answeredShare}%`, hint: `${health.answered} of ${health.asked} questions so far`, tab: 'progress', alert: false },
+    { label: 'Behind', value: String(health.behind), hint: '2 or more weeks behind', tab: 'progress', alert: health.behind > 0 },
+    { label: 'Waiting for you', value: String(health.waitingReview), hint: 'answers to review', tab: 'review', alert: health.waitingReview > 0 },
+    { label: 'Requests', value: String(health.openRequests), hint: health.unreadSelfReviews ? `list changes · ${health.unreadSelfReviews} self-evaluations unread` : 'list changes waiting', tab: 'people', alert: health.openRequests > 0 },
+  ]
+  return (
+    <Card>
+      <CardContent className="space-y-5 p-5">
+        <div className="space-y-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <p className="font-display text-xl font-semibold">{started ? `Week ${week} of ${view.totalWeeks}` : `Questions start ${formatKarachiDate(view.weekOneStartsOn)}`}</p>
+            <p className="text-sm text-muted-foreground">closes {formatKarachiDate(view.closesOn)}</p>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+            <div className="h-full origin-left rounded-full bg-primary transition-transform duration-700 ease-[cubic-bezier(0.32,0.72,0,1)]" style={{ transform: `scaleX(${started ? week / view.totalWeeks : 0})` }} />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {tiles.map((t) => (
+            <button
+              key={t.label}
+              type="button"
+              disabled={!t.tab}
+              onClick={() => t.tab && onOpen(t.tab)}
+              className="group rounded-xl border border-border/70 p-4 text-left transition-[border-color,background-color,transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:border-border hover:bg-muted/40 active:scale-[0.99]"
+            >
+              <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">{t.label}</p>
+              <p className={cn('mt-1 text-2xl font-semibold tabular-nums', t.alert ? 'text-amber-600 dark:text-amber-400' : 'text-foreground')}>{t.value}</p>
+              <p className="text-xs text-muted-foreground">{t.hint}</p>
+            </button>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 export function EvaluationRoundPage() {
   const [rounds, setRounds] = useState<RoundSummary[] | null>(null)
   const [periodId, setPeriodId] = useState('')
@@ -176,7 +222,11 @@ export function EvaluationRoundPage() {
                 {view.stage !== 'DRAFT' && view.stage !== 'REVIEW' && (
                   <Button variant="outline" disabled={busy} onClick={() => setLocking(true)}>{view.locked ? 'Unlock' : 'Lock'}</Button>
                 )}
-                {view.next && <Button disabled={busy} onClick={primary}>{view.next.label}</Button>}
+                {view.next && (
+                  <Button disabled={busy} variant={view.next.action === 'close-round' && (view.currentWeek ?? 0) < view.totalWeeks ? 'outline' : 'default'} onClick={primary}>
+                    {view.next.label}
+                  </Button>
+                )}
               </div>
             </div>
             {view.checklist.length > 0 && (
@@ -198,7 +248,8 @@ export function EvaluationRoundPage() {
         <RoundCycleContext.Provider value={view.cycleId}>
           <Tabs value={tab} onValueChange={(value) => setTab(value as Tab)}>
             <TabsList className="flex-wrap">{TABS.map((t) => <TabsTrigger key={t.value} value={t.value}>{t.label}</TabsTrigger>)}</TabsList>
-            <TabsContent value="overview" className="pt-4">
+            <TabsContent value="overview" className="space-y-4 pt-4">
+              {view.health && view.currentWeek && <RoundHealthPanel view={view} onOpen={setTab} />}
               <Card><CardContent className="space-y-2 p-4 text-sm">
                 <p><span className="font-medium">Quarter:</span> {formatKarachiDate(view.startDate)} to {formatKarachiDate(view.endDate)}</p>
                 <p><span className="font-medium">Stage:</span> {ROUND_STAGE_LABELS[view.stage]}{view.reviewOpenedAt ? ` · review stage opened ${formatKarachiDate(view.reviewOpenedAt)}` : ''}</p>
