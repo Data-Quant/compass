@@ -18,6 +18,13 @@ const PERSPECTIVE_BY_TYPE: Partial<Record<RelationshipType, Perspective>> = {
 /** The question bank each perspective's topics come from (Compass stores banks by who is evaluated). */
 const BANK_BY_PERSPECTIVE: Record<Perspective, QuestionBank> = { LEAD: 'DIRECT_REPORT', UPWARD: 'TEAM_LEAD', PEER: 'PEER' }
 
+/** The relationship in words, from the evaluator's side (UX spec, section 8): "About Bilal · you are their peer". */
+export const RELATIONSHIP_WORDS: Record<Perspective, string> = {
+  LEAD: 'you are their lead',
+  UPWARD: 'they are your lead',
+  PEER: 'you are their peer',
+}
+
 export const PERSPECTIVE_LABELS: Record<Perspective, string> = {
   LEAD: 'As their lead',
   UPWARD: 'As a member of their team',

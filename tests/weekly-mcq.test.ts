@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { levelMeaning } from '../lib/weekly/levels'
 import { STANDARD_MCQ_BANK } from '../lib/weekly/content/mcq-bank'
 import { fourRatingLimit, MCQ_LEVELS, noteRequired, optionsProblem, personalise, shuffleOptions, withOptionIds } from '../lib/weekly/mcq'
 
@@ -42,4 +43,10 @@ test('the 4-rating limit is 10% of the questions for that relationship, at least
 
 test('[name] becomes the person’s first name', () => {
   assert.equal(personalise('When [name] commits, does [name] deliver?', 'Bilal Ahmed'), 'When Bilal commits, does Bilal deliver?')
+})
+
+test('every level has its Compass meaning for HR (section 8)', () => {
+  assert.equal(levelMeaning(1.5), 'Below expectations; needs regular follow-up')
+  assert.equal(levelMeaning(3.5), 'Exceeds, with impact beyond their own work')
+  assert.ok(MCQ_LEVELS.every((l) => levelMeaning(l) !== ''))
 })

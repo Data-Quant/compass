@@ -3,6 +3,7 @@
 // HR reviews every score (HR's decision): the model proposes a score from the chosen statement, the note and earlier
 // answers; HR accepts it or sets the score with a reason. Only confirmed scores count.
 import { useCallback, useEffect, useState } from 'react'
+import { levelMeaning } from '@/lib/weekly/levels'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -139,12 +140,12 @@ function ReviewCard({ item, busy, onAccept, onSet, onRetry }: { item: ReviewItem
             <p className="text-xs text-muted-foreground">Week {item.weekIndex} · {item.topic} · {item.evaluator.name} about {item.evaluatee.name} ({PERSPECTIVE_LABELS[item.perspective].toLowerCase()})</p>
             <p className="font-medium">{item.question}</p>
           </div>
-          {item.ai && <Badge className="shrink-0 text-base">Model: {item.ai.score}</Badge>}
+          {item.ai && <Badge className="shrink-0 text-base" title={levelMeaning(item.ai.score)}>Model: {item.ai.score} · {levelMeaning(item.ai.score)}</Badge>}
         </div>
         <ol className="space-y-1 text-sm">
           {item.statements.map((s) => (
             <li key={s.id} className={cn('flex gap-2 rounded px-2 py-1', s.id === item.chosen.id ? 'bg-primary/10 font-medium' : 'text-muted-foreground')}>
-              <span className="w-8 shrink-0 tabular-nums">{s.level}</span><span>{s.text}</span>
+              <span className="w-8 shrink-0 tabular-nums" title={levelMeaning(s.level)}>{s.level}</span><span>{s.text}</span>
             </li>
           ))}
         </ol>

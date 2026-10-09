@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { weekLabel } from '@/lib/weekly/format'
-import { PERSPECTIVE_LABELS, type Perspective } from '@/lib/weekly/perspectives'
+import { RELATIONSHIP_WORDS, type Perspective } from '@/lib/weekly/perspectives'
 import type { InboxPrompt, InboxResponse } from '@/lib/weekly/view-types'
 import { AnswerCard } from './AnswerCard'
 import { HistoryList } from './HistoryList'
@@ -86,6 +86,14 @@ export function WeeklyInbox({ actingAs }: { actingAs?: string }) {
   const isCarried = useCallback((p: InboxPrompt) => p.weekIndex < week && p.status !== 'SUBMITTED', [week])
   const carried = useMemo(() => groupByPerson((data?.prompts ?? []).filter(isCarried)), [data, isCarried])
   const groups = useMemo(() => groupByPerson((data?.prompts ?? []).filter((p) => !isCarried(p))), [data, isCarried])
+  // Section 8: one question at a time, missed ones first (oldest first), then this week's by person.
+  const queue = useMemo(() => [
+    ...(data?.prompts ?? []).filter(isCarried).sort((a, b) => a.weekIndex - b.weekIndex),
+    ...groups.flatMap((g) => g.prompts),
+  ], [data, isCarried, groups])
+  const [index, setIndex] = useState(0)
+  const [allAtOnce, setAllAtOnce] = useState(false)
+  const at = Math.min(index, Math.max(0, queue.length - 1))
   if (error) return <p className="text-sm text-destructive">{error}</p>
   if (!data) return <p className="text-sm text-muted-foreground">Loading questions…</p>
   if (!data.cycle) {
@@ -120,22 +128,38 @@ export function WeeklyInbox({ actingAs }: { actingAs?: string }) {
           <TabsTrigger value="progress">Progress</TabsTrigger>
         </TabsList>
         <TabsContent value="inbox" className="space-y-6">
-          {carriedCount > 0 && (
+          {queue.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-medium">{allAtOnce ? `${queue.length} questions` : `This week · ${at + 1} of ${queue.length} · due ${due}`}</p>
+              <Button variant="link" size="sm" className="h-auto p-0" onClick={() => setAllAtOnce((v) => !v)}>{allAtOnce ? 'One at a time' : 'See all at once'}</Button>
+            </div>
+          )}
+          {!allAtOnce && queue.length > 0 && (
+            <div className="space-y-3">
+              {isCarried(queue[at]) && <p className="text-xs font-medium text-amber-700 dark:text-amber-400">From last week</p>}
+              <AnswerCard key={`${queue[at].id}-${queue[at].status}-${version}`} prompt={queue[at]} actingAs={actingAs} onChanged={load} />
+              <div className="flex justify-between gap-2">
+                <Button variant="outline" disabled={at === 0} onClick={() => setIndex(at - 1)}>Back</Button>
+                <Button variant={queue[at].status === 'SUBMITTED' ? 'default' : 'outline'} disabled={at >= queue.length - 1} onClick={() => setIndex(at + 1)}>Next</Button>
+              </div>
+            </div>
+          )}
+          {allAtOnce && carriedCount > 0 && (
             <section className="space-y-4 rounded-lg border border-amber-300 p-4 dark:border-amber-800">
               <h2 className="font-semibold">{carriedCount} unanswered from last week <span className="text-sm font-normal text-muted-foreground">· they count like any other; this week’s set is not doubled</span></h2>
               {carried.map((group) => (
                 <div key={group.key} className="space-y-3">
-                  <h3 className="text-sm font-semibold">{group.name} <span className="font-normal text-muted-foreground">· {PERSPECTIVE_LABELS[group.perspective]} · From last week</span></h3>
+                  <h3 className="text-sm font-semibold">{group.name} <span className="font-normal text-muted-foreground">· {RELATIONSHIP_WORDS[group.perspective]} · From last week</span></h3>
                   {group.prompts.map((prompt) => <AnswerCard key={`${prompt.id}-${prompt.status}-${version}`} prompt={prompt} actingAs={actingAs} onChanged={load} />)}
                 </div>
               ))}
             </section>
           )}
-          {groups.length === 0 && carriedCount === 0 && <p className="text-sm text-muted-foreground">No questions right now. New ones arrive on Mondays.</p>}
-          {groups.map((group) => (
+          {queue.length === 0 && <p className="text-sm text-muted-foreground">No questions right now. New ones arrive on Mondays.</p>}
+          {allAtOnce && groups.map((group) => (
             <section key={group.key} className="space-y-3">
               <h2 className="font-semibold">
-                {group.name} <span className="text-sm font-normal text-muted-foreground">· {PERSPECTIVE_LABELS[group.perspective]}</span>
+                {group.name} <span className="text-sm font-normal text-muted-foreground">· {RELATIONSHIP_WORDS[group.perspective]}</span>
               </h2>
               {group.prompts.map((prompt) => (
                 <AnswerCard key={`${prompt.id}-${prompt.status}-${version}`} prompt={prompt} actingAs={actingAs} onChanged={load} />

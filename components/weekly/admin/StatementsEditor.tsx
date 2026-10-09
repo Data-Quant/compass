@@ -4,6 +4,7 @@
 // scores answers; evaluators see the statements shuffled, without levels.
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { levelMeaning } from '@/lib/weekly/levels'
 import { MCQ_LEVELS, MCQ_OPTION_COUNT, optionsProblem, type McqStatement } from '@/lib/weekly/mcq'
 
 /** A blank question: one statement per level, plus the repeat at 2.5 for HR to reword. */
@@ -28,7 +29,7 @@ export function StatementsEditor({ statements, onChange, disabled, label }: Prop
           <li key={index} className="flex items-center gap-2">
             <Select value={String(statement.score)} disabled={disabled} onValueChange={(v) => set(index, { score: Number(v) })}>
               <SelectTrigger className="h-8 w-20 shrink-0" aria-label={`${label}: level of statement ${index + 1}`}><SelectValue /></SelectTrigger>
-              <SelectContent>{MCQ_LEVELS.map((level) => <SelectItem key={level} value={String(level)}>{level}</SelectItem>)}</SelectContent>
+              <SelectContent>{MCQ_LEVELS.map((level) => <SelectItem key={level} value={String(level)}>{level} · {levelMeaning(level)}</SelectItem>)}</SelectContent>
             </Select>
             <Input className="h-8" value={statement.text} maxLength={300} disabled={disabled} aria-label={`${label}: statement ${index + 1}`} onChange={(e) => set(index, { text: e.target.value })} />
           </li>

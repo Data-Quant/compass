@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { EXCLUSION_LABELS, evaluateeExclusion, evaluatorExclusion, isOutsideRedesign, type PersonFacts } from '../lib/weekly/eligibility'
 import { NO_INCOMING_EVALUATION_NAMES } from '../lib/evaluation-profile-rules'
-import { bankForPerspective, isFormRelationshipType, perspectiveForBank, perspectiveOf, type Perspective } from '../lib/weekly/perspectives'
+import { bankForPerspective, isFormRelationshipType, perspectiveForBank, perspectiveOf, RELATIONSHIP_WORDS, type Perspective } from '../lib/weekly/perspectives'
 
 const now = new Date('2026-10-20T08:00:00.000Z')
 const weekOne = new Date('2026-10-04T19:00:00.000Z')
@@ -59,4 +59,10 @@ test('3E is outside the redesign entirely: never asked, never asking, never list
   assert.equal(isOutsideRedesign(person()), false)
   assert.equal(evaluatorExclusion(threeE, now), 'NOT_EVALUATED')
   assert.equal(EXCLUSION_LABELS.NOT_EVALUATED.includes('3E'), false)
+})
+
+test('each question says the relationship in words, from the evaluator’s side (section 8)', () => {
+  assert.equal(RELATIONSHIP_WORDS[perspectiveOf('TEAM_LEAD') as Perspective], 'you are their lead')
+  assert.equal(RELATIONSHIP_WORDS[perspectiveOf('DIRECT_REPORT') as Perspective], 'they are your lead')
+  assert.equal(RELATIONSHIP_WORDS[perspectiveOf('PEER') as Perspective], 'you are their peer')
 })

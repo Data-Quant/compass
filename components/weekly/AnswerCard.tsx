@@ -9,7 +9,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { commentProblem } from '@/lib/weekly/answer-rules'
-import { PERSPECTIVE_LABELS } from '@/lib/weekly/perspectives'
+import { RELATIONSHIP_WORDS } from '@/lib/weekly/perspectives'
 import type { InboxPrompt } from '@/lib/weekly/view-types'
 import { cn } from '@/lib/utils'
 import { errorMessage, weeklyRequest, withActingAs } from './weekly-api'
@@ -88,7 +88,7 @@ export function AnswerCard({ prompt, actingAs, onChanged }: AnswerCardProps) {
       <CardContent className="space-y-4 p-4">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0 space-y-1">
-            <p className="text-xs text-muted-foreground">About {prompt.evaluatee.name} · {PERSPECTIVE_LABELS[prompt.perspective].toLowerCase()}</p>
+            <p className="text-xs text-muted-foreground">About {prompt.evaluatee.name} · {RELATIONSHIP_WORDS[prompt.perspective]}</p>
             <p className="font-medium">{prompt.text}</p>
           </div>
           <div className="flex flex-wrap gap-2">
