@@ -43,6 +43,14 @@ export function renderFinalWeekEmail(input: { name: string; openCount: number; c
   }
 }
 
+/** HR's own nudge from the Progress tab. */
+export function renderHrReminderEmail(input: { name: string; openCount: number; appUrl: string }): Email {
+  return {
+    subject: `Reminder from HR: ${plural(input.openCount, 'evaluation question')} waiting`,
+    html: layout(input.name, [escapeHtml(`You have ${plural(input.openCount, 'open evaluation question')}. Each takes a few seconds.`)], `${base(input.appUrl)}${MY_PAGE}`, 'Answer now'),
+  }
+}
+
 export function renderBehindEmail(input: { name: string; openCount: number; appUrl: string }): Email {
   return {
     subject: `You have ${plural(input.openCount, 'unanswered evaluation question')}`,

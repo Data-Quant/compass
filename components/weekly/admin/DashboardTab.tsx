@@ -41,9 +41,37 @@ function CoverageTable({ rows }: { rows: CoverageView[] }) {
   )
 }
 
+function ProgressTable({ label, rows }: { label: string; rows: Array<{ key: string; name: string; asked: number; answered: number }> }) {
+  if (rows.length === 0) return <p className="text-sm text-muted-foreground">No questions yet.</p>
+  return (
+    <table className="w-full text-sm">
+      <thead><tr className="text-left text-muted-foreground"><th className="py-1">{label}</th><th>Asked</th><th>Answered</th><th>Rate</th></tr></thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.key} className="border-t"><td className="py-1">{r.name}</td><td>{r.asked}</td><td>{r.answered}</td><td>{percent(r.asked ? r.answered / r.asked : null)}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
 export function DashboardTab() {
   const { cycles, cycleId, setCycleId } = useCycles()
   const [data, setData] = useState<DashboardResponse | null>(null)
+  const [reminding, setReminding] = useState(false)
+
+  async function remind() {
+    setReminding(true)
+    try {
+      const result = await weeklyRequest<{ sent: number; recorded: number; skipped: number }>('/api/admin/weekly/dashboard', { method: 'POST', body: { action: 'remind', cycleId } })
+      const reached = result.sent + result.recorded
+      toast.success(reached ? `Reminder sent to ${reached} ${reached === 1 ? 'person' : 'people'} with open questions` : 'Nobody new to remind today')
+    } catch (e) {
+      toast.error(errorMessage(e, 'Could not send the reminders'))
+    } finally {
+      setReminding(false)
+    }
+  }
 
   const load = useCallback(async () => {
     if (!cycleId) return
@@ -67,8 +95,17 @@ export function DashboardTab() {
         <CyclePicker cycles={cycles} cycleId={cycleId} onChange={setCycleId} />
         <div className="flex items-center gap-3">
           <p className="text-sm text-muted-foreground">Week {data.cycle.currentWeek} of {data.cycle.totalWeeks}</p>
+          <Button variant="outline" size="sm" disabled={reminding} onClick={() => void remind()}>Send reminders</Button>
           <Button variant="outline" size="sm" onClick={() => void load()}>Refresh</Button>
         </div>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Section title="By week">
+          <ProgressTable label="Week" rows={data.byWeek.map((w) => ({ key: String(w.week), name: `Week ${w.week}`, asked: w.asked, answered: w.answered }))} />
+        </Section>
+        <Section title="By department">
+          <ProgressTable label="Department" rows={data.byDepartment.map((d) => ({ key: d.department, name: `${d.department} (${d.evaluators})`, asked: d.asked, answered: d.answered }))} />
+        </Section>
       </div>
       <Section title="Low evidence">
         <p className="text-sm text-muted-foreground">Under 60% of a group’s topics have an answer. HR is emailed this list in week {Math.max(1, data.cycle.questionWeeks - 1)}.</p>

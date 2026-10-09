@@ -107,3 +107,15 @@ test('HR locks an open round, which freezes its lists as they are, and can unloc
   await assert.rejects(setRoundLock(HR_ACTOR, periodId, false), /Q2 2027 is active/)
   await prisma.evaluationPeriod.delete({ where: { id: other.id } })
 })
+
+test('before opening each stage HR sees what it means: who is in the round, then the requests nobody has decided', WEEKLY_DB_TEST, async () => {
+  const { periodId } = await setupRound(HR_ACTOR, SETUP, at(1))
+  const draft = await roundView(HR_ACTOR, periodId, at(1))
+  // Layla, Ana, Ben and Cara are in it; Hana (HR) is not evaluated.
+  assert.ok(draft.people && draft.people.included >= 4, 'people included')
+  assert.equal(typeof draft.people?.excluded, 'number')
+  await openReviewStage(HR_ACTOR, periodId, at(1), send, APP)
+  await requestPeerChange(weeklyActor(W.ana), { peerId: W.ben.id, action: 'REMOVE', reasonCode: 'WRONG_PERSON' }, at(1), send, APP)
+  const review = await roundView(HR_ACTOR, periodId, at(1))
+  assert.deepEqual(review.pendingRequests?.map((r) => `${r.requester.name} → ${r.other.name}`), ['Ana Torvik → Ben Okafor'])
+})

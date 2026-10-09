@@ -14,6 +14,12 @@ import type { MappingReasonCodeValue, PeerReplyValue, PeerRequestView } from '@/
 import { cn } from '@/lib/utils'
 import { errorMessage, weeklyRequest } from '../weekly-api'
 
+/** How long a request has waited: "today", "1 day", "3 days". */
+function waited(iso: string): string {
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
+  return days < 1 ? 'since today' : `${days} ${days === 1 ? 'day' : 'days'}`
+}
+
 const NOUN: Record<PeerRequestView['relation'], string> = { PEER: 'peer', LEAD: 'lead', REPORT: 'team member' }
 const REASONS: Record<MappingReasonCodeValue, string> = { NO_LONGER_WORK_TOGETHER: 'No longer work together', WRONG_PERSON: 'Wrong person', OTHER: 'Other' }
 const REPLIES: Record<PeerReplyValue, string> = { WORK_TOGETHER: 'says they work together', NOT_WORK_TOGETHER: 'says they don’t work together' }
@@ -123,7 +129,7 @@ export function PeerRequestsAdminCard() {
                   <div className="min-w-0 space-y-0.5">
                     <p className="flex flex-wrap items-center gap-1.5 text-sm"><span className="font-semibold">{r.requester.name}</span><ArrowRight className="h-3.5 w-3.5 text-muted-foreground" /><span>{summary(r)}</span></p>
                     <p className="text-xs text-muted-foreground">
-                      Sent {formatKarachiDate(r.createdAt)}{r.reasonCode ? ` · ${REASONS[r.reasonCode]}` : ''}
+                      Sent {formatKarachiDate(r.createdAt)}{r.stage !== 'DONE' ? ` · waiting ${waited(r.createdAt)}` : ''}{r.reasonCode ? ` · ${REASONS[r.reasonCode]}` : ''}
                     </p>
                   </div>
                   {r.stage === 'DONE' && <Badge variant={r.status === 'APPROVED' ? 'default' : 'outline'}>{OUTCOME[r.status]}</Badge>}

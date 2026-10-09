@@ -261,9 +261,9 @@ export function EvaluationRoundPage() {
           isOpen
           title={view.next.label}
           message={view.next.action === 'open-review'
-            ? `Everyone in the round is emailed their lead, team and peers to check${view.reviewDeadline ? ` by ${formatKarachiDate(view.reviewDeadline)}` : ''}. They can ask for changes until you open the round.`
+            ? `${view.people ? `${view.people.included} people are in the round and ${view.people.excluded} are not evaluated. ` : ''}Everyone in it is emailed their lead, team and peers to check${view.reviewDeadline ? ` by ${formatKarachiDate(view.reviewDeadline)}` : ''}. They can ask for changes until you open the round.`
             : pending > 0
-              ? `${pending} change ${pending === 1 ? 'request has' : 'requests have'} not been decided. Opening the round lets them expire and tells the people who asked. Decide them in People first if they matter.`
+              ? `${pending} change ${pending === 1 ? 'request has' : 'requests have'} not been decided: ${(view.pendingRequests ?? []).map((r) => `${r.requester.name} about ${r.other.name}`).join('; ')}. Opening the round lets them expire and tells the people involved. Decide them in People first if they matter.`
               : 'Weekly questions start on week 1. After this, list changes are made by HR only.'}
           confirmText={view.next.label}
           variant={pending > 0 && view.next.action === 'open-round' ? 'warning' : 'info'}

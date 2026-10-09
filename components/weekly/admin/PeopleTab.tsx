@@ -12,6 +12,7 @@ import { errorMessage, weeklyRequest } from '../weekly-api'
 import { useRoundCycle } from '../round/RoundContext'
 import { PairWindowsCard } from './PairWindowsCard'
 import { ReviewStageCard } from './ReviewStageCard'
+import { ListImportDialog } from './ListImportDialog'
 import { RoundPeopleTable } from './RoundPeopleTable'
 
 const EXCLUSION_LABELS: Record<NonNullable<ParticipantRow['exclusion']>, string> = {
@@ -56,6 +57,7 @@ export function PeopleTab() {
   const periodId = cycles.find((c) => c.id === cycleId)?.periodId ?? ''
   const [data, setData] = useState<ParticipantsResponse | null>(null)
   const [optingIn, setOptingIn] = useState<ParticipantRow | null>(null)
+  const [importing, setImporting] = useState(false)
 
   const load = useCallback(async () => {
     if (!cycleId) return
@@ -87,7 +89,9 @@ export function PeopleTab() {
       <CyclePicker cycles={cycles} cycleId={cycleId} onChange={setCycleId} />
       {periodId && <ReviewStageCard key={periodId} periodId={periodId} />}
       {cycleId && <PairWindowsCard key={cycleId} cycleId={cycleId} />}
+      <div className="flex justify-end"><Button variant="outline" size="sm" onClick={() => setImporting(true)}>Import lists from a spreadsheet</Button></div>
       <RoundPeopleTable cycleId={cycleId} rows={data.rows} exclusionLabels={EXCLUSION_LABELS} onChanged={load} onOptIn={setOptingIn} onRemoveOptIn={(row) => void removeOptIn(row)} />
+      {importing && <ListImportDialog cycleId={cycleId} onClose={() => setImporting(false)} onSaved={load} />}
       {optingIn && <OptInDialog cycleId={cycleId} row={optingIn} onClose={() => setOptingIn(null)} onSaved={load} />}
     </div>
   )

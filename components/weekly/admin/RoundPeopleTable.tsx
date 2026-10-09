@@ -28,6 +28,8 @@ interface Props {
 }
 
 /** One row per person: their lists, their status, and what HR should look at (UX spec, HR step 2). */
+const QUARTER_END = { C_LEVEL: 'C-Level', DEPT: 'Department', HR: 'HR' } as const
+
 export function RoundPeopleTable({ cycleId, rows, exclusionLabels, onChanged, onOptIn, onRemoveOptIn }: Props) {
   const [filter, setFilter] = useState('')
   const [onlyWarnings, setOnlyWarnings] = useState(false)
@@ -53,7 +55,7 @@ export function RoundPeopleTable({ cycleId, rows, exclusionLabels, onChanged, on
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/40 text-left">
-              <th className="p-2">Person</th><th className="p-2">Lead</th><th className="p-2">Team</th><th className="p-2">Peers</th><th className="p-2">Status</th>
+              <th className="p-2">Person</th><th className="p-2">Lead</th><th className="p-2">Team</th><th className="p-2">Peers</th><th className="p-2">Quarter-end forms</th><th className="p-2">Status</th>
               <th className="p-2"><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
@@ -64,6 +66,11 @@ export function RoundPeopleTable({ cycleId, rows, exclusionLabels, onChanged, on
                 <td className="p-2">{names(row.leads)}</td>
                 <td className="p-2">{names(row.reports)}</td>
                 <td className="p-2">{names(row.peers)}</td>
+                <td className="p-2 text-xs">
+                  {row.quarterEnd.length === 0 ? <span className="text-muted-foreground">None</span> : row.quarterEnd.map((q) => (
+                    <p key={`${q.type}-${q.evaluator.id}`}><span className="text-muted-foreground">{QUARTER_END[q.type]}:</span> {q.evaluator.name}</p>
+                  ))}
+                </td>
                 <td className="space-y-1 p-2">
                   {row.exclusion ? <Badge variant="outline">{exclusionLabels[row.exclusion]}</Badge> : <Badge variant="secondary">Included</Badge>}
                   {row.optedIn && <p className="text-xs text-muted-foreground">Opted in: {row.optInReason}</p>}

@@ -36,7 +36,7 @@ function normalizeSheetHeader(value: string) {
   return value.trim()
 }
 
-function buildWorksheetRows(worksheet: ExcelJS.Worksheet) {
+export function buildWorksheetRows(worksheet: ExcelJS.Worksheet): WorkbookMappingRow[] {
   const headerRow = worksheet.getRow(1)
   const headerValues = Array.isArray(headerRow.values) ? headerRow.values.slice(1) : []
   const headers = headerValues

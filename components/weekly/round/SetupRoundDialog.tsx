@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/ui/modal'
+import { nextRoundDefaults } from '@/lib/weekly/round-defaults'
 import { errorMessage, weeklyRequest } from '../weekly-api'
 
 type DateField = 'startDate' | 'endDate' | 'weekOneStartsOn' | 'reviewDeadline'
@@ -13,7 +14,11 @@ const field = (id: DateField, label: string, hint?: string) => ({ id, label, hin
 
 /** Draft step 1: the quarter and its weekly schedule in one form. */
 export function SetupRoundDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (periodId: string) => Promise<void> }) {
-  const [form, setForm] = useState({ name: '', startDate: '', endDate: '', weekOneStartsOn: '', questionWeeks: '11', reviewDeadline: '' })
+  // Prefilled with the next quarter (UX spec, HR step 1); HR can change anything.
+  const [form, setForm] = useState(() => {
+    const d = nextRoundDefaults(new Date())
+    return { name: d.name, startDate: d.startDate, endDate: d.endDate, weekOneStartsOn: d.weekOneStartsOn, questionWeeks: String(d.questionWeeks), reviewDeadline: '' }
+  })
   const [saving, setSaving] = useState(false)
   const set = (key: keyof typeof form) => (value: string) => setForm((f) => ({ ...f, [key]: value }))
 

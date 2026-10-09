@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db'
 import { getResolvedEvaluationAssignments, snapshotEvaluationPeriodAssignments } from '@/lib/evaluation-assignments'
 import { parseCalendarDate } from '../../kpi/calendar'
 import { cycleWeeks, effectiveWeek, startOfKarachiDay, weekStartsAt } from '../calendar'
-import { isOutsideRedesign } from '../eligibility'
+import { evaluateeExclusion, isOutsideRedesign } from '../eligibility'
 import { renderRequestExpiredEmail } from '../emails'
 import { isWeeklyRelationshipType } from '../perspectives'
 import { OPEN_REQUEST_STATUSES } from '../request-status'
@@ -12,7 +12,7 @@ import { roundStage, type RoundStage } from '../round-stage'
 import type { RoundChecklistItem, RoundNextStep, RoundSummary, RoundView } from '../view-types'
 import { recordAudit } from './audit'
 import { readyCompetencyCount } from './content'
-import { assertHr, loadPeople, type WeeklyActor } from './context'
+import { assertHr, loadPeople, personRef, type WeeklyActor } from './context'
 import { createCycle, loadCycle, updateCycle, type CycleWithPeriod } from './cycles'
 import { WeeklyError } from './errors'
 import { loadAnswerRecords } from './answer-states'
@@ -141,7 +141,25 @@ export async function roundView(actor: WeeklyActor, periodId: string, now: Date)
     questionWeeks: cycle.questionWeeks, totalWeeks: total,
     currentWeek: stage === 'OPEN' ? Math.min(total, Math.max(1, effectiveWeek(cycle.weekOneStartsOn, cycle.simulatedWeek, now))) : null,
     next: NEXT[stage], checklist: await checklist(cycle, stage),
+    ...(stage === 'DRAFT' ? { people: await peopleCounts(cycle, now) } : {}),
+    ...(stage === 'REVIEW' ? { pendingRequests: await pendingRequests(periodId) } : {}),
   }
+}
+
+/** Everyone active who is evaluated in the round, and who is not (UX spec, HR step 3). */
+async function peopleCounts(cycle: CycleWithPeriod, now: Date): Promise<{ included: number; excluded: number }> {
+  const active = await prisma.user.findMany({ where: { OR: [{ payrollProfile: null }, { payrollProfile: { isPayrollActive: true } }] }, select: { id: true } })
+  const optedIn = new Set((await prisma.weeklyParticipantOverride.findMany({ where: { cycleId: cycle.id, optIn: true }, select: { userId: true } })).map((o) => o.userId))
+  const people = [...(await loadPeople(active.map((u) => u.id))).values()].filter((p) => !isOutsideRedesign(p))
+  const included = people.filter((p) => evaluateeExclusion(p, { now, weekOneStartsOn: cycle.weekOneStartsOn, totalWeeks: cycleWeeks(cycle), optedIn: optedIn.has(p.id) }) === null).length
+  return { included, excluded: people.length - included }
+}
+
+/** The requests nobody has decided, which expire when the round opens (UX spec, HR step 5). */
+async function pendingRequests(periodId: string): Promise<NonNullable<RoundView['pendingRequests']>> {
+  const open = await prisma.peerChangeRequest.findMany({ where: { periodId, status: { in: OPEN_REQUEST_STATUSES } }, orderBy: { createdAt: 'asc' } })
+  const people = await loadPeople(open.flatMap((r) => [r.requesterId, r.peerId]))
+  return open.map((r) => ({ id: r.id, requester: personRef(people, r.requesterId), other: personRef(people, r.peerId), relation: r.relation, action: r.action }))
 }
 
 /** Review → Open: undecided requests expire (their people are told), the cycle starts, the quarter becomes active, and every evaluator hears it has started. */

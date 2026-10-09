@@ -103,7 +103,13 @@ export interface ParticipantRow {
   confirmedAt: string | null
   /** Mapping gaps HR should fix or accept; acceptedReason is set once accepted. */
   warnings: Array<{ key: RoundWarningKey; acceptedReason: string | null }>
+  /** Who fills in this person's quarter-end forms. */
+  quarterEnd: Array<{ type: QuarterEndType; evaluator: PersonRef }>
 }
+export type QuarterEndType = 'C_LEVEL' | 'DEPT' | 'HR'
+export interface ListImportChange { action: 'ADD' | 'REMOVE'; relation: 'LEAD' | 'PEER'; person: PersonRef; other: PersonRef }
+/** A spreadsheet of lists: what it would change (applied false), or what it changed. */
+export interface ListImportResult { rows: number; unknownNames: string[]; changes: ListImportChange[]; applied: boolean }
 export type RoundWarningKey = 'NO_LEAD' | 'FEW_PEERS'
 export interface ParticipantsResponse { cycleId: string; rows: ParticipantRow[] }
 
@@ -133,11 +139,17 @@ export interface ReviewQueueResponse { cycleId: string; counts: Record<AnswerSta
 export interface CoverageView { evaluatee: PersonRef; perspective: Perspective; satisfied: number; total: number; evaluatorsContributing: number; share: number; lowEvidence: boolean }
 export interface EvaluatorStatsView { evaluator: PersonRef; released: number; answered: number; notObserved: number; open: number; overdue: number; responseRate: number | null }
 export interface DriftView { evaluator: PersonRef; perspective: Perspective; difference: number; count: number }
+export interface WeekProgressView { week: number; asked: number; answered: number }
+export interface DepartmentProgressView { department: string; evaluators: number; asked: number; answered: number }
 export interface DashboardResponse {
   cycle: CycleSummary
   coverage: CoverageView[]
   evaluators: EvaluatorStatsView[]
   drift: DriftView[]
+  /** Questions asked and answered (or marked not observed), by the week they were asked. */
+  byWeek: WeekProgressView[]
+  /** The same, by the evaluator's department. */
+  byDepartment: DepartmentProgressView[]
 }
 
 export type FormRelationshipTypeValue = 'C_LEVEL' | 'DEPT' | 'HR'
@@ -310,6 +322,10 @@ export interface RoundView {
   /** The one primary step for this stage; null once released. */
   next: RoundNextStep | null
   checklist: RoundChecklistItem[]
+  /** In Draft, for the "open review stage" summary: who is in the round and who is not evaluated. */
+  people?: { included: number; excluded: number }
+  /** In Review, for the "open round" summary: the requests that would expire. */
+  pendingRequests?: Array<{ id: string; requester: PersonRef; other: PersonRef; relation: 'PEER' | 'LEAD' | 'REPORT'; action: 'ADD' | 'REMOVE' }>
 }
 
 export interface RoundResultRow {
