@@ -14,11 +14,15 @@ test('comments are optional but cannot be submitted empty', () => {
   assert.equal(commentProblem('Keep sharing plans early.'), null)
 })
 
-test('a submitted answer can be edited until HR locks the quarter', () => {
+test('an answer can be edited until the Sunday of the week it was given, and never once the quarter is locked', () => {
+  // Week 1 runs Monday 5 October to Sunday 11 October 2026, Karachi time.
+  const weekOneStartsOn = new Date('2026-10-04T19:00:00.000Z')
   const submittedAt = new Date('2026-10-06T08:00:00.000Z')
-  assert.equal(canEditSubmitted({ submittedAt, periodLocked: false }), true)
-  assert.equal(canEditSubmitted({ submittedAt, periodLocked: true }), false)
-  assert.equal(canEditSubmitted({ submittedAt: null, periodLocked: false }), false)
+  const rule = (now: string, periodLocked = false) => canEditSubmitted({ submittedAt, periodLocked, weekOneStartsOn, now: new Date(now) })
+  assert.equal(rule('2026-10-11T18:59:00.000Z'), true, 'Sunday 23:59 in Karachi')
+  assert.equal(rule('2026-10-11T19:00:00.000Z'), false, 'Monday 00:00 in Karachi')
+  assert.equal(rule('2026-10-07T08:00:00.000Z', true), false)
+  assert.equal(canEditSubmitted({ submittedAt: null, periodLocked: false, weekOneStartsOn, now: submittedAt }), false)
 })
 
 test('not observed snoozes three weeks, and a second time closes the slot', () => {
