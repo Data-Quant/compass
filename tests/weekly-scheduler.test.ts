@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  MAX_WEEKS_WITHOUT_ASKING, nextVariant, pickTopic, planWeek, QUESTIONS_PER_PAIR,
+  MAX_WEEKS_WITHOUT_ASKING, nextVariant, WEEKLY_QUESTION_CAP, pickTopic, planWeek, QUESTIONS_PER_PAIR,
   type SchedulablePair, type SchedulableTopic, type WeekPlanInput,
 } from '../lib/weekly/scheduler'
 
@@ -114,4 +114,21 @@ test('someone added mid-quarter gets their five questions over the weeks HR gave
   }
   assert.equal(asks.length, 5, `asked in weeks ${asks.join(',')}`)
   assert.ok(asks[0] <= 7 + MAX_WEEKS_WITHOUT_ASKING - 1)
+})
+
+test('an evaluator gets at most 5 new questions a week when the quarter allows it', () => {
+  assert.equal(WEEKLY_QUESTION_CAP, 5)
+  for (const n of [10, 12]) {
+    const { weeks, state } = simulate(n)
+    assert.ok(weeks.every((w) => w.length <= 5), `${n} people: ${weeks.map((w) => w.length).join(',')}`)
+    assert.ok(state.every((p) => p.asked === 5), `${n} people: everyone still gets five`)
+  }
+})
+
+test('when 5 a week cannot cover everyone, a week holds only as many as it takes to finish', () => {
+  // 15 people need 75 questions in 12 question weeks: 6.25 a week, so 7 at most.
+  const { weeks, state } = simulate(15)
+  assert.ok(state.every((p) => p.asked === 5), 'everyone gets five')
+  const most = Math.max(...weeks.map((w) => w.length))
+  assert.ok(most > 5 && most <= 7, `at most 7 a week, got ${weeks.map((w) => w.length).join(',')}`)
 })

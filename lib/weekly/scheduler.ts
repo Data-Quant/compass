@@ -3,11 +3,15 @@
 // Each person an evaluator evaluates gets QUESTIONS_PER_PAIR questions a quarter, so an evaluator with y people has
 // x = 5y questions, spread evenly over the question weeks (about x / 12 a week). Each week a different, random
 // handful of people comes up, and nobody goes more than MAX_WEEKS_WITHOUT_ASKING weeks without a question.
+// A week holds at most WEEKLY_QUESTION_CAP new questions, unless that could not finish everyone by the end of the
+// quarter (see weeklyCap).
 import { questionWeekCount } from './calendar'
 import { stableHash } from './hash'
 
 export const QUESTIONS_PER_PAIR = 5
 export const MAX_WEEKS_WITHOUT_ASKING = 3
+/** UX spec, section 1: at most 5 new questions per evaluator per week (questions carried over do not count). */
+export const WEEKLY_QUESTION_CAP = 5
 
 export interface SchedulablePair {
   key: string
@@ -44,6 +48,17 @@ function pairTarget(p: SchedulablePair, week: number, questionWeeks: number): nu
   return QUESTIONS_PER_PAIR * Math.min(1, (week - startOf(p) + 1) / weeks)
 }
 
+/**
+ * The most new questions this week: WEEKLY_QUESTION_CAP, unless that cannot finish everyone's five by the end of the
+ * quarter; then just enough a week to finish (the questions still owed over the weeks left, this one included).
+ */
+export function weeklyCap(pairs: readonly SchedulablePair[], week: number, totalWeeks: number): number {
+  const questionWeeks = questionWeekCount(totalWeeks)
+  const weeksLeft = Math.max(1, (week <= questionWeeks ? questionWeeks : totalWeeks) - week + 1)
+  const owed = pairs.reduce((sum, p) => sum + Math.max(0, QUESTIONS_PER_PAIR - p.asked), 0)
+  return Math.max(WEEKLY_QUESTION_CAP, Math.ceil(owed / weeksLeft))
+}
+
 /** The people this evaluator is asked about this week, as pair keys. */
 export function planWeek(input: WeekPlanInput): string[] {
   if (input.week < 1 || input.week > input.totalWeeks) return []
@@ -55,7 +70,7 @@ export function planWeek(input: WeekPlanInput): string[] {
   const candidates = input.pairs.filter((p) => input.week >= startOf(p) && p.asked < QUESTIONS_PER_PAIR && !p.hasOpenPrompt && p.hasAskableTopic)
   const waited = (p: SchedulablePair) => input.week - (p.lastAskedWeek ?? startOf(p) - 1)
   const overdue = candidates.filter((p) => waited(p) >= MAX_WEEKS_WITHOUT_ASKING).length
-  const count = Math.min(candidates.length, Math.max(due, overdue))
+  const count = Math.min(candidates.length, Math.max(due, overdue), weeklyCap(input.pairs, input.week, input.totalWeeks))
   // Anyone at the three-week limit first, then whoever is furthest behind their own pace (someone added mid-quarter
   // has fewer weeks), then whoever has waited longest, then at random.
   const isOverdue = (p: SchedulablePair) => Number(waited(p) >= MAX_WEEKS_WITHOUT_ASKING)
