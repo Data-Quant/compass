@@ -149,11 +149,16 @@ export function planEvaluatorWeek(input: {
   const seed = `${input.cycleId}|${input.evaluatorId}`
   const asked = input.prompts.filter((p) => p.evaluatorId === input.evaluatorId)
   const askedOnSlot = new Map<string, number>()
-  for (const p of asked) if (p.slotId) askedOnSlot.set(p.slotId, (askedOnSlot.get(p.slotId) ?? 0) + 1)
+  const lastOnSlot = new Map<string, number>()
+  for (const p of asked) {
+    if (!p.slotId) continue
+    askedOnSlot.set(p.slotId, (askedOnSlot.get(p.slotId) ?? 0) + 1)
+    lastOnSlot.set(p.slotId, Math.max(lastOnSlot.get(p.slotId) ?? 0, p.weekIndex))
+  }
   const slotsByPair = new Map<string, PlannedSlot[]>()
   for (const slot of input.slots) if (slot.evaluatorId === input.evaluatorId) slotsByPair.set(pairKey(slot), [...(slotsByPair.get(pairKey(slot)) ?? []), slot])
   const topicsOf = (key: string): SchedulableTopic[] =>
-    (slotsByPair.get(key) ?? []).map((slot) => ({ id: slot.id, status: slot.status as SchedulableTopic['status'], asked: askedOnSlot.get(slot.id) ?? 0, snoozedUntilWeek: slot.snoozedUntilWeek }))
+    (slotsByPair.get(key) ?? []).map((slot) => ({ id: slot.id, status: slot.status as SchedulableTopic['status'], asked: askedOnSlot.get(slot.id) ?? 0, snoozedUntilWeek: slot.snoozedUntilWeek, lastAskedWeek: lastOnSlot.get(slot.id) ?? null }))
   const pairs = [...slotsByPair.keys()].map((key) => {
     const mine = asked.filter((p) => pairKey(p) === key)
     return {

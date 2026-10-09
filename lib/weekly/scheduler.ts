@@ -10,8 +10,10 @@ import { stableHash } from './hash'
 
 export const QUESTIONS_PER_PAIR = 5
 export const MAX_WEEKS_WITHOUT_ASKING = 3
-/** UX spec, section 1: at most 5 new questions per evaluator per week (questions carried over do not count). */
+/** UX spec, sections 1 and 8: at most 5 questions per evaluator per week, counting those carried over. */
 export const WEEKLY_QUESTION_CAP = 5
+/** Section 8: the same topic comes back for the same person at least this many weeks later. */
+export const TOPIC_GAP_WEEKS = 3
 
 export interface SchedulablePair {
   key: string
@@ -70,7 +72,10 @@ export function planWeek(input: WeekPlanInput): string[] {
   const candidates = input.pairs.filter((p) => input.week >= startOf(p) && p.asked < QUESTIONS_PER_PAIR && !p.hasOpenPrompt && p.hasAskableTopic)
   const waited = (p: SchedulablePair) => input.week - (p.lastAskedWeek ?? startOf(p) - 1)
   const overdue = candidates.filter((p) => waited(p) >= MAX_WEEKS_WITHOUT_ASKING).length
-  const count = Math.min(candidates.length, Math.max(due, overdue), weeklyCap(input.pairs, input.week, input.totalWeeks))
+  // Questions still open from earlier weeks count toward the cap, so a missed week never doubles the next (section 8).
+  const carried = input.pairs.filter((p) => p.hasOpenPrompt).length
+  const room = Math.max(0, weeklyCap(input.pairs, input.week, input.totalWeeks) - carried)
+  const count = Math.min(candidates.length, Math.max(due, overdue), room)
   // Anyone at the three-week limit first, then whoever is furthest behind their own pace (someone added mid-quarter
   // has fewer weeks), then whoever has waited longest, then at random.
   const isOverdue = (p: SchedulablePair) => Number(waited(p) >= MAX_WEEKS_WITHOUT_ASKING)
@@ -88,12 +93,15 @@ export interface SchedulableTopic {
   status: 'OPEN' | 'SATISFIED' | 'CLOSED_NOT_OBSERVED' | 'CANCELLED'
   /** Questions released on this topic for this pair. */
   asked: number
+  /** The week this topic was last asked about this person, if ever. */
+  lastAskedWeek?: number | null
   snoozedUntilWeek: number | null
 }
 
-/** The topic to ask about next: the one asked least, uncovered before covered, then at random. */
+/** The topic to ask about next: the one asked least, uncovered before covered, then at random; never one asked in the last 3 weeks. */
 export function pickTopic(topics: readonly SchedulableTopic[], week: number, seed: string): string | null {
-  const askable = topics.filter((t) => (t.status === 'OPEN' || t.status === 'SATISFIED') && (t.snoozedUntilWeek === null || week >= t.snoozedUntilWeek))
+  const rested = (t: SchedulableTopic) => t.lastAskedWeek === null || t.lastAskedWeek === undefined || week - t.lastAskedWeek >= TOPIC_GAP_WEEKS
+  const askable = topics.filter((t) => (t.status === 'OPEN' || t.status === 'SATISFIED') && (t.snoozedUntilWeek === null || week >= t.snoozedUntilWeek) && rested(t))
   const covered = (t: SchedulableTopic) => Number(t.status === 'SATISFIED')
   const [next] = [...askable].sort((a, b) => a.asked - b.asked || covered(a) - covered(b) || shuffleKey(seed, week, a.id) - shuffleKey(seed, week, b.id))
   return next?.id ?? null

@@ -132,3 +132,19 @@ test('when 5 a week cannot cover everyone, a week holds only as many as it takes
   const most = Math.max(...weeks.map((w) => w.length))
   assert.ok(most > 5 && most <= 7, `at most 7 a week, got ${weeks.map((w) => w.length).join(',')}`)
 })
+
+test('questions carried over count toward the 5 a week, so the week is never doubled (section 8)', () => {
+  // Four people still have an open question from earlier weeks: only one new question fits.
+  // 10 people (46 questions still owed over 11 weeks) fit in 5 a week, so the plain cap applies.
+  const list = [...pairs(10).slice(0, 4).map((p) => ({ ...p, asked: 1, lastAskedWeek: 1, hasOpenPrompt: true })), ...pairs(10).slice(4)]
+  assert.equal(planWeek(input(list, { week: 2 })).length, 1)
+})
+
+test('the same topic is not asked about the same person within 3 weeks (section 8)', () => {
+  const topic = (id: string, overrides: Partial<SchedulableTopic> = {}): SchedulableTopic => ({ id, status: 'OPEN', asked: 0, snoozedUntilWeek: null, ...overrides })
+  const recent = topic('recent', { asked: 1, lastAskedWeek: 4 })
+  assert.equal(pickTopic([recent], 5, 's'), null, 'one week later')
+  assert.equal(pickTopic([recent], 6, 's'), null, 'two weeks later')
+  assert.equal(pickTopic([recent], 7, 's'), 'recent', 'three weeks later')
+  assert.equal(pickTopic([recent, topic('other', { asked: 1, lastAskedWeek: 1 })], 5, 's'), 'other')
+})
