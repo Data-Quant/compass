@@ -5,17 +5,32 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { PERSPECTIVE_LABELS } from '@/lib/weekly/perspectives'
+import { cn } from '@/lib/utils'
 import type { CoverageView, DashboardResponse } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest } from '../weekly-api'
 import { CyclePicker, NoRound, useCycles } from './PeopleTab'
 
 const percent = (value: number | null) => (value === null ? '—' : `${Math.round(value * 100)}%`)
 
+/** A rate as a short bar and its percentage; low rates read amber so they stand out in a long table. */
+function RateBar({ value }: { value: number | null }) {
+  if (value === null) return <span className="text-muted-foreground">—</span>
+  const tone = value >= 0.75 ? 'bg-emerald-500' : value >= 0.5 ? 'bg-primary' : 'bg-amber-500'
+  return (
+    <span className="flex items-center gap-2">
+      <span className="h-1.5 w-16 overflow-hidden rounded-full bg-muted" aria-hidden>
+        <span className={cn('block h-full origin-left rounded-full transition-transform duration-700 ease-[cubic-bezier(0.32,0.72,0,1)]', tone)} style={{ transform: `scaleX(${Math.min(1, value)})` }} />
+      </span>
+      <span className="w-10 tabular-nums">{percent(value)}</span>
+    </span>
+  )
+}
+
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <Card>
-      <CardContent className="space-y-3 p-4">
-        <h2 className="font-semibold">{title}</h2>
+      <CardContent className="space-y-3 p-5">
+        <h2 className="text-sm font-semibold">{title}</h2>
         {children}
       </CardContent>
     </Card>
@@ -26,13 +41,13 @@ function CoverageTable({ rows }: { rows: CoverageView[] }) {
   if (rows.length === 0) return <p className="text-sm text-muted-foreground">Nobody.</p>
   return (
     <table className="w-full text-sm">
-      <thead><tr className="text-left text-muted-foreground"><th className="py-1">Person</th><th>Group</th><th>Topics answered</th><th>Evaluators contributing</th></tr></thead>
+      <thead><tr className="text-left text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground"><th className="pb-2">Person</th><th>Group</th><th>Topics answered</th><th>Evaluators contributing</th></tr></thead>
       <tbody>
         {rows.map((r) => (
-          <tr key={`${r.evaluatee.id}-${r.perspective}`} className="border-t">
-            <td className="py-1">{r.evaluatee.name}</td>
+          <tr key={`${r.evaluatee.id}-${r.perspective}`} className="border-t border-border/60">
+            <td className="py-2">{r.evaluatee.name}</td>
             <td>{PERSPECTIVE_LABELS[r.perspective]}</td>
-            <td>{r.satisfied} of {r.total} ({percent(r.share)})</td>
+            <td><span className="flex items-center gap-2"><RateBar value={r.share} /><span className="text-muted-foreground">{r.satisfied} of {r.total}</span></span></td>
             <td>{r.evaluatorsContributing}</td>
           </tr>
         ))}
@@ -45,10 +60,10 @@ function ProgressTable({ label, rows }: { label: string; rows: Array<{ key: stri
   if (rows.length === 0) return <p className="text-sm text-muted-foreground">No questions yet.</p>
   return (
     <table className="w-full text-sm">
-      <thead><tr className="text-left text-muted-foreground"><th className="py-1">{label}</th><th>Asked</th><th>Answered</th><th>Rate</th></tr></thead>
+      <thead><tr className="text-left text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground"><th className="pb-2">{label}</th><th className="pb-2">Asked</th><th className="pb-2">Answered</th><th className="pb-2">Rate</th></tr></thead>
       <tbody>
         {rows.map((r) => (
-          <tr key={r.key} className="border-t"><td className="py-1">{r.name}</td><td>{r.asked}</td><td>{r.answered}</td><td>{percent(r.asked ? r.answered / r.asked : null)}</td></tr>
+          <tr key={r.key} className="border-t border-border/60 tabular-nums"><td className="py-2">{r.name}</td><td>{r.asked}</td><td>{r.answered}</td><td><RateBar value={r.asked ? r.answered / r.asked : null} /></td></tr>
         ))}
       </tbody>
     </table>
@@ -87,7 +102,14 @@ export function DashboardTab() {
   }, [load])
 
   if (!cycleId) return <NoRound loaded={loaded} />
-  if (!data) return <p className="text-sm text-muted-foreground">Loading…</p>
+  if (!data) {
+    return (
+      <div className="space-y-4" aria-label="Loading">
+        <div className="grid gap-4 md:grid-cols-2">{[0, 1].map((i) => <div key={i} className="h-40 animate-pulse rounded-2xl bg-muted/60" />)}</div>
+        <div className="h-56 animate-pulse rounded-2xl bg-muted/60" />
+      </div>
+    )
+  }
   const low = data.coverage.filter((c) => c.lowEvidence)
   return (
     <div className="space-y-4">
@@ -113,18 +135,20 @@ export function DashboardTab() {
           <CoverageTable rows={low} />
         </Section>
       ) : (
-        <details className="rounded-xl border p-4">
+        <details className="rounded-2xl border border-border/70 bg-card p-4">
           <summary className="cursor-pointer text-sm font-medium">Low evidence: {low.length} {low.length === 1 ? 'group' : 'groups'} so far <span className="font-normal text-muted-foreground">(expected early; it matters from week {Math.max(1, data.cycle.questionWeeks - 1)})</span></summary>
           <div className="mt-3"><CoverageTable rows={low} /></div>
         </details>
       )}
       <Section title="Evaluators">
         <table className="w-full text-sm">
-          <thead><tr className="text-left text-muted-foreground"><th className="py-1">Evaluator</th><th>Asked</th><th>Answered</th><th>Not observed</th><th>Open</th><th>Overdue</th><th>Response rate</th></tr></thead>
+          <thead><tr className="text-left text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground"><th className="pb-2">Evaluator</th><th className="pb-2">Asked</th><th className="pb-2">Answered</th><th className="pb-2">Not observed</th><th className="pb-2">Open</th><th className="pb-2">Overdue</th><th className="pb-2">Response rate</th></tr></thead>
           <tbody>
             {data.evaluators.map((e) => (
-              <tr key={e.evaluator.id} className="border-t">
-                <td className="py-1">{e.evaluator.name}</td><td>{e.released}</td><td>{e.answered}</td><td>{e.notObserved}</td><td>{e.open}</td><td>{e.overdue}</td><td>{percent(e.responseRate)}</td>
+              <tr key={e.evaluator.id} className="border-t border-border/60 tabular-nums">
+                <td className="py-2 font-medium">{e.evaluator.name}</td><td>{e.released}</td><td>{e.answered}</td><td>{e.notObserved}</td><td>{e.open}</td>
+                <td>{e.overdue > 0 ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">{e.overdue}</span> : 0}</td>
+                <td><RateBar value={e.responseRate} /></td>
               </tr>
             ))}
           </tbody>
@@ -143,7 +167,7 @@ export function DashboardTab() {
           </ul>
         )}
       </Section>
-      <details className="rounded-md border p-3">
+      <details className="rounded-2xl border border-border/70 bg-card p-4">
         <summary className="cursor-pointer text-sm font-medium">Coverage for everyone</summary>
         <div className="mt-3"><CoverageTable rows={data.coverage} /></div>
       </details>

@@ -51,40 +51,44 @@ export function RoundPeopleTable({ cycleId, rows, exclusionLabels, onChanged, on
           <Button size="sm" variant={onlyWarnings ? 'default' : 'outline'} onClick={() => setOnlyWarnings((v) => !v)}>Only to check</Button>
         </div>
       </div>
-      <div className="overflow-x-auto rounded-md border">
+      <div className="overflow-x-auto rounded-2xl border border-border/70 bg-card shadow-soft">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b bg-muted/40 text-left">
-              <th className="p-2">Person</th><th className="p-2">Lead</th><th className="p-2">Team</th><th className="p-2">Peers</th><th className="p-2">Quarter-end forms</th><th className="p-2">Status</th>
-              <th className="p-2"><span className="sr-only">Actions</span></th>
+            <tr className="border-b border-border/70 bg-muted/30 text-left">
+              <th className="px-3 py-2.5 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">Person</th><th className="px-3 py-2.5 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">Lead</th><th className="px-3 py-2.5 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">Team</th><th className="px-3 py-2.5 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">Peers</th><th className="px-3 py-2.5 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">Quarter-end forms</th><th className="px-3 py-2.5 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">Status</th>
+              <th className="px-3 py-2.5 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground"><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
             {shown.map((row) => (
-              <tr key={row.person.id} className="border-b align-top last:border-0">
-                <td className="p-2"><p className="font-medium">{row.person.name}</p><p className="text-xs text-muted-foreground">{row.department ?? ''}</p></td>
-                <td className="p-2">{names(row.leads)}</td>
-                <td className="p-2">{names(row.reports)}</td>
-                <td className="p-2">{names(row.peers)}</td>
-                <td className="p-2 text-xs">
+              <tr key={row.person.id} className="border-b border-border/60 align-top transition-colors last:border-0 hover:bg-muted/30">
+                <td className="px-3 py-3"><p className="font-medium">{row.person.name}</p><p className="text-xs text-muted-foreground">{row.department ?? ''}</p></td>
+                <td className="px-3 py-3">{names(row.leads)}</td>
+                <td className="px-3 py-3">{names(row.reports)}</td>
+                <td className="px-3 py-3">{names(row.peers)}</td>
+                <td className="px-3 py-3 text-xs">
                   {row.quarterEnd.length === 0 ? <span className="text-muted-foreground">None</span> : row.quarterEnd.map((q) => (
                     <p key={`${q.type}-${q.evaluator.id}`}><span className="text-muted-foreground">{QUARTER_END[q.type]}:</span> {q.evaluator.name}</p>
                   ))}
                 </td>
-                <td className="space-y-1 p-2">
-                  {row.exclusion ? <Badge variant="outline">{exclusionLabels[row.exclusion]}</Badge> : <Badge variant="secondary">Included</Badge>}
+                <td className="space-y-1.5 px-3 py-3">
+                  {row.exclusion
+                    ? <Badge variant="outline" className="font-medium text-muted-foreground">{exclusionLabels[row.exclusion]}</Badge>
+                    : <span className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />Included</span>}
                   {row.optedIn && <p className="text-xs text-muted-foreground">Opted in: {row.optInReason}</p>}
                   {!row.exclusion && <p className="text-xs text-muted-foreground">{row.confirmedAt ? 'Said lists look right' : 'Has not confirmed lists'}</p>}
                   {row.warnings.map((w) => (
                     <div key={w.key} className="flex flex-wrap items-center gap-1">
-                      <Badge variant={w.acceptedReason ? 'outline' : 'destructive'}>{WARNINGS[w.key]}</Badge>
+                      <span className={w.acceptedReason
+                        ? 'rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground'
+                        : 'rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-300'}>{WARNINGS[w.key]}</span>
                       {w.acceptedReason
                         ? <span className="text-xs text-muted-foreground">Accepted: {w.acceptedReason}</span>
                         : <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setAccepting({ row, key: w.key })}>Accept</Button>}
                     </div>
                   ))}
                 </td>
-                <td className="space-y-1 p-2 text-right">
+                <td className="space-y-1 px-3 py-3 text-right">
                   <Button size="sm" variant="outline" onClick={() => setEditing(row)}>Change lists</Button>
                   {row.exclusion === 'JOINED_LATE' && <Button size="sm" variant="ghost" onClick={() => onOptIn(row)}>Opt in</Button>}
                   {row.optedIn && <Button size="sm" variant="ghost" onClick={() => onRemoveOptIn(row)}>Remove opt-in</Button>}

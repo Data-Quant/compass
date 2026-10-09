@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Check, ChevronRight, Circle, CircleDot, Lock } from 'lucide-react'
+import { ArrowRight, Check, Lock, Unlock } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -10,7 +10,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatKarachiDate } from '@/lib/weekly/format'
-import { ROUND_STAGE_LABELS, ROUND_STAGES } from '@/lib/weekly/round-stage'
+import { ROUND_STAGE_LABELS } from '@/lib/weekly/round-stage'
 import { cn } from '@/lib/utils'
 import type { RoundChecklistItem, RoundSummary, RoundView, WeeklyMeResponse } from '@/lib/weekly/view-types'
 import { QuarterEvaluationsWorkspace } from '../form-tables/QuarterEvaluationsWorkspace'
@@ -25,7 +25,9 @@ import { SurveyTab } from '../admin/SurveyTab'
 import { TestToolsTab } from '../admin/TestToolsTab'
 import { errorMessage, weeklyRequest } from '../weekly-api'
 import { RoundCycleContext } from './RoundContext'
+import { RoundHealthPanel, RoundKeyDates } from './RoundOverview'
 import { RoundResultsCard } from './RoundResultsCard'
+import { RoundStepper } from './RoundStepper'
 import { SetupRoundDialog } from './SetupRoundDialog'
 
 type Tab = RoundChecklistItem['tab']
@@ -34,69 +36,16 @@ const TABS: Array<{ value: Tab; label: string }> = [
   { value: 'forms', label: 'Quarter-end forms' }, { value: 'results', label: 'Close and release' }, { value: 'advanced', label: 'Advanced' },
 ]
 
-function Stepper({ view }: { view: RoundView }) {
-  const current = ROUND_STAGES.indexOf(view.stage)
-  return (
-    <ol className="flex flex-wrap items-center gap-1 text-sm" aria-label="Round stages">
-      {ROUND_STAGES.map((stage, i) => (
-        <li key={stage} className="flex items-center gap-1">
-          {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />}
-          <span className={`flex items-center gap-1 ${i === current ? 'font-semibold text-foreground' : 'text-muted-foreground'}`} aria-current={i === current ? 'step' : undefined}>
-            {i < current ? <Check className="h-3.5 w-3.5" aria-hidden /> : i === current ? <CircleDot className="h-3.5 w-3.5" aria-hidden /> : <Circle className="h-3.5 w-3.5" aria-hidden />}
-            {ROUND_STAGE_LABELS[stage]}
-          </span>
-        </li>
-      ))}
-    </ol>
-  )
+/** How many things wait on HR in a tab, shown as a count beside its name. */
+function tabCounts(view: RoundView): Partial<Record<Tab, number>> {
+  return {
+    people: view.health?.openRequests ?? view.checklist.find((c) => c.key === 'requests')?.count,
+    review: view.health?.waitingReview,
+    'self-reviews': view.health?.unreadSelfReviews,
+  }
 }
 
 /** UX spec, section 4: HR runs the whole round from here. It always says what is next, with one button for it. */
-/** HR's overview while the round runs: the week, how much is answered, who is behind, and what waits on HR. */
-function RoundHealthPanel({ view, onOpen }: { view: RoundView; onOpen: (tab: Tab) => void }) {
-  const health = view.health!
-  const week = view.currentWeek ?? 1
-  // A round opened ahead of week 1 has not started its questions yet.
-  const started = Date.now() >= new Date(view.weekOneStartsOn).getTime()
-  const answeredShare = health.asked ? Math.round((health.answered / health.asked) * 100) : 0
-  const tiles: Array<{ label: string; value: string; hint: string; tab: Tab | null; alert: boolean }> = [
-    { label: 'Answered', value: `${answeredShare}%`, hint: `${health.answered} of ${health.asked} questions so far`, tab: 'progress', alert: false },
-    { label: 'Behind', value: String(health.behind), hint: '2 or more weeks behind', tab: 'progress', alert: health.behind > 0 },
-    { label: 'Waiting for you', value: String(health.waitingReview), hint: 'answers to review', tab: 'review', alert: health.waitingReview > 0 },
-    { label: 'Requests', value: String(health.openRequests), hint: health.unreadSelfReviews ? `list changes · ${health.unreadSelfReviews} self-evaluations unread` : 'list changes waiting', tab: 'people', alert: health.openRequests > 0 },
-  ]
-  return (
-    <Card>
-      <CardContent className="space-y-5 p-5">
-        <div className="space-y-2">
-          <div className="flex items-baseline justify-between gap-2">
-            <p className="font-display text-xl font-semibold">{started ? `Week ${week} of ${view.totalWeeks}` : `Questions start ${formatKarachiDate(view.weekOneStartsOn)}`}</p>
-            <p className="text-sm text-muted-foreground">closes {formatKarachiDate(view.closesOn)}</p>
-          </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-            <div className="h-full origin-left rounded-full bg-primary transition-transform duration-700 ease-[cubic-bezier(0.32,0.72,0,1)]" style={{ transform: `scaleX(${started ? week / view.totalWeeks : 0})` }} />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {tiles.map((t) => (
-            <button
-              key={t.label}
-              type="button"
-              disabled={!t.tab}
-              onClick={() => t.tab && onOpen(t.tab)}
-              className="group rounded-xl border border-border/70 p-4 text-left transition-[border-color,background-color,transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:border-border hover:bg-muted/40 active:scale-[0.99]"
-            >
-              <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">{t.label}</p>
-              <p className={cn('mt-1 text-2xl font-semibold tabular-nums', t.alert ? 'text-amber-600 dark:text-amber-400' : 'text-foreground')}>{t.value}</p>
-              <p className="text-xs text-muted-foreground">{t.hint}</p>
-            </button>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
 export function EvaluationRoundPage() {
   const [rounds, setRounds] = useState<RoundSummary[] | null>(null)
   const [periodId, setPeriodId] = useState('')
@@ -177,12 +126,18 @@ export function EvaluationRoundPage() {
   }
 
   const pending = view?.checklist.find((c) => c.key === 'requests')?.count ?? 0
+  const counts = view ? tabCounts(view) : {}
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-6 sm:p-8">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="mx-auto max-w-7xl space-y-8 p-6 sm:p-8">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl font-bold text-foreground">Evaluation round{view ? ` · ${view.name}` : ''}</h1>
-          <p className="mt-1 text-muted-foreground">Run the quarter&apos;s evaluations from here, one step at a time.</p>
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Evaluation round</p>
+          <h1 className="mt-1 flex flex-wrap items-center gap-3 font-display text-3xl font-bold tracking-tight text-foreground">
+            {view ? view.name : 'Evaluations'}
+            {view && <Badge variant="outline" className="font-sans text-xs font-medium">{ROUND_STAGE_LABELS[view.stage]}</Badge>}
+            {view?.locked && <Badge variant="outline" className="gap-1 font-sans text-xs font-medium"><Lock className="h-3 w-3" aria-hidden /> Locked</Badge>}
+          </h1>
+          <p className="mt-1.5 text-muted-foreground">Run the quarter&apos;s evaluations from here, one step at a time.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {rounds && rounds.length > 1 && (
@@ -204,42 +159,57 @@ export function EvaluationRoundPage() {
       )}
 
       {view && (
-        <Card>
-          <CardContent className="space-y-4 p-5">
-            <Stepper view={view} />
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium">{view.next ? 'Next step' : 'Done'}</p>
-                <p className="text-sm text-muted-foreground">{view.next?.sentence ?? 'This round has been released.'}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Weekly questions from {formatKarachiDate(view.weekOneStartsOn)} for {view.questionWeeks} weeks, plus 2 catch-up weeks; closes {formatKarachiDate(view.closesOn)}
-                  {view.reviewDeadline ? ` · review stage ends ${formatKarachiDate(view.reviewDeadline)}` : ''}
-                  {view.currentWeek ? ` · now in week ${view.currentWeek}` : ''}
-                </p>
+        <Card className="overflow-hidden">
+          <CardContent className="p-0">
+            <div className="px-6 pb-6 pt-7"><RoundStepper stage={view.stage} /></div>
+            <div className="border-t border-border/70 bg-muted/30 px-6 py-5">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="min-w-0 max-w-2xl">
+                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-primary">{view.next ? 'Next step' : 'Done'}</p>
+                  <p className="mt-1 text-base font-medium text-foreground">{view.next?.sentence ?? 'This round has been released.'}</p>
+                  {view.currentWeek ? <p className="mt-1 text-sm text-muted-foreground">Now in week {view.currentWeek} of {view.totalWeeks} · closes {formatKarachiDate(view.closesOn)}</p> : null}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {view.stage !== 'DRAFT' && view.stage !== 'REVIEW' && (
+                    <Button variant="ghost" disabled={busy} onClick={() => setLocking(true)} className="gap-1.5">
+                      {view.locked ? <Unlock className="h-4 w-4" aria-hidden /> : <Lock className="h-4 w-4" aria-hidden />}
+                      {view.locked ? 'Unlock' : 'Lock'}
+                    </Button>
+                  )}
+                  {view.next && (
+                    <Button
+                      disabled={busy}
+                      size="lg"
+                      variant={view.next.action === 'close-round' && (view.currentWeek ?? 0) < view.totalWeeks ? 'outline' : 'default'}
+                      onClick={primary}
+                      className="group gap-2 px-5"
+                    >
+                      {view.next.label}
+                      <ArrowRight className="transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover:translate-x-0.5" aria-hidden />
+                    </Button>
+                  )}
+                </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {view.locked && <Badge variant="outline" className="gap-1"><Lock className="h-3 w-3" aria-hidden /> Locked</Badge>}
-                {view.stage !== 'DRAFT' && view.stage !== 'REVIEW' && (
-                  <Button variant="outline" disabled={busy} onClick={() => setLocking(true)}>{view.locked ? 'Unlock' : 'Lock'}</Button>
-                )}
-                {view.next && (
-                  <Button disabled={busy} variant={view.next.action === 'close-round' && (view.currentWeek ?? 0) < view.totalWeeks ? 'outline' : 'default'} onClick={primary}>
-                    {view.next.label}
-                  </Button>
-                )}
-              </div>
+              {view.checklist.length > 0 && (
+                <ul className="mt-4 flex flex-wrap gap-2">
+                  {view.checklist.map((item) => (
+                    <li key={item.key}>
+                      <button
+                        type="button"
+                        onClick={() => setTab(item.tab)}
+                        className={cn(
+                          'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors duration-200 hover:border-foreground/25',
+                          item.done ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300' : 'border-border bg-background text-foreground',
+                        )}
+                      >
+                        {item.done ? <Check className="h-3 w-3" aria-hidden /> : <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden />}
+                        {item.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
-            {view.checklist.length > 0 && (
-              <ul className="flex flex-wrap gap-2">
-                {view.checklist.map((item) => (
-                  <li key={item.key}>
-                    <button type="button" onClick={() => setTab(item.tab)} className="rounded-full">
-                      <Badge variant={item.done ? 'secondary' : 'outline'} className="gap-1">{item.done ? <Check className="h-3 w-3" aria-hidden /> : null}{item.label}</Badge>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
           </CardContent>
         </Card>
       )}
@@ -247,20 +217,28 @@ export function EvaluationRoundPage() {
       {view && (
         <RoundCycleContext.Provider value={view.cycleId}>
           <Tabs value={tab} onValueChange={(value) => setTab(value as Tab)}>
-            <TabsList className="flex-wrap">{TABS.map((t) => <TabsTrigger key={t.value} value={t.value}>{t.label}</TabsTrigger>)}</TabsList>
+            {/* Eight tabs: on a narrow screen the strip scrolls sideways rather than wrapping into a block. */}
+            <div className="-mx-1 overflow-x-auto px-1 pb-1">
+              <TabsList className="w-max">
+                {TABS.map((t) => {
+                  const count = counts[t.value]
+                  return (
+                    <TabsTrigger key={t.value} value={t.value} className="gap-1.5">
+                      {t.label}
+                      {count ? <span className="rounded-full bg-primary/10 px-1.5 text-[11px] font-semibold tabular-nums text-primary">{count}</span> : null}
+                    </TabsTrigger>
+                  )
+                })}
+              </TabsList>
+            </div>
             <TabsContent value="overview" className="space-y-4 pt-4">
               {view.health && view.currentWeek && <RoundHealthPanel view={view} onOpen={setTab} />}
-              <Card><CardContent className="space-y-2 p-4 text-sm">
-                <p><span className="font-medium">Quarter:</span> {formatKarachiDate(view.startDate)} to {formatKarachiDate(view.endDate)}</p>
-                <p><span className="font-medium">Stage:</span> {ROUND_STAGE_LABELS[view.stage]}{view.reviewOpenedAt ? ` · review stage opened ${formatKarachiDate(view.reviewOpenedAt)}` : ''}</p>
-                {view.checklist.length === 0 ? <p className="text-muted-foreground">Nothing is waiting on you at this stage.</p> : (
-                  <ul className="list-disc pl-5">{view.checklist.map((c) => <li key={c.key}>{c.label}</li>)}</ul>
-                )}
-              </CardContent></Card>
+              <RoundKeyDates view={view} />
+              {view.checklist.length === 0 && !view.health && <p className="px-1 text-sm text-muted-foreground">Nothing is waiting on you at this stage.</p>}
             </TabsContent>
             <TabsContent value="people" className="pt-4"><PeopleTab /></TabsContent>
             <TabsContent value="progress" className="pt-4"><DashboardTab /></TabsContent>
-            <TabsContent value="review" className="pt-4"><ReviewTab /></TabsContent>
+            <TabsContent value="review" className="pt-4"><ReviewTab onChanged={() => void loadView()} /></TabsContent>
             <TabsContent value="self-reviews" className="pt-4"><SelfReviewsTab periodId={view.periodId} /></TabsContent>
             <TabsContent value="forms" className="pt-4"><QuarterEvaluationsWorkspace /></TabsContent>
             <TabsContent value="results" className="space-y-4 pt-4">

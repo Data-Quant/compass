@@ -5,31 +5,34 @@
 import { useCallback, useEffect, useState } from 'react'
 import { levelMeaning } from '@/lib/weekly/levels'
 import { toast } from 'sonner'
-import { Badge } from '@/components/ui/badge'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { CheckCircle2 } from 'lucide-react'
+import { EASE_SOFT } from '@/components/motion/ease'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/ui/modal'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { MCQ_LEVELS } from '@/lib/weekly/mcq'
-import { PERSPECTIVE_LABELS } from '@/lib/weekly/perspectives'
 import type { AnswerStateValue, ReviewItem, ReviewQueueResponse } from '@/lib/weekly/view-types'
 import { cn } from '@/lib/utils'
 import { errorMessage, weeklyRequest } from '../weekly-api'
 import { CyclePicker, NoRound, useCycles } from './PeopleTab'
+import { ReviewCard } from './ReviewCard'
 
 const FILTERS: Array<{ value: AnswerStateValue; label: string }> = [
   { value: 'NEEDS_REVIEW', label: 'To review' }, { value: 'FAILED', label: 'Model failed' }, { value: 'SCORING', label: 'With the model' }, { value: 'DECIDED', label: 'Decided' },
 ]
 type Setting = { item: ReviewItem; score: string; reason: string; confirmFour: boolean }
 
-export function ReviewTab() {
+/** onChanged lets the round page refresh its counts after a decision. */
+export function ReviewTab({ onChanged }: { onChanged?: () => void } = {}) {
   const { cycles, cycleId, setCycleId, loaded } = useCycles()
   const [filter, setFilter] = useState<AnswerStateValue>('NEEDS_REVIEW')
   const [data, setData] = useState<ReviewQueueResponse | null>(null)
   const [busy, setBusy] = useState(false)
   const [setting, setSetting] = useState<Setting | null>(null)
+  const reduce = useReducedMotion()
 
   const load = useCallback(async () => {
     if (!cycleId) return
@@ -49,6 +52,7 @@ export function ReviewTab() {
       await weeklyRequest('/api/admin/weekly/review', { method: 'POST', body })
       toast.success(success)
       await load()
+      onChanged?.()
       return true
     } catch (e) {
       toast.error(errorMessage(e, 'Could not save the decision'))
@@ -82,6 +86,7 @@ export function ReviewTab() {
     } finally {
       setBusy(false)
       await load()
+      onChanged?.()
     }
   }
 
@@ -99,12 +104,26 @@ export function ReviewTab() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <CyclePicker cycles={cycles} cycleId={cycleId} onChange={setCycleId} />
-        <div className="flex flex-wrap gap-2">
-          {FILTERS.map((f) => (
-            <Button key={f.value} size="sm" variant={filter === f.value ? 'default' : 'outline'} onClick={() => setFilter(f.value)}>
-              {f.label}{data ? ` · ${data.counts[f.value]}` : ''}
-            </Button>
-          ))}
+        <div className="inline-flex flex-wrap gap-1 rounded-xl bg-muted/70 p-1" role="tablist" aria-label="Which answers">
+          {FILTERS.map((f) => {
+            const active = filter === f.value
+            return (
+              <button
+                key={f.value}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setFilter(f.value)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-[color,background-color,box-shadow] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
+                  active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {f.label}
+                {data && <span className={cn('rounded-full px-1.5 text-[11px] font-semibold tabular-nums', active ? 'bg-primary/10 text-primary' : 'bg-background/70')}>{data.counts[f.value]}</span>}
+              </button>
+            )
+          })}
         </div>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -113,18 +132,38 @@ export function ReviewTab() {
           <Button size="sm" variant="outline" disabled={busy} onClick={() => void confirmAgreeing()}>Confirm the {agreeing.length} that match the chosen statement</Button>
         )}
       </div>
-      {!data ? <p className="text-sm text-muted-foreground">Loading…</p> : data.items.length === 0 ? <p className="text-sm text-muted-foreground">Nothing here.</p> : (
+      {!data ? (
+        <div className="space-y-3" aria-label="Loading">
+          {[0, 1].map((i) => <div key={i} className="h-48 animate-pulse rounded-2xl bg-muted/60" />)}
+        </div>
+      ) : data.items.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed px-6 py-14 text-center">
+          <CheckCircle2 className="h-8 w-8 text-emerald-500" aria-hidden />
+          <p className="font-medium">{filter === 'NEEDS_REVIEW' ? 'All caught up' : 'Nothing here'}</p>
+          <p className="max-w-sm text-sm text-muted-foreground">{filter === 'NEEDS_REVIEW' ? 'Every scored answer has been decided. New ones appear here once the model has scored them.' : 'No answers are in this list right now.'}</p>
+        </div>
+      ) : (
         <div className="space-y-3">
-          {data.items.map((item) => (
-            <ReviewCard
-              key={`${item.responseId}-${item.revision}`}
-              item={item}
-              busy={busy}
-              onAccept={() => accept(item)}
-              onSet={() => setSetting({ item, score: String(item.ai?.score ?? item.chosen.level), reason: '', confirmFour: false })}
-              onRetry={() => void post({ action: 'retry', responseId: item.responseId }, 'Sent back to the model')}
-            />
-          ))}
+          {/* A decided answer slides out of the list and the rest close up behind it. */}
+          <AnimatePresence initial={false} mode="popLayout">
+            {data.items.map((item, i) => (
+              <motion.div
+                key={`${item.responseId}-${item.revision}`}
+                layout={!reduce}
+                initial={reduce ? false : { opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0, transition: { duration: 0.45, delay: Math.min(i, 5) * 0.05, ease: EASE_SOFT } }}
+                exit={reduce ? { opacity: 0 } : { opacity: 0, x: 24, transition: { duration: 0.3, ease: EASE_SOFT } }}
+              >
+                <ReviewCard
+                  item={item}
+                  busy={busy}
+                  onAccept={() => accept(item)}
+                  onSet={() => setSetting({ item, score: String(item.ai?.score ?? item.chosen.level), reason: '', confirmFour: false })}
+                  onRetry={() => void post({ action: 'retry', responseId: item.responseId }, 'Sent back to the model')}
+                />
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </div>
       )}
       {setting && (
@@ -153,42 +192,5 @@ export function ReviewTab() {
         </Modal>
       )}
     </div>
-  )
-}
-
-function ReviewCard({ item, busy, onAccept, onSet, onRetry }: { item: ReviewItem; busy: boolean; onAccept: () => void; onSet: () => void; onRetry: () => void }) {
-  return (
-    <Card>
-      <CardContent className="space-y-3 p-4">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0 space-y-0.5">
-            <p className="text-xs text-muted-foreground">Week {item.weekIndex} · {item.topic} · {item.evaluator.name} about {item.evaluatee.name} ({PERSPECTIVE_LABELS[item.perspective].toLowerCase()})</p>
-            <p className="font-medium">{item.question}</p>
-          </div>
-          {item.ai && <Badge className="shrink-0 text-base" title={levelMeaning(item.ai.score)}>Model: {item.ai.score} · {levelMeaning(item.ai.score)}</Badge>}
-        </div>
-        <ol className="space-y-1 text-sm">
-          {item.statements.map((s) => (
-            <li key={s.id} className={cn('flex gap-2 rounded px-2 py-1', s.id === item.chosen.id ? 'bg-primary/10 font-medium' : 'text-muted-foreground')}>
-              <span className="w-8 shrink-0 tabular-nums" title={levelMeaning(s.level)}>{s.level}</span><span>{s.text}</span>
-            </li>
-          ))}
-        </ol>
-        {item.note && <p className="rounded-md bg-muted p-2 text-sm">Note: “{item.note}”</p>}
-        {item.ai && <p className="text-sm text-muted-foreground">Why: {item.ai.rationale}</p>}
-        {item.jobError && <p className="text-sm text-destructive">The model could not score this ({item.jobError}).</p>}
-        <p className="text-xs text-muted-foreground">
-          {item.fours.exempt ? 'Exempt from the cap on 4s.' : `${item.evaluator.name}: ${item.fours.used} of ${item.fours.limit} confirmed 4s used in this relationship.`}
-        </p>
-        {item.decision ? (
-          <p className="text-sm">Confirmed {item.decision.finalScore} by {item.decision.reviewer}{item.decision.reason ? `: “${item.decision.reason}”` : ''}</p>
-        ) : null}
-        <div className="flex flex-wrap justify-end gap-2">
-          {item.state === 'FAILED' && <Button size="sm" variant="outline" disabled={busy} onClick={onRetry}>Try the model again</Button>}
-          <Button size="sm" variant="outline" disabled={busy} onClick={onSet}>{item.decision ? 'Change score' : 'Set score'}</Button>
-          {item.ai && !item.decision && <Button size="sm" disabled={busy} onClick={onAccept}>Confirm {item.ai.score}</Button>}
-        </div>
-      </CardContent>
-    </Card>
   )
 }

@@ -11,6 +11,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { StatsCard } from '@/components/composed/StatsCard'
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
+import { AdminRoundSummary } from '@/components/weekly/round/AdminRoundSummary'
 import {
   AlertCircle,
   ArrowRight,
@@ -209,6 +210,8 @@ export default function AdminDashboardPage() {
         />
       </motion.div>
 
+      <AdminRoundSummary />
+
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
         <Card>
           <CardContent className="p-6">
@@ -227,7 +230,8 @@ export default function AdminDashboardPage() {
 
                 return (
                   <Link key={shortcut.href} href={shortcut.href} className="group">
-                    <div className="rounded-xl border bg-muted/10 p-5 h-full transition-colors hover:bg-muted/30">
+                    <div className="h-full rounded-xl border border-border/70 bg-card p-5 transition-[border-color,box-shadow,transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover:-translate-y-0.5 group-hover:border-border group-hover:shadow-md">
+
                       <div className="flex items-start justify-between gap-3">
                         <div className="rounded-full bg-primary/10 p-2.5">
                           <Icon className="h-5 w-5 text-primary" />
@@ -239,7 +243,7 @@ export default function AdminDashboardPage() {
                         <p className="text-sm text-muted-foreground mt-1">{shortcut.description}</p>
                       </div>
                       {shortcut.badge && (
-                        <Badge variant="secondary" className="mt-4">
+                        <Badge variant="secondary" className="mt-4 bg-primary/10 font-medium text-primary hover:bg-primary/10">
                           {shortcut.badge}
                         </Badge>
                       )}
