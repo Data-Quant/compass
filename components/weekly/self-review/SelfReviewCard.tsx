@@ -50,7 +50,7 @@ export function SelfReviewCard() {
     setSaving(true)
     try {
       await weeklyRequest('/api/weekly/self-review', { method: 'POST', body: { month: data.current.month, answers, wantsDiscussion: discuss } })
-      toast.success(`Sent to ${recipientsText(data.current.recipients.map((p) => p.name))}`)
+      toast.success(`Sent to ${recipientsText(data.current.recipients.map((p) => p.name))}. You can’t edit it now.`)
       setAnswers(['', '', ''])
       setDiscuss(false)
       await load()
@@ -103,7 +103,7 @@ export function SelfReviewCard() {
                     <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 text-sm">
                       <span className="font-medium">{h.monthName}: {h.title}</span>
                       <span className="text-xs text-muted-foreground">
-                        Sent to {recipientsText(h.reads.map((r) => r.lead.name))} on {formatKarachiDate(h.submittedAt)}
+                        Sent to {recipientsText(h.reads.map((r) => r.lead.name))} on {formatKarachiDate(h.submittedAt)}. You can’t edit it now.
                       </span>
                     </summary>
                     <div className="mt-3 space-y-2 text-sm">
