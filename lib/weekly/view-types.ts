@@ -216,6 +216,8 @@ export type MappingReasonCodeValue = 'NO_LONGER_WORK_TOGETHER' | 'WRONG_PERSON' 
 export type PeerChangeVoteValue = 'PENDING' | 'APPROVED' | 'REJECTED'
 export type MappingRelationValue = 'PEER' | 'LEAD' | 'REPORT'
 export interface PeerRequestView {
+  /** For an open peer removal, HR's view: how many peers the requester would have left (D-P4). */
+  peersAfter?: number
   id: string
   action: PeerChangeActionValue
   /** A peer, the requester's lead, or one of their team members. */

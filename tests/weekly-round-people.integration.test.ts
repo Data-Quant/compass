@@ -4,6 +4,7 @@ import { prisma } from '../lib/db'
 import { acceptRoundWarning, changeRoundMapping, importRoundLists, participantsView } from '../lib/weekly/service/round-people'
 import { createCycle } from '../lib/weekly/service/cycles'
 import { openRound } from '../lib/weekly/service/round'
+import { releaseWeek } from '../lib/weekly/service/release'
 import { loadStandardBank } from '../lib/weekly/service/content'
 import { WeeklyError } from '../lib/weekly/service/errors'
 import { confirmMyLists } from '../lib/weekly/service/peer-requests'
@@ -116,4 +117,15 @@ test('a spreadsheet can only be imported before the round opens', WEEKLY_DB_TEST
   await loadStandardBank(HR_ACTOR)
   await openRound(HR_ACTOR, periodId, at(1), send, APP)
   await assert.rejects(importRoundLists(HR_ACTOR, cycleId, csv('Name,Peer 1\nAna Torvik,Cara Lindqvist\n'), false), /before the round opens/)
+})
+
+test('when HR removes someone mid-round, their unanswered questions about each other are cancelled at once; answers stay', WEEKLY_DB_TEST, async () => {
+  await loadStandardBank(HR_ACTOR)
+  await openRound(HR_ACTOR, periodId, at(1), send, APP)
+  await releaseWeek(cycleId, 1, at(1))
+  const pair = { cycleId, OR: [{ evaluatorId: W.ana.id, evaluateeId: W.ben.id }, { evaluatorId: W.ben.id, evaluateeId: W.ana.id }] }
+  assert.ok((await prisma.weeklySlot.count({ where: { ...pair, status: 'OPEN' } })) > 0, 'Ana and Ben are asked about each other')
+  await changeRoundMapping(HR_ACTOR, cycleId, { userId: W.ana.id, otherId: W.ben.id, relation: 'PEER', action: 'REMOVE', reason: 'Different clients now' }, at(1, 2), send, APP)
+  assert.equal(await prisma.weeklySlot.count({ where: { ...pair, status: 'OPEN' } }), 0, 'no more questions between them')
+  assert.equal(await prisma.weeklyPrompt.count({ where: { ...pair, status: { in: ['OPEN', 'DRAFT'] } } }), 0, 'unanswered ones are cancelled')
 })

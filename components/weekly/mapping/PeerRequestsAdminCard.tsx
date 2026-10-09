@@ -134,6 +134,9 @@ export function PeerRequestsAdminCard() {
                   </div>
                   {r.stage === 'DONE' && <Badge variant={r.status === 'APPROVED' ? 'default' : 'outline'}>{OUTCOME[r.status]}</Badge>}
                   {r.overdue && <Badge variant="outline" className="gap-1 border-amber-400 text-amber-700 dark:text-amber-400"><Clock className="h-3 w-3" /> Lead overdue</Badge>}
+                  {r.peersAfter !== undefined && r.peersAfter < 2 && (
+                    <Badge variant="outline" className="border-amber-400 text-amber-700 dark:text-amber-400">Leaves {r.requester.name} with {r.peersAfter === 0 ? 'no peers' : '1 peer'}</Badge>
+                  )}
                 </div>
 
                 <dl className="grid gap-2 text-sm sm:grid-cols-[8rem_1fr]">

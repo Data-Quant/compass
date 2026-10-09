@@ -60,7 +60,7 @@ test('opening the round needs the review stage; undecided requests expire; emplo
   assert.equal(review.next?.action, 'open-round')
   assert.ok(review.checklist.some((c) => c.key === 'requests' && !c.done && c.count === 1))
   // A request HR asked about is still waiting for a decision, and expires too.
-  const asked = await requestPeerChange(weeklyActor(W.cara), { peerId: W.lead.id, action: 'ADD', relation: 'LEAD' }, at(1), send, APP)
+  const asked = await requestPeerChange(weeklyActor(W.cara), { peerId: W.lead.id, action: 'ADD', relation: 'LEAD', reason: 'We work on the same client' }, at(1), send, APP)
   await decidePeerRequest(HR_ACTOR, asked.id, 'NEEDS_INFO', 'Since when?', at(1), send, APP)
   assert.equal((await roundView(HR_ACTOR, periodId, at(1))).checklist.find((c) => c.key === 'requests')?.count, 2)
   // Who has said their lists look right: a count, which never blocks opening.

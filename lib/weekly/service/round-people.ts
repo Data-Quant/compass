@@ -17,6 +17,7 @@ import { WeeklyError } from './errors'
 import { deliverOnce, type WeeklySendMail } from './notifications'
 import { applyMappingChange, mappingOf, MIN_PEERS } from './peer-requests'
 import { periodRoundStage } from './round'
+import { syncSlots } from './release'
 
 const QUARTER_END: readonly QuarterEndType[] = ['C_LEVEL', 'DEPT', 'HR']
 
@@ -95,8 +96,11 @@ export async function changeRoundMapping(
   if (!person || !other) throw new WeeklyError('Person not found', 404)
   await prisma.$transaction((tx) => applyMappingChange(tx, { periodId: cycle.periodId, ...input, note: `HR: ${reason}`, by: actor.id }))
   await recordAudit(prisma, { cycleId, actorId: actor.id, actorRole: 'HR', action: 'ROUND_MAPPING_CHANGE', objectType: 'User', objectId: input.userId, after: input })
+  const stage = await periodRoundStage(cycle.periodId)
+  // Mid-round, unanswered questions between people no longer paired are cancelled now, not at the next daily run.
+  if (stage === 'OPEN') await syncSlots(cycle, now)
   // In Draft nobody sees the round yet (UX spec, HR step 2): the lists go out when the review stage opens.
-  if ((await periodRoundStage(cycle.periodId)) === 'DRAFT') return
+  if (stage === 'DRAFT') return
   const [what] = CHANGE_WORDS[input.relation]
   const verb = input.action === 'ADD' ? 'added' : 'removed'
   await deliverOnce([

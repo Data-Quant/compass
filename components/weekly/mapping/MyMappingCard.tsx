@@ -84,7 +84,8 @@ export function MyMappingCard() {
   const people: Record<MappingRelationValue, PersonRef[]> = { LEAD: data.leads, REPORT: data.reports, PEER: data.peers }
   const removingPeer = asking?.action === 'REMOVE' && asking.relation === 'PEER'
   const peersAfter = data.peers.length - data.requests.filter((r) => isOpen(r) && r.relation === 'PEER' && r.action === 'REMOVE').length - 1
-  const reasonMissing = removingPeer && (!reasonCode || (reasonCode === 'OTHER' && !reason.trim()))
+  // Removing a peer picks a reason; adding one, or a lead or team change, says why in words (UX spec, section 6).
+  const reasonMissing = removingPeer ? !reasonCode || (reasonCode === 'OTHER' && !reason.trim()) : !reason.trim()
   const route = asking ? reviewer(asking.person) : null
 
   async function submit() {
@@ -192,7 +193,7 @@ export function MyMappingCard() {
               </div>
             )}
             <div className="space-y-1.5">
-              <Label htmlFor="mapping-reason">{removingPeer && reasonCode === 'OTHER' ? 'Explain' : 'Anything to add (optional)'}</Label>
+              <Label htmlFor="mapping-reason">{!removingPeer ? (asking?.relation === 'PEER' ? 'Why should they be your peer?' : 'What is wrong, and what should it be?') : reasonCode === 'OTHER' ? 'Explain' : 'Anything to add (optional)'}</Label>
               <Textarea id="mapping-reason" rows={2} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />
             </div>
             {removingPeer && peersAfter < MIN_PEERS && (

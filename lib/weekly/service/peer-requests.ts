@@ -12,7 +12,7 @@ import {
   renderChangeForOtherEmail, renderMappingEmail, renderMappingQuestionEmail, renderPeerOutcomeEmail, renderPeerReplyEmail, renderPeerRequestEmail, renderRequestForHrEmail,
   renderRequestReceivedEmail,
 } from '../emails'
-import { isOutsideRedesign } from '../eligibility'
+import { evaluatorExclusion, isOutsideRedesign } from '../eligibility'
 import { formatKarachiDate } from '../format'
 import { OPEN_REQUEST_STATUSES } from '../request-status'
 import type { MyMappingResponse, PeerRequestTokenView, PeerRequestView, PersonRef } from '../view-types'
@@ -101,8 +101,15 @@ function requestView(r: PeerChangeRequest, people: ReadonlyMap<string, { name: s
   }
 }
 
+async function inRound(people: ReadonlyArray<{ id: string; name: string; position: string | null; department: string | null }>, now: Date): Promise<PersonRef[]> {
+  const facts = await loadPeople(people.map((p) => p.id))
+  return people.filter((p) => {
+    const person = facts.get(p.id)
+    return person && !isOutsideRedesign(person) && evaluatorExclusion(person, now) === null
+  }).map((p) => ({ id: p.id, name: p.name, position: p.position }))
+}
+
 export async function myMapping(actor: WeeklyActor, now: Date): Promise<MyMappingResponse> {
-  void now
   const period = await mappingPeriod()
   const mapping = await mappingFor(period.id, actor.id)
   const requests = await prisma.peerChangeRequest.findMany({ where: { periodId: period.id, requesterId: actor.id }, orderBy: { createdAt: 'desc' } })
@@ -119,7 +126,8 @@ export async function myMapping(actor: WeeklyActor, now: Date): Promise<MyMappin
     period: { id: period.id, name: period.name, locked: period.isLocked || !(await inReview(period.id)) },
     leads: refs(mapping.leads), reports: refs(mapping.reports), peers: refs(mapping.peers),
     requests: requests.map((r) => requestView(r, people)),
-    candidates: candidates.filter((c) => !isOutsideRedesign(c)).map((c) => ({ id: c.id, name: c.name, position: c.position })),
+    // Only people in the round: not 3E, not partners HR fills in for, not leavers (UX spec, section 6).
+    candidates: await inRound(candidates, now),
     confirmedAt: confirmation?.confirmedAt.toISOString() ?? null,
   }
 }
@@ -162,6 +170,8 @@ export async function requestPeerChange(
   const reasonCode = removingPeer ? input.reasonCode ?? null : null
   if (removingPeer && !reasonCode) throw new WeeklyError('Choose a reason for removing this peer')
   if (reasonCode === 'OTHER') required(input.reason, 'Write a reason for removing this peer')
+  // Adding a peer, or any lead or team change, says why (UX spec, section 6: "give a reason", "what is wrong").
+  if (!removingPeer) required(input.reason, 'Say why: what is wrong, and what it should be')
   const other = (await loadPeople([input.peerId])).get(input.peerId)
   if (!other || !other.payrollActive || isOutsideRedesign(other)) throw new WeeklyError('Person not found', 404)
   const mapping = await mappingFor(period.id, actor.id)
@@ -169,7 +179,8 @@ export async function requestPeerChange(
   if (input.action === 'ADD' && [...mapping.peers, ...mapping.leads, ...mapping.reports, ...mapping.others].includes(input.peerId)) throw new WeeklyError(`${other.name} is already in your mapping this quarter`)
   // Their lead reviews it first, unless the change is about that lead; with no other lead it goes straight to HR. The peer
   // in a peer change is told.
-  const approverId = mapping.leads.find((id) => id !== input.peerId) ?? null
+  // D-P3: with no lead, or when the requester leads the person it is about, HR decides directly.
+  const approverId = mapping.reports.includes(input.peerId) ? null : mapping.leads.find((id) => id !== input.peerId) ?? null
   const tokens: Tokens = { peer: relation === 'PEER' ? newToken() : null, approver: approverId ? newToken() : null }
   const pairLock = [actor.id, input.peerId].sort().join(':')
   const request = await prisma.$transaction(async (tx) => {
@@ -461,7 +472,17 @@ export async function adminPeerRequests(actor: WeeklyActor): Promise<{ period: {
   if (!period) return { period: null, requests: [] }
   const requests = await prisma.peerChangeRequest.findMany({ where: { periodId: period.id }, orderBy: [{ status: 'asc' }, { createdAt: 'desc' }] })
   const people = await loadPeople(requests.flatMap((r) => [r.requesterId, r.peerId, r.approverId ?? '']))
-  return { period: { id: period.id, name: period.name }, requests: requests.map((r) => requestView(r, people)) }
+  // D-P4: a removal that would leave the requester with fewer than 2 peers is shown to HR; it is still allowed.
+  const removals = requests.some((r) => r.relation === 'PEER' && r.action === 'REMOVE' && OPEN_STATUSES.includes(r.status))
+  const assignments = removals ? await getResolvedEvaluationAssignments(period.id) : []
+  return {
+    period: { id: period.id, name: period.name },
+    requests: requests.map((r) => {
+      const view = requestView(r, people)
+      const pendingRemoval = r.relation === 'PEER' && r.action === 'REMOVE' && OPEN_STATUSES.includes(r.status)
+      return pendingRemoval ? { ...view, peersAfter: Math.max(0, mappingOf(r.requesterId, assignments).peers.length - 1) } : view
+    }),
+  }
 }
 
 /** HR's pre-evaluation step: everyone with a mapping gets their lead, team and peers, and a link to check them. */

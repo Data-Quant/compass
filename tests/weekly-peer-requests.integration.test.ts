@@ -86,7 +86,7 @@ test('a team member’s change goes to their lead to review, then HR decides; th
 
 test('the peer can say whether they work together; it is shown to the lead and HR and blocks nothing', WEEKLY_DB_TEST, async () => {
   const mail = mailbox()
-  const request = await requestPeerChange(ana, { peerId: W.cara.id, action: 'ADD' }, at(1), mail.send, APP)
+  const request = await requestPeerChange(ana, { peerId: W.cara.id, action: 'ADD', reason: 'We work on the same client' }, at(1), mail.send, APP)
   const caraToken = tokenFor(mail, email(W.cara.id))
   assert.equal((await peerRequestByToken(caraToken)).role, 'PEER')
   await assert.rejects(voteOnPeerRequest(caraToken, 'APPROVE', null, at(1, 2), mailbox().send, APP), isStatus(403))
@@ -125,7 +125,7 @@ test('removing a peer needs a reason, and "Other" needs words', WEEKLY_DB_TEST, 
 
 test('with no lead to approve, HR decides; HR can also decide any request', WEEKLY_DB_TEST, async () => {
   const mail = mailbox()
-  const request = await requestPeerChange(weeklyActor(W.cara), { peerId: W.ana.id, action: 'ADD' }, at(1), mail.send, APP)
+  const request = await requestPeerChange(weeklyActor(W.cara), { peerId: W.ana.id, action: 'ADD', reason: 'We work on the same client' }, at(1), mail.send, APP)
   assert.deepEqual((await notHr(mail)).map((m) => m.to), [email(W.ana.id)], 'only the peer is told, and HR')
   assert.equal(request.approver, null)
   await assert.rejects(decidePeerRequest(ana, request.id, 'APPROVE', null, at(1, 3), mailbox().send, APP), isStatus(403))
@@ -138,8 +138,8 @@ test('requests must make sense: no duplicates, no removing a non-peer, no adding
   const request = await requestPeerChange(ana, removeBen, at(1), send, APP)
   await assert.rejects(requestPeerChange(ana, removeBen, at(1), send, APP), isStatus(409))
   await assert.rejects(requestPeerChange(ana, { ...removeBen, peerId: W.cara.id }, at(1), send, APP), /not one of your peers/)
-  await assert.rejects(requestPeerChange(ana, { peerId: W.ben.id, action: 'ADD' }, at(1), send, APP), /already/)
-  await assert.rejects(requestPeerChange(ana, { peerId: W.ana.id, action: 'ADD' }, at(1), send, APP), /yourself/)
+  await assert.rejects(requestPeerChange(ana, { peerId: W.ben.id, action: 'ADD', reason: 'We work on the same client' }, at(1), send, APP), /already/)
+  await assert.rejects(requestPeerChange(ana, { peerId: W.ana.id, action: 'ADD', reason: 'We work on the same client' }, at(1), send, APP), /yourself/)
   await assert.rejects(cancelPeerRequest(weeklyActor(W.ben), request.id), isStatus(404))
   await cancelPeerRequest(ana, request.id)
   assert.equal((await prisma.peerChangeRequest.findUniqueOrThrow({ where: { id: request.id } })).status, 'CANCELLED')
@@ -194,7 +194,7 @@ test('HR can send fresh links; the old ones stop working', WEEKLY_DB_TEST, async
 })
 
 test('the people offered as a new peer leave out the lead, the team and anyone already asked about', WEEKLY_DB_TEST, async () => {
-  await requestPeerChange(ana, { peerId: W.cara.id, action: 'ADD' }, at(1), mailbox().send, APP)
+  await requestPeerChange(ana, { peerId: W.cara.id, action: 'ADD', reason: 'We work on the same client' }, at(1), mailbox().send, APP)
   const ids = (await myMapping(ana, at(1))).candidates.map((c) => c.id)
   assert.ok(!ids.includes(W.lead.id) && !ids.includes(W.ben.id) && !ids.includes(W.cara.id) && !ids.includes(W.ana.id))
 })
@@ -214,7 +214,7 @@ test('lead and team changes: a team member’s lead reviews them first; someone 
   const pairs = async () => (await getResolvedEvaluationAssignments(periodId)).filter((a) => a.relationshipType === 'TEAM_LEAD' || a.relationshipType === 'DIRECT_REPORT').map((a) => `${a.relationshipType}:${a.evaluatorId}>${a.evaluateeId}`).sort()
   const cara = weeklyActor(W.cara)
   // Cara has no lead: straight to HR. HR asks first.
-  const lead = await requestPeerChange(cara, { peerId: W.lead.id, action: 'ADD', relation: 'LEAD' }, at(1), mail.send, APP)
+  const lead = await requestPeerChange(cara, { peerId: W.lead.id, action: 'ADD', relation: 'LEAD', reason: 'We work on the same client' }, at(1), mail.send, APP)
   assert.deepEqual([lead.relation, lead.approver, lead.stage], ['LEAD', null, 'HR'])
   assert.deepEqual((await notHr(mail)).map((m) => m.to), [email(W.cara.id)], 'nobody else is asked: HR decides; Cara gets a confirmation')
   await assert.rejects(decidePeerRequest(HR_ACTOR, lead.id, 'NEEDS_INFO', '', at(1, 2), mailbox().send, APP), /question/)
@@ -223,7 +223,7 @@ test('lead and team changes: a team member’s lead reviews them first; someone 
   assert.deepEqual(asked.sent.map((m) => m.to), [email(W.cara.id)], 'the requester is told HR has a question')
   const waiting = (await myMapping(cara, at(1, 2))).requests[0]
   assert.deepEqual([waiting.status, waiting.decisionNote], ['NEEDS_INFO', 'Since when?'])
-  await assert.rejects(requestPeerChange(cara, { peerId: W.lead.id, action: 'ADD', relation: 'LEAD' }, at(1, 2), mailbox().send, APP), isStatus(409), 'still open')
+  await assert.rejects(requestPeerChange(cara, { peerId: W.lead.id, action: 'ADD', relation: 'LEAD', reason: 'We work on the same client' }, at(1, 2), mailbox().send, APP), isStatus(409), 'still open')
   await assert.rejects(answerPeerRequest(ana, lead.id, 'x'), isStatus(404))
   assert.equal((await answerPeerRequest(cara, lead.id, 'Since September')).status, 'PENDING')
   await decidePeerRequest(HR_ACTOR, lead.id, 'APPROVE', null, at(1, 3), mailbox().send, APP)
@@ -232,7 +232,7 @@ test('lead and team changes: a team member’s lead reviews them first; someone 
 
   // Ben asks to add Cara to his team: his lead, Layla, reviews it first.
   const team = mailbox()
-  const report = await requestPeerChange(weeklyActor(W.ben), { peerId: W.cara.id, action: 'ADD', relation: 'REPORT' }, at(2), team.send, APP)
+  const report = await requestPeerChange(weeklyActor(W.ben), { peerId: W.cara.id, action: 'ADD', relation: 'REPORT', reason: 'We work on the same client' }, at(2), team.send, APP)
   assert.deepEqual([report.approver?.id, report.stage], [W.lead.id, 'LEAD'])
   assert.deepEqual(team.sent.map((m) => m.to).sort(), [email(W.ben.id), email(W.lead.id)], 'the lead reviews it and Ben gets a confirmation; there is no peer to tell')
   assert.match(team.sent.find((m) => m.to === email(W.lead.id))?.html ?? '', /to their team/)
@@ -240,12 +240,12 @@ test('lead and team changes: a team member’s lead reviews them first; someone 
   await assert.rejects(decidePeerRequest(HR_ACTOR, report.id, 'REJECT', null, at(2, 3), mailbox().send, APP), /reason/)
   await decidePeerRequest(HR_ACTOR, report.id, 'REJECT', 'Cara stays in Design', at(2, 3), mailbox().send, APP)
   assert.ok(!(await pairs()).includes(`TEAM_LEAD:${W.ben.id}>${W.cara.id}`))
-  await assert.rejects(requestPeerChange(ana, { peerId: W.ben.id, action: 'REMOVE', relation: 'LEAD' }, at(2), mailbox().send, APP), /not your lead/)
+  await assert.rejects(requestPeerChange(ana, { peerId: W.ben.id, action: 'REMOVE', relation: 'LEAD', reason: 'We work on the same client' }, at(2), mailbox().send, APP), /not your lead/)
 })
 
 test('a change about the lead themselves is not reviewed by that lead: HR decides', WEEKLY_DB_TEST, async () => {
   const mail = mailbox()
-  const request = await requestPeerChange(ana, { peerId: W.lead.id, action: 'REMOVE', relation: 'LEAD' }, at(1), mail.send, APP)
+  const request = await requestPeerChange(ana, { peerId: W.lead.id, action: 'REMOVE', relation: 'LEAD', reason: 'We work on the same client' }, at(1), mail.send, APP)
   assert.deepEqual([request.approver, request.stage], [null, 'HR'])
   assert.deepEqual((await notHr(mail)).map((m) => m.subject), ['We got your request: remove Layla Mercer as your lead'], 'Layla is not asked; Ana gets a confirmation')
   assert.equal(toHr(mail).length, 1, 'HR is told it is theirs to decide')
@@ -317,7 +317,7 @@ test('a reminder that fails to send is tried again the next day, and a decided r
   assert.equal((await adminPeerRequests(HR_ACTOR)).requests[0].overdue, false, 'not shown as reminded')
   assert.equal((await remindStaleMappingRequests(at(1, 5), mailbox().send, APP)).sent, 1)
   const other = mailbox()
-  await requestPeerChange(weeklyActor(W.ben), { peerId: W.cara.id, action: 'ADD' }, at(1, 1), other.send, APP)
+  await requestPeerChange(weeklyActor(W.ben), { peerId: W.cara.id, action: 'ADD', reason: 'We work on the same client' }, at(1, 1), other.send, APP)
   await voteOnPeerRequest(tokenFor(other, email(W.lead.id)), 'APPROVE', null, at(1, 2), mailbox().send, APP)
   assert.equal((await remindStaleMappingRequests(at(2, 1), mailbox().send, APP)).sent, 0)
 })
@@ -330,7 +330,7 @@ test('asking for a change after saying the lists look right undoes the confirmat
 
 test('a lead or team request is confirmed to the requester, and HR is emailed once a request is theirs to decide', WEEKLY_DB_TEST, async () => {
   const team = mailbox()
-  await requestPeerChange(weeklyActor(W.ben), { peerId: W.cara.id, action: 'ADD', relation: 'REPORT' }, at(1), team.send, APP)
+  await requestPeerChange(weeklyActor(W.ben), { peerId: W.cara.id, action: 'ADD', relation: 'REPORT', reason: 'We work on the same client' }, at(1), team.send, APP)
   assert.deepEqual(team.sent.filter((m) => m.to === email(W.ben.id)).map((m) => m.subject), ['We got your request: add Cara Lindqvist to your team'])
   assert.match(team.sent.find((m) => m.to === email(W.ben.id))?.html ?? '', /Layla Mercer reviews it first/)
   assert.deepEqual(toHr(team), [], 'the lead reviews it first')
@@ -340,7 +340,7 @@ test('a lead or team request is confirmed to the requester, and HR is emailed on
   assert.match(toHr(reviewed)[0].html, /Layla Mercer disagrees: Cara reports to Design/)
   // No lead to review it: HR hears at once.
   const direct = mailbox()
-  await requestPeerChange(weeklyActor(W.cara), { peerId: W.ana.id, action: 'ADD' }, at(1), direct.send, APP)
+  await requestPeerChange(weeklyActor(W.cara), { peerId: W.ana.id, action: 'ADD', reason: 'We work on the same client' }, at(1), direct.send, APP)
   assert.equal(toHr(direct).length, 1)
   assert.match(toHr(direct)[0].html, /came straight to you/)
   assert.deepEqual(direct.sent.filter((m) => m.to === email(W.cara.id)), [], 'a peer request is not confirmed by email; the page shows it')
@@ -370,7 +370,7 @@ test('a declined peer change reaches the peer with HR’s reason; an applied tea
   assert.equal(toBen?.subject, 'Not approved: Ana Torvik’s request about you')
   assert.match(toBen?.html ?? '', /You still review each other’s work/)
   // Layla has no lead, so HR decides her request at once.
-  const team = await requestPeerChange(weeklyActor(W.lead), { peerId: W.cara.id, action: 'ADD', relation: 'REPORT' }, at(1), mailbox().send, APP)
+  const team = await requestPeerChange(weeklyActor(W.lead), { peerId: W.cara.id, action: 'ADD', relation: 'REPORT', reason: 'We work on the same client' }, at(1), mailbox().send, APP)
   const applied = mailbox()
   await decidePeerRequest(HR_ACTOR, team.id, 'APPROVE', null, at(1, 3), applied.send, APP)
   assert.deepEqual(applied.sent.filter((m) => m.to === email(W.cara.id)).map((m) => m.subject), ['Your lead for Q4 2026 (weekly test) is now Layla Mercer'])
@@ -385,4 +385,38 @@ test('a peer who changes their answer back is heard again', WEEKLY_DB_TEST, asyn
   await replyToPeerRequest(token, 'NOT_WORK_TOGETHER', at(1, 3), replies.send, APP)
   await replyToPeerRequest(token, 'WORK_TOGETHER', at(1, 4), replies.send, APP)
   assert.equal(replies.sent.filter((m) => m.to === email(W.lead.id)).length, 3)
+})
+
+test('adding a peer, or changing a lead or team, needs a reason; removing a peer needs one of the reasons', WEEKLY_DB_TEST, async () => {
+  await assert.rejects(requestPeerChange(ana, { peerId: W.cara.id, action: 'ADD' }, at(1), mailbox().send, APP), /why/i)
+  await assert.rejects(requestPeerChange(weeklyActor(W.cara), { peerId: W.lead.id, action: 'ADD', relation: 'LEAD' }, at(1), mailbox().send, APP), /why/i)
+  assert.equal((await requestPeerChange(ana, { peerId: W.cara.id, action: 'ADD', reason: 'Same client since September' }, at(1), mailbox().send, APP)).reason, 'Same client since September')
+})
+
+test('only people in the round are offered as a new peer', WEEKLY_DB_TEST, async () => {
+  process.env.WEEKLY_HR_FILLED_PARTNERS = 'Cara Lindqvist'
+  try {
+    assert.ok(!(await myMapping(ana, at(1))).candidates.some((c) => c.id === W.cara.id), 'a partner HR fills in for is not in the weekly round')
+  } finally {
+    delete process.env.WEEKLY_HR_FILLED_PARTNERS
+  }
+  assert.ok((await myMapping(ana, at(1))).candidates.some((c) => c.id === W.cara.id))
+})
+
+test('a lead asking about their own team member goes to HR, not to their own lead (D-P3)', WEEKLY_DB_TEST, async () => {
+  // Layla leads Ana and is also listed as her peer; Layla has a lead of her own.
+  await prisma.evaluatorMapping.createMany({ data: [
+    { evaluatorId: W.hr.id, evaluateeId: W.lead.id, relationshipType: 'TEAM_LEAD' },
+    { evaluatorId: W.lead.id, evaluateeId: W.hr.id, relationshipType: 'DIRECT_REPORT' },
+    { evaluatorId: W.lead.id, evaluateeId: W.ana.id, relationshipType: 'PEER' },
+    { evaluatorId: W.ana.id, evaluateeId: W.lead.id, relationshipType: 'PEER' },
+  ] })
+  const request = await requestPeerChange(weeklyActor(W.lead), { peerId: W.ana.id, action: 'REMOVE', reasonCode: 'WRONG_PERSON' }, at(1), mailbox().send, APP)
+  assert.deepEqual([request.approver, request.stage], [null, 'HR'])
+})
+
+test('HR sees when removing a peer would leave someone with fewer than 2 peers', WEEKLY_DB_TEST, async () => {
+  await requestPeerChange(ana, removeBen, at(1), mailbox().send, APP)
+  const [request] = (await adminPeerRequests(HR_ACTOR)).requests
+  assert.equal(request.peersAfter, 0)
 })
