@@ -455,3 +455,19 @@ test('a lead reviews a team member’s change from the evaluations page too, and
   assert.deepEqual([seen.stage, seen.approverVote, seen.leadNote, seen.peerReply], ['HR', 'REJECTED', 'They still pair weekly', 'WORK_TOGETHER'])
   assert.deepEqual((await myMapping(lead, at(1, 2))).toReview, [], 'reviewed once')
 })
+
+test('the peer sees only the change itself: not the lead’s view or HR’s progress', WEEKLY_DB_TEST, async () => {
+  const request = await requestPeerChange(ana, removeBen, at(1), mailbox().send, APP)
+  await reviewTeamRequest(weeklyActor(W.lead), request.id, 'REJECT', 'They still pair weekly', at(1, 2), mailbox().send, APP)
+  const [mine] = (await myMapping(weeklyActor(W.ben), at(1, 2))).aboutMe
+  assert.deepEqual(Object.keys(mine).sort(), ['action', 'createdAt', 'id', 'peer', 'peerReply', 'relation', 'requester', 'status'].sort())
+})
+
+test('only people in the round can be asked for as a new peer, whatever the page offered', WEEKLY_DB_TEST, async () => {
+  process.env.WEEKLY_HR_FILLED_PARTNERS = 'Cara Lindqvist'
+  try {
+    await assert.rejects(requestPeerChange(ana, { peerId: W.cara.id, action: 'ADD', reason: 'Same client' }, at(1), mailbox().send, APP), /not in this round/)
+  } finally {
+    delete process.env.WEEKLY_HR_FILLED_PARTNERS
+  }
+})

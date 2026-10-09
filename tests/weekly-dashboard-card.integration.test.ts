@@ -100,3 +100,10 @@ test('the card shows the final week, HR’s changes to someone’s lists, and a 
   await changeRoundMapping(HR_ACTOR, cycleId, { userId: W.cara.id, otherId: W.ana.id, relation: 'PEER', action: 'ADD', reason: 'Same client' }, at(2), send, 'https://compass.example')
   assert.ok((await texts(weeklyActor(W.cara), at(2, 1))).includes('HR changed your evaluation lists'))
 })
+
+test('"HR changed your evaluation lists" shows after a repeat change, and not for a spreadsheet import', WEEKLY_DB_TEST, async () => {
+  await prisma.evaluationPeriodAssignmentOverride.create({ data: { periodId, evaluatorId: W.cara.id, evaluateeId: W.ana.id, relationshipType: 'PEER', action: 'ADD', note: 'HR: imported lists', createdById: W.hr.id } })
+  assert.ok(!(await texts(weeklyActor(W.cara), at(0, 2))).includes('HR changed your evaluation lists'), 'an import is the round’s draft')
+  await prisma.evaluationPeriodAssignmentOverride.updateMany({ where: { periodId, evaluatorId: W.cara.id }, data: { note: 'HR: Same client' } })
+  assert.ok((await texts(weeklyActor(W.cara), at(0, 2))).includes('HR changed your evaluation lists'))
+})

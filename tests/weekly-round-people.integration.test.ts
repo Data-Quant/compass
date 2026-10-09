@@ -136,3 +136,16 @@ test('HR’s own lead change updates the live mappings too; the spreadsheet impo
   await importRoundLists(HR_ACTOR, cycleId, csv('Name,Team Lead 1\nBen Okafor,\n'), true)
   assert.equal(await prisma.evaluatorMapping.count({ where: { evaluatorId: W.lead.id, evaluateeId: W.ben.id, relationshipType: 'TEAM_LEAD' } }), 1, 'the import changed the round only')
 })
+
+test('an import only changes the lists its file has columns for; a column that is missing removes nothing', WEEKLY_DB_TEST, async () => {
+  // Only peers in this file: Layla's team and Ana's lead are left alone.
+  const preview = await importRoundLists(HR_ACTOR, cycleId, csv('Name,Peer 1\nLayla Mercer,\nAna Torvik,Ben Okafor\n'), false)
+  assert.deepEqual(preview.changes, [])
+})
+
+test('a name that matches two people is reported, not guessed', WEEKLY_DB_TEST, async () => {
+  await prisma.user.create({ data: { id: 'wkt-ben2', name: 'Ben Okafor', email: 'wkt-ben2@example.test', role: 'EMPLOYEE', onboardingCompleted: true } })
+  const preview = await importRoundLists(HR_ACTOR, cycleId, csv('Name,Peer 1\nCara Lindqvist,Ben Okafor\n'), false)
+  assert.deepEqual(preview.unknownNames, ['Ben Okafor (matches 2 people)'])
+  assert.deepEqual(preview.changes, [])
+})

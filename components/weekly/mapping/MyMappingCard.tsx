@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/ui/modal'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import type { MappingReasonCodeValue, MappingRelationValue, MyMappingResponse, PeerRequestView, PersonRef } from '@/lib/weekly/view-types'
+import type { MappingReasonCodeValue, MappingRelationValue, MyMappingResponse, PeerRequestAboutMe, PeerRequestView, PersonRef } from '@/lib/weekly/view-types'
 import { cn } from '@/lib/utils'
 import { errorMessage, weeklyRequest } from '../weekly-api'
 
@@ -28,7 +28,7 @@ type Run = (action: () => Promise<unknown>, success: string, failure: string) =>
  * Section 13: what the card's notices point to. A team member's change for this lead to review (HR then decides), and
  * a peer change about this person, who may say whether they work together. The same as the emailed links.
  */
-function WaitingForYou({ toReview, aboutMe, saving, run }: { toReview: PeerRequestView[]; aboutMe: PeerRequestView[]; saving: boolean; run: Run }) {
+function WaitingForYou({ toReview, aboutMe, saving, run }: { toReview: PeerRequestView[]; aboutMe: PeerRequestAboutMe[]; saving: boolean; run: Run }) {
   const [disagreeing, setDisagreeing] = useState<string | null>(null)
   const [note, setNote] = useState('')
   const patch = (body: object) => weeklyRequest('/api/weekly/mapping', { method: 'PATCH', body })

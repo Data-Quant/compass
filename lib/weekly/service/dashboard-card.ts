@@ -10,7 +10,7 @@ import { mySelfReview, teamSelfReviews } from './self-review'
 import { OPEN_REQUEST_STATUSES } from '../request-status'
 import { loadPeople, isHrActor } from './context'
 import { loadAnswerRecords } from './answer-states'
-import { formsOpenFor } from './forms'
+import { formsOpenFor, formsView } from './forms'
 import { formsProgress } from './form-tables'
 import { lateJoiners, roundClosesOn } from './round-notices'
 import type { RoundStage } from '../round-stage'
@@ -39,6 +39,12 @@ const HR_ROUND = '/admin/evaluation-round'
 const RECENT_MS = 7 * 24 * 60 * 60 * 1000
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
+/** This person's own unfinished quarter-end forms; only HR, who fill in the partners' tables, need the whole round's. */
+async function hasOpenForms(actor: WeeklyActor, periodId: string, now: Date): Promise<boolean> {
+  if (isHrActor(actor)) return (await formsProgress(periodId, now)).pendingEvaluatorIds.includes(actor.id)
+  return (await formsView(actor, now)).forms.some((f) => f.status !== 'SUBMITTED' && f.status !== 'CLOSED_BY_OTHER')
+}
+
 async function cardNotices(actor: WeeklyActor, cycle: CycleWithPeriod, stage: RoundStage, now: Date): Promise<CardNotice[]> {
   const periodId = cycle.periodId
   const since = new Date(now.getTime() - RECENT_MS)
@@ -46,7 +52,8 @@ async function cardNotices(actor: WeeklyActor, cycle: CycleWithPeriod, stage: Ro
     prisma.peerChangeRequest.findMany({ where: { periodId, approverId: actor.id, status: 'PENDING', approverVote: 'PENDING' }, orderBy: { createdAt: 'asc' } }),
     prisma.peerChangeRequest.findMany({ where: { periodId, peerId: actor.id, relation: 'PEER', status: { in: OPEN_REQUEST_STATUSES } }, orderBy: { createdAt: 'asc' } }),
     prisma.peerChangeRequest.findMany({ where: { periodId, requesterId: actor.id, status: { in: ['APPROVED', 'REJECTED'] }, decidedAt: { gte: since, lte: now } } }),
-    prisma.evaluationPeriodAssignmentOverride.count({ where: { periodId, note: { startsWith: 'HR:' }, createdAt: { gte: since }, OR: [{ evaluatorId: actor.id }, { evaluateeId: actor.id }] } }),
+    // Changed, not only created, in the last week; an import is the round's draft, not a change people are told about.
+    prisma.evaluationPeriodAssignmentOverride.count({ where: { periodId, note: { startsWith: 'HR:', not: 'HR: imported lists' }, updatedAt: { gte: since }, OR: [{ evaluatorId: actor.id }, { evaluateeId: actor.id }] } }),
     teamSelfReviews(actor),
   ])
   const people = await loadPeople([...toReview, ...aboutMe, ...decided].flatMap((r) => [r.requesterId, r.peerId]))
@@ -62,7 +69,7 @@ async function cardNotices(actor: WeeklyActor, cycle: CycleWithPeriod, stage: Ro
     for (const { joiner, leads } of await lateJoiners(cycle, now)) {
       if (leads.includes(actor.id)) notices.push({ text: `${joiner.name} isn’t in this round; give feedback in person`, href: HREF })
     }
-    if (formsOpenFor(cycle, now) && (await formsProgress(periodId, now)).pendingEvaluatorIds.includes(actor.id)) {
+    if (formsOpenFor(cycle, now) && (await hasOpenForms(actor, periodId, now))) {
       notices.push({ text: 'Your quarter-end forms are open', href: isHrActor(actor) ? `${HR_ROUND}?tab=forms` : HREF })
     }
   }

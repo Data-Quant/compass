@@ -257,7 +257,12 @@ export interface MyMappingResponse {
   /** As a lead: team members' changes waiting for this person's review. */
   toReview: PeerRequestView[]
   /** As a peer: changes about this person, without the requester's reason; they may reply. */
-  aboutMe: PeerRequestView[]
+  aboutMe: PeerRequestAboutMe[]
+}
+/** What the peer a change is about sees: the change, never the reason, the lead's view or HR's progress. */
+export interface PeerRequestAboutMe {
+  id: string; action: PeerRequestView['action']; relation: PeerRequestView['relation']; status: PeerRequestView['status']; createdAt: string
+  requester: PersonRef; peer: PersonRef; peerReply: PeerRequestView['peerReply']
 }
 export interface PeerRequestTokenView {
   requester: PersonRef

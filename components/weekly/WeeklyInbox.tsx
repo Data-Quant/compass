@@ -91,9 +91,10 @@ export function WeeklyInbox({ actingAs }: { actingAs?: string }) {
     ...(data?.prompts ?? []).filter(isCarried).sort((a, b) => a.weekIndex - b.weekIndex),
     ...groups.flatMap((g) => g.prompts),
   ], [data, isCarried, groups])
-  const [index, setIndex] = useState(0)
+  // The question on screen, by id: answering a carried question moves it in the queue, and Back/Next must not skip.
+  const [currentId, setCurrentId] = useState<string | null>(null)
   const [allAtOnce, setAllAtOnce] = useState(false)
-  const at = Math.min(index, Math.max(0, queue.length - 1))
+  const at = Math.max(0, queue.findIndex((p) => p.id === currentId))
   if (error) return <p className="text-sm text-destructive">{error}</p>
   if (!data) return <p className="text-sm text-muted-foreground">Loading questions…</p>
   if (!data.cycle) {
@@ -139,8 +140,8 @@ export function WeeklyInbox({ actingAs }: { actingAs?: string }) {
               {isCarried(queue[at]) && <p className="text-xs font-medium text-amber-700 dark:text-amber-400">From last week</p>}
               <AnswerCard key={`${queue[at].id}-${queue[at].status}-${version}`} prompt={queue[at]} actingAs={actingAs} onChanged={load} />
               <div className="flex justify-between gap-2">
-                <Button variant="outline" disabled={at === 0} onClick={() => setIndex(at - 1)}>Back</Button>
-                <Button variant={queue[at].status === 'SUBMITTED' ? 'default' : 'outline'} disabled={at >= queue.length - 1} onClick={() => setIndex(at + 1)}>Next</Button>
+                <Button variant="outline" disabled={at === 0} onClick={() => setCurrentId(queue[at - 1].id)}>Back</Button>
+                <Button variant={queue[at].status === 'SUBMITTED' ? 'default' : 'outline'} disabled={at >= queue.length - 1} onClick={() => setCurrentId(queue[at + 1].id)}>Next</Button>
               </div>
             </div>
           )}

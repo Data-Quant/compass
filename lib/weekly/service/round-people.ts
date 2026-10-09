@@ -126,15 +126,19 @@ export async function importRoundLists(actor: WeeklyActor, cycleId: string, file
   const cycle = await loadCycle(cycleId)
   const stage = await periodRoundStage(cycle.periodId)
   if (stage !== 'DRAFT' && stage !== 'REVIEW') throw new WeeklyError('Lists can be imported only before the round opens. Change them one at a time now.', 409)
-  const rows = await readListFile(file)
-  if (typeof rows === 'string') throw new WeeklyError(rows)
+  const read = await readListFile(file)
+  if (typeof read === 'string') throw new WeeklyError(read)
+  const { rows, columns } = read
   const users = await prisma.user.findMany({ where: { OR: [{ payrollProfile: null }, { payrollProfile: { isPayrollActive: true } }] }, select: { id: true, name: true } })
-  const idByName = new Map(users.map((u) => [normalizeImportedName(u.name), u.id]))
+  // Two active people with the same name: the file cannot say which, so neither is guessed.
+  const idsByName = new Map<string, string[]>()
+  for (const u of users) idsByName.set(normalizeImportedName(u.name), [...(idsByName.get(normalizeImportedName(u.name)) ?? []), u.id])
   const unknown = new Set<string>()
   const idOf = (name: string): string | null => {
-    const id = idByName.get(normalizeImportedName(resolveImportedName(name))) ?? null
-    if (!id) unknown.add(name.trim())
-    return id
+    const ids = idsByName.get(normalizeImportedName(resolveImportedName(name))) ?? []
+    if (ids.length === 1) return ids[0]
+    unknown.add(ids.length > 1 ? `${name.trim()} (matches ${ids.length} people)` : name.trim())
+    return null
   }
   const covered = new Set<string>()
   const desired = new Map<string, Edge>()
@@ -155,7 +159,12 @@ export async function importRoundLists(actor: WeeklyActor, cycleId: string, file
     if (edge) current.set(edgeKey(edge), edge)
   }
   const adds = [...desired].filter(([key]) => !current.has(key)).map(([, e]) => ({ action: 'ADD' as const, edge: e }))
-  const removes = [...current].filter(([key, e]) => !desired.has(key) && (covered.has(e.a) || covered.has(e.b))).map(([, e]) => ({ action: 'REMOVE' as const, edge: e }))
+  // A row is the truth only for the lists the file has columns for: a lead edge is the member's "Team Lead" or the lead's
+  // "Reporting Team Member"; a peer edge needs a peer column.
+  const authoritative = (e: Edge) => e.relation === 'PEER'
+    ? columns.peers && (covered.has(e.a) || covered.has(e.b))
+    : (columns.leads && covered.has(e.b)) || (columns.reports && covered.has(e.a))
+  const removes = [...current].filter(([key, e]) => !desired.has(key) && authoritative(e)).map(([, e]) => ({ action: 'REMOVE' as const, edge: e }))
   const planned = [...adds, ...removes]
   const people = await loadPeople(planned.flatMap((c) => [c.edge.a, c.edge.b]))
   const changes: ListImportChange[] = planned.map(({ action, edge }) => {
@@ -165,6 +174,9 @@ export async function importRoundLists(actor: WeeklyActor, cycleId: string, file
   }).sort((x, y) => byName(x.person, y.person) || byName(x.other, y.other))
   if (apply && changes.length) {
     await prisma.$transaction(async (tx) => {
+      // The round may have opened since the preview: hold the cycle row and check again.
+      const [locked] = await tx.$queryRaw<Array<{ status: string }>>`SELECT status::text AS status FROM "WeeklyCycle" WHERE id = ${cycleId} FOR UPDATE`
+      if (locked?.status !== 'SETUP') throw new WeeklyError('Lists can be imported only before the round opens. Change them one at a time now.', 409)
       for (const c of changes) {
         await applyMappingChange(tx, { periodId: cycle.periodId, userId: c.person.id, otherId: c.other.id, relation: c.relation, action: c.action, note: 'HR: imported lists', by: actor.id })
       }

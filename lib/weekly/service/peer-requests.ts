@@ -134,7 +134,11 @@ export async function myMapping(actor: WeeklyActor, now: Date): Promise<MyMappin
     candidates: await inRound(candidates, now),
     confirmedAt: confirmation?.confirmedAt.toISOString() ?? null,
     toReview: toReview.map((r) => requestView(r, people)),
-    aboutMe: aboutMe.map((r) => ({ ...requestView(r, people), reason: null, reasonCode: null, leadNote: null, decisionNote: null, answer: null })),
+    // The peer sees the change itself, never the requester's reason, the lead's view or HR's progress.
+    aboutMe: aboutMe.map((r) => ({
+      id: r.id, action: r.action, relation: r.relation, status: r.status, createdAt: r.createdAt.toISOString(),
+      requester: personRef(people, r.requesterId), peer: personRef(people, r.peerId), peerReply: r.peerReply,
+    })),
   }
 }
 
@@ -180,6 +184,8 @@ export async function requestPeerChange(
   if (!removingPeer) required(input.reason, 'Say why: what is wrong, and what it should be')
   const other = (await loadPeople([input.peerId])).get(input.peerId)
   if (!other || !other.payrollActive || isOutsideRedesign(other)) throw new WeeklyError('Person not found', 404)
+  // The page offers only people in the round; the same check here, whatever was sent.
+  if (input.action === 'ADD' && evaluatorExclusion(other, now) !== null) throw new WeeklyError(`${other.name} is not in this round`, 409)
   const mapping = await mappingFor(period.id, actor.id)
   if (input.action === 'REMOVE' && !listFor(mapping, relation).includes(input.peerId)) throw new WeeklyError(`${other.name} is not ${NOT_IN_LIST[relation]} this quarter`)
   if (input.action === 'ADD' && [...mapping.peers, ...mapping.leads, ...mapping.reports, ...mapping.others].includes(input.peerId)) throw new WeeklyError(`${other.name} is already in your mapping this quarter`)
