@@ -100,3 +100,17 @@ test('a department topic never takes over a classic question, and renaming a top
   const own = await prisma.weeklyCompetency.findUniqueOrThrow({ where: { id: created.id } })
   assert.equal((await prisma.evaluationQuestion.findUniqueOrThrow({ where: { id: own.sourceQuestionId! } })).questionText, 'Clean handovers', 'a question made for the topic follows it')
 })
+
+test('an older free-text topic with a standard key is upgraded with the standard questions, not skipped and switched off', WEEKLY_DB_TEST, async () => {
+  const old = await prisma.weeklyCompetency.create({
+    data: { key: 'LEAD.QUALITY_OF_WORK', perspective: 'LEAD', name: 'Quality of Work', definition: '', prompts: { create: [{ variant: 'A', text: 'Describe a piece of work they handed over.' }] } },
+  })
+  await loadStandardBank(HR_ACTOR)
+  const topic = await prisma.weeklyCompetency.findUniqueOrThrow({ where: { id: old.id }, include: { prompts: { orderBy: { variant: 'asc' } } } })
+  assert.equal(topic.isActive, true)
+  const bank = STANDARD_MCQ_BANK.find((t) => t.key === 'LEAD.QUALITY_OF_WORK')!
+  const active = topic.prompts.filter((p) => p.isActive)
+  assert.deepEqual(active.map((p) => p.text), bank.questions.map((q) => q.text))
+  assert.ok(active.every((p) => Array.isArray(p.options) && (p.options as unknown[]).length === 8))
+  assert.ok((await contentView(HR_ACTOR)).competencies.some((c) => c.key === 'LEAD.QUALITY_OF_WORK' && c.ready))
+})

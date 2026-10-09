@@ -57,8 +57,26 @@ export async function loadStandardBank(actor: WeeklyActor): Promise<{ created: n
   assertHr(actor)
   let created = 0
   for (const topic of STANDARD_MCQ_BANK) {
-    const existing = await prisma.weeklyCompetency.findUnique({ where: { key: topic.key }, select: { id: true } })
-    if (existing) continue
+    const existing = await prisma.weeklyCompetency.findUnique({ where: { key: topic.key }, include: { prompts: true } })
+    // A topic with a working multiple-choice question is HR's to keep as it is. An older free-text topic with the same
+    // key is upgraded in place: skipped, it would be switched off below and never get its questions.
+    if (existing && existing.prompts.some((p) => p.isActive && usable(p))) continue
+    if (existing) {
+      await prisma.$transaction(async (tx) => {
+        for (const [i, q] of topic.questions.entries()) {
+          const variant = String.fromCharCode(65 + i)
+          const data = { text: q.text, options: storedOptions(q.options), isActive: true }
+          const prompt = existing.prompts.find((p) => p.variant === variant)
+          if (prompt) await tx.weeklyCompetencyPrompt.update({ where: { id: prompt.id }, data })
+          else await tx.weeklyCompetencyPrompt.create({ data: { ...data, variant, competencyId: existing.id } })
+        }
+        const keep = topic.questions.map((_, i) => String.fromCharCode(65 + i))
+        await tx.weeklyCompetencyPrompt.updateMany({ where: { competencyId: existing.id, variant: { notIn: keep } }, data: { isActive: false } })
+        await tx.weeklyCompetency.update({ where: { id: existing.id }, data: { isActive: true, departments: topic.departments ?? [] } })
+      })
+      created += 1
+      continue
+    }
     await prisma.$transaction(async (tx) => {
       // A common topic reuses the classic question of its name; a department topic always gets its own, so it never
       // takes over a question everyone answers.
