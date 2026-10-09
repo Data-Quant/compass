@@ -54,7 +54,7 @@ function QuestionField({ q, answer, onChange }: { q: SurveyQuestionView; answer:
             <div key={option} className="space-y-1">
               <button type="button" role="radio" aria-checked={answer?.choice === option} className={`${choiceClass(answer?.choice === option)} w-full text-left`} onClick={() => set({ choice: option, ...(answer?.choice !== option ? { text: undefined } : {}) })}>{option}</button>
               {q.explainChoice && answer?.choice === option && (
-                <Textarea rows={2} maxLength={2000} aria-label={`Why ${option}, and how could it be improved?`} placeholder="Why, and how could it be improved?" value={answer.text ?? ''} onChange={(e) => set({ text: e.target.value })} />
+                <Textarea rows={2} maxLength={2000} aria-label={`${option}: what should change, and how would you improve it?`} placeholder="What should change, and how would you improve it?" value={answer.text ?? ''} onChange={(e) => set({ text: e.target.value })} />
               )}
             </div>
           ))}
