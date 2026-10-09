@@ -18,6 +18,7 @@ import { WeeklyError } from './errors'
 import { loadAnswerRecords } from './answer-states'
 import { formsProgress } from './form-tables'
 import { deliverOnce, type WeeklySendMail } from './notifications'
+import { roundOpenedMessages } from './round-notices'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 /** Classic reports still read a period's "evaluations start" date; for a round it is a few days after the quarter. */
@@ -143,7 +144,7 @@ export async function roundView(actor: WeeklyActor, periodId: string, now: Date)
   }
 }
 
-/** Review → Open: undecided requests expire (their people are told), the cycle starts and the quarter becomes active. */
+/** Review → Open: undecided requests expire (their people are told), the cycle starts, the quarter becomes active, and every evaluator hears it has started. */
 export async function openRound(actor: WeeklyActor, periodId: string, now: Date, send: WeeklySendMail, appUrl: string): Promise<void> {
   assertHr(actor)
   const cycle = await cycleForPeriod(periodId)
@@ -160,9 +161,18 @@ export async function openRound(actor: WeeklyActor, periodId: string, now: Date,
     prisma.evaluationPeriod.update({ where: { id: periodId }, data: { isActive: true } }),
   ])
   const people = await loadPeople(pending.flatMap((r) => [r.requesterId, r.peerId]))
-  await deliverOnce(pending.map((r) => ({
-    userId: r.requesterId, kind: 'peer-request-outcome' as const, dedupeKey: `peer-request-expired:${r.id}`,
-    render: (name: string) => renderRequestExpiredEmail({ name, otherName: people.get(r.peerId)?.name ?? 'the person', appUrl }),
-  })), send)
+  const name = (id: string) => people.get(id)?.name ?? 'the person'
+  await deliverOnce([
+    ...pending.map((r) => ({
+      userId: r.requesterId, kind: 'peer-request-outcome' as const, dedupeKey: `peer-request-expired:${r.id}`,
+      render: (to: string) => renderRequestExpiredEmail({ name: to, otherName: name(r.peerId), appUrl }),
+    })),
+    // In a peer change the peer was told about it, so they hear it lapsed too.
+    ...pending.filter((r) => r.relation === 'PEER').map((r) => ({
+      userId: r.peerId, kind: 'peer-request-outcome' as const, dedupeKey: `peer-request-expired:${r.id}:peer`,
+      render: (to: string) => renderRequestExpiredEmail({ name: to, otherName: name(r.requesterId), requestedBy: name(r.requesterId), appUrl }),
+    })),
+    ...(await roundOpenedMessages(await loadCycle(cycle.id), now, appUrl)),
+  ], send)
   await recordAudit(prisma, { cycleId: cycle.id, actorId: actor.id, actorRole: 'HR', action: 'ROUND_OPEN', objectType: 'EvaluationPeriod', objectId: periodId, after: { expired: pending.length } })
 }

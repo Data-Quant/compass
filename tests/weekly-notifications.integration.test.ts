@@ -2,8 +2,6 @@ import test, { after, afterEach, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { prisma } from '../lib/db'
 import { runWeeklyDailyJob } from '../lib/weekly/service/daily-job'
-import { inboxView } from '../lib/weekly/service/inbox'
-import { answerAs } from './helpers/weekly-answers'
 import { at, startedCycle } from './helpers/weekly-fixtures'
 import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST } from './helpers/weekly-test-db'
 
@@ -47,24 +45,6 @@ test('with emails off, notifications are recorded and nothing is sent', WEEKLY_D
   assert.equal(await prisma.weeklyNotification.count({ where: { delivered: false } }), 3)
 })
 
-test('every day after Monday reminds people with open questions, once a day, until they answer', WEEKLY_DB_TEST, async () => {
-  process.env.WEEKLY_SEND_EMAILS = 'true'
-  await runWeeklyDailyJob(mailbox().send, APP, at(1))
-  const [prompt] = (await inboxView(W.lead.id, at(1))).prompts
-  await answerAs({ id: prompt.id, evaluatorId: W.lead.id }, 3, at(1, 2))
-  const tuesday = mailbox()
-  const result = await runWeeklyDailyJob(tuesday.send, APP, at(1, 2))
-  assert.equal(result.released?.promptsCreated, 0)
-  assert.deepEqual(tuesday.sent.map((m) => m.to).sort(), ['wkt-ana@example.test', 'wkt-ben@example.test'])
-  assert.equal(tuesday.sent[0].subject, 'Reminder: 1 evaluation question is waiting')
-  const laterTuesday = mailbox()
-  await runWeeklyDailyJob(laterTuesday.send, APP, at(1, 2, 15))
-  assert.equal(laterTuesday.sent.length, 0, 'once a day')
-  const wednesday = mailbox()
-  await runWeeklyDailyJob(wednesday.send, APP, at(1, 3))
-  assert.deepEqual(wednesday.sent.map((m) => m.to).sort(), ['wkt-ana@example.test', 'wkt-ben@example.test'])
-})
-
 test('a failed email is retried on the next run', WEEKLY_DB_TEST, async () => {
   process.env.WEEKLY_SEND_EMAILS = 'true'
   const failing = async () => {
@@ -94,7 +74,6 @@ test('a week the Monday run missed is released and announced on the next daily r
   assert.equal(mail.sent[0].subject, 'Your evaluation questions for this week')
   const wednesday = await runWeeklyDailyJob(mail.send, APP, at(1, 3))
   assert.equal(wednesday.released?.promptsCreated, 0)
-  // Nothing new on Wednesday: the three unanswered questions get the daily reminder instead.
-  assert.equal(mail.sent.length, 6)
-  assert.ok(mail.sent.slice(3).every((m) => /^Reminder/.test(m.subject)))
+  // Nothing new on Wednesday, and no reminder until the due day.
+  assert.equal(mail.sent.length, 3)
 })

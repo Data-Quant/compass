@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db'
 import { formatCalendarDate, karachiCalendarDate } from '../../kpi/calendar'
 import { renderFormsOpenEmail, renderLowEvidenceEmail, renderQuestionsEmail } from '../emails'
+import { renderDueTodayEmail, renderFinalWeekEmail } from '../emails-round'
 import { areWeeklyEmailsEnabled } from '../flag'
 import { PERSPECTIVE_LABELS } from '../perspectives'
 import type { CycleWithPeriod } from './cycles'
@@ -10,9 +11,12 @@ import { formsProgress } from './form-tables'
 
 export type WeeklySendMail = (to: string, subject: string, html: string) => Promise<unknown>
 export type WeeklyEmailKind =
-  | 'weekly-questions' | 'weekly-reminder' | 'weekly-low-evidence' | 'weekly-forms-open'
-  | 'peer-request' | 'peer-request-outcome' | 'peer-request-question' | 'weekly-mapping'
+  | QuestionEmailKind | 'weekly-low-evidence' | 'weekly-forms-open'
+  | 'peer-request' | 'peer-request-outcome' | 'peer-request-question' | 'peer-request-reply' | 'peer-request-received' | 'peer-request-for-hr' | 'weekly-mapping'
   | 'self-review-submitted' | 'self-review-reply' | 'self-review-reminder'
+  | 'weekly-review-reminder' | 'weekly-round-opened' | 'weekly-behind' | 'weekly-team-behind' | 'weekly-hr-digest' | 'weekly-joiner' | 'weekly-round-closed'
+/** Monday's questions, the due-day reminder (Sunday) and the final week's count (UX spec, section 13). */
+export type QuestionEmailKind = 'weekly-questions' | 'weekly-due-today' | 'weekly-final-week'
 export interface QuestionRecipient { userId: string; newCount: number; openCount: number }
 export interface WeeklySendResult { sent: number; recorded: number; skipped: number; failed: number }
 
@@ -22,53 +26,27 @@ export function weeklyDedupeKey(kind: WeeklyEmailKind, userId: string, now: Date
 }
 
 /**
- * One email per person per kind per Karachi day (or per `scope`). The row is claimed before sending and released if the
- * send fails, so the next run retries. With emails off (preview) the row is recorded and nothing is sent.
+ * One email per person per kind per Karachi day (or per `scope`), to everyone with an open question. Same guarantees as
+ * deliverOnce: the row is claimed before sending and released if the send fails; with emails off it is only recorded.
  */
 export async function sendQuestionEmails(
-  kind: WeeklyEmailKind,
+  kind: QuestionEmailKind,
   recipients: readonly QuestionRecipient[],
   now: Date,
   send: WeeklySendMail,
   appUrl: string,
-  emailsEnabled: boolean = areWeeklyEmailsEnabled(),
-  scope?: string,
+  options: { scope?: string; closesOn?: string; emailsEnabled?: boolean } = {},
 ): Promise<WeeklySendResult> {
-  const users = await prisma.user.findMany({
-    where: { id: { in: recipients.map((r) => r.userId) } },
-    select: { id: true, name: true, email: true, payrollProfile: { select: { isPayrollActive: true } } },
-  })
-  const byId = new Map(users.map((user) => [user.id, user]))
-  const result: WeeklySendResult = { sent: 0, recorded: 0, skipped: 0, failed: 0 }
-  for (const recipient of recipients) {
-    const user = byId.get(recipient.userId)
-    if (!user?.email || user.payrollProfile?.isPayrollActive === false || recipient.openCount === 0) {
-      result.skipped += 1
-      continue
-    }
-    const dedupeKey = weeklyDedupeKey(kind, recipient.userId, now, scope)
-    try {
-      await prisma.weeklyNotification.create({ data: { userId: recipient.userId, kind, dedupeKey, delivered: emailsEnabled } })
-    } catch (error) {
-      if (!isUniqueViolation(error)) throw error
-      result.skipped += 1
-      continue
-    }
-    if (!emailsEnabled) {
-      result.recorded += 1
-      continue
-    }
-    try {
-      const email = renderQuestionsEmail({ name: user.name, newCount: recipient.newCount, openCount: recipient.openCount, appUrl, reminder: kind === 'weekly-reminder' })
-      await send(user.email, email.subject, email.html)
-      result.sent += 1
-    } catch (error) {
-      console.error('[weekly] email failed', { userId: recipient.userId, error })
-      await prisma.weeklyNotification.delete({ where: { dedupeKey } })
-      result.failed += 1
-    }
+  const render = (name: string, r: QuestionRecipient) => {
+    if (kind === 'weekly-due-today') return renderDueTodayEmail({ name, openCount: r.openCount, appUrl })
+    if (kind === 'weekly-final-week') return renderFinalWeekEmail({ name, openCount: r.openCount, closesOn: options.closesOn ?? '', appUrl })
+    return renderQuestionsEmail({ name, newCount: r.newCount, openCount: r.openCount, appUrl })
   }
-  return result
+  const messages = recipients.filter((r) => r.openCount > 0).map((r) => ({
+    userId: r.userId, kind, dedupeKey: weeklyDedupeKey(kind, r.userId, now, options.scope), render: (name: string) => render(name, r),
+  }))
+  const result = await deliverOnce(messages, send, options.emailsEnabled ?? areWeeklyEmailsEnabled())
+  return { ...result, skipped: result.skipped + recipients.length - messages.length }
 }
 
 export async function questionRecipients(cycleId: string, week: number): Promise<QuestionRecipient[]> {

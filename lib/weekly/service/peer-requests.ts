@@ -8,15 +8,19 @@ import type {
 } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
-import { renderMappingEmail, renderMappingQuestionEmail, renderPeerOutcomeEmail, renderPeerRequestEmail } from '../emails'
+import {
+  renderChangeForOtherEmail, renderMappingEmail, renderMappingQuestionEmail, renderPeerOutcomeEmail, renderPeerReplyEmail, renderPeerRequestEmail, renderRequestForHrEmail,
+  renderRequestReceivedEmail,
+} from '../emails'
 import { isOutsideRedesign } from '../eligibility'
+import { formatKarachiDate } from '../format'
 import { OPEN_REQUEST_STATUSES } from '../request-status'
 import type { MyMappingResponse, PeerRequestTokenView, PeerRequestView, PersonRef } from '../view-types'
 import { addWorkingDays } from '../working-days'
 import { recordAudit } from './audit'
 import { assertHr, loadPeople, personRef, type WeeklyActor } from './context'
 import { WeeklyError } from './errors'
-import { deliverOnce, type WeeklyEmailMessage, type WeeklySendMail, type WeeklySendResult } from './notifications'
+import { deliverOnce, hrUserIds, type WeeklyEmailMessage, type WeeklySendMail, type WeeklySendResult } from './notifications'
 import { periodRoundStage } from './round'
 
 export type PeerDecision = 'APPROVE' | 'REJECT'
@@ -184,9 +188,31 @@ export async function requestPeerChange(
   // Asking for a change means the lists did not look right after all.
   await prisma.mappingConfirmation.deleteMany({ where: { periodId: period.id, userId: actor.id } })
   await recordAudit(prisma, { actorId: actor.id, actorRole: 'EMPLOYEE', action: 'MAPPING_REQUEST', objectType: 'PeerChangeRequest', objectId: request.id, after: { action: input.action, relation, peerId: input.peerId } })
-  if (tokens.peer || tokens.approver) await deliverOnce(linkMessages(request, tokens, { requester: actor.name, peer: other.name }, period.name, appUrl), send)
   const people = await loadPeople([actor.id, input.peerId, approverId ?? ''])
+  // A lead or team change is confirmed by email (UX spec, section 13); a peer change shows its progress on the page.
+  const received: WeeklyEmailMessage[] = relation === 'PEER' ? [] : [{
+    userId: actor.id, kind: 'peer-request-received', dedupeKey: `peer-request-received:${request.id}`,
+    render: (name) => renderRequestReceivedEmail({ name, otherName: other.name, action: input.action, relation, leadName: approverId ? people.get(approverId)?.name ?? null : null, appUrl }),
+  }]
+  await deliverOnce([
+    ...linkMessages(request, tokens, { requester: actor.name, peer: other.name }, period.name, appUrl),
+    ...received,
+    ...(approverId ? [] : await hrMessages(request, appUrl)),
+  ], send)
   return requestView(request, people)
+}
+
+/** HR is emailed once when a request becomes theirs to decide: at once with no lead to review it, or after the lead has. */
+async function hrMessages(request: PeerChangeRequest, appUrl: string): Promise<WeeklyEmailMessage[]> {
+  const people = await loadPeople([request.requesterId, request.peerId, request.approverId ?? ''])
+  const name = (id: string) => people.get(id)?.name ?? 'Someone'
+  const lead = request.approverId && request.approverVote !== 'PENDING'
+    ? { name: name(request.approverId), agrees: request.approverVote === 'APPROVED', note: request.leadNote }
+    : null
+  return (await hrUserIds()).map((userId) => ({
+    userId, kind: 'peer-request-for-hr' as const, dedupeKey: `peer-request-for-hr:${request.id}:${userId}`,
+    render: (to: string) => renderRequestForHrEmail({ name: to, requesterName: name(request.requesterId), otherName: name(request.peerId), action: request.action, relation: request.relation, lead, appUrl }),
+  }))
 }
 
 export async function cancelPeerRequest(actor: WeeklyActor, requestId: string): Promise<void> {
@@ -256,11 +282,21 @@ async function decide(request: PeerChangeRequest, approved: boolean, note: strin
     return updated.count
   })
   if (moved === 0) return null
-  const other = (await loadPeople([request.peerId])).get(request.peerId)
-  await deliverOnce([{
-    userId: request.requesterId, kind: 'peer-request-outcome', dedupeKey: `peer-request-outcome:${request.id}`,
-    render: (name) => renderPeerOutcomeEmail({ name, peerName: other?.name ?? 'the person', action: request.action, relation: request.relation, approved, note, appUrl }),
-  }], send)
+  const people = await loadPeople([request.peerId, request.requesterId])
+  const period = await prisma.evaluationPeriod.findUnique({ where: { id: request.periodId }, select: { name: true } })
+  const name = (id: string) => people.get(id)?.name ?? 'the person'
+  // A peer hears either way, as they were told about the request; a lead or team member hears once it is applied.
+  const tellOther = request.relation === 'PEER' || approved
+  await deliverOnce([
+    {
+      userId: request.requesterId, kind: 'peer-request-outcome', dedupeKey: `peer-request-outcome:${request.id}`,
+      render: (to) => renderPeerOutcomeEmail({ name: to, peerName: name(request.peerId), action: request.action, relation: request.relation, approved, note, appUrl }),
+    },
+    ...(tellOther ? [{
+      userId: request.peerId, kind: 'peer-request-outcome' as const, dedupeKey: `peer-request-outcome:${request.id}:other`,
+      render: (to: string) => renderChangeForOtherEmail({ name: to, requesterName: name(request.requesterId), periodName: period?.name ?? 'this quarter', action: request.action, relation: request.relation, approved, note, appUrl }),
+    }] : []),
+  ], send)
   return status
 }
 
@@ -295,8 +331,6 @@ export async function peerRequestByToken(token: string): Promise<PeerRequestToke
 
 /** The lead's review from the email link: agree, or disagree with a reason. It goes to HR either way; HR decides. */
 export async function voteOnPeerRequest(token: string, decision: PeerDecision, note: string | null | undefined, now: Date, send: WeeklySendMail, appUrl: string): Promise<{ status: PeerChangeStatus }> {
-  void send
-  void appUrl
   const { request, role } = await findByToken(token)
   if (role !== 'LEAD') throw new WeeklyError('Only their lead reviews this change', 403)
   await assertLinkOpen(request.periodId)
@@ -312,17 +346,26 @@ export async function voteOnPeerRequest(token: string, decision: PeerDecision, n
     throw new WeeklyError(current.status === 'NEEDS_INFO' ? 'HR has asked a question about this request; you can review it once that is answered' : 'This request was already reviewed', 409)
   }
   await recordAudit(prisma, { actorId: request.approverId, actorRole: 'LEAD', action: `MAPPING_LEAD_${vote}`, objectType: 'PeerChangeRequest', objectId: request.id })
+  await deliverOnce(await hrMessages(await prisma.peerChangeRequest.findUniqueOrThrow({ where: { id: request.id } }), appUrl), send)
   return { status: 'PENDING' }
 }
 
-/** The peer's optional reply from their link. It can change while the request is open and never decides it. */
-export async function replyToPeerRequest(token: string, reply: PeerReply, now: Date): Promise<void> {
+/** The peer's optional reply from their link. It can change while the request is open and never decides it; the lead and HR hear each new answer. */
+export async function replyToPeerRequest(token: string, reply: PeerReply, now: Date, send: WeeklySendMail, appUrl: string): Promise<void> {
   const { request, role } = await findByToken(token)
   if (role !== 'PEER') throw new WeeklyError('This link is for deciding the request, not replying to it', 403)
   await assertLinkOpen(request.periodId)
   const updated = await prisma.peerChangeRequest.updateMany({ where: { id: request.id, status: { in: OPEN_STATUSES } }, data: { peerReply: reply, peerRepliedAt: now } })
   if (updated.count === 0) throw new WeeklyError('This request was already decided', 409)
   await recordAudit(prisma, { actorId: request.peerId, actorRole: 'PEER', action: `PEER_REPLY_${reply}`, objectType: 'PeerChangeRequest', objectId: request.id })
+  if (request.peerReply === reply) return
+  const people = await loadPeople([request.requesterId, request.peerId])
+  const names = { peerName: people.get(request.peerId)?.name ?? 'The peer', requesterName: people.get(request.requesterId)?.name ?? 'the requester' }
+  const message = (userId: string, forHr: boolean): WeeklyEmailMessage => ({
+    userId, kind: 'peer-request-reply', dedupeKey: `peer-request-reply:${request.id}:${reply}:${userId}`,
+    render: (name) => renderPeerReplyEmail({ name, ...names, worksTogether: reply === 'WORK_TOGETHER', forHr, appUrl }),
+  })
+  await deliverOnce([...(request.approverId ? [message(request.approverId, false)] : []), ...(await hrUserIds()).map((id) => message(id, true))], send)
 }
 
 /** HR applies a request, declines it with a reason, or asks the requester a question. */
@@ -428,6 +471,9 @@ export async function sendMappingEmails(actor: WeeklyActor, now: Date, send: Wee
   const userIds = [...new Set(assignments.flatMap((a) => [a.evaluatorId, a.evaluateeId]))]
   const people = await loadPeople(userIds)
   const names = (ids: string[]) => ids.map((id) => people.get(id)?.name ?? 'Unknown').sort((a, b) => a.localeCompare(b))
+  // The review stage's deadline, when the round has one: "Check your lists by 2 Oct" (UX spec, section 13).
+  const reviewDeadline = (await prisma.weeklyCycle.findUnique({ where: { periodId: period.id }, select: { reviewDeadline: true } }))?.reviewDeadline
+  const deadline = reviewDeadline ? formatKarachiDate(reviewDeadline.toISOString()) : null
   const messages: WeeklyEmailMessage[] = userIds.flatMap((userId) => {
     const person = people.get(userId)
     if (!person || isOutsideRedesign(person)) return []
@@ -435,7 +481,7 @@ export async function sendMappingEmails(actor: WeeklyActor, now: Date, send: Wee
     if (mapping.leads.length + mapping.reports.length + mapping.peers.length === 0) return []
     return [{
       userId, kind: 'weekly-mapping' as const, dedupeKey: `weekly-mapping:${period.id}:${userId}:${now.toISOString().slice(0, 10)}`,
-      render: (name: string) => renderMappingEmail({ name, periodName: period.name, leads: names(mapping.leads), reports: names(mapping.reports), peers: names(mapping.peers), appUrl }),
+      render: (name: string) => renderMappingEmail({ name, periodName: period.name, leads: names(mapping.leads), reports: names(mapping.reports), peers: names(mapping.peers), deadline, appUrl }),
     }]
   })
   const result = await deliverOnce(messages, send)

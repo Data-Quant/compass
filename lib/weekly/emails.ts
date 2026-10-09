@@ -1,16 +1,12 @@
 import { escapeHtml } from '../sanitize'
 
-const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`
+export const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? '' : 's'}`
 
-/** Monday's questions email and the daily reminder. Every interpolated value is escaped. */
-export function renderQuestionsEmail(input: { name: string; newCount: number; openCount: number; appUrl: string; reminder: boolean }): { subject: string; html: string } {
+/** Monday's questions email. Every interpolated value is escaped. */
+export function renderQuestionsEmail(input: { name: string; newCount: number; openCount: number; appUrl: string }): { subject: string; html: string } {
   const link = `${input.appUrl.replace(/\/$/, '')}/evaluations/weekly`
-  const subject = input.reminder
-    ? `Reminder: ${plural(input.openCount, 'evaluation question')} ${input.openCount === 1 ? 'is' : 'are'} waiting`
-    : 'Your evaluation questions for this week'
-  const lead = input.reminder
-    ? `You have ${plural(input.openCount, 'evaluation question')} waiting.`
-    : `You have ${plural(input.newCount, 'new question')} this week (${input.openCount} open in total).`
+  const subject = 'Your evaluation questions for this week'
+  const lead = `You have ${plural(input.newCount, 'new question')} this week (${input.openCount} open in total), due Sunday.`
   const html =
     '<div style="font-family:Arial,sans-serif;font-size:14px;color:#111;max-width:600px">' +
     `<p>Hi ${escapeHtml(input.name)},</p><p>${escapeHtml(lead)} Each one takes a few seconds: pick the statement that best fits what you have seen.</p>` +
@@ -19,7 +15,7 @@ export function renderQuestionsEmail(input: { name: string; newCount: number; op
   return { subject, html }
 }
 
-function layout(name: string, paragraphs: string[], link: string, button: string): string {
+export function layout(name: string, paragraphs: string[], link: string, button: string): string {
   return (
     '<div style="font-family:Arial,sans-serif;font-size:14px;color:#111;max-width:600px">' +
     `<p>Hi ${escapeHtml(name)},</p>` +
@@ -27,7 +23,7 @@ function layout(name: string, paragraphs: string[], link: string, button: string
     `<p><a href="${escapeHtml(link)}" style="display:inline-block;padding:10px 16px;background:#111;color:#fff;border-radius:6px;text-decoration:none">${escapeHtml(button)}</a></p></div>`
   )
 }
-const base = (appUrl: string) => appUrl.replace(/\/$/, '')
+export const base = (appUrl: string): string => appUrl.replace(/\/$/, '')
 
 const MAX_EMAIL_ROWS = 50
 
@@ -108,11 +104,72 @@ export function renderPeerOutcomeEmail(input: { name: string; peerName: string; 
   }
 }
 
+type Change = { action: 'ADD' | 'REMOVE'; relation: 'PEER' | 'LEAD' | 'REPORT' }
+/** "add Cara Lindqvist to your team", from the requester's side. */
+const yourChange = (c: Change, other: string) => `${ACTION_WORDS[c.action]} ${other} ${RELATION_WORDS[c.relation][c.action === 'ADD' ? 0 : 1]}`
+/** "add Cara Lindqvist to their team", about the requester. */
+const theirChange = (c: Change, other: string) => `${ACTION_WORDS[c.action]} ${other} ${LIST_WORDS[c.relation][c.action === 'ADD' ? 0 : 1]}`
+const HR_REQUESTS = '/admin/evaluation-round?tab=people'
+
+/** A lead or team change was received (UX spec, section 13): who looks at it next. */
+export function renderRequestReceivedEmail(input: Change & { name: string; otherName: string; leadName: string | null; appUrl: string }): { subject: string; html: string } {
+  return {
+    subject: `We got your request: ${yourChange(input, input.otherName)}`,
+    html: layout(input.name, [
+      escapeHtml(input.leadName ? `${input.leadName} reviews it first, then HR decides.` : 'HR decides, and you will hear the outcome.'),
+      escapeHtml('You can follow it, or cancel it, on your evaluations page.'),
+    ], `${base(input.appUrl)}/evaluations/weekly`, 'See your request'),
+  }
+}
+
+/** A request is HR's to decide: straight away with no lead to review it, or once the lead has. */
+export function renderRequestForHrEmail(input: Change & { name: string; requesterName: string; otherName: string; lead: { name: string; agrees: boolean; note: string | null } | null; appUrl: string }): { subject: string; html: string } {
+  const lead = input.lead
+  const review = !lead
+    ? 'No lead reviews this one first, so it came straight to you.'
+    : `${lead.name} ${lead.agrees ? 'agrees' : 'disagrees'}${lead.note ? `: ${lead.note}` : '.'}`
+  return {
+    subject: `To decide: ${input.requesterName} asked to ${theirChange(input, input.otherName)}`,
+    html: layout(input.name, [escapeHtml(review)], `${base(input.appUrl)}${HR_REQUESTS}`, 'Decide'),
+  }
+}
+
+/** The peer said whether they work with the requester: for the lead who reviews the request, and HR. */
+export function renderPeerReplyEmail(input: { name: string; peerName: string; requesterName: string; worksTogether: boolean; forHr: boolean; appUrl: string }): { subject: string; html: string } {
+  return {
+    subject: `${input.peerName} says they ${input.worksTogether ? 'do' : 'don’t'} work with ${input.requesterName}`,
+    html: layout(input.name, [
+      escapeHtml(`This is about ${input.requesterName}’s request to change their peers. It is shown with the request and does not decide it.`),
+    ], `${base(input.appUrl)}${input.forHr ? HR_REQUESTS : '/evaluations/weekly'}`, input.forHr ? 'See the request' : 'Open evaluations'),
+  }
+}
+
+/** HR decided a change about this person: a peer hears either way; a lead or team member hears when it is applied. */
+export function renderChangeForOtherEmail(input: Change & { name: string; requesterName: string; periodName: string; approved: boolean; note?: string | null; appUrl: string }): { subject: string; html: string } {
+  const who = input.requesterName
+  const add = input.action === 'ADD'
+  const applied: Record<Change['relation'], string> = {
+    PEER: add ? `${who} is now your peer for ${input.periodName}` : `${who} is no longer your peer for ${input.periodName}`,
+    // The requester changed their lead: this person is the lead.
+    LEAD: add ? `${who} is now on your team for ${input.periodName}` : `${who} is no longer on your team for ${input.periodName}`,
+    // The requester changed their team: this person is the team member.
+    REPORT: add ? `Your lead for ${input.periodName} is now ${who}` : `${who} is no longer your lead for ${input.periodName}`,
+  }
+  const subject = input.approved ? applied[input.relation] : `Not approved: ${who}’s request about you`
+  return {
+    subject,
+    html: layout(input.name, [
+      escapeHtml(input.approved ? `${subject}. Your evaluation questions follow it.` : `HR did not approve ${who}’s request to ${add ? 'add you as a peer' : 'remove you from their peers'}.`),
+      ...(input.note ? [`Reason: <em>${escapeHtml(input.note)}</em>`] : []),
+    ], `${base(input.appUrl)}/evaluations/weekly`, 'See your lists'),
+  }
+}
+
 /** Pre-evaluation: who someone works with for the quarter, and how to ask for a peer change. */
-export function renderMappingEmail(input: { name: string; periodName: string; leads: string[]; reports: string[]; peers: string[]; appUrl: string }): { subject: string; html: string } {
+export function renderMappingEmail(input: { name: string; periodName: string; leads: string[]; reports: string[]; peers: string[]; deadline?: string | null; appUrl: string }): { subject: string; html: string } {
   const list = (names: string[]) => (names.length ? names.map(escapeHtml).join(', ') : 'None')
   return {
-    subject: `Your evaluation mapping for ${input.periodName}`,
+    subject: input.deadline ? `Check your ${input.periodName} evaluation lists by ${input.deadline}` : `Your evaluation mapping for ${input.periodName}`,
     html: layout(input.name, [
       escapeHtml(`Here is who you work with for ${input.periodName}. You will answer short weekly questions about these people, and they about you.`),
       `<strong>Your lead:</strong> ${list(input.leads)}`,
@@ -123,8 +180,14 @@ export function renderMappingEmail(input: { name: string; periodName: string; le
   }
 }
 
-/** A change request nobody decided before the round opened. */
-export function renderRequestExpiredEmail(input: { name: string; otherName: string; appUrl: string }): { subject: string; html: string } {
+/** A change request nobody decided before the round opened; `requestedBy` when telling the peer it was about. */
+export function renderRequestExpiredEmail(input: { name: string; otherName: string; requestedBy?: string; appUrl: string }): { subject: string; html: string } {
+  if (input.requestedBy) {
+    return {
+      subject: `${input.requestedBy}’s request about you was not decided in time`,
+      html: layout(input.name, [escapeHtml(`${input.requestedBy}’s request about you was not decided before evaluations started, so nothing changed.`)], `${base(input.appUrl)}/evaluations/weekly`, 'See your lists'),
+    }
+  }
   return {
     subject: 'Your evaluation list request was not decided in time',
     html: layout(input.name, [

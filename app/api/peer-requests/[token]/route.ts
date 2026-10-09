@@ -39,11 +39,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     await limit(request)
     const input = peerVoteSchema.parse(await request.json())
     const { token } = await params
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || request.nextUrl.origin
     if ('reply' in input) {
-      await replyToPeerRequest(token, input.reply, new Date())
+      await replyToPeerRequest(token, input.reply, new Date(), sendMail, appUrl)
       return NextResponse.json({ success: true })
     }
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || request.nextUrl.origin
     return NextResponse.json({ success: true, ...(await voteOnPeerRequest(token, input.decision, input.note, new Date(), sendMail, appUrl)) })
   } catch (error) {
     return weeklyErrorResponse(error)
