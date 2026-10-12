@@ -4,7 +4,10 @@ import { renderQuestionsEmail } from '../lib/weekly/emails'
 import { renderDueTodayEmail, renderRoundOpenedEmail } from '../lib/weekly/emails-round'
 
 test('the round-opened email says in red that evaluations are open and when they are due', () => {
-  const email = renderRoundOpenedEmail({ name: 'Ana', periodName: 'Q4 2026', weeks: 14, closesOn: '3 Jan 2027', firstDueOn: 'Sun 4 Oct', appUrl: 'https://compass.example' })
+  const email = renderRoundOpenedEmail({ name: 'Ana', periodName: 'Q4 2026', questionWeeks: 12, closesOn: '3 Jan 2027', firstDueOn: 'Sun 4 Oct', appUrl: 'https://compass.example' })
+  // New questions come in HR's question weeks only; the catch-up weeks are named separately.
+  assert.match(email.html, /Each Monday for 12 weeks/)
+  assert.match(email.html, /2 catch-up weeks/)
   assert.equal(email.subject, 'Q4 2026 evaluations are now open: first questions due Sun 4 Oct, closing 3 Jan 2027')
   const banner = email.html.match(/<div[^>]*#dc2626[^>]*>([\s\S]*?)<\/div>/)
   assert.ok(banner, 'a red banner leads the email')

@@ -75,13 +75,12 @@ export async function reviewReminderMessages(now: Date, appUrl: string): Promise
 export async function roundOpenedMessages(cycle: CycleWithPeriod, now: Date, appUrl: string): Promise<WeeklyEmailMessage[]> {
   const assignments = await weeklyAssignments(cycle.periodId)
   const people = await loadPeople(assignments.map((a) => a.evaluatorId))
-  const weeks = cycleWeeks(cycle)
   const closesOn = roundClosesOn(cycle)
   const firstDueOn = firstQuestionsDueOn(cycle, now)
   const optedIn = new Set((await prisma.weeklyParticipantOverride.findMany({ where: { cycleId: cycle.id, optIn: true }, select: { userId: true } })).map((o) => o.userId))
   return [...people.values()].filter((p) => evaluatorExclusion(p, now, { opensAt: roundOpensAt(cycle), optedIn: optedIn.has(p.id) }) === null).map((p) => ({
     userId: p.id, kind: 'weekly-round-opened' as const, dedupeKey: `weekly-round-opened:${cycle.id}:${p.id}`,
-    render: (name: string) => renderRoundOpenedEmail({ name, periodName: cycle.period.name, weeks, closesOn, firstDueOn, appUrl }),
+    render: (name: string) => renderRoundOpenedEmail({ name, periodName: cycle.period.name, questionWeeks: cycle.questionWeeks, closesOn, firstDueOn, appUrl }),
   }))
 }
 

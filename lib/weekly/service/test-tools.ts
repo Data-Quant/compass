@@ -142,7 +142,7 @@ export async function sendRoundOpenedTo(
   const person = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } })
   if (!person?.email) throw new WeeklyError('This person has no email address', 409)
   const email = renderRoundOpenedEmail({
-    name: person.name, periodName: cycle.period.name, weeks: cycleWeeks(cycle), closesOn: roundClosesOn(cycle), firstDueOn: firstQuestionsDueOn(cycle, now), appUrl,
+    name: person.name, periodName: cycle.period.name, questionWeeks: cycle.questionWeeks, closesOn: roundClosesOn(cycle), firstDueOn: firstQuestionsDueOn(cycle, now), appUrl,
   })
   try {
     await send(person.email, email.subject, email.html)
