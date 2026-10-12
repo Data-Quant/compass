@@ -11,6 +11,13 @@ export function formatKarachiDate(iso: string): string {
   return KARACHI_DATE.format(new Date(iso))
 }
 
+const KARACHI_DAY = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Karachi', weekday: 'short', day: 'numeric', month: 'short' })
+
+/** A nearby day with its weekday, such as "Sun 4 Oct". */
+export function formatKarachiDay(iso: string): string {
+  return KARACHI_DAY.format(new Date(iso)).replace(',', '')
+}
+
 export function weekLabel(cycle: CycleSummary): string {
   if (cycle.currentWeek < 1) return `Starts ${formatKarachiDate(cycle.weekOneStartsOn)}`
   const phase = cycle.currentWeek > cycle.questionWeeks ? ' · catch-up' : ''

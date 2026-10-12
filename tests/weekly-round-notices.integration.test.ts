@@ -62,9 +62,9 @@ test('opening the round tells every evaluator how long it runs and when it close
   const mail = mailbox()
   await openRound(HR_ACTOR, periodId, at(1), mail.send, APP)
   assert.deepEqual(to(mail, W.ben.id).filter((s) => /not decided/.test(s)), ['Ana Torvik’s request about you was not decided in time'], 'the peer hears it lapsed')
-  const started = mail.sent.filter((m) => /evaluations have started/.test(m.subject))
+  const started = mail.sent.filter((m) => /evaluations are now open/.test(m.subject))
   assert.deepEqual(started.map((m) => m.to).sort(), [email(W.ana.id), email(W.ben.id), email(W.lead.id)])
-  assert.equal(started[0].subject, 'Q4 2026 (weekly test) evaluations have started: 13 weeks, closing 3 Jan 2027')
+  assert.match(started[0].subject, /^Q4 2026 \(weekly test\) evaluations are now open: first questions due Sun \d+ \w+, closing 3 Jan 2027$/)
 })
 
 test('questions come on Monday, and only the due day reminds: "due today" on Sunday, nothing in between', WEEKLY_DB_TEST, async () => {
@@ -186,7 +186,7 @@ test('"started" and "closed" emails that failed are sent by the next daily run',
   assert.equal(await prisma.weeklyAuditEvent.count({ where: { action: 'ROUND_OPEN' } }), 1, 'the open is recorded even when emails fail')
   const next = mailbox()
   await runWeeklyDailyJob(next.send, APP, at(1, 2))
-  assert.equal(next.sent.filter((m) => /have started/.test(m.subject)).length, 3)
+  assert.equal(next.sent.filter((m) => /are now open/.test(m.subject)).length, 3)
   const cycle = await prisma.weeklyCycle.findUniqueOrThrow({ where: { periodId } })
   await prisma.weeklyPrompt.updateMany({ where: { cycleId: cycle.id }, data: { status: 'EXPIRED' } })
   await prisma.weeklyCycle.update({ where: { id: cycle.id }, data: { status: 'CLOSED', closedAt: at(14) } })

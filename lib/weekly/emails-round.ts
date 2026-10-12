@@ -16,13 +16,27 @@ export function renderReviewReminderEmail(input: { name: string; periodName: str
   }
 }
 
-export function renderRoundOpenedEmail(input: { name: string; periodName: string; weeks: number; closesOn: string; appUrl: string }): Email {
+/** A red box that cannot be missed; inline styles so it holds up in every mail client. */
+function redNotice(title: string, line: string): string {
+  return (
+    '<div style="margin:16px 0;padding:14px 16px;border:2px solid #dc2626;border-radius:8px;background:#fef2f2;color:#b91c1c">' +
+    `<p style="margin:0;font-size:17px;font-weight:bold">${escapeHtml(title)}</p>` +
+    `<p style="margin:6px 0 0;font-size:14px;font-weight:bold">${escapeHtml(line)}</p>` +
+    '</div>'
+  )
+}
+
+/** firstDueOn: the Sunday this week's questions are due, such as "Sun 4 Oct". */
+export function renderRoundOpenedEmail(input: { name: string; periodName: string; weeks: number; closesOn: string; firstDueOn: string; appUrl: string }): Email {
   return {
-    subject: `${input.periodName} evaluations have started: ${input.weeks} weeks, closing ${input.closesOn}`,
+    subject: `${input.periodName} evaluations are now open: first questions due ${input.firstDueOn}, closing ${input.closesOn}`,
     html: layout(input.name, [
-      escapeHtml('Each Monday you get a few short questions about the people you work with. Pick the statement that fits what you have seen; each takes a few seconds.'),
+      escapeHtml(`Each Monday for ${input.weeks} weeks you get a few short questions about the people you work with. Pick the statement that fits what you have seen; each takes a few seconds.`),
       escapeHtml(`Answer each week’s questions by Sunday. Anything you miss stays open until the round closes on ${input.closesOn}.`),
-    ], `${base(input.appUrl)}${MY_PAGE}`, 'See this week’s questions'),
+    ], `${base(input.appUrl)}${MY_PAGE}`, 'See this week’s questions', redNotice(
+      `${input.periodName} evaluations are now open`,
+      `Deadline: this week’s questions by ${input.firstDueOn}; everything by ${input.closesOn}, when the round closes.`,
+    )),
   }
 }
 

@@ -3,12 +3,12 @@
 // dedupe keys make every one of them safe to build again on the next run.
 import { prisma } from '@/lib/db'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
-import { cycleWeeks, weekStartsAt } from '../calendar'
+import { cycleWeeks, effectiveWeek, weekStartsAt } from '../calendar'
 import { evaluateeExclusion, evaluatorExclusion, isOutsideRedesign } from '../eligibility'
 import {
   renderBehindEmail, renderHrDigestEmail, renderJoinerEmail, renderReviewReminderEmail, renderRoundClosedEmail, renderRoundOpenedEmail, renderTeamBehindEmail,
 } from '../emails-round'
-import { formatKarachiDate } from '../format'
+import { formatKarachiDate, formatKarachiDay } from '../format'
 import { isWeeklyRelationshipType } from '../perspectives'
 import { OPEN_REQUEST_STATUSES } from '../request-status'
 import { addWorkingDays } from '../working-days'
@@ -30,6 +30,12 @@ const ANSWERED_PROMPT = ['SUBMITTED', 'NOT_OBSERVED'] as const
 /** The last moment of the round's last week, as people read it ("3 Jan 2027"). */
 export function roundClosesOn(cycle: Pick<CycleWithPeriod, 'weekOneStartsOn' | 'questionWeeks'>): string {
   return formatKarachiDate(new Date(weekStartsAt(cycle.weekOneStartsOn, cycleWeeks(cycle) + 1).getTime() - 1).toISOString())
+}
+
+/** The Sunday the current week's questions are due ("Sun 4 Oct"); week 1's when the round opens ahead of it. */
+export function firstQuestionsDueOn(cycle: Pick<CycleWithPeriod, 'weekOneStartsOn' | 'simulatedWeek'>, now: Date): string {
+  const week = Math.max(1, effectiveWeek(cycle.weekOneStartsOn, cycle.simulatedWeek, now))
+  return formatKarachiDay(new Date(weekStartsAt(cycle.weekOneStartsOn, week + 1).getTime() - 1).toISOString())
 }
 
 async function weeklyAssignments(periodId: string) {
@@ -71,10 +77,11 @@ export async function roundOpenedMessages(cycle: CycleWithPeriod, now: Date, app
   const people = await loadPeople(assignments.map((a) => a.evaluatorId))
   const weeks = cycleWeeks(cycle)
   const closesOn = roundClosesOn(cycle)
+  const firstDueOn = firstQuestionsDueOn(cycle, now)
   const optedIn = new Set((await prisma.weeklyParticipantOverride.findMany({ where: { cycleId: cycle.id, optIn: true }, select: { userId: true } })).map((o) => o.userId))
   return [...people.values()].filter((p) => evaluatorExclusion(p, now, { opensAt: roundOpensAt(cycle), optedIn: optedIn.has(p.id) }) === null).map((p) => ({
     userId: p.id, kind: 'weekly-round-opened' as const, dedupeKey: `weekly-round-opened:${cycle.id}:${p.id}`,
-    render: (name: string) => renderRoundOpenedEmail({ name, periodName: cycle.period.name, weeks, closesOn, appUrl }),
+    render: (name: string) => renderRoundOpenedEmail({ name, periodName: cycle.period.name, weeks, closesOn, firstDueOn, appUrl }),
   }))
 }
 

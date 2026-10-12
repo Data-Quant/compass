@@ -15,10 +15,12 @@ export function renderQuestionsEmail(input: { name: string; newCount: number; op
   return { subject, html }
 }
 
-export function layout(name: string, paragraphs: string[], link: string, button: string): string {
+/** callout is HTML shown straight after the greeting, before the paragraphs; callers escape what goes in it. */
+export function layout(name: string, paragraphs: string[], link: string, button: string, callout = ''): string {
   return (
     '<div style="font-family:Arial,sans-serif;font-size:14px;color:#111;max-width:600px">' +
     `<p>Hi ${escapeHtml(name)},</p>` +
+    callout +
     paragraphs.map((p) => `<p>${p}</p>`).join('') +
     `<p><a href="${escapeHtml(link)}" style="display:inline-block;padding:10px 16px;background:#111;color:#fff;border-radius:6px;text-decoration:none">${escapeHtml(button)}</a></p></div>`
   )
