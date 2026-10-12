@@ -14,6 +14,9 @@ import { resolveActiveModel } from './ai-settings'
 import { runScoring, type ScoringRunSummary } from './scoring'
 import { PERSPECTIVE_LABELS } from '../perspectives'
 import { nextVariant, pickTopic } from '../scheduler'
+import { renderRoundOpenedEmail } from '../emails-round'
+import type { WeeklySendMail } from './notifications'
+import { firstQuestionsDueOn, roundClosesOn } from './round-notices'
 
 /** Preview-only: refuses unless WEEKLY_TEST_TOOLS is on, and only for HR. */
 export function assertTestTools(actor: WeeklyActor): void {
@@ -125,6 +128,25 @@ export async function askPairNow(actor: WeeklyActor, cycleId: string, pair: { ev
   ])
   await recordAudit(prisma, { cycleId, actorId: actor.id, actorRole: 'HR', action: 'TEST_ASK_PAIR', objectType: 'User', objectId: pair.evaluateeId, after: { ...pair, slotId: slot.id } })
   return { prompts: 1 }
+}
+
+/**
+ * For demos: the "evaluations are open" email, to the one person HR picks. The preview sends no other email, so this
+ * goes straight to the mailer for that one address, never through the round's send-to-everyone path.
+ */
+export async function sendRoundOpenedTo(
+  actor: WeeklyActor, cycleId: string, userId: string, now: Date, send: WeeklySendMail, appUrl: string,
+): Promise<{ to: string }> {
+  assertTestTools(actor)
+  const cycle = await loadCycle(cycleId)
+  const person = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } })
+  if (!person?.email) throw new WeeklyError('This person has no email address', 409)
+  const email = renderRoundOpenedEmail({
+    name: person.name, periodName: cycle.period.name, weeks: cycleWeeks(cycle), closesOn: roundClosesOn(cycle), firstDueOn: firstQuestionsDueOn(cycle, now), appUrl,
+  })
+  await send(person.email, email.subject, email.html)
+  await recordAudit(prisma, { cycleId, actorId: actor.id, actorRole: 'HR', action: 'TEST_SEND_ROUND_OPENED', objectType: 'User', objectId: userId })
+  return { to: person.email }
 }
 
 export interface PairOption { evaluatee: { id: string; name: string }; perspective: string }

@@ -20,6 +20,7 @@ export function TestToolsTab() {
   const { cycles, cycleId, setCycleId } = useCycles()
   const [people, setPeople] = useState<ParticipantRow[]>([])
   const [personId, setPersonId] = useState('')
+  const [emailTo, setEmailTo] = useState('')
   const [pair, setPair] = useState({ evaluatorId: '', evaluateeId: '' })
   const [pairOptions, setPairOptions] = useState<Array<{ evaluatee: { id: string; name: string }; perspective: string }>>([])
 
@@ -70,7 +71,7 @@ export function TestToolsTab() {
         <CardContent className="space-y-4 p-4">
           <div>
             <p className="font-semibold">Preview test tools</p>
-            <p className="text-sm text-muted-foreground">These change data on this preview only. No emails are sent from the preview.</p>
+            <p className="text-sm text-muted-foreground">These change data on this preview only. The preview sends no emails, apart from the one-person email below.</p>
           </div>
           <CyclePicker cycles={cycles} cycleId={cycleId} onChange={setCycleId} />
           <div className="flex flex-wrap gap-2">
@@ -104,6 +105,25 @@ export function TestToolsTab() {
               </Select>
               <Button disabled={busy || !pair.evaluatorId} variant="outline" onClick={() => void run({ action: 'release-for', cycleId, evaluatorId: pair.evaluatorId }, (r) => (r.evaluatorsReleased === 0 ? `Week ${String(r.week)} was already released for them` : `Week ${String(r.week)}: ${questions(Number(r.promptsCreated))}`))}>Release this week for them</Button>
               <Button disabled={busy || !pair.evaluatorId || !pair.evaluateeId} onClick={() => void run({ action: 'ask-pair', cycleId, ...pair }, () => 'Question asked')}>Ask this pair now</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      {cycleId && (
+        <Card>
+          <CardContent className="space-y-3 p-4">
+            <div>
+              <p className="font-semibold">Email one person “evaluations are open”</p>
+              <p className="text-sm text-muted-foreground">Sends the email everyone gets when the round opens, to the one person you choose and nobody else. Its button opens this preview.</p>
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              <Select value={emailTo} onValueChange={setEmailTo}>
+                <SelectTrigger className="w-60" aria-label="Email to"><SelectValue placeholder="Choose a person" /></SelectTrigger>
+                <SelectContent>{people.map((p) => <SelectItem key={p.person.id} value={p.person.id}>{p.person.name}</SelectItem>)}</SelectContent>
+              </Select>
+              <Button disabled={busy || !emailTo} variant="outline" onClick={() => void run({ action: 'send-round-opened', cycleId, userId: emailTo }, (r) => `Email sent to ${String(r.to)}`)}>
+                {emailTo ? `Send to ${people.find((p) => p.person.id === emailTo)?.person.name ?? 'them'}` : 'Send'}
+              </Button>
             </div>
           </CardContent>
         </Card>

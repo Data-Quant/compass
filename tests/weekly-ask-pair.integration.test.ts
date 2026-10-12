@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 import { prisma } from '../lib/db'
 import { WeeklyError } from '../lib/weekly/service/errors'
 import { releaseWeek } from '../lib/weekly/service/release'
-import { askPairNow, pairsFor, releaseWeekFor } from '../lib/weekly/service/test-tools'
+import { askPairNow, pairsFor, releaseWeekFor, sendRoundOpenedTo } from '../lib/weekly/service/test-tools'
 import { at, HR_ACTOR, startedCycle } from './helpers/weekly-fixtures'
-import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST } from './helpers/weekly-test-db'
+import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST, weeklyActor } from './helpers/weekly-test-db'
 
 const isError = (status: number) => (e: unknown) => e instanceof WeeklyError && e.status === status
 let cycleId = ''
@@ -53,6 +53,24 @@ test('only mapped pairs, only with test tools on', WEEKLY_DB_TEST, async () => {
   await assert.rejects(askPairNow(HR_ACTOR, cycleId, { evaluatorId: W.cara.id, evaluateeId: W.lead.id }, at(1)), isError(409))
   delete process.env.WEEKLY_TEST_TOOLS
   await assert.rejects(askPairNow(HR_ACTOR, cycleId, { evaluatorId: W.ana.id, evaluateeId: W.lead.id }, at(1)), isError(404))
+})
+
+test('the "evaluations are open" email goes to the one chosen person only, though the preview sends no other email', WEEKLY_DB_TEST, async () => {
+  delete process.env.WEEKLY_SEND_EMAILS
+  const sent: Array<{ to: string; subject: string; html: string }> = []
+  const send = async (to: string, subject: string, html: string) => { sent.push({ to, subject, html }) }
+  const result = await sendRoundOpenedTo(HR_ACTOR, cycleId, W.ana.id, at(1), send, 'https://preview.example')
+  const ana = await prisma.user.findUniqueOrThrow({ where: { id: W.ana.id }, select: { email: true } })
+  assert.deepEqual(sent.map((m) => m.to), [ana.email])
+  assert.equal(result.to, ana.email)
+  assert.match(sent[0].subject, /evaluations are now open/)
+  assert.match(sent[0].html, /#dc2626/)
+  assert.match(sent[0].html, /href="https:\/\/preview\.example\/evaluations\/weekly"/)
+  // Only HR, and only where the test tools are on.
+  await assert.rejects(sendRoundOpenedTo(weeklyActor(W.ana), cycleId, W.ben.id, at(1), send, 'https://preview.example'), isError(403))
+  delete process.env.WEEKLY_TEST_TOOLS
+  await assert.rejects(sendRoundOpenedTo(HR_ACTOR, cycleId, W.ben.id, at(1), send, 'https://preview.example'), isError(404))
+  assert.equal(sent.length, 1, 'nobody else was emailed')
 })
 
 test('the pair picker lists only the people an evaluator really evaluates, with the relationship', WEEKLY_DB_TEST, async () => {
