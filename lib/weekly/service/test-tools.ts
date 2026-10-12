@@ -144,7 +144,13 @@ export async function sendRoundOpenedTo(
   const email = renderRoundOpenedEmail({
     name: person.name, periodName: cycle.period.name, weeks: cycleWeeks(cycle), closesOn: roundClosesOn(cycle), firstDueOn: firstQuestionsDueOn(cycle, now), appUrl,
   })
-  await send(person.email, email.subject, email.html)
+  try {
+    await send(person.email, email.subject, email.html)
+  } catch (error) {
+    // HR needs the mailer's reason (no login set on this deployment, login refused) to fix it; it holds no secrets.
+    const reason = error instanceof Error ? error.message : 'unknown error'
+    throw new WeeklyError(`The email could not be sent: ${reason.slice(0, 200)}`, 502)
+  }
   await recordAudit(prisma, { cycleId, actorId: actor.id, actorRole: 'HR', action: 'TEST_SEND_ROUND_OPENED', objectType: 'User', objectId: userId })
   return { to: person.email }
 }

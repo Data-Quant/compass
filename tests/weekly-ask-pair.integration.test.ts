@@ -66,6 +66,9 @@ test('the "evaluations are open" email goes to the one chosen person only, thoug
   assert.match(sent[0].subject, /evaluations are now open/)
   assert.match(sent[0].html, /#dc2626/)
   assert.match(sent[0].html, /href="https:\/\/preview\.example\/evaluations\/weekly"/)
+  // A mailer failure is reported with its reason, not as a bare server error.
+  const refused = async () => { throw new Error('Missing credentials for "PLAIN"') }
+  await assert.rejects(sendRoundOpenedTo(HR_ACTOR, cycleId, W.ben.id, at(1), refused, 'https://preview.example'), (e: unknown) => isError(502)(e) && /Missing credentials/.test((e as Error).message))
   // Only HR, and only where the test tools are on.
   await assert.rejects(sendRoundOpenedTo(weeklyActor(W.ana), cycleId, W.ben.id, at(1), send, 'https://preview.example'), isError(403))
   delete process.env.WEEKLY_TEST_TOOLS
