@@ -27,7 +27,6 @@ import {
   Handshake,
   Radio,
   HelpCircle,
-  Link2,
   Sliders,
   BarChart3,
   FileText,
@@ -126,7 +125,6 @@ export const ADMIN_SIDEBAR: SidebarConfig = {
       defaultOpen: true,
       items: [
         { label: 'Questions', href: '/admin/questions', icon: HelpCircle },
-        { label: 'Mappings', href: '/admin/mappings', icon: Link2 },
         { label: 'Weightages', href: '/admin/settings', icon: Sliders },
         { label: 'Reports', href: '/admin/reports', icon: FileText },
       ],

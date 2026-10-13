@@ -49,8 +49,11 @@ import { Modal } from '@/components/ui/modal'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
+import { MappingsTable } from '@/components/org-chart/MappingsTable'
 
 type ViewMode = 'focused' | 'overview' | 'hierarchy'
+/** The page shows the mapping graph, or the same mappings as an editable table with the spreadsheet import. */
+type Display = 'graph' | 'table'
 type OrgChartApiResponse = { users: OrgChartUser[]; mappings: OrgChartMapping[]; meta: OrgChartMeta }
 type OrgChartNodeData = { label: string; subtitle: string; color: string; department: string | null; userId?: string }
 type MappingFormState = { evaluatorId: string; evaluateeId: string; relationshipType: RelationshipType }
@@ -200,6 +203,7 @@ export default function OrgChartPage() {
   const [meta, setMeta] = useState<OrgChartMeta>(EMPTY_META)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [display, setDisplay] = useState<Display>('graph')
   const [viewMode, setViewMode] = useState<ViewMode>('focused')
   const [relationshipFilter, setRelationshipFilter] = useState<RelationshipType | 'all'>('all')
   const [searchTerm, setSearchTerm] = useState('')
@@ -235,6 +239,18 @@ export default function OrgChartPage() {
   }, [])
 
   useEffect(() => { void loadData() }, [loadData])
+  // ?view=table opens the table, so other pages can link straight to it.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('view') === 'table') setDisplay('table')
+  }, [])
+
+  function changeDisplay(next: Display) {
+    setDisplay(next)
+    const url = new URL(window.location.href)
+    if (next === 'table') url.searchParams.set('view', 'table')
+    else url.searchParams.delete('view')
+    window.history.replaceState(null, '', url)
+  }
   useEffect(() => () => { if (saveTimeout.current) clearTimeout(saveTimeout.current) }, [])
 
   const sortedUsers = useMemo(() => sortUsersByName(users), [users])
@@ -557,15 +573,27 @@ export default function OrgChartPage() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="text-xs uppercase tracking-[0.26em] text-muted-foreground">Admin Workspace</div>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">Org Mapping Graph</h1>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight">Org Chart</h1>
           <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-            This view shows evaluator mappings as they actually exist. Focus on one person, inspect the full company graph, or switch to the Team Lead hierarchy lens for reporting-only structure.
+            {display === 'graph'
+              ? 'Evaluator mappings as they actually exist. Focus on one person, inspect the full company graph, or switch to the Team Lead hierarchy lens for reporting-only structure.'
+              : 'Every evaluator mapping in one list. Search, filter, add, edit or delete mappings, or import them from the mappings workbook.'}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => void loadData(true)} disabled={refreshing}><RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />Refresh</Button>
-          <Button variant="outline" onClick={handleResetPositions} disabled={viewMode === 'focused'}><GitBranch className="h-4 w-4" />Reset Layout</Button>
-          <Button onClick={() => openAddMapping(selectedUser ? { evaluateeId: selectedUser.id } : undefined)}><Plus className="h-4 w-4" />Add Mapping</Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Tabs value={display} onValueChange={(value) => changeDisplay(value as Display)}>
+            <TabsList>
+              <TabsTrigger value="graph">Graph</TabsTrigger>
+              <TabsTrigger value="table">Table</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          {display === 'graph' && (
+            <>
+              <Button variant="outline" onClick={() => void loadData(true)} disabled={refreshing}><RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />Refresh</Button>
+              <Button variant="outline" onClick={handleResetPositions} disabled={viewMode === 'focused'}><GitBranch className="h-4 w-4" />Reset Layout</Button>
+              <Button onClick={() => openAddMapping(selectedUser ? { evaluateeId: selectedUser.id } : undefined)}><Plus className="h-4 w-4" />Add Mapping</Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -585,6 +613,10 @@ export default function OrgChartPage() {
         ))}
       </div>
 
+      {display === 'table' ? (
+        <MappingsTable onChanged={() => void loadData(true)} />
+      ) : (
+      <>
       <Card className="border-white/10 bg-[#111318]">
         <CardHeader className="pb-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -772,6 +804,8 @@ export default function OrgChartPage() {
           </Card>
         </div>
       </div>
+      </>
+      )}
 
       <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingMapping(null) }} title={editingMapping ? 'Edit Mapping' : 'Add Mapping'}>
         <form onSubmit={handleSubmit} className="space-y-4">
