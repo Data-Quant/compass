@@ -1,21 +1,12 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-
-const PUBLIC_PATHS = [
-  '/login',
-  '/api/auth/login',
-  '/api/auth/csrf',
-  '/api/csp-report',
-  '/_next',
-  '/favicon.ico',
-  '/images',
-]
+import { bypassesSessionCheck } from '@/lib/middleware-paths'
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Allow public paths
-  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
+  // Public pages, and cron routes that verify their own secret
+  if (bypassesSessionCheck(pathname)) {
     return NextResponse.next()
   }
 
