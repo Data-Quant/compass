@@ -1,6 +1,6 @@
 // Request validation (zod) and pure campaign-definition checks.
 import { z } from 'zod'
-import { parseCalendarDate } from '@/lib/kpi/calendar'
+import { parseCalendarDate } from './calendar'
 import { audienceSchema, isAudienceEmpty, type AudienceRules } from './audience'
 import { cycleLengthError } from './recurrence'
 import {

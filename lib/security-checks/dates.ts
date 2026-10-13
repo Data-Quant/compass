@@ -7,7 +7,7 @@ import {
   karachiCalendarDate,
   parseCalendarDate,
   type CalendarDate,
-} from '@/lib/kpi/calendar'
+} from './calendar'
 
 export const DAY_MS = 24 * 60 * 60 * 1000
 
