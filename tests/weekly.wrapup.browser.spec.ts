@@ -38,7 +38,7 @@ async function ensureRunningCycle(page: Page): Promise<void> {
 test('HR opens the forms early and the C-Level evaluator submits one', async ({ page }) => {
   await login(page, 'wkle-hr')
   await ensureRunningCycle(page)
-  await page.goto('/admin/weekly?tab=close')
+  await page.goto('/admin/evaluation-round?tab=results')
   await page.getByRole('button', { name: 'Open forms now' }).click()
   await expect(page.getByText('Forms are open')).toBeVisible()
   await login(page, 'wkle-chief')
@@ -56,7 +56,7 @@ test('HR opens the forms early and the C-Level evaluator submits one', async ({ 
 
 test('HR settles the queue, drops empty groups, closes the quarter and publishes results', async ({ page }) => {
   await login(page, 'wkle-hr')
-  await page.goto('/admin/weekly')
+  await page.goto('/admin/evaluation-round')
   await page.getByRole('tab', { name: 'Test tools' }).click()
   await page.getByRole('button', { name: 'Settle everything for close' }).click()
   await expect(page.getByText(/ scored by hand$/)).toBeVisible({ timeout: 90000 })
@@ -78,7 +78,7 @@ test('Ana raises a challenge from her dashboard and HR resolves it', async ({ pa
   await page.getByRole('button', { name: 'Raise a challenge' }).click()
   await expect(page.getByText('Challenge raised')).toBeVisible()
   await login(page, 'wkle-hr')
-  await page.goto('/admin/weekly?tab=challenges')
+  await page.goto('/admin/evaluation-round?tab=results')
   await page.getByRole('button', { name: 'Open the challenge from E2E Weekly Ana' }).click()
   await page.getByLabel('Resolution').fill('The C-Level rating reflects the evidence we have for this quarter.')
   await page.getByRole('button', { name: 'Resolve challenge' }).click()

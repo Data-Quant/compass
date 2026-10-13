@@ -5,7 +5,6 @@ import { RELATIONSHIP_WORDS } from '@/lib/weekly/perspectives'
 import type { InboxResponse } from '@/lib/weekly/view-types'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { toast } from 'sonner'
 import { useLayoutUser } from '@/components/layout/SidebarLayout'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -31,7 +30,6 @@ import {
   PackageSearch,
   Users,
   MessageCircle,
-  ClipboardList,
 } from 'lucide-react'
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -94,20 +92,6 @@ interface PendingTeamLeadFormItem {
   onboardingDate: string
 }
 
-interface PreEvaluationTask {
-  id: string
-  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'OVERDUE' | 'OVERRIDDEN'
-  requiredQuestionCount: number
-  progressCount: number
-  totalSections: number
-  period: {
-    id: string
-    name: string
-    startDate: string
-    reviewStartDate: string
-  }
-}
-
 // â”€â”€â”€ Animation helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const stagger = {
@@ -147,7 +131,6 @@ export default function DashboardPage() {
   const [myEquipment, setMyEquipment] = useState<MyEquipmentItem[]>([])
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [pendingTeamLeadForms, setPendingTeamLeadForms] = useState<PendingTeamLeadFormItem[]>([])
-  const [preEvaluationTask, setPreEvaluationTask] = useState<PreEvaluationTask | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -159,7 +142,6 @@ export default function DashboardPage() {
       loadUpcomingTeamLeaves(),
       loadMyEquipment(),
       loadTeamMembers(),
-      loadPreEvaluationTask(),
     ]
     // Role-specific data
     if (user.role === 'HR' || user.role === 'SECURITY') {
@@ -266,16 +248,6 @@ export default function DashboardPage() {
     }
   }
 
-  const loadPreEvaluationTask = async () => {
-    try {
-      const res = await fetch('/api/pre-evaluation/current')
-      const data = await res.json()
-      setPreEvaluationTask(data.prep || null)
-    } catch {
-      // silent
-    }
-  }
-
   // â”€â”€â”€ Computed stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const weeklyProgress = weekly?.progress ?? []
@@ -317,35 +289,6 @@ export default function DashboardPage() {
           {weekly?.cycle ? `${weekly.cycle.periodName} weekly evaluations` : 'Here\u2019s your overview'}
         </p>
       </motion.div>
-
-      {preEvaluationTask && preEvaluationTask.status !== 'COMPLETED' && (
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
-        >
-          <Card className="border-blue-500/20">
-            <CardContent className="p-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex items-start gap-3">
-                <div className="rounded-full bg-blue-500/10 p-2.5">
-                  <ClipboardList className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div>
-                  <p className="font-semibold text-foreground">Write your two team questions for {preEvaluationTask.period.name}</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Due before evaluations start on {new Date(preEvaluationTask.period.reviewStartDate).toLocaleDateString()}.
-                  </p>
-                </div>
-              </div>
-              <Button asChild>
-                <Link href="/evaluations/weekly" className="gap-1.5">
-                  Write them <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-        </motion.div>
-      )}
 
       <WeeklyQuestionsCard />
 

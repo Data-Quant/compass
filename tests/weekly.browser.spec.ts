@@ -33,7 +33,7 @@ async function answerFirstCard(page: Page): Promise<void> {
 
 test('HR loads the topics, approves them and starts a weekly quarter', async ({ page }) => {
   await login(page, 'wkle-hr')
-  await page.goto('/admin/weekly')
+  await page.goto('/admin/evaluation-round')
   await page.getByRole('tab', { name: 'Topics and profiles' }).click()
   await page.getByRole('button', { name: 'Sync from the question bank' }).click()
   await expect(page.getByText('Quality of Work', { exact: true })).toBeVisible()
@@ -53,7 +53,7 @@ test('HR loads the topics, approves them and starts a weekly quarter', async ({ 
 
 test('HR releases week 1 and answers as the lead through the test tools', async ({ page }) => {
   await login(page, 'wkle-hr')
-  await page.goto('/admin/weekly')
+  await page.goto('/admin/evaluation-round')
   await page.getByRole('tab', { name: 'Test tools' }).click()
   await page.getByRole('button', { name: 'Release next week now' }).click()
   await expect(page.getByText(/^Week 1 released/)).toBeVisible()
@@ -82,7 +82,7 @@ test('an evaluator answers their own question and sees it in their history', asy
 
 test('HR fills the rest with synthetic answers', async ({ page }) => {
   await login(page, 'wkle-hr')
-  await page.goto('/admin/weekly')
+  await page.goto('/admin/evaluation-round')
   await page.getByRole('tab', { name: 'Test tools' }).click()
   await page.getByRole('button', { name: 'Fill synthetic answers' }).click()
   await expect(page.getByText(/answers written$/)).toBeVisible()
