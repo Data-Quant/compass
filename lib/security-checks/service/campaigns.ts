@@ -2,12 +2,16 @@
 // clone-as-new-version, retire. Only Security Admins manage campaigns.
 import { randomUUID } from 'node:crypto'
 import type { Prisma, SecurityCampaign, SecurityCampaignQuestion, SecurityCampaignSubtask } from '@prisma/client'
+import { put } from '@vercel/blob'
+import { cleanDisplayName, safeStorageName, sniffEvidenceMime } from '../evidence'
+import { blobToken } from './blob-store'
 import { prisma } from '@/lib/db'
 import { canManageCampaigns, canViewConsole, type SecurityActor } from '../access'
 import { parseAudience } from '../audience'
 import { karachiDateKey, startOfKarachiDateKey } from '../dates'
 import {
   activationIssues,
+  CAMPAIGN_IMAGE_PREFIX,
   definitionIssues,
   LIVE_EDITABLE_FIELDS,
   usesAdminSubtasks,
@@ -236,6 +240,66 @@ export async function deleteDraftCampaign(actor: SecurityActor, id: string, db: 
 export async function getCampaign(actor: SecurityActor, id: string, db: Db = prisma): Promise<FullCampaign> {
   requireCapability(canViewConsole(actor))
   return loadFull(db, id)
+}
+
+export interface CampaignDetail {
+  id: string
+  status: string
+  version: number
+  lineageId: string
+  predecessorId: string | null
+  launchedAt: string | null
+  retiredAt: string | null
+  fields: CampaignFields
+  cycles: Array<{ id: string; number: number; openAt: string; deadline: string; scheduledCloseAt: string; actualCloseAt: string | null; status: string; taskCount: number }>
+}
+
+export async function campaignDetail(actor: SecurityActor, id: string, db: Db = prisma): Promise<CampaignDetail> {
+  const campaign = await getCampaign(actor, id, db)
+  const cycles = await db.securityCycle.findMany({ where: { campaignId: id }, orderBy: { number: 'desc' }, include: { _count: { select: { tasks: true } } } })
+  return {
+    id: campaign.id,
+    status: campaign.status,
+    version: campaign.version,
+    lineageId: campaign.lineageId,
+    predecessorId: campaign.predecessorId,
+    launchedAt: campaign.launchedAt?.toISOString() ?? null,
+    retiredAt: campaign.retiredAt?.toISOString() ?? null,
+    fields: fieldsOf(campaign),
+    cycles: cycles.map((cycle) => ({
+      id: cycle.id,
+      number: cycle.number,
+      openAt: cycle.openAt.toISOString(),
+      deadline: cycle.deadline.toISOString(),
+      scheduledCloseAt: cycle.scheduledCloseAt.toISOString(),
+      actualCloseAt: cycle.actualCloseAt?.toISOString() ?? null,
+      status: cycle.status,
+      taskCount: cycle._count.tasks,
+    })),
+  }
+}
+
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024
+
+/** Instruction example image (PNG/JPG ≤ 4 MB), stored privately and served to signed-in users. */
+export async function uploadCampaignImage(actor: SecurityActor, campaignId: string, file: File, db: Db = prisma): Promise<{ path: string; name: string }> {
+  requireCapability(canManageCampaigns(actor), 'Only Security Admins can add instruction images')
+  const campaign = await db.securityCampaign.findUnique({ where: { id: campaignId }, select: { status: true } })
+  if (!campaign) throw notFound('Campaign not found')
+  if (campaign.status === 'CLOSED') throw conflict('Retired campaigns cannot be edited')
+  if (file.size <= 0 || file.size > MAX_IMAGE_BYTES) throw new SecurityChecksError('Images must be PNG or JPG and at most 4 MB', 400)
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  const mime = sniffEvidenceMime(bytes)
+  if (mime !== 'image/png' && mime !== 'image/jpeg') throw new SecurityChecksError('Images must be PNG or JPG and at most 4 MB', 400)
+  const name = cleanDisplayName(file.name)
+  const blob = await put(`${CAMPAIGN_IMAGE_PREFIX}${campaignId}/${safeStorageName(name)}.${mime === 'image/png' ? 'png' : 'jpg'}`, Buffer.from(bytes), {
+    access: 'private',
+    addRandomSuffix: true,
+    contentType: mime,
+    token: blobToken(),
+  })
+  await appendAudit(db, actorEntry(actor, 'CAMPAIGN_IMAGE_UPLOADED', 'CAMPAIGN', { targetId: campaignId, campaignId, details: { name, size: file.size } }))
+  return { path: blob.pathname, name }
 }
 
 export async function listCampaignRecords(actor: SecurityActor, db: Db = prisma) {
