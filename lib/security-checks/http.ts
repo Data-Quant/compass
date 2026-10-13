@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from 'next/server'
+import { after, NextResponse, type NextRequest } from 'next/server'
 import { ZodError } from 'zod'
 import { getSession, type SafeUser } from '@/lib/auth'
 import { checkRateLimit, RateLimitUnavailableError } from '@/lib/rate-limit'
@@ -7,6 +7,7 @@ import type { SecurityActor } from './access'
 import { isSecurityChecksEnabled } from './flag'
 import { loadSecurityActor } from './service/actor'
 import { SecurityChecksError } from './service/errors'
+import { deliverPendingEmails } from './service/notifications'
 
 const MUTATIONS_PER_WINDOW = 120
 
@@ -34,6 +35,17 @@ export async function guardMutation(request: NextRequest, userId: string): Promi
     }
     throw error
   }
+}
+
+/** Sends queued notification emails after the response has been returned. */
+export function scheduleEmailDelivery(): void {
+  after(async () => {
+    try {
+      await deliverPendingEmails()
+    } catch (error) {
+      console.error('[security-checks] deferred email delivery failed', error)
+    }
+  })
 }
 
 export function okResponse<T>(data: T, status = 200): NextResponse {
