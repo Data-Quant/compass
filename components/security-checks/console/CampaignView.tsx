@@ -8,6 +8,7 @@ import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { CampaignDashboard } from '@/lib/security-checks/service/dashboard'
@@ -26,6 +27,7 @@ export function CampaignView({ campaignId }: { campaignId: string }) {
   const [reason, setReason] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [confirm, setConfirm] = useState<{ title: string; message: string; variant: 'danger' | 'warning' | 'info'; run: () => Promise<unknown> } | null>(null)
 
   const load = useCallback(() => {
     Promise.all([
@@ -80,11 +82,23 @@ export function CampaignView({ campaignId }: { campaignId: string }) {
       {manage && (
         <Card>
           <CardContent className="flex flex-wrap items-center gap-2 p-4">
-            {detail.status === 'DRAFT' && <Button disabled={busy} onClick={() => void act(() => post('activate'))}>Activate</Button>}
+            {detail.status === 'DRAFT' && (
+              <Button disabled={busy} onClick={() => setConfirm({
+                title: 'Activate this campaign?',
+                message: 'If the first open date is today, every person in the audience gets a task and a notification now. Questions and subtasks lock once it is live.',
+                variant: 'info',
+                run: () => post('activate'),
+              })}>Activate</Button>
+            )}
             {detail.status === 'DRAFT' && detail.cycles.length === 0 && (
-              <Button variant="outline" disabled={busy} onClick={() => void act(async () => {
-                await scRequest(`/api/security-checks/console/campaigns/${campaignId}`, { method: 'DELETE' })
-                router.push('/security-checks/console')
+              <Button variant="outline" disabled={busy} onClick={() => setConfirm({
+                title: 'Delete this draft?',
+                message: 'The draft and its questions are removed. This cannot be undone.',
+                variant: 'danger',
+                run: async () => {
+                  await scRequest(`/api/security-checks/console/campaigns/${campaignId}`, { method: 'DELETE' })
+                  router.push('/security-checks/console')
+                },
               })}>Delete draft</Button>
             )}
             {detail.status !== 'DRAFT' && (
@@ -96,9 +110,21 @@ export function CampaignView({ campaignId }: { campaignId: string }) {
             {(detail.status === 'ACTIVE' || openCycle) && (
               <>
                 <Input className="max-w-xs" placeholder="Reason (for retire / early close)" value={reason} onChange={(event) => setReason(event.target.value)} />
-                {detail.status === 'ACTIVE' && <Button variant="outline" disabled={busy || needsReason} onClick={() => void act(() => post('retire', { reason }))}>Retire</Button>}
+                {detail.status === 'ACTIVE' && (
+                  <Button variant="outline" disabled={busy || needsReason} onClick={() => setConfirm({
+                    title: 'Retire this campaign?',
+                    message: 'No further cycles will be scheduled. An open cycle still runs to completion.',
+                    variant: 'warning',
+                    run: () => post('retire', { reason }),
+                  })}>Retire</Button>
+                )}
                 {openCycle && (
-                  <Button variant="destructive" disabled={busy || needsReason} onClick={() => void act(() => scRequest(`/api/security-checks/console/cycles/${openCycle.id}/close-early`, { method: 'POST', body: { reason } }))}>
+                  <Button variant="destructive" disabled={busy || needsReason} onClick={() => setConfirm({
+                    title: `Close cycle ${openCycle.number} early?`,
+                    message: 'Every task that is not yet final becomes Cancelled. Relative recurrence still anchors to the original scheduled close.',
+                    variant: 'danger',
+                    run: () => scRequest(`/api/security-checks/console/cycles/${openCycle.id}/close-early`, { method: 'POST', body: { reason } }),
+                  })}>
                     Close cycle {openCycle.number} early
                   </Button>
                 )}
@@ -108,6 +134,14 @@ export function CampaignView({ campaignId }: { campaignId: string }) {
         </Card>
       )}
       {error && <p className="text-sm text-destructive">{error}</p>}
+      <ConfirmDialog
+        isOpen={confirm !== null}
+        onClose={() => setConfirm(null)}
+        onConfirm={() => { if (confirm) void act(confirm.run) }}
+        title={confirm?.title ?? ''}
+        message={confirm?.message ?? ''}
+        variant={confirm?.variant ?? 'info'}
+      />
 
       <Tabs defaultValue={detail.cycles.length > 0 ? 'dashboard' : 'definition'}>
         <TabsList>

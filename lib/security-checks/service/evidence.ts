@@ -102,6 +102,9 @@ export async function completeUpload(
 
   const task = await loadOwnTask(db, actor, taskId)
   assertPathInScope(input.pathname, taskId, input.subtaskId)
+  // A path that is already recorded must never reach reject(), which deletes the blob.
+  const recorded = await db.securityEvidenceFile.findFirst({ where: { storagePath: input.pathname }, select: { id: true } })
+  if (recorded) throw conflict('This file was already attached')
   const { uploadedThisRound } = uploadTarget(task, input.subtaskId, now)
   const stored = await store.head(input.pathname)
   if (!stored) throw new SecurityChecksError('The upload could not be found. Try again.', 400)
@@ -115,6 +118,24 @@ export async function completeUpload(
   return inTransaction(db, async (tx) => {
     const duplicate = await tx.securityEvidenceFile.findFirst({ where: { storagePath: input.pathname }, select: { id: true } })
     if (duplicate) throw conflict('This file was already attached')
+    // Re-check inside the transaction: a submit that landed meanwhile locks the round.
+    const fresh = await tx.securityTask.findUnique({ where: { id: taskId }, select: { status: true, deadline: true, resubmitDueAt: true, finalRoundAt: true, expiryReason: true, reopenedAt: true } })
+    const freshSubtask = await tx.securitySubtask.findUnique({ where: { id: input.subtaskId }, select: { status: true } })
+    if (
+      !fresh ||
+      !freshSubtask ||
+      !canEmployeeEdit(timelineOf(fresh), now) ||
+      !isSubtaskEditable(fresh.status as TaskStatus, freshSubtask.status as SubtaskStatus)
+    ) {
+      await store.remove(input.pathname)
+      throw conflict('This item was submitted while the file was uploading. Reload and try again.')
+    }
+    // Re-count inside the transaction so parallel completions cannot exceed the limit.
+    const roundCount = await tx.securityEvidenceFile.count({ where: { subtaskId: input.subtaskId, submissionId: null, deletedAt: null } })
+    if (roundCount >= task.cycle.campaign.fileLimit) {
+      await store.remove(input.pathname)
+      throw new SecurityChecksError(`You can attach at most ${task.cycle.campaign.fileLimit} files here. Remove one to add another.`, 400)
+    }
     const file = await tx.securityEvidenceFile.create({
       data: {
         subtaskId: input.subtaskId,

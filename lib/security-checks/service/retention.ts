@@ -11,6 +11,7 @@ import { actorEntry, requireCapability } from './actor'
 import { appendAudit, systemEntry } from './audit'
 import type { BlobStore } from './blob-store'
 import { type Db, inTransaction } from './db'
+import { SecurityChecksError } from './errors'
 
 const SETTINGS_ID = 'singleton'
 const EVIDENCE_BATCH = 500
@@ -27,10 +28,26 @@ export interface SettingsPatch {
   auditRetentionMonths?: number
 }
 
+export const MIN_AUDIT_RETENTION_MONTHS = 12
+
+type RetentionValues = Pick<SecuritySettings, 'evidenceRetentionMonths' | 'attestationRetentionMonths' | 'auditRetentionMonths'>
+
+/** The audit trail must outlive the records it describes and can never be shortened below a floor. */
+export function retentionSettingsError(values: RetentionValues): string | null {
+  if (values.auditRetentionMonths < MIN_AUDIT_RETENTION_MONTHS) return `Audit-log retention must be at least ${MIN_AUDIT_RETENTION_MONTHS} months`
+  if (values.auditRetentionMonths < Math.max(values.evidenceRetentionMonths, values.attestationRetentionMonths)) {
+    return 'Audit-log retention cannot be shorter than evidence or attestation retention'
+  }
+  if (values.attestationRetentionMonths < values.evidenceRetentionMonths) return 'Attestation records cannot be kept for less time than evidence'
+  return null
+}
+
 export async function updateSettings(actor: SecurityActor, patch: SettingsPatch, db: Db = prisma): Promise<SecuritySettings> {
   requireCapability(canManageCampaigns(actor), 'Only Security Admins change retention settings')
   return inTransaction(db, async (tx) => {
     const before = await getSettings(tx)
+    const invalid = retentionSettingsError({ ...before, ...patch })
+    if (invalid) throw new SecurityChecksError(invalid, 400)
     const after = await tx.securitySettings.update({ where: { id: SETTINGS_ID }, data: { ...patch, updatedById: actor.id } })
     await appendAudit(tx, actorEntry(actor, 'SETTINGS_UPDATED', 'SETTINGS', {
       targetId: SETTINGS_ID,

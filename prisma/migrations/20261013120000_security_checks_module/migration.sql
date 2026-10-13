@@ -131,6 +131,7 @@ CREATE TABLE "SecurityTask" (
     "lastVerdictAt" TIMESTAMP(3),
     "resubmitDueAt" TIMESTAMP(3),
     "finalRoundAt" TIMESTAMP(3),
+    "reopenedAt" TIMESTAMP(3),
     "subtasksLockedAt" TIMESTAMP(3),
     "version" INTEGER NOT NULL DEFAULT 0,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

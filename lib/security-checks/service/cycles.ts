@@ -6,12 +6,13 @@ import { canManageCampaigns, type SecurityActor } from '../access'
 import { parseAudience, resolveAudience } from '../audience'
 import { cycleDatesFor, openAtForCycle } from '../recurrence'
 import { DECLARATION_SUBTASK_NAME, isFinalTaskStatus, type SubtaskSource, type TaskStatus } from '../types'
-import { actorEntry, requireCapability } from './actor'
+import { actorEntry, actorRoleLabel, requireCapability } from './actor'
 import { DAY_MS } from '../dates'
 import { appendAudit, appendAuditMany, SYSTEM_ACTOR_ROLE, systemEntry, type AuditEntry } from './audit'
 import { type Db, inTransaction } from './db'
 import { loadDirectory } from './directory'
-import { conflict, notFound } from './errors'
+import { conflict, notFound, SecurityChecksError } from './errors'
+import { transitionTask } from './task-transition'
 import { queueNotifications } from './notifications'
 
 export type CampaignWithTemplates = SecurityCampaign & { subtaskTemplates: SecurityCampaignSubtask[] }
@@ -148,31 +149,35 @@ export async function closeCycleEarly(actor: SecurityActor, cycleId: string, rea
     const cycle = await tx.securityCycle.findUnique({ where: { id: cycleId } })
     if (!cycle) throw notFound('Cycle not found')
     if (cycle.actualCloseAt) throw conflict('This cycle is already closed')
-    const tasks = await tx.securityTask.findMany({ where: { cycleId }, select: { id: true, status: true } })
+    const tasks = await tx.securityTask.findMany({ where: { cycleId }, select: { id: true, status: true, version: true, campaignId: true, cycleId: true } })
     const open = tasks.filter((task) => !isFinalTaskStatus(task.status as TaskStatus))
-    if (open.length > 0) {
-      await tx.securityTask.updateMany({
-        where: { id: { in: open.map((task) => task.id) } },
-        data: { status: 'CANCELLED', cancelReason: 'Cycle closed early', version: { increment: 1 } },
-      })
+    let cancelled = 0
+    let allCancelled = true
+    for (const task of open) {
+      // Guarded per task: a verdict that lands concurrently is kept, never overwritten.
+      try {
+        await transitionTask(
+          tx,
+          { ...task, status: task.status as TaskStatus },
+          'CANCELLED',
+          'CANCEL',
+          { actorId: actor.id, actorRole: actorRoleLabel(actor), reason: 'Cycle closed early' },
+          { cancelReason: 'Cycle closed early', resubmitDueAt: null },
+        )
+        cancelled += 1
+      } catch (error) {
+        if (!(error instanceof SecurityChecksError && error.status === 409)) throw error
+        allCancelled = false
+      }
     }
     await tx.securityCycle.update({
       where: { id: cycleId },
-      data: { actualCloseAt: now, status: 'CLOSED', earlyClosedById: actor.id, earlyCloseReason: reason },
+      data: { actualCloseAt: now, status: allCancelled ? 'CLOSED' : 'CLOSING', earlyClosedById: actor.id, earlyCloseReason: reason },
     })
     await appendAuditMany(tx, [
-      actorEntry(actor, 'CYCLE_CLOSED_EARLY', 'CYCLE', { targetId: cycleId, campaignId: cycle.campaignId, cycleId, details: { reason, cancelled: open.length } }),
-      ...open.map((task) =>
-        actorEntry(actor, 'TASK_STATUS_CHANGED', 'TASK', {
-          targetId: task.id,
-          taskId: task.id,
-          campaignId: cycle.campaignId,
-          cycleId,
-          details: { from: task.status, to: 'CANCELLED', trigger: 'CANCEL', reason: 'Cycle closed early' },
-        }),
-      ),
+      actorEntry(actor, 'CYCLE_CLOSED_EARLY', 'CYCLE', { targetId: cycleId, campaignId: cycle.campaignId, cycleId, details: { reason, cancelled } }),
     ])
-    return { cancelled: open.length }
+    return { cancelled }
   })
 }
 

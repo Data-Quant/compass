@@ -2351,6 +2351,7 @@ model SecurityTask {
   lastVerdictAt    DateTime?
   resubmitDueAt    DateTime?
   finalRoundAt     DateTime?
+  reopenedAt       DateTime?
   subtasksLockedAt DateTime?
   version          Int                    @default(0)
   createdAt        DateTime               @default(now())

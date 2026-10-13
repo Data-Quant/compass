@@ -33,12 +33,13 @@ export function questionDefs(task: TaskWithDetail): QuestionDef[] {
   }))
 }
 
-export function timelineOf(task: Pick<TaskWithDetail, 'status' | 'deadline' | 'resubmitDueAt' | 'finalRoundAt' | 'expiryReason'>): TaskTimelineState {
+export function timelineOf(task: Pick<TaskWithDetail, 'status' | 'deadline' | 'resubmitDueAt' | 'finalRoundAt' | 'expiryReason' | 'reopenedAt'>): TaskTimelineState {
   return {
     status: task.status as TaskStatus,
     deadline: task.deadline,
     resubmitDueAt: task.resubmitDueAt,
     finalRoundAt: task.finalRoundAt,
+    reopenedAt: task.reopenedAt,
     expiryReason: task.expiryReason,
   }
 }

@@ -1,6 +1,6 @@
 // Private Vercel Blob storage for evidence (encrypted at rest, no public URLs).
 // Behind an interface so services can be tested without the network.
-import { del, get, head } from '@vercel/blob'
+import { del, get, head, list } from '@vercel/blob'
 import { SecurityChecksError } from './errors'
 
 export interface StoredBlob {
@@ -14,11 +14,16 @@ export interface BlobStore {
   readPrefix(pathname: string, bytes: number): Promise<Uint8Array | null>
   open(pathname: string): Promise<StoredBlob | null>
   remove(pathname: string): Promise<void>
+  /** One page of blobs under a prefix. */
+  list(prefix: string, cursor?: string): Promise<{ blobs: Array<{ pathname: string; uploadedAt: Date }>; cursor: string | null }>
 }
 
 export function blobToken(): string {
   const token = process.env.BLOB_READ_WRITE_TOKEN
-  if (!token) throw new SecurityChecksError('Evidence storage is not configured. Add BLOB_READ_WRITE_TOKEN.', 503)
+  if (!token) {
+    console.error('[security-checks] BLOB_READ_WRITE_TOKEN is not configured')
+    throw new SecurityChecksError('File storage is unavailable right now. Try again later.', 503)
+  }
   return token
 }
 
@@ -70,6 +75,10 @@ export function vercelBlobStore(): BlobStore {
     },
     async remove(pathname) {
       await del(pathname, { token: blobToken() })
+    },
+    async list(prefix, cursor) {
+      const page = await list({ prefix, cursor, limit: 1000, token: blobToken() })
+      return { blobs: page.blobs.map((blob) => ({ pathname: blob.pathname, uploadedAt: blob.uploadedAt })), cursor: page.hasMore ? (page.cursor ?? null) : null }
     },
   }
 }

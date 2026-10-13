@@ -20,8 +20,14 @@ export async function GET(request: NextRequest, context: Context) {
       'Content-Disposition': disposition,
       'Cache-Control': 'private, no-store',
       'X-Content-Type-Options': 'nosniff',
+      'Cross-Origin-Resource-Policy': 'same-origin',
+      'Referrer-Policy': 'no-referrer',
     }
-    if (file.contentType.startsWith('image/')) headers['Content-Security-Policy'] = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'"
+    // Images are fully sandboxed. PDFs keep the browser's built-in viewer working (a CSP
+    // sandbox blocks it), so they only get frame-ancestors; the viewer runs out of page origin.
+    headers['Content-Security-Policy'] = file.contentType.startsWith('image/')
+      ? "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox; frame-ancestors 'self'"
+      : "frame-ancestors 'self'"
     return new NextResponse(file.stream, { headers })
   } catch (error) {
     return errorResponse(error)

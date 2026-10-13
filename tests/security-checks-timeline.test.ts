@@ -124,3 +124,10 @@ test('final and exempt tasks never expire', () => {
     assert.equal(pendingExpiry(task({ status }), at(100)), null)
   }
 })
+
+test('a Verified task reopened late gets a fresh 14-day review window (still within D+42)', () => {
+  const reopened = task({ status: 'PENDING_REVIEW', reopenedAt: at(20) })
+  assert.equal(reviewDeadlineOf(reopened).toISOString(), at(34).toISOString())
+  assert.equal(pendingExpiry(reopened, at(25)), null)
+  assert.equal(reviewDeadlineOf(task({ status: 'PENDING_REVIEW', reopenedAt: at(1) })).toISOString(), at(21).toISOString())
+})

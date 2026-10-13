@@ -20,6 +20,8 @@ export interface TaskTimelineState {
   resubmitDueAt: Date | null
   finalRoundAt: Date | null
   expiryReason?: ExpiryReason | null
+  /** Set when a Verified task is reopened; it earns a fresh review window. */
+  reopenedAt?: Date | null
 }
 
 export function taskCloseOf(deadline: Date): Date {
@@ -40,9 +42,16 @@ export function resubmitWindowEnd(deadline: Date, verdictAt: Date): Date {
   return laterOf(deadline, addDays(verdictAt, RESUBMIT_WINDOW_DAYS))
 }
 
-export function reviewDeadlineOf(task: Pick<TaskTimelineState, 'deadline' | 'finalRoundAt'>): Date {
-  const wrapUpEnd = wrapUpEndOf(task.deadline)
-  return task.finalRoundAt ? laterOf(wrapUpEnd, addDays(task.finalRoundAt, FINAL_REVIEW_DAYS)) : wrapUpEnd
+/**
+ * Later of D+21, final resubmission + 14 days, and (for a reopened Verified
+ * task) reopen + 14 days. Reopen is allowed only until D+21, so this stays
+ * within the D+42 guarantee.
+ */
+export function reviewDeadlineOf(task: Pick<TaskTimelineState, 'deadline' | 'finalRoundAt' | 'reopenedAt'>): Date {
+  let deadline = wrapUpEndOf(task.deadline)
+  if (task.finalRoundAt) deadline = laterOf(deadline, addDays(task.finalRoundAt, FINAL_REVIEW_DAYS))
+  if (task.reopenedAt) deadline = laterOf(deadline, addDays(task.reopenedAt, FINAL_REVIEW_DAYS))
+  return deadline
 }
 
 const after = (now: Date, limit: Date) => now.getTime() > limit.getTime()

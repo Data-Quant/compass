@@ -73,3 +73,11 @@ test('only the current round is editable; denied N/A cannot be re-requested', ()
   assert.ok(!canRequestNa({ source: 'TASK', lastVerdict: null }))
   assert.ok(canRequestNa({ source: 'EMPLOYEE', lastVerdict: 'REJECT' }))
 })
+
+test('retention settings: audit log has a 12-month floor and outlives evidence and attestations', async () => {
+  const { retentionSettingsError } = await import('../lib/security-checks/service/retention')
+  assert.equal(retentionSettingsError({ evidenceRetentionMonths: 12, attestationRetentionMonths: 36, auditRetentionMonths: 36 }), null)
+  assert.match(retentionSettingsError({ evidenceRetentionMonths: 12, attestationRetentionMonths: 36, auditRetentionMonths: 1 }) ?? '', /at least 12/)
+  assert.match(retentionSettingsError({ evidenceRetentionMonths: 12, attestationRetentionMonths: 36, auditRetentionMonths: 24 }) ?? '', /cannot be shorter/)
+  assert.match(retentionSettingsError({ evidenceRetentionMonths: 24, attestationRetentionMonths: 12, auditRetentionMonths: 36 }) ?? '', /less time than evidence/)
+})

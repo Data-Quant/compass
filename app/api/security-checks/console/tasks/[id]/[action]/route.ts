@@ -18,7 +18,7 @@ export const runtime = 'nodejs'
 
 type Context = { params: Promise<{ id: string; action: string }> }
 
-const prohibitedSchema = prohibitedDeleteSchema.extend({ fileId: z.string().min(1).max(64) }).strict()
+const prohibitedSchema = prohibitedDeleteSchema.extend({ fileId: z.string().min(1).max(64), selfReviewJustification: z.string().trim().min(10).max(1000).optional() }).strict()
 
 export async function POST(request: NextRequest, context: Context) {
   try {
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest, context: Context) {
         break
       case 'prohibited': {
         const input = prohibitedSchema.parse(body)
-        await deleteProhibitedEvidence(actor, id, input.fileId, input.reason, now, vercelBlobStore())
+        await deleteProhibitedEvidence(actor, id, input.fileId, input.reason, now, vercelBlobStore(), undefined, input.selfReviewJustification)
         break
       }
       default:

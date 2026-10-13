@@ -34,7 +34,7 @@ export function ReviewTask({ taskId }: { taskId: string }) {
     setError(null)
     try {
       const selfReview = task?.actions.ownTask && justification.trim() ? { selfReviewJustification: justification.trim() } : {}
-      setTask(await scRequest<ConsoleTaskView>(`/api/security-checks/console/tasks/${taskId}/${action}`, { method: 'POST', body: { ...body, ...(action === 'prohibited' ? {} : selfReview) } }))
+      setTask(await scRequest<ConsoleTaskView>(`/api/security-checks/console/tasks/${taskId}/${action}`, { method: 'POST', body: { ...body, ...selfReview } }))
     } catch (e: unknown) {
       setError(errorMessage(e, 'The action failed'))
     } finally {

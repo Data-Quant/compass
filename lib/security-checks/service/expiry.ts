@@ -21,7 +21,7 @@ const TRIGGER: Record<ExpiryReason, TransitionTrigger> = {
 }
 
 /** The instant the task actually timed out (for reporting), not when the job noticed. */
-function expiredAtFor(reason: ExpiryReason, task: { deadline: Date; resubmitDueAt: Date | null; finalRoundAt: Date | null }): Date {
+function expiredAtFor(reason: ExpiryReason, task: { deadline: Date; resubmitDueAt: Date | null; finalRoundAt: Date | null; reopenedAt: Date | null }): Date {
   if (reason === 'NO_SUBMISSION') return task.deadline
   if (reason === 'WINDOW_LAPSED' && task.resubmitDueAt) return task.resubmitDueAt
   return reviewDeadlineOf(task)
@@ -40,6 +40,7 @@ export async function applyDueExpiries(where: Prisma.SecurityTaskWhereInput, now
       deadline: true,
       resubmitDueAt: true,
       finalRoundAt: true,
+      reopenedAt: true,
     },
   })
   const due = tasks.flatMap((task) => {

@@ -55,3 +55,23 @@ Platform HR has **no** implicit access — only through a Console Admin grant.
   link must point at that folder.
 - In-app notifications = a module notification inbox on the Security Checks page + nav badge.
 - Retention values are settings rows; the job ships disabled.
+- Leavers = people who become inactive in the directory; someone who merely moves out of the audience keeps their open task.
+- A cloned version retires its predecessor when the clone is activated (not when it is created).
+- Evidence > 4.5 MB cannot pass through a Vercel function, so files go browser → private Blob with a
+  server-issued token; the server sniffs the bytes afterwards and deletes failures before any record exists.
+
+## Operations
+
+| Env var | Purpose |
+|---|---|
+| `SECURITY_CHECKS_ENABLED` | `true` turns the module on (pages, API, nav, cron). Off by default. |
+| `SECURITY_CHECKS_DRIVE_FOLDER_ID` | Optional. When set, how-to video links must point at this Drive folder. |
+| `BLOB_READ_WRITE_TOKEN` | Existing; private evidence and instruction images. |
+| `CRON_SECRET` | Existing; authorises `/api/cron/security-checks/{daily,weekly,monthly}`. |
+
+Rollout: merge → deploy applies the additive migration → grant the `SECURITY` role to the two Security
+Admins in user management → set `SECURITY_CHECKS_ENABLED=true` → a Security Admin grants Console Admin
+seats (Security Checks admin page) → create campaigns from the v1 templates.
+
+Verification so far: unit tests for all pure rules and templates; full type-check. The service layer has
+not run against a database yet (no local Postgres; the local `.env` points at production).

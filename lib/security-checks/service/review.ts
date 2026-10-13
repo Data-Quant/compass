@@ -262,7 +262,7 @@ export async function reopenTask(
       actorRole: actorRoleLabel(actor),
       selfReview: self.selfReview,
       reason: input.reason,
-    })
+    }, { reopenedAt: now })
   })
 }
 
@@ -279,21 +279,19 @@ export async function deleteProhibitedEvidence(
   now: Date,
   store: BlobStore,
   db: Db = prisma,
+  selfReviewJustification?: string,
 ): Promise<void> {
   requireCapability(canReview(actor), 'Only Security Admins can delete evidence')
   await applyDueExpiries({ id: taskId }, now, db)
-  await inTransaction(db, async (tx) => {
+  // The row is marked deleted (and audited) in the transaction; the blob goes after commit,
+  // so a rolled-back transaction can never leave a live row pointing at a missing blob.
+  const storagePath = await inTransaction(db, async (tx) => {
     const task = await loadTask(tx, taskId)
     const subtask = task.subtasks.find((entry) => entry.files.some((file) => file.id === fileId))
     const file = subtask?.files.find((entry) => entry.id === fileId)
     if (!subtask || !file) throw notFound('File not found')
     if (file.deletedAt) throw conflict('This file was already deleted')
-    const self = await resolveSelfReview(tx, actor, task.userId, undefined, now).catch((error: unknown) => {
-      throw error instanceof SecurityChecksError && error.status === 400
-        ? new SecurityChecksError('Ask the other Security Admin to remove prohibited content from your own task', 403)
-        : error
-    })
-    await store.remove(file.storagePath)
+    const self = await resolveSelfReview(tx, actor, task.userId, selfReviewJustification, now)
     await tx.securityEvidenceFile.update({
       where: { id: fileId },
       data: { deletedAt: now, deletedById: actor.id, deletedReason: `Prohibited content: ${reason}` },
@@ -317,5 +315,13 @@ export async function deleteProhibitedEvidence(
         { subtask, action: 'REJECT', reason: `Prohibited content was uploaded and deleted (${reason}). Rotate the exposed secret before resubmitting safe evidence.` },
       ])
     }
+    return file.storagePath
   })
+  try {
+    await store.remove(storagePath)
+  } catch (error) {
+    // The file is already unreachable (row deleted); log loudly so the blob can be removed by hand.
+    console.error('[security-checks] could not delete prohibited evidence blob', { fileId, error })
+    throw new SecurityChecksError('The file was removed from the task; storage cleanup failed and will be retried automatically tonight.', 502)
+  }
 }

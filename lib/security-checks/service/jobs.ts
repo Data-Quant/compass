@@ -1,6 +1,7 @@
 // §14 Background jobs. Each run and each side effect is audit-logged.
 import { prisma } from '@/lib/db'
 import { parseAudience, resolveAudience } from '../audience'
+import { EVIDENCE_PATH_PREFIX } from '../evidence'
 import { planNewJoiner } from '../enrollment'
 import { FINAL_TASK_STATUSES, TASK_STATUSES, type TaskStatus } from '../types'
 import { appendAudit, appendAuditMany, SYSTEM_ACTOR_ROLE, systemEntry } from './audit'
@@ -66,7 +67,7 @@ export async function runEnrollmentSync(now: Date, db: Db = prisma): Promise<{ e
   let enrolled = 0
   let deferred = 0
   const cycles = await db.securityCycle.findMany({
-    where: { actualCloseAt: null, scheduledCloseAt: { gt: now }, campaign: { status: 'ACTIVE' } },
+    where: { actualCloseAt: null, scheduledCloseAt: { gt: now }, campaign: { status: { in: ['ACTIVE', 'CLOSED'] } } },
     include: { campaign: { include: { subtaskTemplates: true } }, tasks: { select: { userId: true } } },
   })
   for (const cycle of cycles) {
@@ -74,7 +75,9 @@ export async function runEnrollmentSync(now: Date, db: Db = prisma): Promise<{ e
     const missing = resolveAudience(parseAudience(cycle.campaign.audience), directory).filter((id) => !existing.has(id))
     const seeds: TaskSeed[] = []
     for (const userId of missing) {
-      const plan = planNewJoiner(cycle, cycle.campaign.frequency, cycle.campaign.deadlineDays, now)
+      // A retired (or superseded) campaign schedules no next cycle, so its open cycle enrols like a one-time one.
+      const frequency = cycle.campaign.status === 'ACTIVE' ? cycle.campaign.frequency : 'ONE_TIME'
+      const plan = planNewJoiner(cycle, frequency, cycle.campaign.deadlineDays, now)
       if (plan.action === 'NEXT_CYCLE') deferred += 1
       else seeds.push({ userId, deadline: plan.deadline, lateEnrollment: plan.lateEnrollment })
     }
@@ -110,6 +113,31 @@ export async function runExpiryAndClose(now: Date, db: Db = prisma): Promise<{ e
   return { expired, cyclesSettled: cycles.length }
 }
 
+const ORPHAN_GRACE_MS = 60 * 60 * 1000
+const ORPHAN_PAGES_PER_RUN = 10
+
+/** Deletes evidence blobs with no live row: abandoned/blocked uploads, and deleted files whose blob removal failed. */
+export async function sweepOrphanEvidence(now: Date, store: BlobStore, db: Db = prisma): Promise<{ removed: number }> {
+  let cursor: string | undefined
+  let removed = 0
+  for (let page = 0; page < ORPHAN_PAGES_PER_RUN; page += 1) {
+    const result = await store.list(EVIDENCE_PATH_PREFIX, cursor)
+    const stale = result.blobs.filter((blob) => now.getTime() - blob.uploadedAt.getTime() > ORPHAN_GRACE_MS)
+    if (stale.length > 0) {
+      const recorded = await db.securityEvidenceFile.findMany({ where: { storagePath: { in: stale.map((blob) => blob.pathname) }, deletedAt: null }, select: { storagePath: true } })
+      const known = new Set(recorded.map((row) => row.storagePath))
+      for (const blob of stale.filter((entry) => !known.has(entry.pathname))) {
+        await store.remove(blob.pathname)
+        removed += 1
+      }
+    }
+    if (!result.cursor) break
+    cursor = result.cursor
+  }
+  if (removed > 0) await logRun(db, 'orphan-evidence-sweep', { removed })
+  return { removed }
+}
+
 export interface DailyRunResult {
   results: Record<string, unknown>
   errors: Record<string, string>
@@ -123,6 +151,7 @@ export async function runDailyJobs(now: Date, store: BlobStore, db: Db = prisma)
     ['expiryAndClose', () => runExpiryAndClose(now, db)],
     ['reminders', () => runReminders(now, db)],
     ['retention', () => runRetention(now, store, db)],
+    ['orphanEvidence', () => sweepOrphanEvidence(now, store, db)],
     ['emails', () => deliverPendingEmails(db)],
   ]
   const outcome: DailyRunResult = { results: {}, errors: {} }
