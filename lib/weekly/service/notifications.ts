@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db'
-import { formatCalendarDate, karachiCalendarDate } from '../../kpi/calendar'
+import { formatCalendarDate, karachiCalendarDate } from '../calendar'
 import { renderFormsOpenEmail, renderLowEvidenceEmail, renderQuestionsEmail } from '../emails'
 import { renderDueTodayEmail, renderFinalWeekEmail } from '../emails-round'
 import { areWeeklyEmailsEnabled } from '../flag'

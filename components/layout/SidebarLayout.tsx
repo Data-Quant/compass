@@ -11,8 +11,8 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
-import { CalendarCheck, Handshake, Target } from 'lucide-react'
-import { withGroupItem, withItemAfter, withItemPatched } from '@/components/layout/sidebar-nav'
+import { CalendarCheck, Handshake } from 'lucide-react'
+import { withGroupItem, withItemPatched } from '@/components/layout/sidebar-nav'
 
 // Context so child pages can access user info
 interface LayoutUser {
@@ -62,9 +62,6 @@ export function SidebarLayout({
   // resolved from data rather than role. Checked live because the session cookie
   // would not reflect a fresh assignment until the next login.
   const [hasClientele, setHasClientele] = useState(false)
-  // KPIs appear only when the module is on and the person has a KPI role.
-  const [showKpis, setShowKpis] = useState(false)
-  const [kpiPending, setKpiPending] = useState(0)
   const [weeklyMe, setWeeklyMe] = useState({ enabled: false, cycleActive: false, openCount: 0 })
   const [loading, setLoading] = useState(true)
   const [collapsed, setCollapsed] = useState(false)
@@ -105,13 +102,6 @@ export function SidebarLayout({
           .then((res) => res.json())
           .then((access) => setHasClientele(Boolean(access?.hasAccess)))
           .catch(() => setHasClientele(false))
-        fetch('/api/kpi/me')
-          .then((res) => (res.ok ? res.json() : { enabled: false }))
-          .then((me: { enabled?: boolean; capabilities?: Record<string, boolean>; pending?: number }) => {
-            setShowKpis(Boolean(me.enabled && me.capabilities && Object.values(me.capabilities).some(Boolean)))
-            setKpiPending(typeof me.pending === 'number' ? me.pending : 0)
-          })
-          .catch(() => setShowKpis(false))
         fetch('/api/weekly/me')
           .then((res) => (res.ok ? res.json() : { enabled: false }))
           .then((me: { enabled?: boolean; cycleActive?: boolean; openCount?: number }) =>
@@ -178,20 +168,13 @@ export function SidebarLayout({
         }
       : baseSidebarConfig
 
-  const sidebarConfigWithKpis =
-    !showKpis || baseSidebarConfig === onboardingSidebarConfig
-      ? effectiveSidebarConfig
-      : isAdminConsole
-        ? withGroupItem(effectiveSidebarConfig, 'Performance', { label: 'KPIs', href: '/admin/kpis', icon: Target, ...(kpiPending > 0 ? { badge: kpiPending } : {}) })
-        : withItemAfter(effectiveSidebarConfig, { label: 'KPIs', href: '/kpis', icon: Target, ...(kpiPending > 0 ? { badge: kpiPending } : {}) }, '/evaluations/weekly')
-
   const weeklyBadge = weeklyMe.openCount > 0 ? { badge: weeklyMe.openCount } : {}
   const sidebarConfigWithWeekly =
     !weeklyMe.enabled || baseSidebarConfig === onboardingSidebarConfig
-      ? sidebarConfigWithKpis
+      ? effectiveSidebarConfig
       : isAdminConsole
-        ? withGroupItem(sidebarConfigWithKpis, 'Performance', { label: 'Evaluation round', href: '/admin/evaluation-round', icon: CalendarCheck }, 'start')
-        : withItemPatched(sidebarConfigWithKpis, '/evaluations/weekly', weeklyBadge)
+        ? withGroupItem(effectiveSidebarConfig, 'Performance', { label: 'Evaluation round', href: '/admin/evaluation-round', icon: CalendarCheck }, 'start')
+        : withItemPatched(effectiveSidebarConfig, '/evaluations/weekly', weeklyBadge)
 
   return (
     <LayoutUserContext.Provider value={user}>

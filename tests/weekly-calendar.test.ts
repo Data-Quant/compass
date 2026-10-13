@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  cycleWeeks, defaultQuestionWeeks, effectiveWeek, isCatchUpWeek, karachiWeekday, parseWeekOneMonday, questionWeekCount, totalWeeks, weekIndexAt, weekStartsAt,
+  cycleWeeks, defaultQuestionWeeks, effectiveWeek, endOfKarachiDay, formatCalendarDate, isCatchUpWeek, isWorkingDay, karachiCalendarDate, karachiWeekday, parseCalendarDate,
+  parseWeekOneMonday, questionWeekCount, totalWeeks, weekIndexAt, weekStartsAt,
 } from '../lib/weekly/calendar'
 
 const weekOne = new Date('2026-10-04T19:00:00.000Z') // Monday 5 Oct 2026, 00:00 Karachi
@@ -47,4 +48,21 @@ test('HR sets the question weeks; the cycle runs them plus the two catch-up week
   assert.equal(cycleWeeks({ questionWeeks: 12 }), 14)
   assert.equal(cycleWeeks({ questionWeeks: 1 }), 3)
   assert.equal(defaultQuestionWeeks(weekOne, quarterEnd), 11)
+})
+
+test('a Karachi day ends at 18:59:59.999 UTC, and an instant maps to its Karachi date', () => {
+  assert.equal(endOfKarachiDay({ year: 2026, month: 10, day: 14 }).toISOString(), '2026-10-14T18:59:59.999Z')
+  assert.equal(formatCalendarDate(karachiCalendarDate(new Date('2026-10-14T19:00:00.000Z'))), '2026-10-15')
+})
+
+test('weekends are not working days', () => {
+  assert.equal(isWorkingDay({ year: 2026, month: 10, day: 16 }), true)
+  assert.equal(isWorkingDay({ year: 2026, month: 10, day: 17 }), false)
+  assert.equal(isWorkingDay({ year: 2026, month: 10, day: 18 }), false)
+})
+
+test('calendar dates are validated', () => {
+  assert.deepEqual(parseCalendarDate('2026-02-28'), { year: 2026, month: 2, day: 28 })
+  assert.equal(parseCalendarDate('2026-02-30'), null)
+  assert.equal(parseCalendarDate('14/10/2026'), null)
 })

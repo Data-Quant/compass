@@ -1,4 +1,4 @@
-import { endOfKarachiDay, isWorkingDay, karachiCalendarDate, sameCalendarDate, type CalendarDate } from '../kpi/calendar'
+import { endOfKarachiDay, isWorkingDay, karachiCalendarDate, sameCalendarDate, type CalendarDate } from './calendar'
 
 /** D14: an evaluatee may challenge within 10 working days of results being published. */
 export const CHALLENGE_WORKING_DAYS = 10

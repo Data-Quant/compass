@@ -4,8 +4,7 @@
 // 5 working days is reminded once and HR sees it flagged. It is never scored and never shown to peers or team members.
 import { prisma } from '@/lib/db'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
-import { karachiCalendarDate } from '../../kpi/calendar'
-import { cycleWeeks, effectiveWeek, weekStartsAt } from '../calendar'
+import { cycleWeeks, effectiveWeek, karachiCalendarDate, weekStartsAt } from '../calendar'
 import { isOutsideRedesign } from '../eligibility'
 import { renderSelfReviewReplyEmail, renderSelfReviewSubmittedEmail } from '../emails'
 import { isHrFilledPartner } from '../partners'

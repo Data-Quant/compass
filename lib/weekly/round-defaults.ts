@@ -1,7 +1,6 @@
 // What the "Set up round" form starts with (UX spec, HR step 1): the next calendar quarter, week 1 on its first Monday,
 // and as many question weeks as fit before the catch-up weeks. HR can change any of it.
-import { karachiCalendarDate } from '../kpi/calendar'
-import { defaultQuestionWeeks, startOfKarachiDay } from './calendar'
+import { defaultQuestionWeeks, karachiCalendarDate, startOfKarachiDay } from './calendar'
 
 export interface RoundDefaults { name: string; startDate: string; endDate: string; weekOneStartsOn: string; questionWeeks: number }
 

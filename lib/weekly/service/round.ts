@@ -2,8 +2,7 @@
 // Draft → Review → Open → Closed → Released; this service derives the stage, says what is next, and makes the moves.
 import { prisma } from '@/lib/db'
 import { getResolvedEvaluationAssignments, snapshotEvaluationPeriodAssignments } from '@/lib/evaluation-assignments'
-import { parseCalendarDate } from '../../kpi/calendar'
-import { cycleWeeks, effectiveWeek, startOfKarachiDay, weekStartsAt } from '../calendar'
+import { cycleWeeks, effectiveWeek, parseCalendarDate, startOfKarachiDay, weekStartsAt } from '../calendar'
 import { evaluateeExclusion, isOutsideRedesign } from '../eligibility'
 import { renderRequestExpiredEmail } from '../emails'
 import { isWeeklyRelationshipType } from '../perspectives'

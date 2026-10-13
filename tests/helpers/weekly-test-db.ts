@@ -1,9 +1,18 @@
 import type { PrismaClient, RelationshipType } from '@prisma/client'
 import type { WeeklyActor } from '../../lib/weekly/service/context'
-import { isKpiTestDatabase } from './kpi-test-db'
 
-export const WEEKLY_DB_READY = process.env.KPI_DB_TEST === 'true' && isKpiTestDatabase(process.env.DATABASE_URL)
-export const WEEKLY_DB_TEST = { skip: WEEKLY_DB_READY ? false : 'Set KPI_DB_TEST=true and DATABASE_URL to the local compass_kpi_test database' }
+/** Only the local test database: the reset below deletes data. */
+export function isWeeklyTestDatabase(url: string | undefined): boolean {
+  try {
+    const parsed = new URL(url ?? '')
+    return ['127.0.0.1', 'localhost'].includes(parsed.hostname) && parsed.pathname === '/compass_weekly_test'
+  } catch {
+    return false
+  }
+}
+
+export const WEEKLY_DB_READY = process.env.WEEKLY_DB_TEST === 'true' && isWeeklyTestDatabase(process.env.DATABASE_URL)
+export const WEEKLY_DB_TEST = { skip: WEEKLY_DB_READY ? false : 'Set WEEKLY_DB_TEST=true and DATABASE_URL to the local compass_weekly_test database' }
 
 type Role = 'EMPLOYEE' | 'HR' | 'EXECUTION'
 export interface WeeklyTestPerson { id: string; name: string; role: Role; position: string; department: string }
@@ -50,7 +59,7 @@ export function weeklyActor(person: WeeklyTestPerson): WeeklyActor {
 }
 
 export async function resetWeeklyTestData(db: PrismaClient): Promise<void> {
-  if (!isKpiTestDatabase(process.env.DATABASE_URL)) throw new Error('Refusing to reset a database that is not compass_kpi_test')
+  if (!isWeeklyTestDatabase(process.env.DATABASE_URL)) throw new Error('Refusing to reset a database that is not compass_weekly_test')
   await db.selfReviewRead.deleteMany()
   await db.selfReview.deleteMany()
   await db.selfReviewQuestion.deleteMany()
@@ -79,7 +88,7 @@ export async function resetWeeklyTestData(db: PrismaClient): Promise<void> {
   await db.evaluationPeriod.deleteMany({ where: { name: WEEKLY_PERIOD.name } })
   await db.evaluationQuestion.deleteMany({ where: { orderIndex: { gte: 900 } } })
   // Weekly services read every evaluator mapping (mappings are not per period), so other suites'
-  // leftover fixtures (KPI or weekly e2e seeds, which re-create their own) would leak into these tests.
+  // leftover fixtures (the weekly e2e seed, which re-creates its own) would leak into these tests.
   await db.evaluatorMapping.deleteMany()
   await db.payrollEmployeeProfile.deleteMany({ where: { userId: { startsWith: 'wkt-' } } })
   await db.user.deleteMany({ where: { id: { startsWith: 'wkt-' } } })

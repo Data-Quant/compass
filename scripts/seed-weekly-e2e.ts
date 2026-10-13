@@ -1,5 +1,5 @@
 // Seeds synthetic people, mappings, a question bank and a quarter for the weekly-evaluations Playwright run.
-// Refuses any database other than the local compass_kpi_test.
+// Refuses any database other than the local compass_weekly_test.
 import { PrismaClient, type RelationshipType } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 
@@ -34,7 +34,7 @@ export const E2E_PERIOD = 'Q4 2026 (weekly e2e)'
 function isLocalTestDb(url: string | undefined): boolean {
   try {
     const parsed = new URL(url ?? '')
-    return ['127.0.0.1', 'localhost'].includes(parsed.hostname) && parsed.pathname === '/compass_kpi_test'
+    return ['127.0.0.1', 'localhost'].includes(parsed.hostname) && parsed.pathname === '/compass_weekly_test'
   } catch {
     return false
   }
@@ -48,9 +48,9 @@ function thisMondayKarachi(now: Date): Date {
 }
 
 async function main(): Promise<void> {
-  if (!isLocalTestDb(process.env.DATABASE_URL)) throw new Error('Refusing: DATABASE_URL must be the local compass_kpi_test database')
-  const password = process.env.KPI_FIXTURE_PASSWORD
-  if (!password || password.length < 12) throw new Error('Set KPI_FIXTURE_PASSWORD (at least 12 characters)')
+  if (!isLocalTestDb(process.env.DATABASE_URL)) throw new Error('Refusing: DATABASE_URL must be the local compass_weekly_test database')
+  const password = process.env.WEEKLY_FIXTURE_PASSWORD
+  if (!password || password.length < 12) throw new Error('Set WEEKLY_FIXTURE_PASSWORD (at least 12 characters)')
   const db = new PrismaClient()
   try {
     await db.weeklyResponse.deleteMany()

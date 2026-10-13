@@ -10,7 +10,7 @@ async function login(page: Page, id: string): Promise<void> {
   const token = await (await page.request.get('/api/auth/csrf')).json()
   const result = await page.request.post('/api/auth/login', {
     headers: { 'x-csrf-token': token.token },
-    data: { email: `${id}@example.test`, password: process.env.KPI_FIXTURE_PASSWORD },
+    data: { email: `${id}@example.test`, password: process.env.WEEKLY_FIXTURE_PASSWORD },
   })
   expect(result.status()).toBe(200)
 }

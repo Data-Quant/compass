@@ -3,12 +3,12 @@ import assert from 'node:assert/strict'
 import { bypassesSessionCheck } from '../lib/middleware-paths'
 
 test('cron routes bypass the session cookie check', () => {
-  assert.equal(bypassesSessionCheck('/api/cron/kpi'), true)
+  assert.equal(bypassesSessionCheck('/api/cron/weekly-evaluations'), true)
 })
 
 test('lookalike and ordinary API paths still need a session', () => {
   assert.equal(bypassesSessionCheck('/api/cronjob'), false)
-  assert.equal(bypassesSessionCheck('/api/kpi/me'), false)
+  assert.equal(bypassesSessionCheck('/api/weekly/me'), false)
   assert.equal(bypassesSessionCheck('/api/leave/transition-plan-reminders'), false)
 })
 
