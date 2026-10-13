@@ -76,7 +76,7 @@ function GrantsCard() {
     <Card>
       <CardHeader className="pb-2"><CardTitle className="text-base">Console Admins (read-only access)</CardTitle></CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-sm text-muted-foreground">Dashboards, submissions and evidence viewing (every view logged), and the self-review report. No reviewing, campaign changes, downloads, CSV or audit log.</p>
+        <p className="text-sm text-muted-foreground">Dashboards, submissions and evidence viewing (every view logged), and the self-review report. No reviewing, campaign changes, downloads, CSV or audit log. Everyone with the HR role has this access automatically; grant it here to anyone else.</p>
         {grants.map((grant) => (
           <div key={grant.userId} className="flex items-center justify-between text-sm">
             <span>{grant.name} <span className="text-muted-foreground">{grant.department ?? ''}</span></span>

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { capabilitiesOf, canDownloadEvidence, canViewEvidence, type SecurityActor } from '../lib/security-checks/access'
+import { capabilitiesOf, canDownloadEvidence, canViewEvidence, hasConsoleAdminSeat, type SecurityActor } from '../lib/security-checks/access'
 import { peerUnavailableReason, selfReviewDecision, type PeerAdmin } from '../lib/security-checks/self-review'
 
 const securityAdmin: SecurityActor = { id: 'sa1', role: 'SECURITY', isConsoleAdmin: false }
@@ -32,8 +32,22 @@ test('§13 matrix: Console Admin is read-only console access', () => {
   })
 })
 
-test('HR and employees get no console access without a grant', () => {
-  assert.equal(capabilitiesOf(hr).console, false)
+test('HR gets the read-only console automatically; other employees need a grant', () => {
+  assert.equal(hasConsoleAdminSeat('HR', false), true)
+  assert.equal(hasConsoleAdminSeat('EMPLOYEE', false), false)
+  assert.equal(hasConsoleAdminSeat('EMPLOYEE', true), true)
+  const hrActor: SecurityActor = { ...hr, isConsoleAdmin: hasConsoleAdminSeat(hr.role, false) }
+  assert.deepEqual(capabilitiesOf(hrActor), {
+    console: true,
+    manageCampaigns: false,
+    review: false,
+    manageTasks: false,
+    exportCsv: false,
+    auditLog: false,
+    manageGrants: false,
+  })
+  assert.ok(canViewEvidence(hrActor, 'e2'))
+  assert.ok(!canDownloadEvidence(hrActor, 'e2'))
   assert.equal(capabilitiesOf(employee).console, false)
 })
 

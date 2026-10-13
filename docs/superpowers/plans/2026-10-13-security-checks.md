@@ -16,10 +16,10 @@ Branch: `feat/security-checks`. Ships dark behind `SECURITY_CHECKS_ENABLED=true`
 | Role | Source |
 |---|---|
 | Security Admin | `User.role === 'SECURITY'` (granted in existing user management) |
-| Console Admin | `SecurityConsoleGrant` row, granted/revoked by a Security Admin (logged) |
+| Console Admin | Every `HR` user automatically, plus a `SecurityConsoleGrant` row granted/revoked by a Security Admin (logged) |
 | Employee | any active user; sees own tasks only |
 
-Platform HR has **no** implicit access — only through a Console Admin grant.
+HR gets the read-only Console Admin view automatically (product decision, Oct 2026 — the spec required an explicit grant).
 
 ## Phases (one point at a time)
 

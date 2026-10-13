@@ -82,8 +82,11 @@ export async function runSelfReviewReport(now: Date, db: Db = prisma): Promise<{
   const items = await reportItems(month, db)
   let recipients: string[] = []
   if (items.length > 0) {
-    const grants = await db.securityConsoleGrant.findMany({ select: { userId: true } })
-    recipients = [...new Set([...grants.map((grant) => grant.userId), ...(await securityAdminIds(db))])]
+    const [grants, hrUsers] = await Promise.all([
+      db.securityConsoleGrant.findMany({ select: { userId: true } }),
+      db.user.findMany({ where: { role: 'HR' }, select: { id: true } }),
+    ])
+    recipients = [...new Set([...grants.map((grant) => grant.userId), ...hrUsers.map((user) => user.id), ...(await securityAdminIds(db))])]
     await queueNotifications(
       db,
       recipients.map((userId) => ({

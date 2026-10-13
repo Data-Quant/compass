@@ -174,7 +174,7 @@ export function SidebarLayout({
       : baseSidebarConfig
 
   const finalSidebarConfig =
-    isAdminConsole || baseSidebarConfig === onboardingSidebarConfig
+    baseSidebarConfig === onboardingSidebarConfig
       ? effectiveSidebarConfig
       : withSecurityChecksNav(effectiveSidebarConfig, securityChecksAccess, { tasks: ShieldCheck, console: ShieldHalf })
 

@@ -1,12 +1,17 @@
 // §13 Access control matrix — enforced server-side on every endpoint.
-// Security Admin = User.role SECURITY. Console Admin = explicit grant by a
-// Security Admin; neither HR nor Security Console access confers it.
+// Security Admin = User.role SECURITY. Console Admin (read-only) = every HR
+// user automatically, plus anyone a Security Admin grants a seat.
 import type { AppUserRole } from '@/lib/permissions'
 
 export interface SecurityActor {
   id: string
   role: AppUserRole
   isConsoleAdmin: boolean
+}
+
+/** HR always has the read-only Console Admin view; others need an explicit grant. */
+export function hasConsoleAdminSeat(role: AppUserRole, hasGrant: boolean): boolean {
+  return role === 'HR' || hasGrant
 }
 
 export function isSecurityAdmin(actor: SecurityActor): boolean {

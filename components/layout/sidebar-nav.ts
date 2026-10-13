@@ -24,6 +24,11 @@ export function withSecurityChecksNav(
   icons: { tasks: NavItem['icon']; console: NavItem['icon'] },
 ): SidebarConfig {
   if (!access.enabled) return config
+  const consoleEntry = { label: 'Security Console', href: '/security-checks/console', icon: icons.console }
+  // HR's admin console: console link only, under Operations (employee task links stay off it).
+  if (config.items.some((item) => item.href === '/admin')) {
+    return access.console ? withGroupItem(config, 'Operations', consoleEntry) : config
+  }
   const securitySidebar = config.items.some((item) => item.href === '/security')
   const withTasks = withItemAfter(
     config,

@@ -44,6 +44,14 @@ test('everyone gets Security Checks; console access adds the console after it', 
   assert.deepEqual(consoleAdmin.items.map((i) => i.href), ['/dashboard', '/my-tasks', '/security-checks', '/security-checks/console', '/leave'])
 })
 
+test('the admin console gets only the Security Console link, under Operations, when allowed', () => {
+  const adminSidebar: SidebarConfig = { items: [item('/admin')], groups: [{ label: 'Operations', items: [item('/admin/leave')] }] }
+  const withConsole = withSecurityChecksNav(adminSidebar, { enabled: true, console: true }, icons)
+  assert.deepEqual(withConsole.items.map((i) => i.href), ['/admin'])
+  assert.deepEqual(withConsole.groups[0].items.map((i) => i.href), ['/admin/leave', '/security-checks/console'])
+  assert.equal(withSecurityChecksNav(adminSidebar, { enabled: true, console: false }, icons), adminSidebar)
+})
+
 test('on the Security sidebar both entries follow Onboarding', () => {
   const next = withSecurityChecksNav(securitySidebar, { enabled: true, console: true }, icons)
   assert.deepEqual(next.items.map((i) => i.href), ['/security', '/security/onboarding', '/security-checks/console', '/security-checks', '/office'])
