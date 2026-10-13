@@ -2157,3 +2157,339 @@ model ClientRosterRequestItem {
   @@index([requestId])
   @@index([userId])
 }
+
+// ─── Security Checks module (campaigns, cycles, tasks, evidence review) ─────
+// User references are plain id columns (like the KPI module) to avoid adding
+// back-relations to User. Audit rows are append-only; only the retention job
+// prunes them, under a system identity.
+
+enum SecurityCampaignStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+}
+
+enum SecuritySubtaskMode {
+  NONE
+  ADMIN_DEFINED
+  EMPLOYEE_DEFINED
+  ADMIN_WITH_EMPLOYEE_ADDITIONS
+}
+
+enum SecurityFrequency {
+  ONE_TIME
+  QUARTERLY
+  EVERY_4_MONTHS
+  EVERY_6_MONTHS
+  ANNUALLY
+}
+
+enum SecurityRecurrenceAnchor {
+  FIXED_CALENDAR
+  RELATIVE_TO_CLOSE
+}
+
+enum SecurityQuestionType {
+  YES_NO
+  ACCOUNT_IDENTIFIER
+  SHORT_TEXT
+}
+
+enum SecurityCycleStatus {
+  OPEN
+  CLOSING
+  CLOSED
+}
+
+enum SecurityTaskStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  PENDING_REVIEW
+  REQUIRES_INFO
+  REJECTED
+  VERIFIED
+  EXPIRED
+  NOT_APPLICABLE
+  CANCELLED
+  EXEMPT
+}
+
+enum SecurityExpiryReason {
+  NO_SUBMISSION
+  WINDOW_LAPSED
+  REJECTED_POST_CLOSE
+  UNREVIEWED
+}
+
+enum SecuritySubtaskSource {
+  TASK
+  ADMIN
+  EMPLOYEE
+  DECLARATION
+}
+
+enum SecuritySubtaskStatus {
+  OPEN
+  PENDING_REVIEW
+  REQUIRES_INFO
+  REJECTED
+  VERIFIED
+  NOT_APPLICABLE
+}
+
+enum SecurityReviewActionType {
+  VERIFY
+  REJECT
+  REQUEST_INFO
+  APPROVE_NA
+  DENY_NA
+  REOPEN
+  TASK_NA
+}
+
+model SecurityCampaign {
+  id                String                     @id @default(cuid())
+  name              String
+  control           String
+  instructions      String                     @default("")
+  instructionImages Json                       @default("[]")
+  videoUrl          String?
+  subtaskMode       SecuritySubtaskMode        @default(NONE)
+  evidenceRequired  Boolean                    @default(true)
+  fileLimit         Int                        @default(3)
+  deadlineDays      Int
+  reminderOffsets   Int[]                      @default([14, 7, 1])
+  frequency         SecurityFrequency
+  recurrenceAnchor  SecurityRecurrenceAnchor   @default(FIXED_CALENDAR)
+  audience          Json
+  status            SecurityCampaignStatus     @default(DRAFT)
+  firstOpenAt       DateTime?
+  launchedAt        DateTime?
+  retiredAt         DateTime?
+  version           Int                        @default(1)
+  lineageId         String
+  predecessorId     String?
+  createdById       String
+  updatedById       String
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+  questions         SecurityCampaignQuestion[]
+  subtaskTemplates  SecurityCampaignSubtask[]
+  cycles            SecurityCycle[]
+
+  @@index([status])
+  @@index([lineageId])
+}
+
+model SecurityCampaignQuestion {
+  id              String               @id @default(cuid())
+  campaignId      String
+  position        Int
+  type            SecurityQuestionType
+  prompt          String
+  compliantAnswer Boolean?
+  createdAt       DateTime             @default(now())
+  campaign        SecurityCampaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, position])
+}
+
+model SecurityCampaignSubtask {
+  id         String           @id @default(cuid())
+  campaignId String
+  position   Int
+  name       String
+  createdAt  DateTime         @default(now())
+  campaign   SecurityCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, position])
+}
+
+model SecurityCycle {
+  id               String              @id @default(cuid())
+  campaignId       String
+  number           Int
+  openAt           DateTime
+  deadline         DateTime
+  scheduledCloseAt DateTime
+  actualCloseAt    DateTime?
+  status           SecurityCycleStatus @default(OPEN)
+  earlyClosedById  String?
+  earlyCloseReason String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  campaign         SecurityCampaign    @relation(fields: [campaignId], references: [id])
+  tasks            SecurityTask[]
+
+  @@unique([campaignId, number])
+  @@index([status])
+}
+
+model SecurityTask {
+  id               String                 @id @default(cuid())
+  cycleId          String
+  campaignId       String
+  userId           String
+  status           SecurityTaskStatus     @default(NOT_STARTED)
+  deadline         DateTime
+  originalDeadline DateTime
+  lateEnrollment   Boolean                @default(false)
+  extendedById     String?
+  extendedAt       DateTime?
+  extensionReason  String?
+  exemptedById     String?
+  exemptedAt       DateTime?
+  exemptionReason  String?
+  naGrantedById    String?
+  naReason         String?
+  cancelReason     String?
+  expiryReason     SecurityExpiryReason?
+  expiredAt        DateTime?
+  unreviewedFlag   Boolean                @default(false)
+  firstSubmittedAt DateTime?
+  lastSubmittedAt  DateTime?
+  lastVerdictAt    DateTime?
+  resubmitDueAt    DateTime?
+  finalRoundAt     DateTime?
+  subtasksLockedAt DateTime?
+  version          Int                    @default(0)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  cycle            SecurityCycle          @relation(fields: [cycleId], references: [id])
+  subtasks         SecuritySubtask[]
+  submissions      SecuritySubmission[]
+  reviewActions    SecurityReviewAction[]
+
+  @@unique([cycleId, userId])
+  @@index([userId, status])
+  @@index([campaignId, status])
+  @@index([status, deadline])
+}
+
+model SecuritySubtask {
+  id                   String                    @id @default(cuid())
+  taskId               String
+  position             Int
+  name                 String
+  source               SecuritySubtaskSource
+  templateId           String?
+  status               SecuritySubtaskStatus     @default(OPEN)
+  answers              Json                      @default("{}")
+  declarationConfirmed Boolean                   @default(false)
+  naRequested          Boolean                   @default(false)
+  naJustification      String?
+  naApprovedById       String?
+  lastVerdict          SecurityReviewActionType?
+  lastVerdictReason    String?
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  task                 SecurityTask              @relation(fields: [taskId], references: [id])
+  files                SecurityEvidenceFile[]
+
+  @@index([taskId, position])
+}
+
+model SecuritySubmission {
+  id            String       @id @default(cuid())
+  taskId        String
+  round         Int
+  submittedById String
+  confirmed     Boolean
+  isFinal       Boolean      @default(false)
+  snapshot      Json
+  createdAt     DateTime     @default(now())
+  task          SecurityTask @relation(fields: [taskId], references: [id])
+
+  @@unique([taskId, round])
+}
+
+model SecurityEvidenceFile {
+  id            String          @id @default(cuid())
+  subtaskId     String
+  taskId        String
+  submissionId  String?
+  storagePath   String
+  fileName      String
+  contentType   String
+  size          Int
+  uploadedById  String
+  deletedAt     DateTime?
+  deletedById   String?
+  deletedReason String?
+  createdAt     DateTime        @default(now())
+  subtask       SecuritySubtask @relation(fields: [subtaskId], references: [id])
+
+  @@index([subtaskId])
+  @@index([taskId])
+}
+
+model SecurityReviewAction {
+  id                      String                   @id @default(cuid())
+  taskId                  String
+  subtaskId               String?
+  submissionId            String?
+  action                  SecurityReviewActionType
+  reviewerId              String
+  reason                  String?
+  selfReview              Boolean                  @default(false)
+  selfReviewJustification String?
+  createdAt               DateTime                 @default(now())
+  task                    SecurityTask             @relation(fields: [taskId], references: [id])
+
+  @@index([taskId, createdAt])
+  @@index([reviewerId, createdAt])
+  @@index([selfReview, createdAt])
+}
+
+model SecurityConsoleGrant {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  grantedById String
+  createdAt   DateTime @default(now())
+}
+
+model SecurityAuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actorRole  String
+  action     String
+  targetType String
+  targetId   String?
+  campaignId String?
+  cycleId    String?
+  taskId     String?
+  selfReview Boolean  @default(false)
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([campaignId, createdAt])
+  @@index([taskId, createdAt])
+  @@index([action, createdAt])
+}
+
+model SecurityNotification {
+  id        String    @id @default(cuid())
+  userId    String
+  kind      String
+  title     String
+  body      String
+  taskId    String?
+  dedupeKey String    @unique
+  emailed   Boolean   @default(false)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
+}
+
+model SecuritySettings {
+  id                         String    @id @default("singleton")
+  retentionEnabled           Boolean   @default(false)
+  evidenceRetentionMonths    Int       @default(12)
+  attestationRetentionMonths Int       @default(36)
+  auditRetentionMonths       Int       @default(36)
+  retentionFirstRunAt        DateTime?
+  updatedById                String?
+  updatedAt                  DateTime  @updatedAt
+}
