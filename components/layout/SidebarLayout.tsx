@@ -11,7 +11,8 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
-import { Handshake } from 'lucide-react'
+import { Handshake, ShieldCheck, ShieldHalf } from 'lucide-react'
+import { withSecurityChecksNav, type SecurityChecksNavAccess } from '@/components/layout/sidebar-nav'
 
 // Context so child pages can access user info
 interface LayoutUser {
@@ -46,6 +47,8 @@ interface SidebarLayoutProps {
   sidebarConfig: SidebarConfig
   onboardingSidebarConfig?: SidebarConfig
   requiredRole?: string | string[]
+  /** Optional per-role sidebar, for pages shared by people with different consoles. */
+  sidebarConfigByRole?: Partial<Record<string, SidebarConfig>>
 }
 
 export function SidebarLayout({
@@ -53,6 +56,7 @@ export function SidebarLayout({
   sidebarConfig,
   onboardingSidebarConfig,
   requiredRole,
+  sidebarConfigByRole,
 }: SidebarLayoutProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -61,6 +65,8 @@ export function SidebarLayout({
   // resolved from data rather than role. Checked live because the session cookie
   // would not reflect a fresh assignment until the next login.
   const [hasClientele, setHasClientele] = useState(false)
+  // Security Checks entries appear only when the module is on.
+  const [securityChecksAccess, setSecurityChecksAccess] = useState<SecurityChecksNavAccess>({ enabled: false, console: false })
   const [loading, setLoading] = useState(true)
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -100,6 +106,12 @@ export function SidebarLayout({
           .then((res) => res.json())
           .then((access) => setHasClientele(Boolean(access?.hasAccess)))
           .catch(() => setHasClientele(false))
+        fetch('/api/security-checks/me')
+          .then((res) => (res.ok ? res.json() : null))
+          .then((body: { data?: { enabled?: boolean; capabilities?: { console?: boolean } } } | null) =>
+            setSecurityChecksAccess({ enabled: Boolean(body?.data?.enabled), console: Boolean(body?.data?.capabilities?.console) }),
+          )
+          .catch(() => setSecurityChecksAccess({ enabled: false, console: false }))
         setLoading(false)
       })
       .catch(() => router.push('/login'))
@@ -127,10 +139,11 @@ export function SidebarLayout({
     return <LoadingScreen message="Loading..." />
   }
 
+  const roleSidebarConfig = (user?.role && sidebarConfigByRole?.[user.role]) || sidebarConfig
   const baseSidebarConfig =
     user?.onboardingCompleted === false && onboardingSidebarConfig
       ? onboardingSidebarConfig
-      : sidebarConfig
+      : roleSidebarConfig
 
   // The admin console has its own Clients page and must not get the employee
   // link: its only top-level item is the dashboard, so an injected entry landed
@@ -160,13 +173,18 @@ export function SidebarLayout({
         }
       : baseSidebarConfig
 
+  const finalSidebarConfig =
+    isAdminConsole || baseSidebarConfig === onboardingSidebarConfig
+      ? effectiveSidebarConfig
+      : withSecurityChecksNav(effectiveSidebarConfig, securityChecksAccess, { tasks: ShieldCheck, console: ShieldHalf })
+
   return (
     <LayoutUserContext.Provider value={user}>
       <div className="flex h-screen overflow-hidden bg-background">
         {/* Desktop sidebar */}
         <div className="hidden lg:block shrink-0">
           <AppSidebar
-            config={effectiveSidebarConfig}
+            config={finalSidebarConfig}
             collapsed={collapsed}
             onToggle={toggleCollapsed}
             userRole={user?.role}
@@ -178,7 +196,7 @@ export function SidebarLayout({
           <SheetContent side="left" className="w-[240px] p-0 [&>button:first-child]:hidden">
             <SheetTitle className="sr-only">Navigation</SheetTitle>
             <AppSidebar
-              config={effectiveSidebarConfig}
+              config={finalSidebarConfig}
               collapsed={false}
               onToggle={() => setMobileOpen(false)}
               userRole={user?.role}

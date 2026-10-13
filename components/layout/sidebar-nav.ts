@@ -8,6 +8,36 @@ export function withItemAfter(config: SidebarConfig, entry: NavItem, anchorHref:
   return { ...config, items }
 }
 
+export interface SecurityChecksNavAccess {
+  enabled: boolean
+  console: boolean
+}
+
+/**
+ * Security Checks entries: everyone gets their own tasks when the module is on;
+ * Security Admins and Console Admins also get the console. On the Security
+ * sidebar both slot in after Onboarding.
+ */
+export function withSecurityChecksNav(
+  config: SidebarConfig,
+  access: SecurityChecksNavAccess,
+  icons: { tasks: NavItem['icon']; console: NavItem['icon'] },
+): SidebarConfig {
+  if (!access.enabled) return config
+  const securitySidebar = config.items.some((item) => item.href === '/security')
+  const withTasks = withItemAfter(
+    config,
+    { label: 'Security Checks', href: '/security-checks', icon: icons.tasks },
+    securitySidebar ? '/security/onboarding' : '/my-tasks',
+  )
+  if (!access.console) return withTasks
+  return withItemAfter(
+    withTasks,
+    { label: 'Security Console', href: '/security-checks/console', icon: icons.console },
+    securitySidebar ? '/security/onboarding' : '/security-checks',
+  )
+}
+
 export function withGroupItem(config: SidebarConfig, groupLabel: string, entry: NavItem): SidebarConfig {
   if (config.groups.some((group) => group.items.some((item) => item.href === entry.href))) return config
   return {
