@@ -45,7 +45,7 @@ test('review stage: "Check your lists by [date]" until the person confirms them'
   assert.notEqual((await evaluationsCard(ana, at(0)))?.state, 'CHECK_LISTS')
 })
 
-test('round open: "This week: 1 of 2 done, due Sunday", counting carried-over questions; then "All caught up"', WEEKLY_DB_TEST, async () => {
+test('round open: "This week: 1 of 2 done, due Friday", counting carried-over questions; then "All caught up"', WEEKLY_DB_TEST, async () => {
   await start()
   await releaseWeek(cycleId, 1, at(1))
   await releaseWeek(cycleId, 2, at(2))
@@ -53,10 +53,10 @@ test('round open: "This week: 1 of 2 done, due Sunday", counting carried-over qu
   assert.equal(open.length, 2, 'one from week 1 carried over, one from week 2')
   const lead = weeklyActor(W.lead)
   const card = await evaluationsCard(lead, at(2, 2))
-  assert.deepEqual([card?.state, card?.message], ['THIS_WEEK', 'This week: 0 of 2 done, due Sunday 18 Oct'])
+  assert.deepEqual([card?.state, card?.message], ['THIS_WEEK', 'This week: 0 of 2 done, due Friday 16 Oct'])
   assert.equal(card?.detail, '1 from last week')
   await answerAs(open[0], 2, at(2, 2))
-  assert.equal((await evaluationsCard(lead, at(2, 2)))?.message, 'This week: 1 of 2 done, due Sunday 18 Oct')
+  assert.equal((await evaluationsCard(lead, at(2, 2)))?.message, 'This week: 1 of 2 done, due Friday 16 Oct')
   await answerAs(open[1], 2, at(2, 2))
   assert.deepEqual([(await evaluationsCard(lead, at(2, 2)))?.state, (await evaluationsCard(lead, at(2, 2)))?.message], ['CAUGHT_UP', 'All caught up. Next questions Monday'])
 })

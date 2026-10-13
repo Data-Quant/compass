@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/db'
 import type { StructuredModel } from '../ai/model'
 import { resolveActiveModel } from './ai-settings'
-import { cycleWeeks, karachiWeekday, questionWeekCount, weekIndexAt } from '../calendar'
+import { cycleWeeks, karachiWeekday, questionWeekCount, sameKarachiDay, weekDueAt, weekIndexAt, weekStartsAt } from '../calendar'
 import { findRunningCycle, type CycleWithPeriod } from './cycles'
 import { formsOpenFor } from './forms'
 import { deliverSafely, formsOpenMessages, lowEvidenceMessages, questionRecipients, sendQuestionEmails, type WeeklyEmailMessage, type WeeklySendMail, type WeeklySendResult } from './notifications'
@@ -29,7 +29,6 @@ export interface WeeklyDailyResult {
 }
 
 const SUNDAY = 0
-const MONDAY = 1
 const WEDNESDAY = 3
 /** The cron has 300 s: scoring gets 120 s, with one model call possibly still in flight, before the digests. */
 export const DAILY_SCORING_BUDGET_MS = 120_000
@@ -40,18 +39,18 @@ export function lowEvidenceWeek(total: number): number {
 }
 
 /**
- * The week is released on every run, not only on Mondays: releaseWeek is idempotent per evaluator, so a failed
- * Monday run or a cycle started mid-week is caught up the next day, and leavers are cancelled within a day.
- * Emails follow the spec's week (section 13): the questions on Monday (in the final week, how many are left instead),
- * and "due today" on Sunday. Nothing in between, apart from questions a catch-up release has just given someone.
+ * The week is released on every run, not only on its first day: releaseWeek is idempotent per evaluator, so a failed
+ * run or a cycle started mid-week is caught up the next day, and leavers are cancelled within a day.
+ * Emails follow the spec's week (section 13): the questions on the week's first day (Monday, or the day HR chose for
+ * week 1; in the final week, how many are left instead), and "due today" on Friday. Nothing in between, apart from
+ * questions a catch-up release has just given someone.
  */
 async function releaseAndAnnounce(cycle: CycleWithPeriod, week: number, total: number, now: Date, send: WeeklySendMail, appUrl: string): Promise<{ released: ReleaseSummary; emails: WeeklySendResult | null }> {
   const released = await releaseWeek(cycle.id, week, now)
-  const weekday = karachiWeekday(now)
   const recipients = await questionRecipients(cycle.id, week)
   // The key spans the cycle week, so nobody gets this week's questions email twice.
   const scope = `${cycle.id}:week-${week}`
-  if (weekday === MONDAY) {
+  if (sameKarachiDay(now, weekStartsAt(cycle.weekOneStartsOn, week))) {
     const emails = week === total
       ? await sendQuestionEmails('weekly-final-week', recipients, now, send, appUrl, { scope, closesOn: roundClosesOn(cycle) })
       : await sendQuestionEmails('weekly-questions', recipients, now, send, appUrl, { scope })
@@ -59,7 +58,7 @@ async function releaseAndAnnounce(cycle: CycleWithPeriod, week: number, total: n
   }
   const fresh = released.promptsCreated > 0 ? recipients.filter((r) => r.newCount > 0) : []
   const questions = fresh.length ? await sendQuestionEmails('weekly-questions', fresh, now, send, appUrl, { scope }) : null
-  const due = weekday === SUNDAY ? await sendQuestionEmails('weekly-due-today', recipients, now, send, appUrl) : null
+  const due = sameKarachiDay(now, weekDueAt(cycle.weekOneStartsOn, week)) ? await sendQuestionEmails('weekly-due-today', recipients, now, send, appUrl) : null
   return { released, emails: questions && due ? addResults(questions, due) : questions ?? due }
 }
 

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { MAX_FIELD_CHARS } from './answer-rules'
-import { parseWeekOneMonday } from './calendar'
+import { parseWeekOneStart } from './calendar'
 
 const field = z.string().max(MAX_FIELD_CHARS, `Keep each box under ${MAX_FIELD_CHARS} characters`)
 /** A multiple-choice answer (the chosen statement and an optional or required note), or a comment. */
@@ -13,14 +13,14 @@ export const answerSchema = z
   .strict()
 export type AnswerInput = z.infer<typeof answerSchema>
 
-const mondaySchema = z.string().refine((value) => parseWeekOneMonday(value) !== null, 'Choose a Monday (YYYY-MM-DD)')
+const weekOneSchema = z.string().refine((value) => parseWeekOneStart(value) !== null, 'Choose a weekday, Monday to Friday (YYYY-MM-DD)')
 
 const questionWeeksSchema = z.number().int().min(1, 'At least one question week').max(26)
-export const createCycleSchema = z.object({ periodId: z.string().min(1), weekOneStartsOn: mondaySchema, questionWeeks: questionWeeksSchema.optional() }).strict()
+export const createCycleSchema = z.object({ periodId: z.string().min(1), weekOneStartsOn: weekOneSchema, questionWeeks: questionWeeksSchema.optional() }).strict()
 export type CreateCycleInput = z.infer<typeof createCycleSchema>
 
 export const updateCycleSchema = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('update'), weekOneStartsOn: mondaySchema, questionWeeks: questionWeeksSchema.optional() }).strict(),
+  z.object({ action: z.literal('update'), weekOneStartsOn: weekOneSchema, questionWeeks: questionWeeksSchema.optional() }).strict(),
   z.object({ action: z.literal('start') }).strict(),
 ])
 export type UpdateCycleInput = z.infer<typeof updateCycleSchema>

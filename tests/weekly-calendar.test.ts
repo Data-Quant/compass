@@ -2,18 +2,41 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   cycleWeeks, defaultQuestionWeeks, effectiveWeek, endOfKarachiDay, formatCalendarDate, isCatchUpWeek, isWorkingDay, karachiCalendarDate, karachiWeekday, parseCalendarDate,
-  parseWeekOneMonday, questionWeekCount, totalWeeks, weekIndexAt, weekStartsAt,
+  parseWeekOneStart, questionWeekCount, totalWeeks, weekDueAt, weekIndexAt, weekStartsAt,
 } from '../lib/weekly/calendar'
 
 const weekOne = new Date('2026-10-04T19:00:00.000Z') // Monday 5 Oct 2026, 00:00 Karachi
+const wednesday = new Date('2026-10-13T19:00:00.000Z') // Wednesday 14 Oct 2026, 00:00 Karachi
 const quarterEnd = new Date('2026-12-31T00:00:00.000Z')
 
-test('week one must be a Monday, stored as midnight Karachi time', () => {
-  assert.equal(parseWeekOneMonday('2026-10-05')?.toISOString(), '2026-10-04T19:00:00.000Z')
-  assert.equal(parseWeekOneMonday('2026-10-06'), null)
-  assert.equal(parseWeekOneMonday('2026-13-01'), null)
+test('week one starts on any working day, stored as midnight Karachi time', () => {
+  assert.equal(parseWeekOneStart('2026-10-05')?.toISOString(), '2026-10-04T19:00:00.000Z')
+  assert.equal(parseWeekOneStart('2026-10-14')?.toISOString(), wednesday.toISOString())
+  assert.equal(parseWeekOneStart('2026-10-16')?.toISOString(), '2026-10-15T19:00:00.000Z')
+  assert.equal(parseWeekOneStart('2026-10-17'), null)
+  assert.equal(parseWeekOneStart('2026-10-18'), null)
+  assert.equal(parseWeekOneStart('2026-13-01'), null)
   assert.equal(karachiWeekday(weekOne), 1)
   assert.equal(karachiWeekday(new Date('2026-10-04T18:59:59.000Z')), 0)
+})
+
+test('a round starting on a Wednesday: week 1 runs to that Sunday, and every later week starts on a Monday', () => {
+  assert.equal(weekIndexAt(wednesday, new Date('2026-10-13T12:00:00.000Z')), 0)
+  assert.equal(weekIndexAt(wednesday, new Date('2026-10-12T12:00:00.000Z')), 0)
+  assert.equal(weekIndexAt(wednesday, wednesday), 1)
+  assert.equal(weekIndexAt(wednesday, new Date('2026-10-18T18:59:59.999Z')), 1)
+  assert.equal(weekIndexAt(wednesday, new Date('2026-10-18T19:00:00.000Z')), 2)
+  assert.equal(weekStartsAt(wednesday, 1).toISOString(), wednesday.toISOString())
+  assert.equal(weekStartsAt(wednesday, 2).toISOString(), '2026-10-18T19:00:00.000Z')
+  assert.equal(weekStartsAt(wednesday, 3).toISOString(), '2026-10-25T19:00:00.000Z')
+  assert.equal(totalWeeks(wednesday, quarterEnd), 12)
+})
+
+test('each week is due at the end of its Friday, Karachi time', () => {
+  assert.equal(weekDueAt(wednesday, 1).toISOString(), '2026-10-16T18:59:59.999Z')
+  assert.equal(weekDueAt(wednesday, 2).toISOString(), '2026-10-23T18:59:59.999Z')
+  assert.equal(weekDueAt(weekOne, 1).toISOString(), '2026-10-09T18:59:59.999Z')
+  assert.equal(karachiWeekday(weekDueAt(weekOne, 7)), 5)
 })
 
 test('weeks run Monday 00:00 to Sunday 23:59 Karachi time', () => {
@@ -30,7 +53,7 @@ test('a quarter from 5 October has 13 weeks: 11 question weeks and 2 catch-up we
   assert.equal(isCatchUpWeek(11, 13), false)
   assert.equal(isCatchUpWeek(12, 13), true)
   assert.equal(isCatchUpWeek(14, 13), false)
-  const lateStart = parseWeekOneMonday('2026-10-12')
+  const lateStart = parseWeekOneStart('2026-10-12')
   assert.ok(lateStart)
   assert.equal(totalWeeks(lateStart, quarterEnd), 12)
 })

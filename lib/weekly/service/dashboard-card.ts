@@ -2,7 +2,7 @@
 // lists, this week's progress, all caught up, round closed. It also says when this month's self-evaluation is waiting,
 // and tells a lead whose team member has sent theirs.
 import { prisma } from '@/lib/db'
-import { cycleWeeks, effectiveWeek, weekStartsAt } from '../calendar'
+import { cycleWeeks, effectiveWeek, weekDueAt, weekStartsAt } from '../calendar'
 import { roundStage } from '../round-stage'
 import { loadCycle } from './cycles'
 import type { WeeklyActor } from './context'
@@ -85,7 +85,6 @@ async function cardNotices(actor: WeeklyActor, cycle: CycleWithPeriod, stage: Ro
   }
   return notices
 }
-const DAY_MS = 24 * 60 * 60 * 1000
 const shortDate = (date: Date) => date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'Asia/Karachi' })
 const longDay = (date: Date) => date.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short', timeZone: 'Asia/Karachi' })
 
@@ -113,10 +112,9 @@ export async function evaluationsCard(actor: WeeklyActor, now: Date): Promise<Ev
   const self = (await mySelfReview(actor, now)).current
   const selfReview = self ? `Your self-evaluation for ${self.monthName} is waiting` : null
   if (progress.open === 0) return { ...base, selfReview, state: 'CAUGHT_UP', message: 'All caught up. Next questions Monday', detail: null }
-  const sunday = new Date(weekStart.getTime() + 6 * DAY_MS)
   return {
     ...base, selfReview, state: 'THIS_WEEK',
-    message: `This week: ${progress.done} of ${progress.total} done, due ${longDay(sunday)}`,
+    message: `This week: ${progress.done} of ${progress.total} done, due ${longDay(weekDueAt(cycle.weekOneStartsOn, week))}`,
     detail: week === total
       ? `Last week of the round: ${progress.open} ${progress.open === 1 ? 'question' : 'questions'} left before ${roundClosesOn(cycle)}`
       : progress.carried ? `${progress.carried} from last week` : null,

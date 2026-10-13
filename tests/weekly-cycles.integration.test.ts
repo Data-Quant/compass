@@ -32,8 +32,8 @@ test('HR creates one cycle per period, starting on a Monday', WEEKLY_DB_TEST, as
   assert.deepEqual([summary.totalWeeks, summary.questionWeeks, summary.currentWeek], [13, 11, 2])
 })
 
-test('week 1 must be a Monday that leaves at least three weeks', WEEKLY_DB_TEST, async () => {
-  await assert.rejects(createCycle(HR_ACTOR, { periodId, weekOneStartsOn: '2026-10-06' }), /Monday/)
+test('week 1 starts on a weekday and leaves at least three weeks', WEEKLY_DB_TEST, async () => {
+  await assert.rejects(createCycle(HR_ACTOR, { periodId, weekOneStartsOn: '2026-10-10' }), /weekday/)
   await assert.rejects(createCycle(HR_ACTOR, { periodId, weekOneStartsOn: '2026-12-21' }), /three weeks/)
 })
 

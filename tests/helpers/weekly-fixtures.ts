@@ -14,10 +14,10 @@ export function at(week: number, weekday = 1, hour = 9): Date {
   return new Date(WEEK_ONE_MS + ((week - 1) * 7 + (weekday - 1)) * DAY_MS + hour * 60 * 60 * 1000)
 }
 
-/** Load the standard question bank, then create and start a cycle whose week 1 is 5 October 2026. */
-export async function startedCycle(periodId: string): Promise<{ cycleId: string }> {
+/** Load the standard question bank, then create and start a cycle whose week 1 starts 5 October 2026 (or `weekOneStartsOn`). */
+export async function startedCycle(periodId: string, weekOneStartsOn = WEEK_ONE_MONDAY): Promise<{ cycleId: string }> {
   await loadStandardBank(HR_ACTOR)
-  const cycle = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn: WEEK_ONE_MONDAY })
+  const cycle = await createCycle(HR_ACTOR, { periodId, weekOneStartsOn })
   await updateCycle(HR_ACTOR, cycle.id, { action: 'start' })
   return { cycleId: cycle.id }
 }

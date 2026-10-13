@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { weekDueAt } from '@/lib/weekly/calendar'
 import { weekLabel } from '@/lib/weekly/format'
 import { RELATIONSHIP_WORDS, type Perspective } from '@/lib/weekly/perspectives'
 import type { InboxPrompt, InboxResponse } from '@/lib/weekly/view-types'
@@ -29,9 +30,9 @@ function groupByPerson(prompts: InboxPrompt[]): PersonGroup[] {
 }
 
 const DUE = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Karachi', weekday: 'long', day: 'numeric', month: 'short' })
-/** The Sunday that ends the week: "Sunday 11 Oct". */
+/** The Friday the week's questions are due: "Friday 9 Oct". */
 function dueDate(weekOneStartsOn: string, week: number): string {
-  return DUE.format(new Date(new Date(weekOneStartsOn).getTime() + week * 7 * 86_400_000 - 1)).replace(',', '')
+  return DUE.format(weekDueAt(new Date(weekOneStartsOn), week)).replace(',', '')
 }
 
 /** UX spec, section 5: "Submit this week", enabled once every performance question has an answer. */

@@ -1,6 +1,6 @@
 // The round's scheduled emails (UX spec, section 13). One button to the page that acts on it; every value is escaped.
 import { escapeHtml } from '../sanitize'
-import { CATCH_UP_WEEKS } from './calendar'
+import { CATCH_UP_WEEKS, DUE_DAY } from './calendar'
 import { base, layout, plural } from './emails'
 
 type Email = { subject: string; html: string }
@@ -27,14 +27,14 @@ function redNotice(title: string, line: string): string {
   )
 }
 
-/** firstDueOn: the Sunday this week's questions are due, such as "Sun 4 Oct". */
+/** firstDueOn: the Friday this week's questions are due, such as "Fri 9 Oct". */
 /** questionWeeks: the weeks HR set for new questions; the catch-up weeks after them bring none. */
 export function renderRoundOpenedEmail(input: { name: string; periodName: string; questionWeeks: number; closesOn: string; firstDueOn: string; appUrl: string }): Email {
   return {
     subject: `${input.periodName} evaluations are now open: first questions due ${input.firstDueOn}, closing ${input.closesOn}`,
     html: layout(input.name, [
-      escapeHtml(`Each Monday for ${plural(input.questionWeeks, 'week')} you get a few short questions about the people you work with. Pick the statement that fits what you have seen; each takes a few seconds.`),
-      escapeHtml(`Answer each week’s questions by Sunday. After that come ${CATCH_UP_WEEKS} catch-up weeks with no new questions: anything you missed stays open until the round closes on ${input.closesOn}.`),
+      escapeHtml(`For ${plural(input.questionWeeks, 'week')} you get a few short questions each week about the people you work with, with new ones every Monday. Pick the statement that fits what you have seen; each takes a few seconds.`),
+      escapeHtml(`Answer each week’s questions by ${DUE_DAY}. Then come ${CATCH_UP_WEEKS} catch-up weeks with no new questions: anything you missed stays open until the round closes on ${input.closesOn}.`),
     ], `${base(input.appUrl)}${MY_PAGE}`, 'See this week’s questions', redNotice(
       `${input.periodName} evaluations are now open`,
       `Deadline: this week’s questions by ${input.firstDueOn}; everything by ${input.closesOn}, when the round closes.`,

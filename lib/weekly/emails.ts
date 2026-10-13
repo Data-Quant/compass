@@ -1,12 +1,13 @@
 import { escapeHtml } from '../sanitize'
+import { DUE_DAY } from './calendar'
 
 export const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? '' : 's'}`
 
-/** Monday's questions email. Every interpolated value is escaped. */
+/** The week's questions email, sent the day the week starts. Every interpolated value is escaped. */
 export function renderQuestionsEmail(input: { name: string; newCount: number; openCount: number; appUrl: string }): { subject: string; html: string } {
   const link = `${input.appUrl.replace(/\/$/, '')}/evaluations/weekly`
   const subject = 'Your evaluation questions for this week'
-  const lead = `You have ${plural(input.newCount, 'new question')} this week (${input.openCount} open in total), due Sunday.`
+  const lead = `You have ${plural(input.newCount, 'new question')} this week (${input.openCount} open in total), due ${DUE_DAY}.`
   const html =
     '<div style="font-family:Arial,sans-serif;font-size:14px;color:#111;max-width:600px">' +
     `<p>Hi ${escapeHtml(input.name)},</p><p>${escapeHtml(lead)} Each one takes a few seconds: pick the statement that best fits what you have seen.</p>` +

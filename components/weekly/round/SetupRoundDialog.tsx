@@ -43,7 +43,7 @@ export function SetupRoundDialog({ onClose, onCreated }: { onClose: () => void; 
 
   const dates = [
     field('startDate', 'Quarter starts'), field('endDate', 'Quarter ends'),
-    field('weekOneStartsOn', 'Weekly questions start', 'A Monday'), field('reviewDeadline', 'Review stage ends', 'Optional: a week from today if empty'),
+    field('weekOneStartsOn', 'Weekly questions start', 'Any weekday; later weeks start on Mondays'), field('reviewDeadline', 'Review stage ends', 'Optional: a week from today if empty'),
   ] as const
   return (
     <Modal isOpen onClose={onClose} title="Set up a round">

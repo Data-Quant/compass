@@ -15,7 +15,7 @@ export type WeeklyEmailKind =
   | 'peer-request' | 'peer-request-outcome' | 'peer-request-question' | 'peer-request-reply' | 'peer-request-received' | 'peer-request-for-hr' | 'weekly-mapping'
   | 'self-review-submitted' | 'self-review-reply' | 'self-review-reminder'
   | 'weekly-review-reminder' | 'weekly-hr-reminder' | 'weekly-round-opened' | 'weekly-behind' | 'weekly-team-behind' | 'weekly-hr-digest' | 'weekly-joiner' | 'weekly-round-closed'
-/** Monday's questions, the due-day reminder (Sunday) and the final week's count (UX spec, section 13). */
+/** The week's questions, the due-day reminder (Friday) and the final week's count (UX spec, section 13). */
 export type QuestionEmailKind = 'weekly-questions' | 'weekly-due-today' | 'weekly-final-week'
 export interface QuestionRecipient { userId: string; newCount: number; openCount: number }
 export interface WeeklySendResult { sent: number; recorded: number; skipped: number; failed: number }

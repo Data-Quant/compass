@@ -41,7 +41,7 @@ test('the stage comes from the period and its cycle', () => {
 
 test('HR sets up a round in one step: the quarter and its weekly cycle, in Draft', WEEKLY_DB_TEST, async () => {
   await assert.rejects(setupRound(weeklyActor(W.ana), SETUP, at(1)), isStatus(403))
-  await assert.rejects(setupRound(HR_ACTOR, { ...SETUP, weekOneStartsOn: '2027-01-05' }, at(1)), /Monday/)
+  await assert.rejects(setupRound(HR_ACTOR, { ...SETUP, weekOneStartsOn: '2027-01-09' }, at(1)), /weekday/)
   const { periodId } = await setupRound(HR_ACTOR, SETUP, at(1))
   const view = await roundView(HR_ACTOR, periodId, at(1))
   assert.equal(view.stage, 'DRAFT')

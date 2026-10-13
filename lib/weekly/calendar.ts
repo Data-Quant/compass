@@ -1,4 +1,5 @@
-// Weekly-evaluation weeks run Monday 00:00 to Sunday 23:59 in Asia/Karachi (UTC+05:00, no DST).
+// Weekly-evaluation weeks run Monday 00:00 to Sunday 23:59 in Asia/Karachi (UTC+05:00, no DST), except week 1,
+// which starts on the working day HR chose. Each week's questions are due at the end of its Friday.
 
 export interface CalendarDate { year: number; month: number; day: number }
 
@@ -42,12 +43,17 @@ export function parseCalendarDate(value: string): CalendarDate | null {
 export function formatCalendarDate(date: CalendarDate): string {
   return `${date.year}-${String(date.month).padStart(2, '0')}-${String(date.day).padStart(2, '0')}`
 }
-export const WEEK_MS = 7 * DAY_MS
+const WEEK_MS = 7 * DAY_MS
 /** The last weeks of a cycle are for catch-up and the optional comment questions. */
 export const CATCH_UP_WEEKS = 2
 
 export function startOfKarachiDay(date: CalendarDate): Date {
   return new Date(Date.UTC(date.year, date.month - 1, date.day) - KARACHI_OFFSET_MS)
+}
+
+/** Whether two instants fall on the same Karachi calendar day. */
+export function sameKarachiDay(a: Date, b: Date): boolean {
+  return sameCalendarDate(karachiCalendarDate(a), karachiCalendarDate(b))
 }
 
 /** 0 = Sunday … 6 = Saturday, in Karachi. */
@@ -56,16 +62,22 @@ export function karachiWeekday(instant: Date): number {
   return new Date(Date.UTC(date.year, date.month - 1, date.day)).getUTCDay()
 }
 
-/** A YYYY-MM-DD Monday as the instant week 1 starts; null when invalid or not a Monday. */
-export function parseWeekOneMonday(value: string): Date | null {
+/** A YYYY-MM-DD working day (Monday to Friday) as the instant week 1 starts; null when invalid or a weekend. */
+export function parseWeekOneStart(value: string): Date | null {
   const date = parseCalendarDate(value)
-  if (!date || new Date(Date.UTC(date.year, date.month - 1, date.day)).getUTCDay() !== 1) return null
-  return startOfKarachiDay(date)
+  return date && isWorkingDay(date) ? startOfKarachiDay(date) : null
+}
+
+/** The Monday 00:00 of week 1's calendar week; every later week starts a whole number of weeks after it. */
+function weekOneMonday(weekOneStartsOn: Date): number {
+  const sinceMonday = (karachiWeekday(weekOneStartsOn) + 6) % 7
+  return weekOneStartsOn.getTime() - sinceMonday * DAY_MS
 }
 
 /** Week number containing `instant`; 0 or less before week 1. */
 export function weekIndexAt(weekOneStartsOn: Date, instant: Date): number {
-  return Math.floor((instant.getTime() - weekOneStartsOn.getTime()) / WEEK_MS) + 1
+  const week = Math.floor((instant.getTime() - weekOneMonday(weekOneStartsOn)) / WEEK_MS) + 1
+  return instant < weekOneStartsOn ? Math.min(week, 0) : week
 }
 
 /** HR sets the question weeks; the two catch-up weeks follow them. */
@@ -92,7 +104,17 @@ export function isCatchUpWeek(week: number, total: number): boolean {
 }
 
 export function weekStartsAt(weekOneStartsOn: Date, week: number): Date {
-  return new Date(weekOneStartsOn.getTime() + (week - 1) * WEEK_MS)
+  return week === 1 ? weekOneStartsOn : new Date(weekOneMonday(weekOneStartsOn) + (week - 1) * WEEK_MS)
+}
+
+/** The weekday each week's questions are due, as people read it. */
+export const DUE_DAY = 'Friday'
+/** Friday is 4 days after the week's Monday. */
+const DUE_DAYS_AFTER_MONDAY = 4
+
+/** The last moment to answer a week's questions: the end of its Friday. Answers stay editable until the week ends. */
+export function weekDueAt(weekOneStartsOn: Date, week: number): Date {
+  return new Date(weekOneMonday(weekOneStartsOn) + (week - 1) * WEEK_MS + (DUE_DAYS_AFTER_MONDAY + 1) * DAY_MS - 1)
 }
 
 /** The calendar week, or a later week the preview test tools have released. */

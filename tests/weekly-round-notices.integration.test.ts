@@ -64,23 +64,43 @@ test('opening the round tells every evaluator how long it runs and when it close
   assert.deepEqual(to(mail, W.ben.id).filter((s) => /not decided/.test(s)), ['Ana Torvik’s request about you was not decided in time'], 'the peer hears it lapsed')
   const started = mail.sent.filter((m) => /evaluations are now open/.test(m.subject))
   assert.deepEqual(started.map((m) => m.to).sort(), [email(W.ana.id), email(W.ben.id), email(W.lead.id)])
-  assert.match(started[0].subject, /^Q4 2026 \(weekly test\) evaluations are now open: first questions due Sun \d+ \w+, closing 3 Jan 2027$/)
+  assert.match(started[0].subject, /^Q4 2026 \(weekly test\) evaluations are now open: first questions due Fri \d+ \w+, closing 3 Jan 2027$/)
 })
 
-test('questions come on Monday, and only the due day reminds: "due today" on Sunday, nothing in between', WEEKLY_DB_TEST, async () => {
+test('questions come on Monday, and only the due day reminds: "due today" on Friday, nothing in between', WEEKLY_DB_TEST, async () => {
   await startedCycle(periodId)
   await runWeeklyDailyJob(mailbox().send, APP, at(1))
   const [prompt] = (await inboxView(W.lead.id, at(1))).prompts
   await answerAs({ id: prompt.id, evaluatorId: W.lead.id }, 3, at(1, 2))
-  for (const day of [2, 3, 4, 5, 6]) {
+  for (const day of [2, 3, 4, 6, 7]) {
     const quiet = mailbox()
     await runWeeklyDailyJob(quiet.send, APP, at(1, day))
     assert.equal(quiet.sent.length, 0, `nothing on day ${day}`)
   }
-  const sunday = mailbox()
-  await runWeeklyDailyJob(sunday.send, APP, at(1, 7))
-  assert.deepEqual(sunday.sent.map((m) => m.to).sort(), [email(W.ana.id), email(W.ben.id)])
-  assert.equal(sunday.sent[0].subject, 'Your 1 remaining question is due today')
+  const friday = mailbox()
+  await runWeeklyDailyJob(friday.send, APP, at(1, 5))
+  assert.deepEqual(friday.sent.map((m) => m.to).sort(), [email(W.ana.id), email(W.ben.id)])
+  assert.equal(friday.sent[0].subject, 'Your 1 remaining question is due today')
+})
+
+test('a round starting on a Wednesday: questions that day, "due today" that Friday, then every Monday', WEEKLY_DB_TEST, async () => {
+  await startedCycle(periodId, '2026-10-07')
+  const monday = mailbox()
+  await runWeeklyDailyJob(monday.send, APP, at(1, 1))
+  assert.equal(monday.sent.filter((m) => /question/i.test(m.subject)).length, 0, 'nothing before week 1 starts')
+  const wednesday = mailbox()
+  await runWeeklyDailyJob(wednesday.send, APP, at(1, 3))
+  assert.deepEqual(wednesday.sent.map((m) => m.to).sort(), [email(W.ana.id), email(W.ben.id), email(W.lead.id)])
+  assert.match(wednesday.sent[0].html, /due Friday/)
+  const thursday = mailbox()
+  await runWeeklyDailyJob(thursday.send, APP, at(1, 4))
+  assert.equal(thursday.sent.length, 0)
+  const friday = mailbox()
+  await runWeeklyDailyJob(friday.send, APP, at(1, 5))
+  assert.ok(friday.sent.length > 0 && friday.sent.every((m) => /due today/.test(m.subject)))
+  const nextMonday = mailbox()
+  await runWeeklyDailyJob(nextMonday.send, APP, at(2, 1))
+  assert.ok(nextMonday.sent.some((m) => /question/i.test(m.subject) && !/due today/.test(m.subject)), 'week 2 starts on Monday')
 })
 
 test('someone 2 or more weeks behind is told on Wednesday, and so is their lead', WEEKLY_DB_TEST, async () => {

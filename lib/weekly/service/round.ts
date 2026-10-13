@@ -74,7 +74,7 @@ export async function setupRound(actor: WeeklyActor, input: SetupRoundInput, now
     await recordAudit(prisma, { cycleId: cycle.id, actorId: actor.id, actorRole: 'HR', action: 'ROUND_SETUP', objectType: 'EvaluationPeriod', objectId: period.id, after: input })
     return { periodId: period.id, cycleId: cycle.id }
   } catch (error) {
-    // The cycle's checks failed (e.g. week 1 is not a Monday): the period goes too, so nothing half-made is left.
+    // The cycle's checks failed (e.g. week 1 is on a weekend): the period goes too, so nothing half-made is left.
     await prisma.evaluationPeriod.delete({ where: { id: period.id } }).catch(() => undefined)
     throw error
   }

@@ -3,7 +3,7 @@
 // dedupe keys make every one of them safe to build again on the next run.
 import { prisma } from '@/lib/db'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
-import { cycleWeeks, effectiveWeek, weekStartsAt } from '../calendar'
+import { cycleWeeks, effectiveWeek, weekDueAt, weekStartsAt } from '../calendar'
 import { evaluateeExclusion, evaluatorExclusion, isOutsideRedesign } from '../eligibility'
 import {
   renderBehindEmail, renderHrDigestEmail, renderJoinerEmail, renderReviewReminderEmail, renderRoundClosedEmail, renderRoundOpenedEmail, renderTeamBehindEmail,
@@ -32,10 +32,10 @@ export function roundClosesOn(cycle: Pick<CycleWithPeriod, 'weekOneStartsOn' | '
   return formatKarachiDate(new Date(weekStartsAt(cycle.weekOneStartsOn, cycleWeeks(cycle) + 1).getTime() - 1).toISOString())
 }
 
-/** The Sunday the current week's questions are due ("Sun 4 Oct"); week 1's when the round opens ahead of it. */
+/** The Friday the current week's questions are due ("Fri 9 Oct"); week 1's when the round opens ahead of it. */
 export function firstQuestionsDueOn(cycle: Pick<CycleWithPeriod, 'weekOneStartsOn' | 'simulatedWeek'>, now: Date): string {
   const week = Math.max(1, effectiveWeek(cycle.weekOneStartsOn, cycle.simulatedWeek, now))
-  return formatKarachiDay(new Date(weekStartsAt(cycle.weekOneStartsOn, week + 1).getTime() - 1).toISOString())
+  return formatKarachiDay(weekDueAt(cycle.weekOneStartsOn, week).toISOString())
 }
 
 async function weeklyAssignments(periodId: string) {

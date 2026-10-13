@@ -1,7 +1,7 @@
 import type { WeeklyCycle } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
-import { CATCH_UP_WEEKS, cycleWeeks, defaultQuestionWeeks, effectiveWeek, parseWeekOneMonday, questionWeekCount, totalWeeks } from '../calendar'
+import { CATCH_UP_WEEKS, cycleWeeks, defaultQuestionWeeks, effectiveWeek, parseWeekOneStart, questionWeekCount, totalWeeks } from '../calendar'
 import { evaluateeExclusion, isOutsideRedesign } from '../eligibility'
 import { isWeeklyRelationshipType } from '../perspectives'
 import type { CreateCycleInput, UpdateCycleInput } from '../schemas'
@@ -69,8 +69,8 @@ export async function adminCycles(actor: WeeklyActor, now: Date): Promise<AdminC
 }
 
 function checkWeekOne(value: string, periodEnd: Date): Date {
-  const weekOne = parseWeekOneMonday(value)
-  if (!weekOne) throw new WeeklyError('Week 1 must start on a Monday')
+  const weekOne = parseWeekOneStart(value)
+  if (!weekOne) throw new WeeklyError('Week 1 must start on a weekday, Monday to Friday')
   if (weekOne > periodEnd || totalWeeks(weekOne, periodEnd) < MIN_WEEKS) throw new WeeklyError('Week 1 must leave at least three weeks before the period ends')
   return weekOne
 }
