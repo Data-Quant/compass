@@ -280,13 +280,13 @@ export function MappingsTable({ onChanged }: { onChanged: () => void }) {
           {shown.map((mapping) => (
             <Card key={mapping.id}>
               <CardContent className="flex items-center gap-4 p-4">
-                <PersonCell person={mapping.evaluator} tone="from-indigo-500 to-purple-500" />
+                <PersonCell person={mapping.evaluator} />
                 <div className="flex shrink-0 items-center gap-2 px-3">
                   <ArrowRight className="h-4 w-4 text-muted-foreground" />
                   <Badge variant="secondary">{RELATIONSHIP_TYPE_LABELS[mapping.relationshipType]}</Badge>
                   <ArrowRight className="h-4 w-4 text-muted-foreground" />
                 </div>
-                <PersonCell person={mapping.evaluatee} tone="from-emerald-500 to-teal-500" />
+                <PersonCell person={mapping.evaluatee} />
                 <div className="flex shrink-0 items-center gap-1">
                   <Button variant="ghost" size="icon" aria-label={`Edit ${mapping.evaluator.name} to ${mapping.evaluatee.name}`} onClick={() => openForm(mapping)}><Edit2 className="h-4 w-4" /></Button>
                   <Button variant="ghost" size="icon" aria-label={`Delete ${mapping.evaluator.name} to ${mapping.evaluatee.name}`} onClick={() => setMappingToDelete(mapping)} className="text-destructive hover:bg-destructive/10 hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>
@@ -427,10 +427,10 @@ export function MappingsTable({ onChanged }: { onChanged: () => void }) {
   )
 }
 
-function PersonCell({ person, tone }: { person: Person; tone: string }) {
+function PersonCell({ person }: { person: Person }) {
   return (
     <div className="flex min-w-0 flex-1 items-center gap-3">
-      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${tone} text-sm font-medium text-white`}>{initials(person.name)}</div>
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-muted-foreground">{initials(person.name)}</div>
       <div className="min-w-0">
         <div className="truncate font-medium">{person.name}</div>
         <div className="truncate text-xs text-muted-foreground">{person.department || 'No department'}</div>
