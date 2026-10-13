@@ -15,7 +15,7 @@ import { RemovedTopics } from './QuestionBankControls'
 import { BLANK_STATEMENTS, StatementsEditor, statementsProblem } from './StatementsEditor'
 import { TopicCard } from './TopicCard'
 
-const SECTION_TITLES: Record<Perspective, string> = {
+export const SECTION_TITLES: Record<Perspective, string> = {
   LEAD: 'Lead about a team member',
   UPWARD: 'Team member about their lead',
   PEER: 'Peer about a peer',

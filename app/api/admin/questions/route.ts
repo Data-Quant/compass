@@ -1,314 +1,104 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { ZodError } from 'zod'
 import { getSession } from '@/lib/auth'
 import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
-import {
-  derivePreEvaluationStatus,
-  getLeadAuthoredQuestionBankRelationshipType,
-  getRuntimeLeadQuestionCount,
-  hasSubmittedLeadQuestionSet,
-  PRE_EVALUATION_QUESTION_COUNT,
-} from '@/lib/pre-evaluation'
 import { toRatingDescriptionFields } from '@/lib/rating-descriptions'
+import {
+  bankQuestionProblem,
+  createBankQuestionSchema,
+  deleteBankQuestionSchema,
+  MANAGED_BANK_QUESTIONS,
+  updateBankQuestionSchema,
+} from '@/lib/weekly/bank-questions'
 
-// GET - List all evaluation questions
-export async function GET(request: NextRequest) {
+// The quarter-end form questions and the weekly comment questions (lib/weekly/bank-questions.ts).
+
+async function authorised(): Promise<boolean> {
+  const user = await getSession()
+  return Boolean(user && isAdminRole(user.role))
+}
+
+function failure(error: unknown, action: string): NextResponse {
+  if (error instanceof ZodError) return NextResponse.json({ error: error.issues.map((i) => i.message).join('; ') }, { status: 400 })
+  if (error instanceof SyntaxError) return NextResponse.json({ error: 'The request body is not valid JSON' }, { status: 400 })
+  console.error(`Failed to ${action} question:`, error)
+  return NextResponse.json({ error: `Failed to ${action} question` }, { status: 500 })
+}
+
+/** Rating descriptions belong to rating questions only. */
+function descriptionFields(type: 'RATING' | 'TEXT', descriptions: Record<string, string> | undefined) {
+  return toRatingDescriptionFields(type === 'RATING' ? descriptions : null)
+}
+
+export async function GET() {
   try {
-    const user = await getSession()
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const { searchParams } = new URL(request.url)
-    const view = searchParams.get('view')
-    const relationshipType = searchParams.get('relationshipType')
-    const periodIdParam = searchParams.get('periodId')
-
-    if (view === 'lead-submissions') {
-      const periods = await prisma.evaluationPeriod.findMany({
-        orderBy: { reviewStartDate: 'desc' },
-        select: {
-          id: true,
-          name: true,
-          startDate: true,
-          endDate: true,
-          reviewStartDate: true,
-          isActive: true,
-          preEvaluationTriggeredAt: true,
-        },
-      })
-
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-
-      const selectedPeriodId =
-        periodIdParam ||
-        periods.find((period) => period.isActive)?.id ||
-        periods.find((period) => {
-          const reviewStartDate = new Date(period.reviewStartDate)
-          reviewStartDate.setHours(0, 0, 0, 0)
-          return Boolean(period.preEvaluationTriggeredAt) && reviewStartDate >= today
-        })?.id ||
-        periods.find((period) => {
-          const reviewStartDate = new Date(period.reviewStartDate)
-          reviewStartDate.setHours(0, 0, 0, 0)
-          return reviewStartDate >= today
-        })?.id ||
-        periods.find((period) => period.preEvaluationTriggeredAt)?.id ||
-        periods[0]?.id
-
-      if (!selectedPeriodId) {
-        return NextResponse.json({
-          periods: [],
-          selectedPeriodId: null,
-          requiredQuestionCount: PRE_EVALUATION_QUESTION_COUNT,
-          defaultQuestionCount: 0,
-          leadQuestionSets: [],
-        })
-      }
-
-      const leadQuestionSets = await prisma.preEvaluationLeadPrep.findMany({
-        where: { periodId: selectedPeriodId },
-        include: {
-          lead: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              department: true,
-              position: true,
-            },
-          },
-          period: {
-            select: {
-              id: true,
-              name: true,
-              startDate: true,
-              endDate: true,
-              reviewStartDate: true,
-              isActive: true,
-              preEvaluationTriggeredAt: true,
-            },
-          },
-          questions: {
-            orderBy: { orderIndex: 'asc' },
-          },
-        },
-        orderBy: {
-          lead: {
-            name: 'asc',
-          },
-        },
-      })
-
-      const defaultQuestionBankType = getLeadAuthoredQuestionBankRelationshipType()
-      const defaultQuestionCount = await prisma.evaluationQuestion.count({
-        where: { relationshipType: defaultQuestionBankType },
-      })
-
-      return NextResponse.json({
-        periods,
-        selectedPeriodId,
-        requiredQuestionCount: PRE_EVALUATION_QUESTION_COUNT,
-        defaultQuestionCount,
-        leadQuestionSets: leadQuestionSets.map((prep) => {
-          const hasSubmittedCustomQuestions = hasSubmittedLeadQuestionSet(prep)
-          const effectiveQuestionCount = getRuntimeLeadQuestionCount({
-            defaultQuestionCount,
-            leadQuestionCount: prep.questions.length,
-            includeLeadQuestions: hasSubmittedCustomQuestions,
-          })
-
-          return {
-            id: prep.id,
-            status: derivePreEvaluationStatus(prep),
-            questionsSubmittedAt: prep.questionsSubmittedAt,
-            evaluateesSubmittedAt: prep.evaluateesSubmittedAt,
-            questionCount: prep.questions.length,
-            usesDefaultBank: !hasSubmittedCustomQuestions,
-            effectiveQuestionCount,
-            isRuntimeActive: Boolean(prep.period.isActive && effectiveQuestionCount > 0),
-            lead: prep.lead,
-            period: prep.period,
-            questions: prep.questions,
-          }
-        }),
-      })
-    }
-
-    const where = relationshipType ? { relationshipType: relationshipType as any } : {}
-
+    if (!(await authorised())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const questions = await prisma.evaluationQuestion.findMany({
-      where,
-      orderBy: [
-        { relationshipType: 'asc' },
-        { questionType: 'asc' },
-        { orderIndex: 'asc' },
-      ],
+      where: MANAGED_BANK_QUESTIONS,
+      orderBy: [{ relationshipType: 'asc' }, { orderIndex: 'asc' }],
     })
-
     return NextResponse.json({ questions })
   } catch (error) {
-    console.error('Failed to fetch questions:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch questions' },
-      { status: 500 }
-    )
+    return failure(error, 'fetch')
   }
 }
 
-// POST - Create a new question
 export async function POST(request: NextRequest) {
   try {
-    const user = await getSession()
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const {
-      relationshipType,
-      questionText,
-      questionType,
-      maxRating,
-      ratingDescriptions,
-    } = await request.json()
-
-    if (!relationshipType || !questionText) {
-      return NextResponse.json(
-        { error: 'Relationship type and question text are required' },
-        { status: 400 }
-      )
-    }
-
-    if (relationshipType === 'CROSS_DEPARTMENT') {
-      return NextResponse.json(
-        { error: 'Cross-department questions are sourced from lead submissions, not the global question bank' },
-        { status: 400 }
-      )
-    }
-
-    // Get the next order index for this relationship type
-    const lastQuestion = await prisma.evaluationQuestion.findFirst({
-      where: { relationshipType },
-      orderBy: { orderIndex: 'desc' },
-    })
-
-    const orderIndex = (lastQuestion?.orderIndex || 0) + 1
-
+    if (!(await authorised())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const input = createBankQuestionSchema.parse(await request.json())
+    const problem = bankQuestionProblem(input.relationshipType, input.questionType)
+    if (problem) return NextResponse.json({ error: problem }, { status: 400 })
+    const last = await prisma.evaluationQuestion.findFirst({ where: { relationshipType: input.relationshipType }, orderBy: { orderIndex: 'desc' } })
     const question = await prisma.evaluationQuestion.create({
       data: {
-        relationshipType,
-        questionText,
-        questionType: questionType || 'RATING',
-        maxRating: maxRating || 4,
-        ...(questionType === 'RATING' || !questionType
-          ? toRatingDescriptionFields(ratingDescriptions)
-          : toRatingDescriptionFields(null)),
-        orderIndex,
+        relationshipType: input.relationshipType,
+        questionText: input.questionText,
+        questionType: input.questionType,
+        maxRating: 4,
+        ...descriptionFields(input.questionType, input.ratingDescriptions),
+        orderIndex: (last?.orderIndex ?? 0) + 1,
       },
     })
-
     return NextResponse.json({ success: true, question })
   } catch (error) {
-    console.error('Failed to create question:', error)
-    return NextResponse.json(
-      { error: 'Failed to create question' },
-      { status: 500 }
-    )
+    return failure(error, 'create')
   }
 }
 
-// PUT - Update a question
 export async function PUT(request: NextRequest) {
   try {
-    const user = await getSession()
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const {
-      id,
-      questionText,
-      questionType,
-      maxRating,
-      orderIndex,
-      ratingDescriptions,
-    } = await request.json()
-
-    if (!id || !questionText) {
-      return NextResponse.json(
-        { error: 'ID and question text are required' },
-        { status: 400 }
-      )
-    }
-
+    if (!(await authorised())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const input = updateBankQuestionSchema.parse(await request.json())
+    const existing = await prisma.evaluationQuestion.findUnique({ where: { id: input.id }, select: { relationshipType: true, questionType: true } })
+    if (!existing) return NextResponse.json({ error: 'Question not found' }, { status: 404 })
+    const problem = bankQuestionProblem(existing.relationshipType, existing.questionType) ?? bankQuestionProblem(existing.relationshipType, input.questionType)
+    if (problem) return NextResponse.json({ error: problem }, { status: 400 })
     const question = await prisma.evaluationQuestion.update({
-      where: { id },
-      data: {
-        questionText,
-        questionType: questionType || 'RATING',
-        maxRating: maxRating || 4,
-        ...(questionType === 'RATING' || !questionType
-          ? toRatingDescriptionFields(ratingDescriptions)
-          : toRatingDescriptionFields(null)),
-        orderIndex: orderIndex || undefined,
-      },
+      where: { id: input.id },
+      data: { questionText: input.questionText, questionType: input.questionType, ...descriptionFields(input.questionType, input.ratingDescriptions) },
     })
-
     return NextResponse.json({ success: true, question })
   } catch (error) {
-    console.error('Failed to update question:', error)
-    return NextResponse.json(
-      { error: 'Failed to update question' },
-      { status: 500 }
-    )
+    return failure(error, 'update')
   }
 }
 
-// DELETE - Delete a question
 export async function DELETE(request: NextRequest) {
   try {
-    const user = await getSession()
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const { searchParams } = new URL(request.url)
-    const body = await request.json().catch(() => null)
-    const id = searchParams.get('id') || body?.id
-
-    if (!id) {
-      return NextResponse.json({ error: 'Question ID is required' }, { status: 400 })
-    }
-
-    // Check if question has evaluations
-    const question = await prisma.evaluationQuestion.findUnique({
-      where: { id },
-      include: {
-        _count: {
-          select: { evaluations: true },
-        },
-      },
-    })
-
-    if (question && question._count.evaluations > 0) {
-      return NextResponse.json(
-        { error: 'Cannot delete question with existing evaluations' },
-        { status: 400 }
-      )
-    }
-
-    await prisma.evaluationQuestion.delete({
-      where: { id },
-    })
-
+    if (!(await authorised())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { id } = deleteBankQuestionSchema.parse(await request.json())
+    const question = await prisma.evaluationQuestion.findUnique({ where: { id }, select: { relationshipType: true, questionType: true, _count: { select: { evaluations: true } } } })
+    if (!question) return NextResponse.json({ error: 'Question not found' }, { status: 404 })
+    const problem = bankQuestionProblem(question.relationshipType, question.questionType)
+    if (problem) return NextResponse.json({ error: problem }, { status: 400 })
+    // Answered questions stay, so past results keep their wording.
+    const asked = question._count.evaluations + (await prisma.weeklyPrompt.count({ where: { questionId: id } }))
+    if (asked > 0) return NextResponse.json({ error: 'This question has been asked, so it stays with its answers. Change its wording instead.' }, { status: 400 })
+    await prisma.evaluationQuestion.delete({ where: { id } })
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Failed to delete question:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete question' },
-      { status: 500 }
-    )
+    return failure(error, 'delete')
   }
 }
-

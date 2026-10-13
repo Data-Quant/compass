@@ -3,11 +3,8 @@ import { prisma } from '@/lib/db'
 import type { RelationshipType } from '@/types'
 import {
   normalizeRatingDescriptions,
-  toRatingDescriptionFields,
   type RatingDescriptions,
 } from '@/lib/rating-descriptions'
-
-export const PRE_EVALUATION_QUESTION_COUNT = 2
 
 export type QuestionSourceType = 'GLOBAL' | 'LEAD'
 
@@ -45,11 +42,6 @@ type LeadRelationshipMapping = {
   evaluatorId: string
   evaluateeId: string
   relationshipType: RelationshipType
-}
-
-type PrepQuestionSource = {
-  questionsSubmittedAt: Date | null
-  questions: Array<PreEvaluationLeadQuestion>
 }
 
 type RuntimeGlobalQuestionInput = {
@@ -199,10 +191,6 @@ export function filterLeadsByTitle(
   return { leadIds, directReportsByLead }
 }
 
-export function hasSubmittedLeadQuestionSet(source: PrepQuestionSource) {
-  return Boolean(source.questionsSubmittedAt) && source.questions.length > 0
-}
-
 // A lead's questions count in the actual evaluations when they exist and were
 // either explicitly submitted by the lead OR carried forward from a prior period.
 export function hasEffectiveLeadQuestionSet(source: {
@@ -244,18 +232,6 @@ export function getDefaultQuestionBankRelationshipType(
   }
 
   return relationshipType
-}
-
-export function getLeadAuthoredQuestionBankRelationshipType(): RelationshipType {
-  return 'DIRECT_REPORT'
-}
-
-export function getRuntimeLeadQuestionCount(params: {
-  defaultQuestionCount: number
-  leadQuestionCount: number
-  includeLeadQuestions: boolean
-}) {
-  return params.defaultQuestionCount + (params.includeLeadQuestions ? params.leadQuestionCount : 0)
 }
 
 export function buildRuntimeEvaluationQuestionSet(params: {
@@ -819,37 +795,4 @@ export function getEvaluationQuestionMeta(
   }
 
   return null
-}
-
-export async function saveDraftQuestions(
-  prepId: string,
-  questions: Array<{
-    orderIndex: number
-    questionText: string
-    ratingDescriptions?: RatingDescriptions | null
-  }>,
-  db: DbClient = prisma
-) {
-  await db.preEvaluationLeadQuestion.deleteMany({
-    where: { prepId },
-  })
-
-  const validQuestions = questions
-    .map((question) => ({
-      orderIndex: question.orderIndex,
-      questionText: question.questionText.trim(),
-      ratingDescriptions: question.ratingDescriptions,
-    }))
-    .filter((question) => question.questionText)
-
-  if (validQuestions.length > 0) {
-    await db.preEvaluationLeadQuestion.createMany({
-      data: validQuestions.map((question) => ({
-        prepId,
-        orderIndex: question.orderIndex,
-        questionText: question.questionText,
-        ...toRatingDescriptionFields(question.ratingDescriptions),
-      })),
-    })
-  }
 }

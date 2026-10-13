@@ -38,7 +38,6 @@ const ADMIN_NAV_GROUPS = [
   {
     label: 'Performance',
     items: [
-      { label: 'Questions', href: '/admin/questions' },
       { label: 'Weightages', href: '/admin/settings' },
       { label: 'Reports', href: '/admin/reports' },
     ],
@@ -144,8 +143,8 @@ test('admin nav Performance group keeps the set-up pages; the round page and Org
   const perfGroup = ADMIN_NAV_GROUPS.find((g) => g.label === 'Performance')
   assert.ok(perfGroup, 'Performance group not found')
   const labels = perfGroup!.items.map((i) => i.label)
-  for (const label of ['Questions', 'Weightages', 'Reports']) assert.ok(labels.includes(label), `Missing ${label}`)
-  for (const label of ['Overview', 'Periods', 'Pre-Evaluation', 'Email', 'Mappings']) assert.ok(!labels.includes(label), `${label} should be gone`)
+  for (const label of ['Weightages', 'Reports']) assert.ok(labels.includes(label), `Missing ${label}`)
+  for (const label of ['Overview', 'Periods', 'Pre-Evaluation', 'Email', 'Mappings', 'Questions']) assert.ok(!labels.includes(label), `${label} should be gone`)
 })
 
 test('admin nav People group includes Users', () => {

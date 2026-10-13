@@ -124,7 +124,6 @@ export const ADMIN_SIDEBAR: SidebarConfig = {
       label: 'Performance',
       defaultOpen: true,
       items: [
-        { label: 'Questions', href: '/admin/questions', icon: HelpCircle },
         { label: 'Weightages', href: '/admin/settings', icon: Sliders },
         { label: 'Reports', href: '/admin/reports', icon: FileText },
       ],

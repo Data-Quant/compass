@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils'
 import type { RoundChecklistItem, RoundSummary, RoundView, WeeklyMeResponse } from '@/lib/weekly/view-types'
 import { QuarterEvaluationsWorkspace } from '../form-tables/QuarterEvaluationsWorkspace'
 import { AiModelTab } from '../admin/AiModelTab'
+import { BankQuestions } from '../admin/BankQuestions'
 import { CloseTab } from '../admin/CloseTab'
 import { ContentTab } from '../admin/ContentTab'
 import { DashboardTab } from '../admin/DashboardTab'
@@ -253,7 +254,7 @@ export function EvaluationRoundPage() {
                   <TabsTrigger value="survey">Pulse survey</TabsTrigger>
                   {testTools && <TabsTrigger value="test">Test tools</TabsTrigger>}
                 </TabsList>
-                <TabsContent value="content"><ContentTab /></TabsContent>
+                <TabsContent value="content" className="space-y-10"><ContentTab /><BankQuestions /></TabsContent>
                 <TabsContent value="ai"><AiModelTab /></TabsContent>
                 <TabsContent value="survey"><SurveyTab /></TabsContent>
                 {testTools && <TabsContent value="test"><TestToolsTab /></TabsContent>}
