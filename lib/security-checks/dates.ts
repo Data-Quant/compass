@@ -1,8 +1,34 @@
 // Date helpers. Deadlines are end-of-day Asia/Karachi (UTC+05:00, no DST),
 // matching the KPI module's convention.
-import { endOfKarachiDay, isWorkingDay, karachiCalendarDate, type CalendarDate } from '@/lib/kpi/calendar'
+import {
+  endOfKarachiDay,
+  formatCalendarDate,
+  isWorkingDay,
+  karachiCalendarDate,
+  parseCalendarDate,
+  type CalendarDate,
+} from '@/lib/kpi/calendar'
 
 export const DAY_MS = 24 * 60 * 60 * 1000
+
+export function startOfKarachiDay(date: CalendarDate): Date {
+  return new Date(endOfKarachiDay(date).getTime() + 1 - DAY_MS)
+}
+
+/** YYYY-MM-DD of the Karachi calendar day containing `instant`. */
+export function karachiDateKey(instant: Date): string {
+  return formatCalendarDate(karachiCalendarDate(instant))
+}
+
+export function startOfKarachiDateKey(key: string): Date | null {
+  const date = parseCalendarDate(key)
+  return date ? startOfKarachiDay(date) : null
+}
+
+export function endOfKarachiDateKey(key: string): Date | null {
+  const date = parseCalendarDate(key)
+  return date ? endOfKarachiDay(date) : null
+}
 
 export function addDays(instant: Date, days: number): Date {
   return new Date(instant.getTime() + days * DAY_MS)
