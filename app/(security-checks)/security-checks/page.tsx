@@ -1,10 +1,16 @@
+import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
-import { MyChecksWorkspace } from '@/components/security-checks/MyChecksWorkspace'
+import { LoadingScreen } from '@/components/composed/LoadingScreen'
+import { SecurityHub } from '@/components/security-checks/SecurityHub'
 import { isSecurityChecksEnabled } from '@/lib/security-checks/flag'
 
 export const dynamic = 'force-dynamic'
 
-export default function SecurityChecksPage() {
+export default function SecurityPage() {
   if (!isSecurityChecksEnabled()) notFound()
-  return <MyChecksWorkspace />
+  return (
+    <Suspense fallback={<LoadingScreen message="Loading Security..." />}>
+      <SecurityHub />
+    </Suspense>
+  )
 }

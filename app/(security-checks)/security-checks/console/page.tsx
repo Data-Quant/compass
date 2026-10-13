@@ -1,10 +1,6 @@
-import { notFound } from 'next/navigation'
-import { ConsoleHome } from '@/components/security-checks/console/ConsoleHome'
-import { isSecurityChecksEnabled } from '@/lib/security-checks/flag'
+import { redirect } from 'next/navigation'
 
-export const dynamic = 'force-dynamic'
-
+// Folded into the Security screen as a tab.
 export default function SecurityConsolePage() {
-  if (!isSecurityChecksEnabled()) notFound()
-  return <ConsoleHome />
+  redirect('/security-checks?tab=overview')
 }

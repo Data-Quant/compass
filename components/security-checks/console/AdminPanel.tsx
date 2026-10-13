@@ -1,8 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import Link from 'next/link'
-import { ArrowLeft, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -145,9 +144,7 @@ export function AdminPanel() {
   const securityAdmin = Boolean(me.capabilities?.auditLog)
   if (!me.capabilities?.console) return <p className="p-6 text-sm text-muted-foreground">You do not have access to the Security Console.</p>
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-6 sm:p-8">
-      <Link href="/security-checks/console" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" /> Security Console</Link>
-      <h1 className="font-display text-2xl font-bold text-foreground">{securityAdmin ? 'Security Checks admin' : 'Self-review report'}</h1>
+    <div className="space-y-6">
       <SelfReviewReportCard />
       {securityAdmin && (
         <>

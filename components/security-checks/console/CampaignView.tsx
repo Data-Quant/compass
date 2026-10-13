@@ -66,7 +66,7 @@ export function CampaignView({ campaignId }: { campaignId: string }) {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6 sm:p-8">
-      <Link href="/security-checks/console" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" /> Security Console</Link>
+      <Link href="/security-checks?tab=overview" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" /> Security · Overview</Link>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl font-bold text-foreground">{detail.fields.name}</h1>
@@ -97,7 +97,7 @@ export function CampaignView({ campaignId }: { campaignId: string }) {
                 variant: 'danger',
                 run: async () => {
                   await scRequest(`/api/security-checks/console/campaigns/${campaignId}`, { method: 'DELETE' })
-                  router.push('/security-checks/console')
+                  router.push('/security-checks?tab=overview')
                 },
               })}>Delete draft</Button>
             )}

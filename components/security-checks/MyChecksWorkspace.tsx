@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ShieldCheck } from 'lucide-react'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { Card, CardContent } from '@/components/ui/card'
 import type { NotificationView } from '@/lib/security-checks/service/inbox'
@@ -76,15 +75,10 @@ export function MyChecksWorkspace() {
   const done = tasks.filter((task) => !task.needsAction && task.status !== 'PENDING_REVIEW')
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-6 sm:p-8">
-      <div>
-        <h1 className="flex items-center gap-2 font-display text-2xl font-bold text-foreground">
-          <ShieldCheck className="h-6 w-6" aria-hidden /> Security Checks
-        </h1>
-        <p className="mt-1 text-muted-foreground">
-          Confirm the security controls the Security team asks about, with a screenshot where needed.
-        </p>
-      </div>
+    <div className="space-y-6">
+      <p className="text-muted-foreground">
+        Confirm the security controls the Security team asks about, with a screenshot where needed.
+      </p>
       <Card>
         <CardContent className="p-4 text-sm text-muted-foreground">
           Compass emails about security checks never contain links or codes. If you get one that does, report it to the Security team.

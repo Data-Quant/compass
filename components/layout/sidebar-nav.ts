@@ -13,34 +13,28 @@ export interface SecurityChecksNavAccess {
   console: boolean
 }
 
+/** Replaces the item at `href` with `entry` in place; returns the config unchanged if `href` is absent. */
+export function withItemReplaced(config: SidebarConfig, href: string, entry: NavItem): SidebarConfig {
+  if (!config.items.some((item) => item.href === href)) return config
+  const items = config.items.filter((item) => item.href !== entry.href).map((item) => (item.href === href ? entry : item))
+  return { ...config, items }
+}
+
 /**
- * Security Checks entries: everyone gets their own tasks when the module is on;
- * Security Admins and Console Admins also get the console. On the Security
- * sidebar both slot in after Onboarding.
+ * One "Security" entry (checks, console and device support live there as tabs).
+ * It takes the place of Device Support (employee sidebar) or Device Tickets
+ * (Security sidebar). HR's admin console gets it under Operations.
  */
-export function withSecurityChecksNav(
-  config: SidebarConfig,
-  access: SecurityChecksNavAccess,
-  icons: { tasks: NavItem['icon']; console: NavItem['icon'] },
-): SidebarConfig {
+export function withSecurityChecksNav(config: SidebarConfig, access: SecurityChecksNavAccess, icon: NavItem['icon']): SidebarConfig {
   if (!access.enabled) return config
-  const consoleEntry = { label: 'Security Console', href: '/security-checks/console', icon: icons.console }
-  // HR's admin console: console link only, under Operations (employee task links stay off it).
+  const entry: NavItem = { label: 'Security', href: '/security-checks', icon }
   if (config.items.some((item) => item.href === '/admin')) {
-    return access.console ? withGroupItem(config, 'Operations', consoleEntry) : config
+    return access.console ? withGroupItem(config, 'Operations', entry) : config
   }
-  const securitySidebar = config.items.some((item) => item.href === '/security')
-  const withTasks = withItemAfter(
-    config,
-    { label: 'Security Checks', href: '/security-checks', icon: icons.tasks },
-    securitySidebar ? '/security/onboarding' : '/my-tasks',
-  )
-  if (!access.console) return withTasks
-  return withItemAfter(
-    withTasks,
-    { label: 'Security Console', href: '/security-checks/console', icon: icons.console },
-    securitySidebar ? '/security/onboarding' : '/security-checks',
-  )
+  for (const moved of ['/device-support', '/security/device-tickets']) {
+    if (config.items.some((item) => item.href === moved)) return withItemReplaced(config, moved, entry)
+  }
+  return withItemAfter(config, entry, '/my-tasks')
 }
 
 export function withGroupItem(config: SidebarConfig, groupLabel: string, entry: NavItem): SidebarConfig {

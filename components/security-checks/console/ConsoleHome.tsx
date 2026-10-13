@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { AlertTriangle, ClipboardCheck, Download, Plus, Settings } from 'lucide-react'
+import { AlertTriangle, Download, Plus } from 'lucide-react'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -59,18 +59,13 @@ export function ConsoleHome() {
   const statsById = new Map(dashboard.campaigns.map((entry) => [entry.id, entry]))
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-6 sm:p-8">
+    <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-bold text-foreground">Security Console</h1>
-          <p className="mt-1 text-muted-foreground">
-            {caps?.manageCampaigns ? 'Campaigns, reviews and compliance across the company.' : 'Read-only view of compliance and submissions. Every evidence view is logged.'}
-          </p>
-        </div>
+        <p className="text-muted-foreground">
+          {caps?.manageCampaigns ? 'Campaigns, reviews and compliance across the company.' : 'Read-only view of compliance and submissions. Every evidence view is logged.'}
+        </p>
         <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline"><Link href="/security-checks/console/review"><ClipboardCheck className="mr-2 h-4 w-4" />Review queue ({dashboard.pendingReview})</Link></Button>
           {caps?.exportCsv && <Button asChild variant="outline"><a href="/api/security-checks/console/export"><Download className="mr-2 h-4 w-4" />Export CSV</a></Button>}
-          <Button asChild variant="outline"><Link href="/security-checks/console/admin"><Settings className="mr-2 h-4 w-4" />{caps?.auditLog ? 'Admin' : 'Self-review report'}</Link></Button>
           {caps?.manageCampaigns && <Button asChild><Link href="/security-checks/console/campaigns/new"><Plus className="mr-2 h-4 w-4" />New campaign</Link></Button>}
         </div>
       </div>

@@ -1,10 +1,6 @@
-import { notFound } from 'next/navigation'
-import { AdminPanel } from '@/components/security-checks/console/AdminPanel'
-import { isSecurityChecksEnabled } from '@/lib/security-checks/flag'
+import { redirect } from 'next/navigation'
 
-export const dynamic = 'force-dynamic'
-
+// Folded into the Security screen as a tab.
 export default function SecurityChecksAdminPage() {
-  if (!isSecurityChecksEnabled()) notFound()
-  return <AdminPanel />
+  redirect('/security-checks?tab=admin')
 }

@@ -29,30 +29,35 @@ test('adds to a named group only, once', () => {
   assert.equal(withGroupItem(next, 'Performance', item('/admin/kpis')), next)
 })
 
-const icons = { tasks: icon, console: icon }
-const employeeSidebar: SidebarConfig = { items: [item('/dashboard'), item('/my-tasks'), item('/leave')], groups: [] }
-const securitySidebar: SidebarConfig = { items: [item('/security'), item('/security/onboarding'), item('/office')], groups: [] }
 
-test('security checks nav is absent while the module is off', () => {
-  assert.equal(withSecurityChecksNav(employeeSidebar, { enabled: false, console: true }, icons), employeeSidebar)
+const employeeSidebar: SidebarConfig = { items: [item('/dashboard'), item('/my-tasks'), item('/device-support'), item('/office')], groups: [] }
+const securitySidebar: SidebarConfig = { items: [item('/security'), item('/security/device-tickets'), item('/security/assets')], groups: [] }
+const hrefs = (config: SidebarConfig) => config.items.map((i) => i.href)
+
+test('security nav is absent while the module is off', () => {
+  assert.equal(withSecurityChecksNav(employeeSidebar, { enabled: false, console: true }, icon), employeeSidebar)
 })
 
-test('everyone gets Security Checks; console access adds the console after it', () => {
-  const employee = withSecurityChecksNav(employeeSidebar, { enabled: true, console: false }, icons)
-  assert.deepEqual(employee.items.map((i) => i.href), ['/dashboard', '/my-tasks', '/security-checks', '/leave'])
-  const consoleAdmin = withSecurityChecksNav(employeeSidebar, { enabled: true, console: true }, icons)
-  assert.deepEqual(consoleAdmin.items.map((i) => i.href), ['/dashboard', '/my-tasks', '/security-checks', '/security-checks/console', '/leave'])
+test('one Security entry takes the place of Device Support on the employee sidebar', () => {
+  assert.deepEqual(hrefs(withSecurityChecksNav(employeeSidebar, { enabled: true, console: false }, icon)), ['/dashboard', '/my-tasks', '/security-checks', '/office'])
+  assert.deepEqual(hrefs(withSecurityChecksNav(employeeSidebar, { enabled: true, console: true }, icon)), ['/dashboard', '/my-tasks', '/security-checks', '/office'])
 })
 
-test('the admin console gets only the Security Console link, under Operations, when allowed', () => {
+test('on the Security sidebar it takes the place of Device Tickets', () => {
+  assert.deepEqual(hrefs(withSecurityChecksNav(securitySidebar, { enabled: true, console: true }, icon)), ['/security', '/security-checks', '/security/assets'])
+})
+
+test('without a device entry it follows My Tasks, once', () => {
+  const plain: SidebarConfig = { items: [item('/dashboard'), item('/my-tasks'), item('/leave')], groups: [] }
+  const once = withSecurityChecksNav(plain, { enabled: true, console: false }, icon)
+  assert.deepEqual(hrefs(once), ['/dashboard', '/my-tasks', '/security-checks', '/leave'])
+  assert.deepEqual(hrefs(withSecurityChecksNav(once, { enabled: true, console: false }, icon)), hrefs(once))
+})
+
+test('the admin console gets Security under Operations only with console access', () => {
   const adminSidebar: SidebarConfig = { items: [item('/admin')], groups: [{ label: 'Operations', items: [item('/admin/leave')] }] }
-  const withConsole = withSecurityChecksNav(adminSidebar, { enabled: true, console: true }, icons)
-  assert.deepEqual(withConsole.items.map((i) => i.href), ['/admin'])
-  assert.deepEqual(withConsole.groups[0].items.map((i) => i.href), ['/admin/leave', '/security-checks/console'])
-  assert.equal(withSecurityChecksNav(adminSidebar, { enabled: true, console: false }, icons), adminSidebar)
-})
-
-test('on the Security sidebar both entries follow Onboarding', () => {
-  const next = withSecurityChecksNav(securitySidebar, { enabled: true, console: true }, icons)
-  assert.deepEqual(next.items.map((i) => i.href), ['/security', '/security/onboarding', '/security-checks/console', '/security-checks', '/office'])
+  const next = withSecurityChecksNav(adminSidebar, { enabled: true, console: true }, icon)
+  assert.deepEqual(hrefs(next), ['/admin'])
+  assert.deepEqual(next.groups[0].items.map((i) => i.href), ['/admin/leave', '/security-checks'])
+  assert.equal(withSecurityChecksNav(adminSidebar, { enabled: true, console: false }, icon), adminSidebar)
 })

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft } from 'lucide-react'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -54,13 +53,9 @@ export function ReviewQueue() {
   const eligible = items.filter(bulkEligible)
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-6 sm:p-8">
-      <Link href="/security-checks/console" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" /> Security Console</Link>
+    <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-bold text-foreground">Review queue</h1>
-          <p className="mt-1 text-muted-foreground">Oldest submissions first. Your own submissions are reviewed by the other Security Admin.</p>
-        </div>
+        <p className="text-muted-foreground">Oldest submissions first. Your own submissions are reviewed by the other Security Admin.</p>
         {canReview && eligible.length > 0 && (
           <Button disabled={busy || selected.length === 0} onClick={() => void bulkVerify()}>Verify {selected.length} confirmation{selected.length === 1 ? '' : 's'}</Button>
         )}

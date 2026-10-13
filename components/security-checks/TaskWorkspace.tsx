@@ -117,8 +117,8 @@ export function TaskWorkspace({ taskId }: { taskId: string }) {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-6 sm:p-8">
-      <Link href="/security-checks" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-4 w-4" aria-hidden /> All security checks
+      <Link href="/security-checks?tab=checks" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="h-4 w-4" aria-hidden /> Security
       </Link>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>

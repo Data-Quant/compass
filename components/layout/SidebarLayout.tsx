@@ -11,7 +11,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
-import { Handshake, ShieldCheck, ShieldHalf } from 'lucide-react'
+import { Handshake, ShieldCheck } from 'lucide-react'
 import { withSecurityChecksNav, type SecurityChecksNavAccess } from '@/components/layout/sidebar-nav'
 
 // Context so child pages can access user info
@@ -176,7 +176,7 @@ export function SidebarLayout({
   const finalSidebarConfig =
     baseSidebarConfig === onboardingSidebarConfig
       ? effectiveSidebarConfig
-      : withSecurityChecksNav(effectiveSidebarConfig, securityChecksAccess, { tasks: ShieldCheck, console: ShieldHalf })
+      : withSecurityChecksNav(effectiveSidebarConfig, securityChecksAccess, ShieldCheck)
 
   return (
     <LayoutUserContext.Provider value={user}>
