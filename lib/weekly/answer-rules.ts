@@ -12,6 +12,14 @@ export function choiceProblem(input: { score: number; note: string | null | unde
   return null
 }
 
+/**
+ * A rating saved as a draft with a choice is waiting for the note that choice needs: the server held the choice when it
+ * refused to submit without one. It still counts as unanswered, so the page must keep asking for the note.
+ */
+export function awaitsNote(prompt: { kind: string; status: string; answer: { optionId: string | null } | null }): boolean {
+  return prompt.kind === 'STANDARD' && prompt.status === 'DRAFT' && Boolean(prompt.answer?.optionId)
+}
+
 export function commentProblem(text: string | null | undefined): string | null {
   return (text ?? '').trim() ? null : 'Write a comment, or skip it'
 }

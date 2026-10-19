@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { commentProblem } from '@/lib/weekly/answer-rules'
+import { awaitsNote, commentProblem } from '@/lib/weekly/answer-rules'
 import { RELATIONSHIP_WORDS } from '@/lib/weekly/perspectives'
 import type { InboxPrompt } from '@/lib/weekly/view-types'
 import { cn } from '@/lib/utils'
@@ -27,7 +27,8 @@ export function AnswerCard({ prompt, actingAs, onChanged }: AnswerCardProps) {
   const [optionId, setOptionId] = useState<string | null>(prompt.answer?.optionId ?? null)
   const [note, setNote] = useState(prompt.answer?.note ?? '')
   const [commentText, setCommentText] = useState(prompt.answer?.commentText ?? '')
-  const [noteRequired, setNoteRequired] = useState(false)
+  // A choice held as a draft is still waiting for its note, also after the cards reload.
+  const [noteRequired, setNoteRequired] = useState(awaitsNote(prompt))
   const [saving, setSaving] = useState(false)
   const [submitted, setSubmitted] = useState(prompt.status === 'SUBMITTED')
   const [savedNote, setSavedNote] = useState(prompt.answer?.note ?? '')

@@ -1,6 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { afterNotObserved, canEditSubmitted, choiceProblem, commentProblem, evaluatorStatus } from '../lib/weekly/answer-rules'
+import { afterNotObserved, awaitsNote, canEditSubmitted, choiceProblem, commentProblem, evaluatorStatus } from '../lib/weekly/answer-rules'
+
+test('a draft rating with a choice is waiting for its note, so the page keeps asking for it after a reload', () => {
+  assert.equal(awaitsNote({ kind: 'STANDARD', status: 'DRAFT', answer: { optionId: 'opt-4' } }), true)
+  assert.equal(awaitsNote({ kind: 'STANDARD', status: 'DRAFT', answer: { optionId: null } }), false)
+  assert.equal(awaitsNote({ kind: 'STANDARD', status: 'SUBMITTED', answer: { optionId: 'opt-4' } }), false)
+  assert.equal(awaitsNote({ kind: 'STANDARD', status: 'OPEN', answer: null }), false)
+  assert.equal(awaitsNote({ kind: 'COMMENT', status: 'DRAFT', answer: { optionId: null } }), false)
+})
 
 test('a choice scoring 1, 1.5 or 4 needs a note; any other choice does not', () => {
   assert.match(choiceProblem({ score: 4, note: null }) ?? '', /note/)

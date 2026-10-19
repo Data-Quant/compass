@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { awaitsNote } from '@/lib/weekly/answer-rules'
 import { weekDueAt } from '@/lib/weekly/calendar'
 import { weekLabel } from '@/lib/weekly/format'
 import { RELATIONSHIP_WORDS, type Perspective } from '@/lib/weekly/perspectives'
@@ -36,7 +37,9 @@ function dueDate(weekOneStartsOn: string, week: number): string {
 }
 
 /** UX spec, section 5: "Submit this week", enabled once every performance question has an answer. */
-function SubmitWeek({ submittedAt, unanswered, actingAs, onSubmitted }: { submittedAt: string | null; unanswered: number; actingAs?: string; onSubmitted: () => Promise<void> }) {
+interface SubmitWeekProps { submittedAt: string | null; unanswered: number; needsNote: boolean; actingAs?: string; onShow: () => void; onSubmitted: () => Promise<void> }
+
+function SubmitWeek({ submittedAt, unanswered, needsNote, actingAs, onShow, onSubmitted }: SubmitWeekProps) {
   const [busy, setBusy] = useState(false)
   if (submittedAt) {
     return (
@@ -60,7 +63,12 @@ function SubmitWeek({ submittedAt, unanswered, actingAs, onSubmitted }: { submit
   }
   return (
     <div className="flex flex-wrap items-center justify-end gap-3 border-t pt-4">
-      {unanswered > 0 && <p className="text-sm text-muted-foreground">Answer {unanswered === 1 ? 'the last question' : `the other ${unanswered} questions`} to submit.</p>}
+      {unanswered > 0 && (
+        <p className="text-sm text-muted-foreground">
+          {needsNote ? `A choice still needs its note${unanswered > 1 ? `, and ${unanswered - 1} more ${unanswered === 2 ? 'question needs' : 'questions need'} an answer` : ''}.` : `Answer ${unanswered === 1 ? 'the last question' : `the other ${unanswered} questions`} to submit.`}{' '}
+          <Button variant="link" size="sm" className="h-auto p-0" onClick={onShow}>Show me</Button>
+        </p>
+      )}
       <Button disabled={busy || unanswered > 0} onClick={() => void submit()}>{busy ? 'Submitting…' : 'Submit this week'}</Button>
     </div>
   )
@@ -117,7 +125,15 @@ export function WeeklyInbox({ actingAs }: { actingAs?: string }) {
   const carriedCount = carried.reduce((n, g) => n + g.prompts.length, 0)
   const due = dueDate(data.cycle.weekOneStartsOn, week)
   // The comment questions are optional; every performance question needs an answer (or "not observed") to submit.
-  const unanswered = data.prompts.filter((p) => p.kind === 'STANDARD' && p.status !== 'SUBMITTED').length
+  const pending = queue.filter((p) => p.kind === 'STANDARD' && p.status !== 'SUBMITTED')
+  const unanswered = pending.length
+  // A choice that needs a note looks picked but is only a draft; "Show me" goes to it first.
+  const firstPending = pending.find(awaitsNote) ?? pending[0]
+  const showPending = () => {
+    if (!firstPending) return
+    setAllAtOnce(false)
+    setCurrentId(firstPending.id)
+  }
   const percent = thisWeek.total ? Math.round((thisWeek.done / thisWeek.total) * 100) : 0
   const current = queue[at]
 
@@ -232,7 +248,7 @@ export function WeeklyInbox({ actingAs }: { actingAs?: string }) {
             </section>
           ))}
           {thisWeek.total > 0 && (
-            <SubmitWeek submittedAt={data.weekSubmittedAt ?? null} unanswered={unanswered} actingAs={actingAs} onSubmitted={load} />
+            <SubmitWeek submittedAt={data.weekSubmittedAt ?? null} unanswered={unanswered} needsNote={pending.some(awaitsNote)} actingAs={actingAs} onShow={showPending} onSubmitted={load} />
           )}
         </TabsContent>
         <TabsContent value="history">
