@@ -33,6 +33,6 @@ test('the due-day email uses singular wording for one question', () => {
 
 test('names are escaped', () => {
   const email = renderQuestionsEmail({ name: '<script>x</script>', newCount: 1, openCount: 1, appUrl: 'https://compass.example' })
-  assert.doesNotMatch(email.html, /<script>/)
+  assert.doesNotMatch(email.html, /<script/i)
   assert.match(email.html, /&lt;script&gt;/)
 })

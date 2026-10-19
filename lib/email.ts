@@ -1392,7 +1392,7 @@ export async function sendTicketStatusNotification(
     console.log(`[Email] Status notification sent to ${recipients.length} recipients for ticket: ${ticketId}`)
     return { success: true, data: { messageId: info.messageId } }
   } catch (error: any) {
-    console.error(`[Email] Failed to send status notification for ticket: ${ticketId}`, error)
+    console.error('[Email] Failed to send status notification for ticket:', ticketId, error)
     return { success: false, error: error.message }
   }
 }
