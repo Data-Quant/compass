@@ -11,8 +11,8 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
-import { Handshake, ShieldCheck } from 'lucide-react'
-import { withSecurityChecksNav, type SecurityChecksNavAccess } from '@/components/layout/sidebar-nav'
+import { CalendarCheck, Handshake, ShieldCheck } from 'lucide-react'
+import { withGroupItem, withItemPatched, withSecurityChecksNav, type SecurityChecksNavAccess } from '@/components/layout/sidebar-nav'
 
 // Context so child pages can access user info
 interface LayoutUser {
@@ -65,6 +65,7 @@ export function SidebarLayout({
   // resolved from data rather than role. Checked live because the session cookie
   // would not reflect a fresh assignment until the next login.
   const [hasClientele, setHasClientele] = useState(false)
+  const [weeklyMe, setWeeklyMe] = useState({ enabled: false, cycleActive: false, openCount: 0 })
   // Security Checks entries appear only when the module is on.
   const [securityChecksAccess, setSecurityChecksAccess] = useState<SecurityChecksNavAccess>({ enabled: false, console: false })
   const [loading, setLoading] = useState(true)
@@ -106,6 +107,12 @@ export function SidebarLayout({
           .then((res) => res.json())
           .then((access) => setHasClientele(Boolean(access?.hasAccess)))
           .catch(() => setHasClientele(false))
+        fetch('/api/weekly/me')
+          .then((res) => (res.ok ? res.json() : { enabled: false }))
+          .then((me: { enabled?: boolean; cycleActive?: boolean; openCount?: number }) =>
+            setWeeklyMe({ enabled: Boolean(me.enabled), cycleActive: Boolean(me.cycleActive), openCount: typeof me.openCount === 'number' ? me.openCount : 0 }),
+          )
+          .catch(() => setWeeklyMe({ enabled: false, cycleActive: false, openCount: 0 }))
         fetch('/api/security-checks/me')
           .then((res) => (res.ok ? res.json() : null))
           .then((body: { data?: { enabled?: boolean; capabilities?: { console?: boolean } } } | null) =>
@@ -173,10 +180,17 @@ export function SidebarLayout({
         }
       : baseSidebarConfig
 
+  const weeklyBadge = weeklyMe.openCount > 0 ? { badge: weeklyMe.openCount } : {}
+  const sidebarConfigWithWeekly =
+    !weeklyMe.enabled || baseSidebarConfig === onboardingSidebarConfig
+      ? effectiveSidebarConfig
+      : isAdminConsole
+        ? withGroupItem(effectiveSidebarConfig, 'Performance', { label: 'Evaluation round', href: '/admin/evaluation-round', icon: CalendarCheck }, 'start')
+        : withItemPatched(effectiveSidebarConfig, '/evaluations/weekly', weeklyBadge)
   const finalSidebarConfig =
     baseSidebarConfig === onboardingSidebarConfig
-      ? effectiveSidebarConfig
-      : withSecurityChecksNav(effectiveSidebarConfig, securityChecksAccess, ShieldCheck)
+      ? sidebarConfigWithWeekly
+      : withSecurityChecksNav(sidebarConfigWithWeekly, securityChecksAccess, ShieldCheck)
 
   return (
     <LayoutUserContext.Provider value={user}>

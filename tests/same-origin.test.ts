@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { assertSameOrigin, SameOriginError } from '../lib/security/same-origin'
 
-const url = 'https://compass.example.com/api/kpi/goals'
+const url = 'https://compass.example.com/api/weekly/me'
 function headers(values: Record<string, string>): Headers {
   const result = new Headers()
   for (const [key, value] of Object.entries(values)) result.set(key, value)

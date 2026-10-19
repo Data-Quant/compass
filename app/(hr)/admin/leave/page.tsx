@@ -857,16 +857,16 @@ export default function HRLeavePage() {
             { label: 'Rejected', value: requests.filter(r => r.status === 'REJECTED').length, color: 'red' },
             { label: 'Total Requests', value: requests.length, color: 'indigo' },
           ].map((stat, i) => (
-            <div key={i} className="glass rounded-xl p-4 border border-border">
-              <p className="text-sm text-muted">{stat.label}</p>
-              <p className={`text-2xl font-bold text-${stat.color}-600`}>{stat.value}</p>
+            <div key={i} className="rounded-2xl border border-border/70 bg-card p-4 shadow-soft">
+              <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">{stat.label}</p>
+              <p className={`mt-1 text-2xl font-semibold tabular-nums text-${stat.color}-600`}>{stat.value}</p>
             </div>
           ))}
         </div>
 
         {/* Filters */}
         <div className="flex items-center gap-2 mb-6">
-          <Filter className="w-4 h-4 text-muted" />
+          <Filter className="w-4 h-4 text-muted-foreground" />
           <div className="flex gap-2">
             {[
               { value: 'pending', label: 'Pending' },
@@ -1089,7 +1089,7 @@ export default function HRLeavePage() {
         </div>
 
         <div className="flex items-center gap-2 mt-4 mb-6">
-          <Filter className="w-4 h-4 text-muted" />
+          <Filter className="w-4 h-4 text-muted-foreground" />
           <div className="flex gap-2">
             {[
               { value: 'pending', label: 'Pending' },

@@ -333,39 +333,6 @@ export async function sendEmail(emailQueueId: string) {
   }
 }
 
-export async function sendBatchEmails(periodId: string) {
-  const period =
-    periodId === 'active'
-      ? await prisma.evaluationPeriod.findFirst({ where: { isActive: true } })
-      : await prisma.evaluationPeriod.findUnique({ where: { id: periodId } })
-
-  if (!period) {
-    throw new Error('Period not found')
-  }
-
-  const queueEntries = await prisma.emailQueue.findMany({
-    where: {
-      report: {
-        periodId: period.id,
-      },
-      emailStatus: 'PENDING',
-    },
-  })
-
-  const results = []
-
-  for (const queueEntry of queueEntries) {
-    try {
-      const result = await sendEmail(queueEntry.id)
-      results.push({ queueId: queueEntry.id, success: true, result })
-    } catch (error: any) {
-      results.push({ queueId: queueEntry.id, success: false, error: error.message })
-    }
-  }
-
-  return results
-}
-
 // Leave Management Email Functions
 
 export async function sendLeaveRequestNotification(requestId: string) {
@@ -1425,7 +1392,7 @@ export async function sendTicketStatusNotification(
     console.log(`[Email] Status notification sent to ${recipients.length} recipients for ticket: ${ticketId}`)
     return { success: true, data: { messageId: info.messageId } }
   } catch (error: any) {
-    console.error(`[Email] Failed to send status notification for ticket: ${ticketId}`, error)
+    console.error('[Email] Failed to send status notification for ticket:', ticketId, error)
     return { success: false, error: error.message }
   }
 }
@@ -1689,130 +1656,6 @@ export async function sendOnboardingCompletedNotification(userId: string) {
     console.error('Failed to send onboarding completed notification:', error)
     return { success: false, error: error.message }
   }
-}
-
-export async function sendPreEvaluationLeadPrepNotification(
-  prepId: string,
-  reminderType: 'INITIAL' | 'SEVEN_DAY' | 'ONE_DAY' | 'MANUAL_RESEND' = 'INITIAL'
-) {
-  const prep = await prisma.preEvaluationLeadPrep.findUnique({
-    where: { id: prepId },
-    include: {
-      lead: {
-        select: {
-          name: true,
-          email: true,
-        },
-      },
-        period: {
-          select: {
-            name: true,
-            startDate: true,
-            reviewStartDate: true,
-          },
-        },
-    },
-  })
-
-  if (!prep || !prep.lead.email) {
-    return { success: false, message: 'Lead email not found' }
-  }
-
-  const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || '').replace(/\/$/, '')
-  const prepUrl = appBaseUrl ? `${appBaseUrl}/pre-evaluation` : '/pre-evaluation'
-  const reviewStartDateLabel = new Date(prep.period.reviewStartDate).toLocaleDateString()
-  const daysUntilStart = Math.ceil(
-    (new Date(prep.period.reviewStartDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
-  )
-
-  const titleByType: Record<typeof reminderType, string> = {
-    INITIAL: 'Performance evaluations open in 2 weeks',
-    SEVEN_DAY: 'Performance evaluations open in 1 week',
-    ONE_DAY: 'Performance evaluations open tomorrow',
-    MANUAL_RESEND: 'Reminder: complete your pre-evaluation onboarding',
-  }
-
-  const bodyByType: Record<typeof reminderType, string> = {
-    INITIAL: 'Performance evaluations are opening in 2 weeks. Please complete your required pre-evaluation onboarding before evaluations begin.',
-    SEVEN_DAY: 'Performance evaluations are opening in 1 week. Please complete your required pre-evaluation questions before evaluations begin.',
-    ONE_DAY: 'Performance evaluations open tomorrow. Complete your pre-evaluation onboarding now if it is still outstanding.',
-    MANUAL_RESEND: 'Please complete your pre-evaluation onboarding as soon as possible so the upcoming evaluations can be prepared.',
-  }
-
-  const htmlContent = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #2563eb;">${escapeHtml(titleByType[reminderType])}</h2>
-      <p>Hi ${escapeHtml(prep.lead.name)},</p>
-      <p>${escapeHtml(bodyByType[reminderType])}</p>
-
-        <div style="background: #F8FAFC; padding: 20px; border-radius: 8px; margin: 20px 0;">
-          <p><strong>Evaluation Period:</strong> ${escapeHtml(prep.period.name)}</p>
-          <p><strong>Evaluations Begin:</strong> ${escapeHtml(reviewStartDateLabel)}</p>
-          <p><strong>Required submission:</strong> 2 lead questions</p>
-          <p><strong>Time remaining:</strong> ${
-            daysUntilStart > 1
-              ? `${daysUntilStart} days`
-              : daysUntilStart === 1
-                ? '1 day'
-                : 'Evaluations start today'
-          }</p>
-        </div>
-
-      ${
-        appBaseUrl
-          ? `<p><a href="${prepUrl}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;">Open Pre-Evaluation Onboarding</a></p>`
-          : ''
-      }
-
-      <p style="color: #64748B; font-size: 14px;">
-        Evaluator change requests can be submitted separately from the Evaluations page while the pre-cycle window is open.
-      </p>
-    </div>
-  `
-
-  try {
-    const info = await transporter.sendMail({
-      from: `P21 Compass <${FROM_EMAIL}>`,
-      to: prep.lead.email,
-      subject: titleByType[reminderType],
-      html: htmlContent,
-    })
-
-    return { success: true, data: { messageId: info.messageId } }
-  } catch (error: any) {
-    console.error('Failed to send pre-evaluation onboarding notification:', error)
-    return { success: false, error: error.message }
-  }
-}
-
-export async function sendSelfEvaluationInvite(opts: {
-  to: string
-  employeeName: string
-  periodName: string
-  appUrl?: string
-}): Promise<void> {
-  if (!opts.to) return
-  const base = opts.appUrl || process.env.NEXT_PUBLIC_APP_URL || 'https://compass-blond.vercel.app'
-  const link = `${base}/evaluations`
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; color: #0f172a;">
-      <h2 style="margin: 0 0 12px;">Self-Evaluation — ${escapeHtml(opts.periodName)}</h2>
-      <p>Hi ${escapeHtml(opts.employeeName)},</p>
-      <p>Please complete your self-evaluation for <strong>${escapeHtml(opts.periodName)}</strong>.
-      Your reflections are shared with your team lead as additional context for your review.</p>
-      <p style="margin: 20px 0;">
-        <a href="${link}" style="display: inline-block; padding: 10px 18px; background: #4F46E5; color: #ffffff; border-radius: 6px; text-decoration: none;">Complete self-evaluation</a>
-      </p>
-      <p style="color: #64748B; font-size: 13px;">You can also find it on your dashboard.</p>
-    </div>
-  `
-
-  await transporter.sendMail({
-    from: `P21 Compass <${FROM_EMAIL}>`,
-    to: opts.to,
-    subject: `Self-Evaluation — ${opts.periodName}`,
-    html,
-  })
 }
 
 function getLeavePageUrl() {

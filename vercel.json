@@ -17,6 +17,10 @@
       "schedule": "30 5 1 * *"
     },
     {
+      "path": "/api/cron/weekly-evaluations",
+      "schedule": "0 4 * * *"
+    },
+    {
       "path": "/api/cron/security-checks/daily",
       "schedule": "0 3 * * *"
     },

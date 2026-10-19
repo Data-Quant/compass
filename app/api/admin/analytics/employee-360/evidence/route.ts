@@ -15,22 +15,8 @@ const evidenceQuerySchema = z
   .object({
     employeeId: z.string().trim().min(1).max(200),
     periodId: z.string().trim().min(1).max(200).optional(),
-    domain: z.enum(['EVALUATION', 'SELF_EVALUATION']).default('EVALUATION'),
     lens: relationshipTypeSchema.optional(),
     revealEvaluator: z.enum(['true', 'false']).default('false'),
-  })
-  .superRefine((value, context) => {
-    if (
-      value.domain === 'SELF_EVALUATION' &&
-      value.lens !== undefined &&
-      value.lens !== 'SELF'
-    ) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['lens'],
-        message: 'Self-evaluation evidence only supports the SELF lens',
-      })
-    }
   })
 
 /**
@@ -44,7 +30,6 @@ export async function GET(request: NextRequest) {
   const query = evidenceQuerySchema.safeParse({
     employeeId: request.nextUrl.searchParams.get('employeeId') ?? undefined,
     periodId: request.nextUrl.searchParams.get('periodId') ?? undefined,
-    domain: request.nextUrl.searchParams.get('domain') ?? undefined,
     lens: request.nextUrl.searchParams.get('lens') ?? undefined,
     revealEvaluator:
       request.nextUrl.searchParams.get('revealEvaluator') ?? undefined,
@@ -70,11 +55,7 @@ export async function GET(request: NextRequest) {
       generatedAt: new Date(),
       period,
       rows,
-      domain: query.data.domain,
-      lens:
-        query.data.domain === 'SELF_EVALUATION'
-          ? 'SELF'
-          : ((query.data.lens ?? null) as RelationshipType | null),
+      lens: (query.data.lens ?? null) as RelationshipType | null,
       revealEvaluator: query.data.revealEvaluator === 'true',
     })
     return employee360Json(payload)

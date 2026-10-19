@@ -394,11 +394,8 @@ export function PayrollDashboard({
           >
             <Card>
               <CardContent className="p-0">
-                <div className="p-4 border-b border-border flex items-center justify-between">
+                <div className="p-4 border-b border-border">
                   <h2 className="text-lg font-semibold font-display">Recent Payroll Periods</h2>
-                  <Button variant="ghost" size="sm" asChild>
-                    <Link href="/admin/mappings">Identity Mappings</Link>
-                  </Button>
                 </div>
                 <Table>
                   <TableHeader>

@@ -1,0 +1,109 @@
+import test, { after, before, beforeEach } from 'node:test'
+import assert from 'node:assert/strict'
+import { prisma } from '../lib/db'
+import { evaluationsCard } from '../lib/weekly/service/dashboard-card'
+import { confirmMyLists, decidePeerRequest, requestPeerChange } from '../lib/weekly/service/peer-requests'
+import { changeRoundMapping } from '../lib/weekly/service/round-people'
+import { releaseWeek } from '../lib/weekly/service/release'
+import { submitSelfReview } from '../lib/weekly/service/self-review'
+import { answerAs } from './helpers/weekly-answers'
+import { at, HR_ACTOR, reviewStageCycle } from './helpers/weekly-fixtures'
+import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST, weeklyActor } from './helpers/weekly-test-db'
+import { loadStandardBank } from '../lib/weekly/service/content'
+import { updateCycle } from '../lib/weekly/service/cycles'
+
+const ana = weeklyActor(W.ana)
+const send = async () => undefined
+let periodId = ''
+let cycleId = ''
+
+before(() => {
+  process.env.WEEKLY_EVALUATIONS_ENABLED = 'true'
+})
+beforeEach(async () => {
+  if (!WEEKLY_DB_READY) return
+  await resetWeeklyTestData(prisma)
+  ;({ periodId } = await seedWeeklyBase(prisma))
+  ;({ cycleId } = await reviewStageCycle(periodId))
+  await prisma.weeklyCycle.update({ where: { id: cycleId }, data: { reviewDeadline: new Date('2026-10-02T00:00:00.000Z') } })
+})
+after(async () => {
+  await prisma.$disconnect()
+})
+
+const start = async () => {
+  await loadStandardBank(HR_ACTOR)
+  await updateCycle(HR_ACTOR, cycleId, { action: 'start' })
+}
+
+test('review stage: "Check your lists by [date]" until the person confirms them', WEEKLY_DB_TEST, async () => {
+  const card = await evaluationsCard(ana, at(0))
+  assert.equal(card?.state, 'CHECK_LISTS')
+  assert.match(card?.message ?? '', /^Check your Q4 2026 \(weekly test\) evaluation lists by /)
+  assert.equal(card?.href, '/evaluations/weekly')
+  await confirmMyLists(ana, at(0))
+  assert.notEqual((await evaluationsCard(ana, at(0)))?.state, 'CHECK_LISTS')
+})
+
+test('round open: "This week: 1 of 2 done, due Friday", counting carried-over questions; then "All caught up"', WEEKLY_DB_TEST, async () => {
+  await start()
+  await releaseWeek(cycleId, 1, at(1))
+  await releaseWeek(cycleId, 2, at(2))
+  const open = await prisma.weeklyPrompt.findMany({ where: { evaluatorId: W.lead.id, status: 'OPEN', kind: 'STANDARD' }, orderBy: { weekIndex: 'asc' } })
+  assert.equal(open.length, 2, 'one from week 1 carried over, one from week 2')
+  const lead = weeklyActor(W.lead)
+  const card = await evaluationsCard(lead, at(2, 2))
+  assert.deepEqual([card?.state, card?.message], ['THIS_WEEK', 'This week: 0 of 2 done, due Friday 16 Oct'])
+  assert.equal(card?.detail, '1 from last week')
+  await answerAs(open[0], 2, at(2, 2))
+  assert.equal((await evaluationsCard(lead, at(2, 2)))?.message, 'This week: 1 of 2 done, due Friday 16 Oct')
+  await answerAs(open[1], 2, at(2, 2))
+  assert.deepEqual([(await evaluationsCard(lead, at(2, 2)))?.state, (await evaluationsCard(lead, at(2, 2)))?.message], ['CAUGHT_UP', 'All caught up. Next questions Monday'])
+})
+
+test('the month’s self-evaluation shows on the card, and a lead sees who has sent theirs', WEEKLY_DB_TEST, async () => {
+  await start()
+  assert.match((await evaluationsCard(ana, at(4)))?.selfReview ?? '', /self-evaluation for October/)
+  await submitSelfReview(ana, { month: 1, answers: [Array(31).fill('done').join(' '), '', ''], wantsDiscussion: false }, at(4), send, 'https://compass.example')
+  assert.equal((await evaluationsCard(ana, at(4)))?.selfReview, null)
+  assert.deepEqual((await evaluationsCard(weeklyActor(W.lead), at(4)))?.notices.map((n) => n.text), [`${W.ana.name} has submitted their self-evaluation for October`])
+})
+
+test('round closed: "Round closed"; nothing before a round exists', WEEKLY_DB_TEST, async () => {
+  await start()
+  await prisma.weeklyCycle.update({ where: { id: cycleId }, data: { status: 'CLOSED', closedAt: at(13) } })
+  assert.deepEqual([(await evaluationsCard(ana, at(13, 2)))?.state, (await evaluationsCard(ana, at(13, 2)))?.message], ['CLOSED', 'Round closed. HR will share your report.'])
+  await prisma.weeklyCycle.deleteMany({ where: { id: cycleId } })
+  assert.equal(await evaluationsCard(ana, at(13, 2)), null)
+})
+
+const texts = async (who: typeof ana, now: Date) => (await evaluationsCard(who, now))?.notices.map((n) => n.text) ?? []
+
+test('the card lists what needs the person: a change to review, a request about them, an outcome, HR waiting (section 13)', WEEKLY_DB_TEST, async () => {
+  const request = await requestPeerChange(ana, { peerId: W.ben.id, action: 'REMOVE', reasonCode: 'WRONG_PERSON' }, at(0, 1), send, 'https://compass.example')
+  assert.ok((await texts(weeklyActor(W.lead), at(0, 2))).includes('Ana Torvik asked to change their evaluation lists: review it'))
+  assert.ok((await texts(weeklyActor(W.ben), at(0, 2))).includes('Ana Torvik asked to remove you as a peer'))
+  await requestPeerChange(weeklyActor(W.cara), { peerId: W.ana.id, action: 'ADD', reason: 'Same client' }, at(0, 1), send, 'https://compass.example')
+  assert.ok((await texts(HR_ACTOR, at(0, 2))).includes('1 list change waiting for your decision'))
+  await decidePeerRequest(HR_ACTOR, request.id, 'APPROVE', null, at(0, 3), send, 'https://compass.example')
+  assert.ok((await texts(ana, at(0, 4))).includes('Approved: your request about Ben Okafor'))
+  assert.ok(!(await texts(ana, at(2, 4))).includes('Approved: your request about Ben Okafor'), 'outcomes show for a week')
+})
+
+test('the card shows the final week, HR’s changes to someone’s lists, and a lead’s late joiners (section 13)', WEEKLY_DB_TEST, async () => {
+  await start()
+  await prisma.payrollEmployeeProfile.create({ data: { userId: W.ben.id, joiningDate: at(8) } })
+  assert.ok((await texts(weeklyActor(W.lead), at(8, 2))).includes('Ben Okafor isn’t in this round; give feedback in person'))
+  await releaseWeek(cycleId, 1, at(1))
+  const final = await evaluationsCard(ana, at(13))
+  assert.match(final?.detail ?? '', /^Last week of the round/)
+  await changeRoundMapping(HR_ACTOR, cycleId, { userId: W.cara.id, otherId: W.ana.id, relation: 'PEER', action: 'ADD', reason: 'Same client' }, at(2), send, 'https://compass.example')
+  assert.ok((await texts(weeklyActor(W.cara), at(2, 1))).includes('HR changed your evaluation lists'))
+})
+
+test('"HR changed your evaluation lists" shows after a repeat change, and not for a spreadsheet import', WEEKLY_DB_TEST, async () => {
+  await prisma.evaluationPeriodAssignmentOverride.create({ data: { periodId, evaluatorId: W.cara.id, evaluateeId: W.ana.id, relationshipType: 'PEER', action: 'ADD', note: 'HR: imported lists', createdById: W.hr.id } })
+  assert.ok(!(await texts(weeklyActor(W.cara), at(0, 2))).includes('HR changed your evaluation lists'), 'an import is the round’s draft')
+  await prisma.evaluationPeriodAssignmentOverride.updateMany({ where: { periodId, evaluatorId: W.cara.id }, data: { note: 'HR: Same client' } })
+  assert.ok((await texts(weeklyActor(W.cara), at(0, 2))).includes('HR changed your evaluation lists'))
+})

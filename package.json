@@ -8,6 +8,7 @@
     "build": "prisma migrate deploy && next build",
     "start": "next start",
     "test": "node --import tsx --test tests/**/*.test.ts",
+    "test:weekly-db": "node --import tsx --test --test-concurrency=1 tests/weekly-*.integration.test.ts",
     "lint": "next lint",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",

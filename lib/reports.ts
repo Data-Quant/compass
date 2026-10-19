@@ -702,15 +702,6 @@ export function formatReportAsHTML(
   return html
 }
 
-// Keep the old function for backward compatibility but enhance it
-export async function formatReportAsHTMLLegacy(
-  report: EvaluationReport,
-  period: { startDate: Date; endDate: Date }
-): Promise<string> {
-  const detailedReport = await generateDetailedReport(report.employeeId, report.periodId)
-  return formatReportAsHTML(detailedReport, period)
-}
-
 export async function generateHRSpreadsheet(periodId: string): Promise<Buffer> {
   const ExcelJS = require('exceljs')
   const workbook = new ExcelJS.Workbook()

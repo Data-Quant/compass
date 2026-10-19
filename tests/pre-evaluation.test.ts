@@ -2,20 +2,15 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   buildRuntimeEvaluationQuestionSet,
-  PRE_EVALUATION_QUESTION_COUNT,
   deriveLeadRelationships,
   filterLeadsByTitle,
   isLeadTitle,
   PRE_EVALUATION_LEAD_TITLES,
   derivePreEvaluationStatus,
   getDefaultQuestionBankRelationshipType,
-  getLeadAuthoredQuestionBankRelationshipType,
-  getRuntimeLeadQuestionCount,
   hasEffectiveLeadQuestionSet,
-  hasSubmittedLeadQuestionSet,
   isPrepEligibleForCarryForward,
   resolvePrepQuestionPrefill,
-  validatePreEvaluationSelections,
 } from '../lib/pre-evaluation'
 
 const CARRIED_AT = new Date('2026-07-01T00:00:00.000Z')
@@ -134,57 +129,10 @@ test('deriveLeadRelationships builds direct report ownership from TEAM_LEAD rows
   })
 })
 
-test('pre-evaluation question count is now two for team leads', () => {
-  assert.equal(PRE_EVALUATION_QUESTION_COUNT, 2)
-})
-
-test('draft lead questions do not count as a submitted custom question set', () => {
-  assert.equal(
-    hasSubmittedLeadQuestionSet({
-      questionsSubmittedAt: null,
-      questions: [
-        {
-          id: 'q-1',
-          prepId: 'prep-1',
-          orderIndex: 1,
-          questionText: 'Draft question',
-          createdAt: new Date('2026-04-01T00:00:00.000Z'),
-          updatedAt: new Date('2026-04-01T00:00:00.000Z'),
-        },
-      ],
-    }),
-    false
-  )
-})
-
 test('question bank direction swaps team lead and direct report banks', () => {
   assert.equal(getDefaultQuestionBankRelationshipType('TEAM_LEAD'), 'DIRECT_REPORT')
   assert.equal(getDefaultQuestionBankRelationshipType('DIRECT_REPORT'), 'TEAM_LEAD')
   assert.equal(getDefaultQuestionBankRelationshipType('CROSS_DEPARTMENT'), 'TEAM_LEAD')
-})
-
-test('lead-authored KPI questions extend the direct report bank', () => {
-  assert.equal(getLeadAuthoredQuestionBankRelationshipType(), 'DIRECT_REPORT')
-})
-
-test('runtime lead question count adds submitted lead questions on top of the default bank', () => {
-  assert.equal(
-    getRuntimeLeadQuestionCount({
-      defaultQuestionCount: 3,
-      leadQuestionCount: 2,
-      includeLeadQuestions: true,
-    }),
-    5
-  )
-
-  assert.equal(
-    getRuntimeLeadQuestionCount({
-      defaultQuestionCount: 3,
-      leadQuestionCount: 2,
-      includeLeadQuestions: false,
-    }),
-    3
-  )
 })
 
 test('runtime evaluation questions keep text prompts at the end after lead KPI questions are added', () => {
@@ -366,51 +314,6 @@ test('derivePreEvaluationStatus completes once lead questions are submitted', ()
   })
 
   assert.equal(status, 'COMPLETED')
-})
-
-test('validatePreEvaluationSelections allows change requests for self and direct reports', () => {
-  const error = validatePreEvaluationSelections(
-    [
-      {
-        type: 'PEER',
-        evaluateeId: 'lead-a',
-        suggestedEvaluatorId: 'peer-a',
-      },
-      {
-        type: 'CROSS_DEPARTMENT',
-        evaluateeId: 'report-a',
-        suggestedEvaluatorId: 'peer-b',
-      },
-      {
-        type: 'PRIMARY',
-        evaluateeId: 'report-a',
-      },
-    ],
-    {
-      directReportIds: new Set(['report-a']),
-      allowedEvaluateeIds: new Set(['lead-a', 'report-a']),
-    }
-  )
-
-  assert.equal(error, null)
-})
-
-test('validatePreEvaluationSelections rejects change requests outside self or direct reports', () => {
-  const error = validatePreEvaluationSelections(
-    [
-      {
-        type: 'PEER',
-        evaluateeId: 'employee-x',
-        suggestedEvaluatorId: 'peer-a',
-      },
-    ],
-    {
-      directReportIds: new Set(['report-a']),
-      allowedEvaluateeIds: new Set(['lead-a', 'report-a']),
-    }
-  )
-
-  assert.equal(error, 'Evaluator change requests are only allowed for you or your direct reports')
 })
 
 test('isLeadTitle recognizes curated lead titles case-insensitively', () => {

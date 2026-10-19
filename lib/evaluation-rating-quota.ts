@@ -31,6 +31,13 @@ export function isExemptFromFourRatingCapByTitle(position: string | null): boole
   return position.trim().toLowerCase().includes('partner')
 }
 
+/** Partner titles and the named exemptions give 4s without the 10% cap. */
+export function isFourRatingCapExempt(user: { name: string | null; position: string | null }): boolean {
+  if (isExemptFromFourRatingCapByTitle(user.position)) return true
+  if (!user.name) return false
+  return FOUR_RATING_QUOTA_EXEMPT_NAMES.has(user.name.trim().toLowerCase())
+}
+
 async function isFourRatingQuotaExemptEvaluator(
   evaluatorId: string,
   db: DbClient
@@ -39,10 +46,7 @@ async function isFourRatingQuotaExemptEvaluator(
     where: { id: evaluatorId },
     select: { name: true, position: true },
   })
-  if (!user) return false
-  if (isExemptFromFourRatingCapByTitle(user.position)) return true
-  if (!user.name) return false
-  return FOUR_RATING_QUOTA_EXEMPT_NAMES.has(user.name.trim().toLowerCase())
+  return user ? isFourRatingCapExempt(user) : false
 }
 
 type DbClient = typeof prisma | Prisma.TransactionClient

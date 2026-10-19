@@ -75,7 +75,6 @@ function emptyRows() {
     openTasks: [],
     completedTasks: [],
     leaveRequests: [],
-    selfEvaluations: [],
   }
 }
 

@@ -1,0 +1,150 @@
+import test, { after, beforeEach } from 'node:test'
+import assert from 'node:assert/strict'
+import { prisma } from '../lib/db'
+import { setOptIn } from '../lib/weekly/service/cycles'
+import { WeeklyError } from '../lib/weekly/service/errors'
+import { pairWindowsView, setPairWindow } from '../lib/weekly/service/pair-windows'
+import { releaseWeek } from '../lib/weekly/service/release'
+import { answerAs } from './helpers/weekly-answers'
+import { at, HR_ACTOR, startedCycle } from './helpers/weekly-fixtures'
+import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST, weeklyActor } from './helpers/weekly-test-db'
+
+const isStatus = (status: number) => (e: unknown) => e instanceof WeeklyError && e.status === status
+let cycleId = ''
+
+beforeEach(async () => {
+  if (!WEEKLY_DB_READY) return
+  await resetWeeklyTestData(prisma)
+  const { periodId } = await seedWeeklyBase(prisma)
+  ;({ cycleId } = await startedCycle(periodId))
+})
+after(async () => {
+  await prisma.$disconnect()
+})
+
+test('slots follow the mappings in both directions, with each perspective’s topics and the person’s department topics', WEEKLY_DB_TEST, async () => {
+  await releaseWeek(cycleId, 1, at(1))
+  const slots = await prisma.weeklySlot.findMany({ include: { competency: true } })
+  const leadAboutAna = slots.filter((s) => s.evaluatorId === W.lead.id && s.evaluateeId === W.ana.id)
+  // Section 9: three common topics, and Ana is in Product: its two department topics, no other department's.
+  assert.equal(leadAboutAna.length, 5)
+  assert.ok(leadAboutAna.every((s) => s.competency.departments.length === 0 || s.competency.departments.includes('Product')))
+  assert.ok(leadAboutAna.every((s) => s.relationshipType === 'TEAM_LEAD' && s.competency.perspective === 'LEAD'))
+  const anaAboutLead = slots.filter((s) => s.evaluatorId === W.ana.id && s.evaluateeId === W.lead.id)
+  assert.equal(anaAboutLead.length, 4)
+  assert.ok(anaAboutLead.every((s) => s.relationshipType === 'DIRECT_REPORT' && s.competency.perspective === 'UPWARD'))
+  const peerSlots = slots.filter((s) => s.relationshipType === 'PEER')
+  assert.equal(peerSlots.length, 6)
+  assert.ok(peerSlots.every((s) => s.competency.perspective === 'PEER'))
+  // 2 pairs x 5 lead topics, 2 x 4 upward, 6 peer slots.
+  assert.equal(slots.length, 24)
+})
+
+test('week 1 gives each evaluator a paced question about one of the people they evaluate', WEEKLY_DB_TEST, async () => {
+  const summary = await releaseWeek(cycleId, 1, at(1))
+  assert.deepEqual([summary.evaluatorsReleased, summary.promptsCreated], [3, 3])
+  const prompts = await prisma.weeklyPrompt.findMany({ include: { slot: true } })
+  for (const prompt of prompts) {
+    assert.equal(prompt.slot?.evaluatorId, prompt.evaluatorId)
+    assert.equal(prompt.slot?.evaluateeId, prompt.evaluateeId)
+    assert.equal(prompt.status, 'OPEN')
+    assert.ok(prompt.textSnapshot.length > 20)
+  }
+  const leadPrompt = prompts.find((p) => p.evaluatorId === W.lead.id)
+  assert.ok(leadPrompt && [W.ana.id, W.ben.id].includes(leadPrompt.evaluateeId))
+})
+
+test('releasing a week twice, even at the same moment, never duplicates questions', WEEKLY_DB_TEST, async () => {
+  await Promise.all([releaseWeek(cycleId, 1, at(1)), releaseWeek(cycleId, 1, at(1))])
+  await releaseWeek(cycleId, 1, at(1))
+  assert.equal(await prisma.weeklyPrompt.count(), 3)
+  assert.equal(await prisma.weeklyRelease.count(), 3)
+})
+
+test('a person with an open question is not asked about again; the evaluator gets someone else', WEEKLY_DB_TEST, async () => {
+  await releaseWeek(cycleId, 1, at(1))
+  await releaseWeek(cycleId, 2, at(2))
+  const prompts = await prisma.weeklyPrompt.findMany()
+  assert.equal(prompts.length, 6)
+  for (const evaluatorId of [W.lead.id, W.ana.id, W.ben.id]) {
+    const mine = prompts.filter((p) => p.evaluatorId === evaluatorId)
+    assert.equal(new Set(mine.map((p) => p.evaluateeId)).size, 2, 'week 2 is about the other person')
+  }
+  // Week 3: both of everyone's questions are still open, so nothing piles up.
+  await releaseWeek(cycleId, 3, at(3))
+  assert.equal(await prisma.weeklyPrompt.count(), 6)
+})
+
+test('a leaver’s questions are cancelled, as evaluator and as the person asked about', WEEKLY_DB_TEST, async () => {
+  await releaseWeek(cycleId, 1, at(1))
+  await prisma.payrollEmployeeProfile.create({ data: { userId: W.ben.id, isPayrollActive: false, exitDate: at(2, 1, 0) } })
+  const summary = await releaseWeek(cycleId, 2, at(2))
+  const benSlots = await prisma.weeklySlot.findMany({ where: { OR: [{ evaluatorId: W.ben.id }, { evaluateeId: W.ben.id }] } })
+  assert.ok(benSlots.length > 0 && benSlots.every((s) => s.status === 'CANCELLED'))
+  const benPrompts = await prisma.weeklyPrompt.findMany({ where: { OR: [{ evaluatorId: W.ben.id }, { evaluateeId: W.ben.id }] } })
+  assert.ok(benPrompts.every((p) => p.status === 'CANCELLED'))
+  assert.ok(summary.slotsCancelled > 0)
+})
+
+test('someone who joined after the round opened evaluates nobody and nobody evaluates them, until HR opts them in', WEEKLY_DB_TEST, async () => {
+  // Joined in week 2: under the old rule (6 question weeks left) they were in; the spec leaves them out.
+  await prisma.payrollEmployeeProfile.create({ data: { userId: W.ana.id, joiningDate: at(2) } })
+  await releaseWeek(cycleId, 2, at(2, 2))
+  const live = (where: object) => prisma.weeklySlot.count({ where: { ...where, status: { not: 'CANCELLED' } } })
+  assert.equal(await live({ evaluateeId: W.ana.id }), 0, 'nobody evaluates them')
+  assert.equal(await live({ evaluatorId: W.ana.id }), 0, 'they evaluate nobody')
+  await setOptIn(HR_ACTOR, { cycleId, userId: W.ana.id, reason: 'Transferred in' })
+  await releaseWeek(cycleId, 3, at(3))
+  assert.ok((await live({ evaluateeId: W.ana.id })) > 0)
+  assert.ok((await live({ evaluatorId: W.ana.id })) > 0)
+})
+
+test('catch-up weeks add one optional comment question per pair and text question', WEEKLY_DB_TEST, async () => {
+  const summary = await releaseWeek(cycleId, 12, at(12))
+  assert.equal(summary.commentPrompts, 6)
+  assert.equal((await releaseWeek(cycleId, 12, at(12))).commentPrompts, 0)
+  const comments = await prisma.weeklyPrompt.findMany({ where: { kind: 'COMMENT' } })
+  assert.ok(comments.every((c) => c.questionId !== null && c.slotId === null))
+})
+
+test('only a running cycle releases, and only within its weeks', WEEKLY_DB_TEST, async () => {
+  await assert.rejects(releaseWeek(cycleId, 14, at(14)), isStatus(409))
+  await prisma.weeklyCycle.update({ where: { id: cycleId }, data: { status: 'SETUP' } })
+  await assert.rejects(releaseWeek(cycleId, 1, at(1)), isStatus(409))
+})
+
+test('once answered, the next question about the same person is on a different topic', WEEKLY_DB_TEST, async () => {
+  for (let week = 1; week <= 6; week += 1) {
+    await releaseWeek(cycleId, week, at(week))
+    for (const open of await prisma.weeklyPrompt.findMany({ where: { evaluatorId: W.lead.id, status: 'OPEN' } })) {
+      await answerAs(open, 2, at(week))
+    }
+  }
+  const asked = await prisma.weeklyPrompt.findMany({ where: { evaluatorId: W.lead.id } })
+  for (const evaluateeId of [W.ana.id, W.ben.id]) {
+    const about = asked.filter((p) => p.evaluateeId === evaluateeId)
+    assert.ok(about.length >= 2, `asked about ${evaluateeId} ${about.length} times by week 6`)
+    assert.equal(new Set(about.map((p) => p.slotId)).size, about.length, 'a new topic each time while topics remain')
+  }
+})
+
+test('a pair added mid-quarter gets its own window from the week it appears; HR can change its start and length', WEEKLY_DB_TEST, async () => {
+  await releaseWeek(cycleId, 1, at(1))
+  await releaseWeek(cycleId, 2, at(2))
+  await prisma.evaluatorMapping.create({ data: { evaluatorId: W.lead.id, evaluateeId: W.cara.id, relationshipType: 'TEAM_LEAD' } })
+  await releaseWeek(cycleId, 3, at(3))
+  const window = await prisma.weeklyPairWindow.findFirstOrThrow({ where: { cycleId, evaluatorId: W.lead.id, evaluateeId: W.cara.id } })
+  // Week 3 of 11 question weeks leaves 9.
+  assert.deepEqual([window.startWeek, window.weeks], [3, 9])
+  assert.equal(await prisma.weeklyPairWindow.count({ where: { cycleId, evaluateeId: { not: W.cara.id } } }), 0, 'pairs from week 1 have the whole quarter')
+
+  await setPairWindow(HR_ACTOR, cycleId, { evaluatorId: W.lead.id, evaluateeId: W.cara.id, relationshipType: 'TEAM_LEAD', startWeek: 5, weeks: 6 })
+  await prisma.weeklyPrompt.deleteMany({ where: { evaluateeId: W.cara.id } })
+  await prisma.weeklyRelease.deleteMany({ where: { weekIndex: { gte: 3 } } })
+  await releaseWeek(cycleId, 4, at(4))
+  assert.equal(await prisma.weeklyPrompt.count({ where: { evaluateeId: W.cara.id } }), 0, 'not before the start week')
+  await assert.rejects(setPairWindow(HR_ACTOR, cycleId, { evaluatorId: W.lead.id, evaluateeId: W.cara.id, relationshipType: 'TEAM_LEAD', startWeek: 9, weeks: 6 }), /at most 3/)
+  await assert.rejects(setPairWindow(weeklyActor(W.ana), cycleId, { evaluatorId: W.lead.id, evaluateeId: W.cara.id, relationshipType: 'TEAM_LEAD', startWeek: 5, weeks: 2 }), isStatus(403))
+  const view = await pairWindowsView(HR_ACTOR, cycleId)
+  assert.deepEqual(view.map((w) => [w.evaluator.name, w.evaluatee.name, w.startWeek, w.weeks]), [[W.lead.name, W.cara.name, 5, 6]])
+})

@@ -3,11 +3,8 @@ import { prisma } from '@/lib/db'
 import type { RelationshipType } from '@/types'
 import {
   normalizeRatingDescriptions,
-  toRatingDescriptionFields,
   type RatingDescriptions,
 } from '@/lib/rating-descriptions'
-
-export const PRE_EVALUATION_QUESTION_COUNT = 2
 
 export type QuestionSourceType = 'GLOBAL' | 'LEAD'
 
@@ -47,11 +44,6 @@ type LeadRelationshipMapping = {
   relationshipType: RelationshipType
 }
 
-type PrepQuestionSource = {
-  questionsSubmittedAt: Date | null
-  questions: Array<PreEvaluationLeadQuestion>
-}
-
 type RuntimeGlobalQuestionInput = {
   id: string
   questionText: string
@@ -83,21 +75,9 @@ type PreviousLeadQuestionPrefill<TQuestion extends { orderIndex: number }> = {
   questions: TQuestion[]
 }
 
-export interface PreEvaluationSelectionInput {
-  type: 'PRIMARY' | 'PEER' | 'CROSS_DEPARTMENT'
-  evaluateeId: string
-  suggestedEvaluatorId?: string | null
-}
-
 function startOfDay(date: Date = new Date()) {
   const normalized = new Date(date)
   normalized.setHours(0, 0, 0, 0)
-  return normalized
-}
-
-function endOfDay(date: Date = new Date()) {
-  const normalized = new Date(date)
-  normalized.setHours(23, 59, 59, 999)
   return normalized
 }
 
@@ -167,8 +147,7 @@ export function deriveLeadRelationships(
 /**
  * Job titles that qualify a person as a team lead for pre-evaluation. Lead
  * status is gated by title, not by whether someone happened to have a report
- * in a quarter's TEAM_LEAD mappings. Matched case-insensitively and trimmed,
- * mirroring SELF_EVAL_EXCLUDED_POSITIONS in lib/self-evaluation.ts.
+ * in a quarter's TEAM_LEAD mappings. Matched case-insensitively and trimmed.
  */
 export const PRE_EVALUATION_LEAD_TITLES: readonly string[] = [
   'Partner',
@@ -212,10 +191,6 @@ export function filterLeadsByTitle(
   return { leadIds, directReportsByLead }
 }
 
-export function hasSubmittedLeadQuestionSet(source: PrepQuestionSource) {
-  return Boolean(source.questionsSubmittedAt) && source.questions.length > 0
-}
-
 // A lead's questions count in the actual evaluations when they exist and were
 // either explicitly submitted by the lead OR carried forward from a prior period.
 export function hasEffectiveLeadQuestionSet(source: {
@@ -257,18 +232,6 @@ export function getDefaultQuestionBankRelationshipType(
   }
 
   return relationshipType
-}
-
-export function getLeadAuthoredQuestionBankRelationshipType(): RelationshipType {
-  return 'DIRECT_REPORT'
-}
-
-export function getRuntimeLeadQuestionCount(params: {
-  defaultQuestionCount: number
-  leadQuestionCount: number
-  includeLeadQuestions: boolean
-}) {
-  return params.defaultQuestionCount + (params.includeLeadQuestions ? params.leadQuestionCount : 0)
 }
 
 export function buildRuntimeEvaluationQuestionSet(params: {
@@ -679,185 +642,6 @@ export async function triggerPreEvaluationForPeriod(
   }
 }
 
-export async function getCurrentLeadPrep(userId: string) {
-  const prep = await prisma.preEvaluationLeadPrep.findFirst({
-    where: {
-      leadId: userId,
-      period: {
-        preEvaluationTriggeredAt: {
-          not: null,
-        },
-        reviewStartDate: {
-          gte: startOfDay(),
-        },
-      },
-    },
-    include: {
-      period: {
-        select: {
-          id: true,
-          name: true,
-          startDate: true,
-          endDate: true,
-          reviewStartDate: true,
-          isActive: true,
-          preEvaluationTriggeredAt: true,
-        },
-      },
-      questions: {
-        orderBy: { orderIndex: 'asc' },
-      },
-      evaluateeSelections: {
-        include: {
-          evaluatee: {
-            select: {
-              id: true,
-              name: true,
-              department: true,
-              position: true,
-            },
-          },
-          suggestedEvaluator: {
-            select: {
-              id: true,
-              name: true,
-              department: true,
-              position: true,
-            },
-          },
-        },
-        orderBy: [
-          { type: 'asc' },
-          { createdAt: 'asc' },
-        ],
-      },
-    },
-    orderBy: {
-      period: {
-        reviewStartDate: 'asc',
-      },
-    },
-  })
-
-  if (!prep) return null
-
-  const previousSubmittedPrep =
-    prep.questions.length === 0 && !prep.questionsSubmittedAt
-      ? await prisma.preEvaluationLeadPrep.findFirst({
-          where: {
-            leadId: userId,
-            periodId: {
-              not: prep.period.id,
-            },
-            questionsSubmittedAt: {
-              not: null,
-            },
-            questions: {
-              some: {},
-            },
-          },
-          select: {
-            period: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-            questionsSubmittedAt: true,
-            questions: {
-              orderBy: { orderIndex: 'asc' },
-            },
-          },
-          orderBy: [
-            { questionsSubmittedAt: 'desc' },
-            { updatedAt: 'desc' },
-          ],
-        })
-      : null
-
-  const [users, directReportMappings] = await Promise.all([
-    prisma.user.findMany({
-      where: {
-        role: 'EMPLOYEE',
-        id: { not: userId },
-        OR: [
-          { payrollProfile: { is: null } },
-          { payrollProfile: { is: { isPayrollActive: true } } },
-        ],
-      },
-      select: {
-        id: true,
-        name: true,
-        department: true,
-        position: true,
-        role: true,
-      },
-      orderBy: { name: 'asc' },
-    }),
-    prisma.evaluatorMapping.findMany({
-      where: {
-        evaluatorId: userId,
-        relationshipType: 'TEAM_LEAD',
-      },
-      select: {
-        evaluatee: {
-          select: {
-            id: true,
-            name: true,
-            department: true,
-            position: true,
-            role: true,
-          },
-        },
-      },
-      orderBy: {
-        evaluatee: {
-          name: 'asc',
-        },
-      },
-    }),
-  ])
-
-  const synced = await syncPrepStatus(prisma, prep.id)
-  const effectiveStatus = synced?.status || prep.status
-  const resolvedQuestions = resolvePrepQuestionPrefill({
-    currentQuestions: prep.questions,
-    currentQuestionsSubmittedAt: prep.questionsSubmittedAt,
-    previousSubmission: previousSubmittedPrep,
-  })
-
-  // For carried-forward preps (persisted questions, not yet lead-submitted), resolve
-  // the source period name so the page can show a "carried from {period}" banner.
-  const carriedFromPeriod =
-    prep.questionsCarriedForwardAt && prep.questionsCarriedFromPeriodId
-      ? await prisma.evaluationPeriod.findUnique({
-          where: { id: prep.questionsCarriedFromPeriodId },
-          select: { id: true, name: true },
-        })
-      : null
-
-  return {
-    ...prep,
-    questions: resolvedQuestions.questions,
-    questionPrefillFrom: resolvedQuestions.questionPrefillFrom,
-    questionsCarriedFrom:
-      prep.questionsCarriedForwardAt && carriedFromPeriod
-        ? { periodId: carriedFromPeriod.id, periodName: carriedFromPeriod.name }
-        : null,
-    status: effectiveStatus,
-    editable: isPrepEditable(prep.period.reviewStartDate),
-    candidateUsers: users,
-    directReportUsers: directReportMappings.map((mapping) => mapping.evaluatee),
-  }
-}
-
-export async function getLeadQuestionSetForPrep(prepId: string) {
-  return prisma.preEvaluationLeadQuestion.findMany({
-    where: { prepId },
-    orderBy: { orderIndex: 'asc' },
-  })
-}
-
 async function getLeadQuestionSetForTeamLead(periodId: string, leadId: string) {
   const prep = await prisma.preEvaluationLeadPrep.findUnique({
     where: {
@@ -1011,230 +795,4 @@ export function getEvaluationQuestionMeta(
   }
 
   return null
-}
-
-export async function saveDraftQuestions(
-  prepId: string,
-  questions: Array<{
-    orderIndex: number
-    questionText: string
-    ratingDescriptions?: RatingDescriptions | null
-  }>,
-  db: DbClient = prisma
-) {
-  await db.preEvaluationLeadQuestion.deleteMany({
-    where: { prepId },
-  })
-
-  const validQuestions = questions
-    .map((question) => ({
-      orderIndex: question.orderIndex,
-      questionText: question.questionText.trim(),
-      ratingDescriptions: question.ratingDescriptions,
-    }))
-    .filter((question) => question.questionText)
-
-  if (validQuestions.length > 0) {
-    await db.preEvaluationLeadQuestion.createMany({
-      data: validQuestions.map((question) => ({
-        prepId,
-        orderIndex: question.orderIndex,
-        questionText: question.questionText,
-        ...toRatingDescriptionFields(question.ratingDescriptions),
-      })),
-    })
-  }
-}
-
-export async function saveDraftSelections(
-  prepId: string,
-  selections: PreEvaluationSelectionInput[],
-  db: DbClient = prisma
-) {
-  await db.preEvaluationEvaluateeSelection.deleteMany({
-    where: { prepId },
-  })
-
-  if (selections.length === 0) {
-    return
-  }
-
-  await db.preEvaluationEvaluateeSelection.createMany({
-    data: selections.map((selection) => ({
-      prepId,
-      type: selection.type,
-      evaluateeId: selection.evaluateeId,
-      suggestedEvaluatorId: selection.suggestedEvaluatorId || null,
-      selectionKey: buildPreEvaluationSelectionKey(
-        selection.type,
-        selection.evaluateeId,
-        selection.suggestedEvaluatorId || null
-      ),
-    })),
-    skipDuplicates: true,
-  })
-}
-
-export function validatePreEvaluationSelections(
-  selections: PreEvaluationSelectionInput[],
-  options: {
-    directReportIds: Set<string>
-    allowedEvaluateeIds?: Set<string>
-  }
-) {
-  const seen = new Set<string>()
-  const allowedEvaluateeIds = options.allowedEvaluateeIds || options.directReportIds
-
-  for (const selection of selections) {
-    if (selection.type === 'PRIMARY') {
-      if (selection.suggestedEvaluatorId) {
-        return 'Primary selections cannot include a suggested evaluator'
-      }
-      if (!options.directReportIds.has(selection.evaluateeId)) {
-        return 'Primary selections must be team members who report to you'
-      }
-    }
-
-    if ((selection.type === 'CROSS_DEPARTMENT' || selection.type === 'PEER') && !selection.suggestedEvaluatorId) {
-      return `${selection.type === 'PEER' ? 'Peer' : 'Cross-department'} selections require a suggested evaluator`
-    }
-
-    if (
-      (selection.type === 'CROSS_DEPARTMENT' || selection.type === 'PEER') &&
-      !allowedEvaluateeIds.has(selection.evaluateeId)
-    ) {
-      return 'Evaluator change requests are only allowed for you or your direct reports'
-    }
-
-    if (selection.suggestedEvaluatorId && selection.suggestedEvaluatorId === selection.evaluateeId) {
-      return 'An employee cannot be assigned to evaluate themselves'
-    }
-
-    const key = buildPreEvaluationSelectionKey(
-      selection.type,
-      selection.evaluateeId,
-      selection.suggestedEvaluatorId || null
-    )
-
-    if (seen.has(key)) {
-      return 'Duplicate evaluatee selections are not allowed'
-    }
-    seen.add(key)
-  }
-
-  return null
-}
-
-export function isReminderDay(targetDate: Date, periodStartDate: Date) {
-  return startOfDay(targetDate).getTime() === startOfDay(periodStartDate).getTime()
-}
-
-export async function findDuePreEvaluationPeriods() {
-  const today = startOfDay()
-  const dueDate = new Date(today)
-  dueDate.setDate(dueDate.getDate() + 14)
-  const nextDay = new Date(dueDate)
-  nextDay.setDate(nextDay.getDate() + 1)
-
-  return prisma.evaluationPeriod.findMany({
-    where: {
-      preEvaluationTriggeredAt: null,
-      reviewStartDate: {
-        gte: dueDate,
-        lt: nextDay,
-      },
-    },
-    orderBy: { reviewStartDate: 'asc' },
-  })
-}
-
-export async function markOverduePreEvaluations() {
-  const today = endOfDay()
-  const overduePreps = await prisma.preEvaluationLeadPrep.findMany({
-    where: {
-      completedAt: null,
-      period: {
-        reviewStartDate: {
-          lte: today,
-        },
-      },
-      overdueAt: null,
-    },
-    select: { id: true },
-  })
-
-  if (overduePreps.length === 0) {
-    return { count: 0 }
-  }
-
-  await prisma.preEvaluationLeadPrep.updateMany({
-    where: {
-      id: {
-        in: overduePreps.map((prep) => prep.id),
-      },
-    },
-    data: {
-      overdueAt: new Date(),
-      status: 'OVERDUE',
-    },
-  })
-
-  return { count: overduePreps.length }
-}
-
-export async function getPreEvaluationReminderCandidates(dayOffset: 7 | 1) {
-  const targetDate = startOfDay()
-  targetDate.setDate(targetDate.getDate() + dayOffset)
-  const nextDay = new Date(targetDate)
-  nextDay.setDate(nextDay.getDate() + 1)
-
-  const reminderField =
-    dayOffset === 7 ? 'sevenDayReminderSentAt' : 'oneDayReminderSentAt'
-
-  return prisma.preEvaluationLeadPrep.findMany({
-    where: {
-      completedAt: null,
-      questionsSubmittedAt: null,
-      // Carried-forward preps already have effective questions — don't nag the lead.
-      questionsCarriedForwardAt: null,
-      period: {
-        reviewStartDate: {
-          gte: targetDate,
-          lt: nextDay,
-        },
-      },
-      [reminderField]: null,
-    } as Prisma.PreEvaluationLeadPrepWhereInput,
-    include: {
-      lead: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-        },
-      },
-      period: {
-        select: {
-          id: true,
-          name: true,
-          startDate: true,
-          reviewStartDate: true,
-        },
-      },
-    },
-  })
-}
-
-export async function setPrepReminderSent(prepId: string, reminderType: 'initial' | '7-day' | '1-day') {
-  const data =
-    reminderType === 'initial'
-      ? { initialReminderSentAt: new Date() }
-      : reminderType === '7-day'
-        ? { sevenDayReminderSentAt: new Date() }
-        : { oneDayReminderSentAt: new Date() }
-
-  return prisma.preEvaluationLeadPrep.update({
-    where: { id: prepId },
-    data,
-  })
 }

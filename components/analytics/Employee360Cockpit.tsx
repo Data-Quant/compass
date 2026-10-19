@@ -98,7 +98,6 @@ import styles from './Employee360Cockpit.module.css'
 type Domain = Employee360Domain
 type EvidenceDomain =
   | 'EVALUATION'
-  | 'SELF_EVALUATION'
   | 'CLIENTS'
   | 'COMPENSATION'
   | 'OPERATIONS'
@@ -299,65 +298,6 @@ function LoadingCockpit() {
   )
 }
 
-function StructuredEvidenceValue({
-  value,
-}: {
-  value: NonNullable<EvidencePayload['items'][number]['structuredResponse']>
-}) {
-  if (value.type === 'TEXT') {
-    return (
-      <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
-        {value.value || 'No written response.'}
-      </p>
-    )
-  }
-
-  if (value.type === 'LIST') {
-    return value.value.length ? (
-      <ul className="mt-3 space-y-2">
-        {value.value.map((entry, index) => (
-          <li
-            key={`${entry}-${index}`}
-            className="flex gap-2 text-xs leading-relaxed text-muted-foreground"
-          >
-            <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent" />
-            <span>{entry}</span>
-          </li>
-        ))}
-      </ul>
-    ) : (
-      <p className="mt-2 text-xs text-muted-foreground">No list items were submitted.</p>
-    )
-  }
-
-  return value.value.length ? (
-    <div className="mt-3 space-y-2">
-      {value.value.map((goal, index) => (
-        <div
-          key={`${goal.goal}-${index}`}
-          className="rounded-md border border-border bg-card p-3"
-        >
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <p className="text-xs font-medium leading-relaxed text-card-foreground">
-              {goal.goal}
-            </p>
-            <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[8px] font-semibold uppercase tracking-[0.1em] text-accent">
-              {goal.status.replaceAll('_', ' ')}
-            </span>
-          </div>
-          {goal.comments && (
-            <p className="mt-2 whitespace-pre-wrap text-[11px] leading-relaxed text-muted-foreground">
-              {goal.comments}
-            </p>
-          )}
-        </div>
-      ))}
-    </div>
-  ) : (
-    <p className="mt-2 text-xs text-muted-foreground">No goals were submitted.</p>
-  )
-}
-
 function ErrorState({
   title,
   detail,
@@ -412,7 +352,7 @@ function EvidenceDrawer({
 }) {
   const isDesktop = useDesktopBreakpoint()
   const remote =
-    inspection?.domain === 'EVALUATION' || inspection?.domain === 'SELF_EVALUATION'
+    inspection?.domain === 'EVALUATION'
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -515,18 +455,14 @@ function EvidenceDrawer({
                       <h3 className="mt-3 text-xs font-semibold leading-relaxed text-card-foreground">
                         {item.question}
                       </h3>
-                      {item.structuredResponse ? (
-                        <StructuredEvidenceValue value={item.structuredResponse} />
-                      ) : (
-                        <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
-                          {item.response || 'No written response.'}
-                        </p>
-                      )}
+                      <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+                        {item.response || 'No written response.'}
+                      </p>
                       <div className="mt-4 border-t border-border pt-3 text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
                         {item.evaluator.isRevealed && item.evaluator.name
                           ? item.evaluator.name
                           : item.lens === 'SELF'
-                            ? 'Employee self-evaluation'
+                            ? 'Employee self-assessment'
                             : `Evaluator ${item.evaluator.raterKey.slice(0, 8)}`}
                         {' · '}
                         {item.provenance.periodName}
@@ -1177,13 +1113,13 @@ function OverviewDomain({
               type="button"
               onClick={() =>
                 onInspect({
-                  domain: 'SELF_EVALUATION',
-                  title: 'Self-evaluation evidence',
+                  domain: 'EVALUATION',
+                  title: 'Self-assessment evidence',
                   lens: 'SELF',
                 })
               }
               className="rounded p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label="Inspect self-evaluation evidence"
+              aria-label="Inspect self-assessment evidence"
             >
               <PanelRightOpen className="h-4 w-4" />
             </button>
@@ -2047,7 +1983,7 @@ export function Employee360Cockpit() {
   ])
 
   const remoteEvidence =
-    inspection?.domain === 'EVALUATION' || inspection?.domain === 'SELF_EVALUATION'
+    inspection?.domain === 'EVALUATION'
 
   useEffect(() => {
     if (!inspection || !remoteEvidence || !selectedId || !profile?.selectedPeriod?.id) {
@@ -2065,7 +2001,6 @@ export function Employee360Cockpit() {
     const params = new URLSearchParams({
       employeeId: selectedId,
       periodId: profile.selectedPeriod.id,
-      domain: inspection.domain,
       revealEvaluator: String(revealEvaluator),
     })
     if (inspection.lens) params.set('lens', inspection.lens)

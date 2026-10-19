@@ -426,31 +426,6 @@ export const profilePayloadSchema = z
   })
 export type ProfilePayload = z.infer<typeof profilePayloadSchema>
 
-export const structuredEvidenceResponseSchema = z.discriminatedUnion('type', [
-  z.object({
-    type: z.literal('TEXT'),
-    section: z.string().nullable(),
-    value: z.string(),
-  }),
-  z.object({
-    type: z.literal('LIST'),
-    section: z.string().nullable(),
-    value: z.array(z.string()),
-  }),
-  z.object({
-    type: z.literal('GOAL_TABLE'),
-    section: z.string().nullable(),
-    value: z.array(
-      z.object({
-        goal: z.string(),
-        status: z.enum(['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED', 'EXCEEDED']),
-        comments: z.string(),
-      })
-    ),
-  }),
-])
-export type StructuredEvidenceResponse = z.infer<typeof structuredEvidenceResponseSchema>
-
 const evaluatorRevealSchema = z
   .object({
     raterKey: z.string().min(1),
@@ -480,12 +455,10 @@ export const evidenceItemSchema = z.object({
   lens: relationshipTypeSchema,
   question: z.string().min(1),
   response: z.string().nullable(),
-  /** Present for structured self-evaluation answers; absent/null for normal feedback. */
-  structuredResponse: structuredEvidenceResponseSchema.nullable().optional(),
   rating: z.number().finite().min(0).max(4).nullable(),
   evaluator: evaluatorRevealSchema,
   provenance: z.object({
-    source: z.enum(['EVALUATION', 'SELF_EVALUATION']),
+    source: z.literal('EVALUATION'),
     recordId: z.string().min(1),
     submittedAt: z.string().datetime(),
     periodId: z.string().min(1),
@@ -498,7 +471,6 @@ export const evidencePayloadSchema = z.object({
   generatedAt: z.string().datetime(),
   employeeId: z.string().min(1),
   period: periodRefSchema,
-  domain: z.enum(['EVALUATION', 'SELF_EVALUATION']),
   lens: relationshipTypeSchema.nullable(),
   items: z.array(evidenceItemSchema).default([]),
 })

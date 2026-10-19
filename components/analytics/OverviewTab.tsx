@@ -23,21 +23,19 @@ export function OverviewTab({ analytics }: OverviewTabProps) {
   const statCards = [
     {
       label: 'Team Members',
-      value: analytics.summary.totalTeamMembers ?? analytics.summary.totalEmployees,
+      value: analytics.summary.totalTeamMembers,
       icon: Users,
       color: 'text-primary',
     },
     {
       label: 'Complete',
-      value: `${analytics.summary.employeesComplete ?? analytics.summary.employeesWithEvaluations}/${
-        analytics.summary.totalTeamMembers ?? analytics.summary.totalEmployees
-      }`,
+      value: analytics.summary.employeesComplete === null ? '\u2014' : `${analytics.summary.employeesComplete}/${analytics.summary.totalTeamMembers}`,
       icon: CheckCircle,
       color: 'text-emerald-600 dark:text-emerald-400',
     },
     {
       label: 'Avg Completion',
-      value: `${analytics.summary.completionRate.toFixed(1)}%`,
+      value: analytics.summary.completionRate === null ? '\u2014' : `${analytics.summary.completionRate.toFixed(1)}%`,
       icon: FileText,
       color: 'text-purple-600 dark:text-purple-400',
     },

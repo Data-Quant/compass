@@ -169,6 +169,19 @@
       0 16px 32px rgba(0, 0, 0, 0.06);
   }
 
+  /* The default card depth: a hairline lift and a wide, faint shadow. */
+  .shadow-soft {
+    box-shadow:
+      0 1px 2px rgba(15, 23, 42, 0.04),
+      0 12px 32px -16px rgba(15, 23, 42, 0.10);
+  }
+
+  .dark .shadow-soft {
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.3),
+      0 12px 32px -16px rgba(0, 0, 0, 0.5);
+  }
+
   .shadow-premium-lg {
     box-shadow:
       0 2px 4px rgba(0, 0, 0, 0.02),

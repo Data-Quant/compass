@@ -87,17 +87,6 @@ enum PreEvaluationReviewStatus {
   REJECTED
 }
 
-enum SelfEvaluationQuestionType {
-  TEXT
-  LIST
-  GOAL_TABLE
-}
-
-enum SelfEvaluationStatus {
-  DRAFT
-  SUBMITTED
-}
-
 enum PreEvaluationEvaluateeType {
   PRIMARY
   PEER
@@ -333,6 +322,7 @@ model User {
 
   // Relations
   evaluatorMappings   EvaluatorMapping[] @relation("Evaluator")
+  selfEvaluations     SelfEvaluation[]   @relation("SelfEvaluationEmployee")
   evaluateeMappings   EvaluatorMapping[] @relation("Evaluatee")
   evaluations         Evaluation[]
   weightages          Weightage[]
@@ -395,8 +385,6 @@ model User {
   preEvaluationOverrides  PreEvaluationLeadPrep[] @relation("PreEvaluationOverrideBy")
   preEvaluationResets     PreEvaluationLeadPrep[] @relation("PreEvaluationResetBy")
   preEvaluationTriggeredPeriods EvaluationPeriod[] @relation("PreEvaluationTriggeredBy")
-  selfEvaluations         SelfEvaluation[]   @relation("SelfEvaluationEmployee")
-  selfEvaluationTriggeredPeriods EvaluationPeriod[] @relation("SelfEvaluationTriggeredBy")
   preEvaluationSelectionsAsEvaluatee PreEvaluationEvaluateeSelection[] @relation("PreEvaluationSelectionEvaluatee")
   preEvaluationSelectionsAsSuggestedEvaluator PreEvaluationEvaluateeSelection[] @relation("PreEvaluationSelectionSuggestedEvaluator")
   preEvaluationSelectionsReviewed PreEvaluationEvaluateeSelection[] @relation("PreEvaluationSelectionReviewedBy")
@@ -536,7 +524,6 @@ model EvaluatorMapping {
   evaluatorId      String
   evaluateeId      String
   relationshipType RelationshipType
-  isSelfEvaluation Boolean          @default(false) // Flag for self-evaluations
   createdAt        DateTime         @default(now())
 
   evaluator User @relation("Evaluator", fields: [evaluatorId], references: [id], onDelete: Cascade)
@@ -575,23 +562,20 @@ model EvaluationPeriod {
   reviewStartDate         DateTime
   isActive                Boolean                    @default(true)
   isLocked                Boolean                    @default(false) // Prevents new submissions when locked
-  reminderSent            Boolean                    @default(false) // Track if deadline reminder was sent
   preEvaluationTriggeredAt DateTime?
   preEvaluationTriggerSource PreEvaluationTriggerSource?
   preEvaluationTriggeredById String?
-  selfEvaluationTriggeredAt   DateTime?
-  selfEvaluationTriggeredById String?
   createdAt               DateTime                   @default(now())
   updatedAt               DateTime                   @updatedAt
 
   reports                 Report[]
   evaluations             Evaluation[]
   preEvaluationPreps      PreEvaluationLeadPrep[]
+  /// Archive of the retired quarterly self-evaluation form.
+  selfEvaluations         SelfEvaluation[]
   assignmentOverrides     EvaluationPeriodAssignmentOverride[]
   assignmentSnapshots      EvaluationPeriodAssignmentSnapshot[]
   preEvaluationTriggeredBy User?                    @relation("PreEvaluationTriggeredBy", fields: [preEvaluationTriggeredById], references: [id], onDelete: SetNull)
-  selfEvaluationTriggeredBy User?                   @relation("SelfEvaluationTriggeredBy", fields: [selfEvaluationTriggeredById], references: [id], onDelete: SetNull)
-  selfEvaluations          SelfEvaluation[]
 
   @@index([isActive])
   @@index([startDate])
@@ -609,6 +593,8 @@ model Evaluation {
   ratingValue    Float?
   textResponse   String?
   submittedAt    DateTime?
+  source           String                     @default("MANUAL") // MANUAL | AI_WEEKLY
+  aggregationRunId String?
   createdAt      DateTime                   @default(now())
   updatedAt      DateTime                   @updatedAt
 
@@ -625,6 +611,7 @@ model Evaluation {
   @@index([evaluateeId])
   @@index([periodId])
   @@index([leadQuestionId])
+  @@index([periodId, source])
 }
 
 /// A correction made by HR to a submitted evaluation.
@@ -774,40 +761,6 @@ model PreEvaluationEvaluateeSelection {
   @@index([evaluateeId])
   @@index([suggestedEvaluatorId])
   @@index([reviewStatus])
-}
-
-model SelfEvaluationQuestion {
-  id         String                     @id @default(cuid())
-  section    String
-  prompt     String
-  helpText   String?
-  type       SelfEvaluationQuestionType @default(TEXT)
-  orderIndex Int
-  isActive   Boolean                    @default(true)
-  createdAt  DateTime                   @default(now())
-  updatedAt  DateTime                   @updatedAt
-
-  @@index([isActive, orderIndex])
-}
-
-model SelfEvaluation {
-  id          String               @id @default(cuid())
-  periodId    String
-  employeeId  String
-  status      SelfEvaluationStatus @default(DRAFT)
-  answers     Json                 @default("[]")
-  startedAt   DateTime?
-  submittedAt DateTime?
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
-
-  period   EvaluationPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
-  employee User             @relation("SelfEvaluationEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
-
-  @@unique([periodId, employeeId])
-  @@index([periodId])
-  @@index([employeeId])
-  @@index([status])
 }
 
 model Weightage {
@@ -2158,8 +2111,580 @@ model ClientRosterRequestItem {
   @@index([userId])
 }
 
+// ─── Weekly evaluations ─────────────────────────────────────────────────────
+
+enum WeeklyPerspective {
+  LEAD
+  UPWARD
+  PEER
+}
+
+enum WeeklyCycleStatus {
+  SETUP
+  RUNNING
+  CLOSED
+}
+
+enum WeeklySlotStatus {
+  OPEN
+  SATISFIED
+  CLOSED_NOT_OBSERVED
+  CANCELLED
+}
+
+enum WeeklyPromptKind {
+  STANDARD
+  COMMENT
+}
+
+enum WeeklyPromptStatus {
+  OPEN
+  DRAFT
+  SUBMITTED
+  NOT_OBSERVED
+  EXPIRED
+  CANCELLED
+}
+
+model WeeklyCycle {
+  id                 String            @id @default(cuid())
+  periodId           String            @unique
+  weekOneStartsOn    DateTime
+  /// When HR opened the round (the cycle started); joiners after it are left out (UX spec, section 7).
+  startedAt          DateTime?
+  questionWeeks      Int
+  /// The date the review stage should finish by (employees check their lists, leads write questions).
+  reviewDeadline     DateTime?
+  status             WeeklyCycleStatus @default(SETUP)
+  simulatedWeek      Int?
+  formsOpenAt        DateTime?
+  resultsPublishedAt DateTime?
+  closedAt           DateTime?
+  createdById        String
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  slots              WeeklySlot[]
+  prompts            WeeklyPrompt[]
+  weekSubmissions    WeeklyWeekSubmission[]
+}
+
+model WeeklyCompetency {
+  id                   String                   @id @default(cuid())
+  key                  String                   @unique
+  perspective          WeeklyPerspective
+  name                 String
+  definition           String
+  sourceQuestionId     String?
+  sourceLeadQuestionId String?                  @unique
+  leadId               String?
+  cycleId              String?
+  isActive             Boolean                  @default(true)
+  /// Removed by HR from the weekly bank; sync leaves it off until HR restores it.
+  removedAt            DateTime?
+  /// Asked only about people in these departments; empty for everyone.
+  departments          String[]                 @default([])
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  prompts              WeeklyCompetencyPrompt[]
+  slots                WeeklySlot[]
+
+  @@index([perspective, isActive])
+  @@index([sourceQuestionId])
+  @@index([cycleId, leadId])
+}
+
+model WeeklyCompetencyPrompt {
+  id           String           @id @default(cuid())
+  competencyId String
+  variant      String
+  text         String
+  /// The 8 statements, each { id, text, score }: score is the statement's level, 1 to 4 in half points, a hidden guide
+  /// for the model that scores answers (UX spec, section 8). Evaluators never see it.
+  options      Json?
+  isActive     Boolean          @default(true)
+  /// Removed by HR after it was asked: kept so earlier answers keep their question, hidden from the bank.
+  archivedAt   DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  competency   WeeklyCompetency @relation(fields: [competencyId], references: [id])
+
+  @@unique([competencyId, variant])
+}
+
+model WeeklySlot {
+  id               String           @id @default(cuid())
+  cycleId          String
+  evaluatorId      String
+  evaluateeId      String
+  relationshipType RelationshipType
+  competencyId     String
+  status           WeeklySlotStatus @default(OPEN)
+  notObservedCount Int              @default(0)
+  snoozedUntilWeek Int?
+  lastAskedWeek    Int?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  cycle            WeeklyCycle      @relation(fields: [cycleId], references: [id])
+  competency       WeeklyCompetency @relation(fields: [competencyId], references: [id])
+  prompts          WeeklyPrompt[]
+
+  @@unique([cycleId, evaluatorId, evaluateeId, relationshipType, competencyId])
+  @@index([cycleId, evaluatorId, status])
+  @@index([cycleId, evaluateeId])
+}
+
+model WeeklyPrompt {
+  id               String             @id @default(cuid())
+  cycleId          String
+  slotId           String?
+  evaluatorId      String
+  evaluateeId      String
+  relationshipType RelationshipType
+  weekIndex        Int
+  kind             WeeklyPromptKind   @default(STANDARD)
+  promptVariantId  String?
+  questionId       String?
+  textSnapshot     String
+  /// The statements as this evaluator sees them: shuffled once at release, with their levels.
+  options          Json?
+  status           WeeklyPromptStatus @default(OPEN)
+  releasedAt       DateTime
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  cycle            WeeklyCycle        @relation(fields: [cycleId], references: [id])
+  slot             WeeklySlot?        @relation(fields: [slotId], references: [id])
+  response         WeeklyResponse?
+
+  @@unique([cycleId, evaluatorId, evaluateeId, relationshipType, questionId])
+  @@index([cycleId, evaluatorId, status])
+  @@index([slotId, weekIndex])
+}
+
+/// A scoring run for one revision of an answer: the model reads it and proposes a score.
+model WeeklyScoringJob {
+  id         String    @id @default(cuid())
+  responseId String
+  revision   Int
+  status     String    @default("PENDING")
+  attempts   Int       @default(0)
+  runAfter   DateTime  @default(now())
+  leaseUntil DateTime?
+  leaseToken String?
+  error      String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([responseId, revision])
+  @@index([status, runAfter])
+}
+
+/// The model's score for one revision of an answer, with its reason. HR confirms or changes every one.
+model WeeklyAiScore {
+  id            String   @id @default(cuid())
+  responseId    String
+  revision      Int
+  model         String
+  promptVersion String
+  score         Float
+  rationale     String
+  inputTokens   Int      @default(0)
+  outputTokens  Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  @@unique([responseId, revision, model, promptVersion])
+  @@index([responseId])
+}
+
+enum WeeklyReviewAction {
+  ACCEPTED
+  ADJUSTED
+}
+
+/// HR's decision on one revision of an answer. Only a decision on the answer's current revision counts.
+model WeeklyScoreReview {
+  id         String             @id @default(cuid())
+  responseId String
+  revision   Int
+  aiScoreId  String?
+  action     WeeklyReviewAction
+  finalScore Float
+  reason     String?
+  reviewerId String
+  createdAt  DateTime           @default(now())
+
+  @@index([responseId, createdAt])
+}
+
+/// Which Fireworks model scores answers. One row, id 'default'; without it the environment's FIREWORKS_MODEL is used.
+model WeeklyAiSettings {
+  id          String   @id @default("default")
+  activeModel String?
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+}
+
+model WeeklyRelease {
+  id          String   @id @default(cuid())
+  cycleId     String
+  weekIndex   Int
+  evaluatorId String
+  promptCount Int
+  createdAt   DateTime @default(now())
+
+  @@unique([cycleId, weekIndex, evaluatorId])
+}
+
+/// "Submit this week" (UX spec, section 5): when an evaluator submitted a week. Answers save on click either way.
+model WeeklyWeekSubmission {
+  id          String      @id @default(cuid())
+  cycleId     String
+  evaluatorId String
+  weekIndex   Int
+  submittedAt DateTime
+  cycle       WeeklyCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+
+  @@unique([cycleId, evaluatorId, weekIndex])
+}
+
+model WeeklyResponse {
+  id          String       @id @default(cuid())
+  promptId    String       @unique
+  commentText String?
+  /// The statement chosen, its level (HR's hidden guide for the model, not the score) and the evaluator's note.
+  optionId    String?
+  level       Float?
+  note        String?
+  revision    Int          @default(0)
+  submittedAt DateTime?
+  lockedAt    DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  prompt      WeeklyPrompt @relation(fields: [promptId], references: [id])
+}
+
+model WeeklyAggregationRun {
+  id        String   @id @default(cuid())
+  cycleId   String
+  runById   String
+  counts    Json
+  drops     Json
+  createdAt DateTime @default(now())
+
+  @@index([cycleId, createdAt])
+}
+
+model WeeklyParticipantOverride {
+  id          String   @id @default(cuid())
+  cycleId     String
+  userId      String
+  optIn       Boolean  @default(true)
+  reason      String
+  createdById String
+  createdAt   DateTime @default(now())
+
+  @@unique([cycleId, userId])
+}
+
+enum PeerChangeAction {
+  ADD
+  REMOVE
+}
+
+enum PeerChangeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  /// Not decided before the round opened.
+  EXPIRED
+  /// HR asked the requester a question; the requester's answer puts it back to PENDING.
+  NEEDS_INFO
+}
+
+/// The peer's optional reply to a peer change. It is shown to the lead and HR and never blocks the change.
+enum PeerReply {
+  WORK_TOGETHER
+  NOT_WORK_TOGETHER
+}
+
+/// Why someone asks to remove a peer.
+enum MappingReasonCode {
+  NO_LONGER_WORK_TOGETHER
+  WRONG_PERSON
+  OTHER
+}
+
+/// What the request changes: a peer (the peer and the lead approve), or the person's lead or a team member (HR decides).
+enum MappingRelation {
+  PEER
+  LEAD
+  REPORT
+}
+
+enum PeerChangeVote {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// The monthly self-evaluation question for one month of a quarter (UX spec, section 12): three short parts.
+model SelfReviewQuestion {
+  id            String   @id @default(cuid())
+  periodId      String
+  month         Int
+  title         String
+  /// The three boxes' prompts.
+  parts         String[]
+  /// Month 1 offers "I'd like to discuss this with my lead".
+  discussOption Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([periodId, month])
+}
+
+/// A person's monthly self-evaluation. Sent the moment it is submitted, to their leads and HR; never scored or edited.
+model SelfReview {
+  id              String           @id @default(cuid())
+  periodId        String
+  month           Int
+  userId          String
+  questionId      String
+  answers         String[]
+  wantsDiscussion Boolean          @default(false)
+  submittedAt     DateTime
+  reads           SelfReviewRead[]
+
+  @@unique([periodId, month, userId])
+  @@index([periodId, month])
+}
+
+/// One lead's copy of a self-evaluation: whether they have read it, their reply, and the one reminder.
+model SelfReviewRead {
+  id         String     @id @default(cuid())
+  reviewId   String
+  leadId     String
+  readAt     DateTime?
+  reply      String?
+  repliedAt  DateTime?
+  remindedAt DateTime?
+  review     SelfReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@unique([reviewId, leadId])
+  @@index([leadId])
+}
+
+/// Archive: the retired quarterly self-evaluation form's questions. Read-only; the monthly self-evaluation replaces it.
+model SelfEvaluationQuestion {
+  id         String                     @id @default(cuid())
+  section    String
+  prompt     String
+  helpText   String?
+  type       SelfEvaluationQuestionType @default(TEXT)
+  orderIndex Int
+  isActive   Boolean                    @default(true)
+  createdAt  DateTime                   @default(now())
+  updatedAt  DateTime                   @updatedAt
+
+  @@index([isActive, orderIndex])
+}
+
+/// Archive: answers to the retired quarterly self-evaluation form, kept read-only.
+model SelfEvaluation {
+  id          String               @id @default(cuid())
+  periodId    String
+  employeeId  String
+  status      SelfEvaluationStatus @default(DRAFT)
+  answers     Json                 @default("[]")
+  startedAt   DateTime?
+  submittedAt DateTime?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  period   EvaluationPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  employee User             @relation("SelfEvaluationEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([periodId, employeeId])
+  @@index([periodId])
+  @@index([employeeId])
+  @@index([status])
+}
+
+enum SelfEvaluationQuestionType {
+  TEXT
+  LIST
+  GOAL_TABLE
+}
+
+enum SelfEvaluationStatus {
+  DRAFT
+  SUBMITTED
+}
+
+/// An employee asks to change their lists for a quarter. Someone with a lead has it reviewed by that lead first (a link in
+/// an email); HR then decides every change. Someone with no lead goes straight to HR. For a peer change the peer is told
+/// and may reply. Tokens are stored hashed.
+model PeerChangeRequest {
+  id                String           @id @default(cuid())
+  periodId          String
+  requesterId       String
+  peerId            String
+  action            PeerChangeAction
+  relation          MappingRelation  @default(PEER)
+  reason            String?
+  reasonCode        MappingReasonCode?
+  status            PeerChangeStatus @default(PENDING)
+  peerReply         PeerReply?
+  peerRepliedAt     DateTime?
+  /// Only peer requests have links: the peer's to reply, the lead's to decide.
+  peerTokenHash     String?          @unique
+  /// The requester's lead; null when they have none, and HR decides.
+  approverId        String?
+  approverVote      PeerChangeVote   @default(PENDING)
+  approverVotedAt   DateTime?
+  approverTokenHash String?          @unique
+  /// When the lead was reminded after 2 working days without reviewing it.
+  remindedAt        DateTime?
+  /// The lead's reason when they disagree (or a note when they agree); HR sees it before deciding.
+  leadNote          String?
+  /// The reason for a decline, or HR's question when it needs more information.
+  decisionNote      String?
+  /// The requester's answer to HR's question; the original reason is kept.
+  answer            String?
+  decidedById       String?
+  decidedAt         DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([periodId, status])
+  @@index([requesterId])
+}
+
+/// Someone said their lists for a quarter look right during the review stage.
+model MappingConfirmation {
+  id          String   @id @default(cuid())
+  periodId    String
+  userId      String
+  confirmedAt DateTime @default(now())
+
+  @@unique([periodId, userId])
+}
+
+/// HR accepted a mapping warning for a person in a round (e.g. no lead because they report to a partner).
+model RoundWarningAcceptance {
+  id           String   @id @default(cuid())
+  cycleId      String
+  userId       String
+  warning      String
+  reason       String
+  acceptedById String
+  createdAt    DateTime @default(now())
+
+  @@unique([cycleId, userId, warning])
+}
+
+/// A pair added after the quarter started: its five questions are spread over these weeks. HR can change them.
+model WeeklyPairWindow {
+  id               String           @id @default(cuid())
+  cycleId          String
+  evaluatorId      String
+  evaluateeId      String
+  relationshipType RelationshipType
+  startWeek        Int
+  weeks            Int
+  setById          String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@unique([cycleId, evaluatorId, evaluateeId, relationshipType])
+  @@index([cycleId])
+}
+
+model WeeklyNotification {
+  id        String   @id @default(cuid())
+  userId    String
+  kind      String
+  dedupeKey String   @unique
+  delivered Boolean  @default(true)
+  sentAt    DateTime @default(now())
+}
+
+model WeeklyAuditEvent {
+  id         String   @id @default(cuid())
+  cycleId    String?
+  actorId    String?
+  actorRole  String
+  action     String
+  objectType String
+  objectId   String?
+  before     Json?
+  after      Json?
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  @@index([cycleId, createdAt])
+}
+
+// ─── Weekly evaluations: sentiment survey and mapping review ─────────────────
+
+enum SurveyQuestionKind {
+  NPS
+  AGREE
+  CHOICE
+  TEXT
+}
+
+/// The company sentiment survey's question bank, replaced by HR each quarter.
+model SurveyQuestion {
+  id            String             @id @default(cuid())
+  periodId      String
+  orderIndex    Int
+  /// The question week it is first asked in, fixed when it is created.
+  dueWeek       Int
+  text          String
+  kind          SurveyQuestionKind
+  options       String[]           @default([])
+  required      Boolean            @default(true)
+  /// A text box opens under the chosen option (the improvement-priorities question).
+  explainChoice Boolean            @default(false)
+  removedAt     DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@index([periodId])
+}
+
+/// One answer. userId is null when the person ticked anonymous that week: nothing links the answer to them, so it
+/// has a random id and no timestamp.
+model SurveyResponse {
+  id         String   @id @default(uuid())
+  periodId   String
+  questionId String
+  weekIndex  Int
+  userId     String?
+  /// Anonymous answers only: the person's department, kept only when at least five from it answered that week.
+  department String?
+  value      Int?
+  choice     String?
+  text       String?
+
+  @@index([periodId, questionId])
+}
+
+/// That someone has answered a question, so it is not asked again. It never says what they answered.
+model SurveyCompletion {
+  id         String   @id @default(cuid())
+  periodId   String
+  questionId String
+  userId     String
+  /// The week only: an exact time could be matched against an anonymous answer.
+  weekIndex  Int
+
+  @@unique([periodId, questionId, userId])
+}
+
 // ─── Security Checks module (campaigns, cycles, tasks, evidence review) ─────
-// User references are plain id columns (like the KPI module) to avoid adding
+// User references are plain id columns to avoid adding
 // back-relations to User. Audit rows are append-only; only the retention job
 // prunes them, under a system identity.
 

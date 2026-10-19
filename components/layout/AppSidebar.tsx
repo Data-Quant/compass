@@ -26,13 +26,10 @@ import {
   Network,
   Handshake,
   Radio,
-  CalendarDays,
   HelpCircle,
-  Link2,
   Sliders,
   BarChart3,
   FileText,
-  Mail,
   Wallet,
   Settings,
   Shield,
@@ -40,7 +37,6 @@ import {
   CheckSquare,
   PackageSearch,
   Building2,
-  UserCheck,
   BookOpen,
   type LucideIcon,
 } from 'lucide-react'
@@ -52,6 +48,8 @@ export interface NavItem {
   href: string
   icon: LucideIcon
   badge?: string | number
+  /** Highlight for every path under this prefix, when it differs from href. */
+  activePrefix?: string
 }
 
 export interface NavGroup {
@@ -71,7 +69,7 @@ export const EMPLOYEE_SIDEBAR: SidebarConfig = {
   items: [
     { label: 'Home', href: '/dashboard', icon: Home },
     { label: 'My Tasks', href: '/my-tasks', icon: CheckSquare },
-    { label: 'Evaluations', href: '/evaluations', icon: ClipboardCheck },
+    { label: 'Evaluations', href: '/evaluations/weekly', icon: ClipboardCheck, activePrefix: '/evaluations' },
     { label: 'Leave', href: '/leave', icon: Calendar },
     { label: 'Projects', href: '/projects', icon: FolderKanban },
     { label: 'Device Support', href: '/device-support', icon: Monitor },
@@ -126,15 +124,8 @@ export const ADMIN_SIDEBAR: SidebarConfig = {
       label: 'Performance',
       defaultOpen: true,
       items: [
-        { label: 'Overview', href: '/admin/performance', icon: BarChart3 },
-        { label: 'Periods', href: '/admin/periods', icon: CalendarDays },
-        { label: 'Pre-Evaluation', href: '/admin/pre-evaluations', icon: ClipboardCheck },
-        { label: 'Questions', href: '/admin/questions', icon: HelpCircle },
-        { label: 'Self-Evaluation', href: '/admin/self-evaluation', icon: UserCheck },
-        { label: 'Mappings', href: '/admin/mappings', icon: Link2 },
         { label: 'Weightages', href: '/admin/settings', icon: Sliders },
         { label: 'Reports', href: '/admin/reports', icon: FileText },
-        { label: 'Email', href: '/admin/email', icon: Mail },
       ],
     },
     {
@@ -193,7 +184,7 @@ function SidebarNavItem({
         ? pathname === '/dashboard'
         : item.href === '/security'
           ? pathname === '/security'
-        : pathname.startsWith(item.href)
+        : pathname.startsWith(item.activePrefix ?? item.href)
 
   const Icon = item.icon
 

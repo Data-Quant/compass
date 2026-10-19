@@ -1,0 +1,43 @@
+import { NextResponse, type NextRequest } from 'next/server'
+import { sendMail } from '@/lib/email'
+import { guardWeeklyMutation, requireWeeklySession } from '@/lib/weekly/http'
+import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
+import { testToolSchema } from '@/lib/weekly/schemas'
+import { actorFromUser } from '@/lib/weekly/service/context'
+import { askPairNow, fillSynthetic, pairsFor, releaseNextWeek, releaseWeekFor, resetCycle, scoreNow, sendRoundOpenedTo } from '@/lib/weekly/service/test-tools'
+
+export const runtime = 'nodejs'
+// "Score now" runs for up to 50 s plus one model call (45 s).
+export const maxDuration = 120
+
+export async function POST(request: NextRequest) {
+  try {
+    const user = await requireWeeklySession({ admin: true })
+    await guardWeeklyMutation(request, user.id)
+    const actor = actorFromUser(user)
+    const input = testToolSchema.parse(await request.json())
+    const now = new Date()
+    switch (input.action) {
+      case 'release-next-week':
+        return NextResponse.json({ success: true, ...(await releaseNextWeek(actor, input.cycleId, now)) })
+      case 'fill-synthetic':
+        return NextResponse.json({ success: true, ...(await fillSynthetic(actor, input.cycleId, input.evaluatorId, now)) })
+      case 'reset':
+        await resetCycle(actor, input.cycleId)
+        return NextResponse.json({ success: true })
+      case 'score-now':
+        return NextResponse.json({ success: true, ...(await scoreNow(actor, input.cycleId, now)) })
+      case 'pairs':
+        return NextResponse.json({ success: true, pairs: await pairsFor(actor, input.cycleId, input.evaluatorId, now) })
+      case 'release-for':
+        return NextResponse.json({ success: true, ...(await releaseWeekFor(actor, input.cycleId, input.evaluatorId, now)) })
+      case 'ask-pair':
+        return NextResponse.json({ success: true, ...(await askPairNow(actor, input.cycleId, { evaluatorId: input.evaluatorId, evaluateeId: input.evaluateeId }, now)) })
+      case 'send-round-opened':
+        // The button links back to the deployment HR is on, so a preview email opens the preview.
+        return NextResponse.json({ success: true, ...(await sendRoundOpenedTo(actor, input.cycleId, input.userId, now, sendMail, request.nextUrl.origin)) })
+    }
+  } catch (error) {
+    return weeklyErrorResponse(error)
+  }
+}

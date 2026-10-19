@@ -1,10 +1,10 @@
 ﻿'use client'
 
 import { useEffect, useState } from 'react'
+import { RELATIONSHIP_WORDS } from '@/lib/weekly/perspectives'
+import type { InboxResponse } from '@/lib/weekly/view-types'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { toast } from 'sonner'
-import { RELATIONSHIP_TYPE_LABELS } from '@/types'
 import { useLayoutUser } from '@/components/layout/SidebarLayout'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { StatsCard } from '@/components/composed/StatsCard'
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import { EmptyState } from '@/components/composed/EmptyState'
-import { SelfEvaluationPrompt } from '@/components/self-evaluation/SelfEvaluationPrompt'
+import { WeeklyQuestionsCard } from '@/components/weekly/WeeklyQuestionsCard'
 import {
   ClipboardCheck,
   Calendar,
@@ -21,8 +21,6 @@ import {
   FolderKanban,
   Monitor,
   ArrowRight,
-  CheckCircle2,
-  Clock,
   Target,
   Sun,
   Thermometer,
@@ -32,20 +30,9 @@ import {
   PackageSearch,
   Users,
   MessageCircle,
-  ClipboardList,
 } from 'lucide-react'
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-interface Mapping {
-  id: string
-  evaluatee: { id: string; name: string; department: string | null; position: string | null }
-  relationshipType: string
-  questionsCount: number
-  completedCount: number
-  isComplete: boolean
-  isClosedByPool?: boolean
-}
 
 interface LeaveBalance {
   casualDays: number; casualUsed: number
@@ -105,20 +92,6 @@ interface PendingTeamLeadFormItem {
   onboardingDate: string
 }
 
-interface PreEvaluationTask {
-  id: string
-  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'OVERDUE' | 'OVERRIDDEN'
-  requiredQuestionCount: number
-  progressCount: number
-  totalSections: number
-  period: {
-    id: string
-    name: string
-    startDate: string
-    reviewStartDate: string
-  }
-}
-
 // â”€â”€â”€ Animation helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const stagger = {
@@ -148,8 +121,7 @@ const formatLeaveValue = (value: number) => (Number.isInteger(value) ? String(va
 
 export default function DashboardPage() {
   const user = useLayoutUser()
-  const [mappings, setMappings] = useState<Record<string, Mapping[]>>({})
-  const [period, setPeriod] = useState<any>(null)
+  const [weekly, setWeekly] = useState<InboxResponse | null>(null)
   const [leaveBalance, setLeaveBalance] = useState<LeaveBalance | null>(null)
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [activeProjectCount, setActiveProjectCount] = useState(0)
@@ -159,19 +131,17 @@ export default function DashboardPage() {
   const [myEquipment, setMyEquipment] = useState<MyEquipmentItem[]>([])
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [pendingTeamLeadForms, setPendingTeamLeadForms] = useState<PendingTeamLeadFormItem[]>([])
-  const [preEvaluationTask, setPreEvaluationTask] = useState<PreEvaluationTask | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!user) return
     const tasks: Promise<void>[] = [
-      loadEvaluations(),
+      loadWeekly(),
       loadLeaveBalance(),
       loadProjects(),
       loadUpcomingTeamLeaves(),
       loadMyEquipment(),
       loadTeamMembers(),
-      loadPreEvaluationTask(),
     ]
     // Role-specific data
     if (user.role === 'HR' || user.role === 'SECURITY') {
@@ -188,12 +158,11 @@ export default function DashboardPage() {
     Promise.all(tasks).finally(() => setLoading(false))
   }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadEvaluations = async () => {
+  const loadWeekly = async () => {
     try {
-      const res = await fetch('/api/evaluations/dashboard?periodId=active')
-      const data = await res.json()
-      if (data.mappings) { setMappings(data.mappings); setPeriod(data.period) }
-    } catch { /* silent */ }
+      const res = await fetch('/api/weekly/inbox', { cache: 'no-store' })
+      if (res.ok) setWeekly(await res.json())
+    } catch { /* the weekly card simply stays empty */ }
   }
 
   const loadLeaveBalance = async () => {
@@ -279,23 +248,15 @@ export default function DashboardPage() {
     }
   }
 
-  const loadPreEvaluationTask = async () => {
-    try {
-      const res = await fetch('/api/pre-evaluation/current')
-      const data = await res.json()
-      setPreEvaluationTask(data.prep || null)
-    } catch {
-      // silent
-    }
-  }
-
   // â”€â”€â”€ Computed stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  const allMappings = Object.values(mappings).flat()
-  const totalEvaluations = allMappings.length
-  const completedEvaluations = allMappings.filter(m => m.isComplete).length
-  const evaluationPercent = totalEvaluations > 0
-    ? Math.round((completedEvaluations / totalEvaluations) * 100)
+  const weeklyProgress = weekly?.progress ?? []
+  // Counted as the Evaluations card counts the week, so the two always agree.
+  const openQuestions = weekly?.week ? weekly.week.total - weekly.week.done : (weekly?.prompts ?? []).filter((p) => p.status !== 'SUBMITTED').length
+  const topicsTotal = weeklyProgress.reduce((sum, row) => sum + row.total, 0)
+  const topicsAnswered = weeklyProgress.reduce((sum, row) => sum + row.answered, 0)
+  const evaluationPercent = topicsTotal > 0
+    ? Math.round((topicsAnswered / topicsTotal) * 100)
     : 0
 
   const totalLeaveRemaining = leaveBalance
@@ -314,7 +275,6 @@ export default function DashboardPage() {
   return (
     <div className="p-6 sm:p-8 max-w-6xl mx-auto">
       <div className="mb-6">
-        <SelfEvaluationPrompt />
       </div>
       {/* Welcome banner */}
       <motion.div
@@ -326,54 +286,11 @@ export default function DashboardPage() {
           Welcome back, <span className="gradient-text">{user?.name?.split(' ')[0] || 'there'}</span>
         </h1>
         <p className="text-muted-foreground mt-1">
-          {period ? `${period.name} evaluation period` : 'Here\u2019s your overview'}
+          {weekly?.cycle ? `${weekly.cycle.periodName} weekly evaluations` : 'Here\u2019s your overview'}
         </p>
       </motion.div>
 
-      {preEvaluationTask && preEvaluationTask.status !== 'COMPLETED' && (
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
-        >
-          <Card className="border-blue-500/20">
-            <CardContent className="p-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex items-start gap-3">
-                <div className="rounded-full bg-blue-500/10 p-2.5">
-                  <ClipboardList className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-semibold text-foreground">Pre-evaluation onboarding required</p>
-                    <Badge variant="secondary" className="bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                      {preEvaluationTask.progressCount}/{preEvaluationTask.totalSections}
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {preEvaluationTask.period.name} evaluations start on{' '}
-                    {new Date(preEvaluationTask.period.reviewStartDate).toLocaleDateString()}.
-                    Complete your lead questions before evaluations begin.
-                  </p>
-                  <div className="mt-3 flex items-center gap-3 max-w-md">
-                    <Progress
-                      value={Math.round((preEvaluationTask.progressCount / preEvaluationTask.totalSections) * 100)}
-                      className="flex-1 h-2"
-                    />
-                    <span className="text-xs text-muted-foreground">
-                      {Math.round((preEvaluationTask.progressCount / preEvaluationTask.totalSections) * 100)}%
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <Button asChild>
-                <Link href="/pre-evaluation" className="gap-1.5">
-                  Open Task <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-        </motion.div>
-      )}
+      <WeeklyQuestionsCard />
 
       {/* Quick stats */}
       <motion.div
@@ -384,9 +301,8 @@ export default function DashboardPage() {
       >
         <motion.div variants={stagger.item}>
           <StatsCard
-            title="Evaluations"
-            value={completedEvaluations}
-            suffix={`/${totalEvaluations}`}
+            title="Open this week"
+            value={openQuestions}
             icon={<ClipboardCheck className="w-5 h-5" />}
           />
         </motion.div>
@@ -408,7 +324,7 @@ export default function DashboardPage() {
         </motion.div>
         <motion.div variants={stagger.item}>
           <StatsCard
-            title="Completion"
+            title="Quarter progress"
             value={evaluationPercent}
             suffix="%"
             icon={<Target className="w-5 h-5" />}
@@ -632,54 +548,38 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <ClipboardCheck className="h-5 w-5 text-primary" />
-                  <h2 className="text-lg font-semibold text-foreground">Performance Evaluations</h2>
+                  <h2 className="text-lg font-semibold text-foreground">Who you evaluate</h2>
                 </div>
-                <Badge variant="secondary">{period?.name || 'No period'}</Badge>
+                <Badge variant="secondary">{weekly?.cycle ? weekly.cycle.periodName : 'Not running'}</Badge>
               </div>
 
-              {totalEvaluations === 0 ? (
-                <p className="text-sm text-muted-foreground">No evaluations assigned yet.</p>
+              {weeklyProgress.length === 0 ? (
+                <p className="text-sm text-muted-foreground">You have nobody to evaluate this quarter.</p>
               ) : (
                 <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <Progress value={evaluationPercent} className="flex-1 h-2" />
-                    <span className="text-sm font-medium text-foreground w-12 text-right">
-                      {evaluationPercent}%
-                    </span>
-                  </div>
 
                   <div className="space-y-2 max-h-[200px] overflow-y-auto">
-                    {allMappings.slice(0, 6).map((m) => (
+                    {weeklyProgress.slice(0, 6).map((row) => (
                       <Link
-                        key={m.id}
-                        href={`/evaluate/${m.evaluatee.id}`}
+                        key={`${row.evaluatee.id}-${row.perspective}`}
+                        href="/evaluations/weekly"
                         className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-muted transition-colors group"
                       >
                         <div className="flex items-center gap-2.5">
-                          <UserAvatar name={m.evaluatee.name} size="xs" />
+                          <UserAvatar name={row.evaluatee.name} size="xs" />
                           <div>
-                            <p className="text-sm font-medium text-foreground">{m.evaluatee.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {RELATIONSHIP_TYPE_LABELS[m.relationshipType as keyof typeof RELATIONSHIP_TYPE_LABELS] || m.relationshipType}
-                            </p>
+                            <p className="text-sm font-medium text-foreground">{row.evaluatee.name}</p>
+                            <p className="text-xs text-muted-foreground">{RELATIONSHIP_WORDS[row.perspective]}</p>
                           </div>
                         </div>
-                        {m.isComplete ? (
-                          <CheckCircle2
-                            className={`h-4 w-4 shrink-0 ${
-                              m.isClosedByPool ? 'text-slate-500' : 'text-emerald-500'
-                            }`}
-                          />
-                        ) : (
-                          <Clock className="h-4 w-4 text-muted-foreground shrink-0 group-hover:text-primary transition-colors" />
-                        )}
+                        <span className="text-xs text-muted-foreground shrink-0">{row.answered} of {row.total} questions</span>
                       </Link>
                     ))}
                   </div>
 
-                  {totalEvaluations > 6 && (
+                  {weeklyProgress.length > 6 && (
                     <p className="text-xs text-muted-foreground text-center">
-                      +{totalEvaluations - 6} more evaluations
+                      +{weeklyProgress.length - 6} more people
                     </p>
                   )}
                 </div>
