@@ -7,7 +7,7 @@ import { aiSettingsView, resolveActiveModel, setActiveModel } from '../lib/weekl
 import { closeCycle, closeView } from '../lib/weekly/service/close'
 import { WeeklyError } from '../lib/weekly/service/errors'
 import { historyView, inboxView } from '../lib/weekly/service/inbox'
-import { decideAnswer, retryScoring, reviewQueue } from '../lib/weekly/service/review-queue'
+import { acceptAll, decideAnswer, retryScoring, reviewQueue } from '../lib/weekly/service/review-queue'
 import { releaseWeek } from '../lib/weekly/service/release'
 import { roundView } from '../lib/weekly/service/round'
 import { runScoring } from '../lib/weekly/service/scoring'
@@ -121,6 +121,23 @@ test('the 10% cap on 4s applies when HR confirms a score: over the limit needs a
   await assert.rejects(decideAnswer(HR_ACTOR, secondId, { action: 'ACCEPT', revision }, at(2, 2)), isStatus(409, /limit/))
   await decideAnswer(HR_ACTOR, secondId, { action: 'ACCEPT', reason: 'Both earned it this quarter', revision }, at(2, 2))
   assert.equal((await record(secondId))?.score, 4)
+})
+
+test('Confirm all accepts the model’s score on every answer HR saw; one that needs HR’s reason stays in the list', WEEKLY_DB_TEST, async () => {
+  await leadAnswer(4, 'Their checklist is now used by the whole team.')
+  await score()
+  await releaseWeek(cycleId, 2, at(2))
+  const second = (await inboxView(W.lead.id, at(2))).prompts.find((p) => p.status === 'OPEN')!
+  await answerAs({ id: second.id, evaluatorId: W.lead.id }, 4, at(2), 'Also excellent.')
+  await score(fakeModel(), at(2, 1))
+  const seen = (await queued('NEEDS_REVIEW')).items.map((i) => ({ responseId: i.responseId, revision: i.revision, aiScoreId: i.ai!.id }))
+  assert.equal(seen.length, 2)
+  await assert.rejects(acceptAll(weeklyActor(W.lead), seen, at(2, 2)), isStatus(403))
+  const result = await acceptAll(HR_ACTOR, seen, at(2, 2))
+  assert.equal(result.confirmed, 1)
+  assert.equal(result.skipped.length, 1)
+  assert.match(result.skipped[0].message, /limit/)
+  assert.equal((await queued('NEEDS_REVIEW')).items.length, 1, 'the second 4 is over the cap, so it waits for HR’s reason')
 })
 
 test('names never reach the model', WEEKLY_DB_TEST, async () => {

@@ -150,12 +150,19 @@ export const closeActionSchema = z.discriminatedUnion('action', [
 export type CloseActionInput = z.infer<typeof closeActionSchema>
 
 
+/** Answers per "Confirm all" request; the page sends more in further requests. */
+export const ACCEPT_ALL_BATCH = 50
 const halfPoint = z.number().refine((v) => v >= 1 && v <= 4 && Number.isInteger(v * 2), 'Scores go from 1 to 4 in half points')
 /** HR's review of an answer: accept the model's score, set it (with a reason), or send a failed answer back to the model. */
 export const reviewActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('accept'), responseId: z.string().min(1), revision: z.number().int().min(1), aiScoreId: z.string().min(1), reason: z.string().trim().max(500).optional() }).strict(),
   z.object({ action: z.literal('set-score'), responseId: z.string().min(1), revision: z.number().int().min(1), score: halfPoint, reason: z.string().trim().min(3, 'Give a reason').max(500) }).strict(),
   z.object({ action: z.literal('retry'), responseId: z.string().min(1) }).strict(),
+  // "Confirm all", sent in batches so one request stays well inside the function time limit.
+  z.object({
+    action: z.literal('accept-all'),
+    items: z.array(z.object({ responseId: z.string().min(1), revision: z.number().int().min(1), aiScoreId: z.string().min(1) }).strict()).min(1).max(ACCEPT_ALL_BATCH),
+  }).strict(),
 ])
 export const reviewFilterSchema = z.enum(['NEEDS_REVIEW', 'FAILED', 'SCORING', 'DECIDED'])
 export const aiModelSchema = z.object({ model: z.string().trim().max(200).nullable() }).strict()

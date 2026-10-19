@@ -107,6 +107,29 @@ export async function decideAnswer(actor: WeeklyActor, responseId: string, input
   return { finalScore }
 }
 
+export interface AcceptAllResult { confirmed: number; skipped: Array<{ responseId: string; message: string }> }
+
+/**
+ * "Confirm all": accepts the model's score on each answer HR saw, one at a time through the same checks as a single
+ * confirmation, so a 4 can use up the cap along the way. An answer that needs HR's own reason (a 4 past the cap) or
+ * changed since the page loaded is skipped and stays in the list.
+ */
+export async function acceptAll(actor: WeeklyActor, items: ReadonlyArray<{ responseId: string; revision: number; aiScoreId: string }>, now: Date): Promise<AcceptAllResult> {
+  assertHr(actor)
+  let confirmed = 0
+  const skipped: AcceptAllResult['skipped'] = []
+  for (const item of items) {
+    try {
+      await decideAnswer(actor, item.responseId, { action: 'ACCEPT', revision: item.revision, aiScoreId: item.aiScoreId }, now)
+      confirmed += 1
+    } catch (error) {
+      if (!(error instanceof WeeklyError)) throw error
+      skipped.push({ responseId: item.responseId, message: error.message })
+    }
+  }
+  return { confirmed, skipped }
+}
+
 /** Sends a failed answer back to the model. */
 export async function retryScoring(actor: WeeklyActor, responseId: string, now: Date): Promise<void> {
   assertHr(actor)

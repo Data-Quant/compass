@@ -14,6 +14,9 @@ import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/ui/modal'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { MCQ_LEVELS } from '@/lib/weekly/mcq'
+import { ACCEPT_ALL_BATCH } from '@/lib/weekly/schemas'
+
+type AcceptAllResponse = { confirmed: number; skipped: Array<{ responseId: string; message: string }> }
 import type { AnswerStateValue, ReviewItem, ReviewQueueResponse } from '@/lib/weekly/view-types'
 import { cn } from '@/lib/utils'
 import { errorMessage, weeklyRequest } from '../weekly-api'
@@ -32,6 +35,7 @@ export function ReviewTab({ onChanged }: { onChanged?: () => void } = {}) {
   const [data, setData] = useState<ReviewQueueResponse | null>(null)
   const [busy, setBusy] = useState(false)
   const [setting, setSetting] = useState<Setting | null>(null)
+  const [confirmingAll, setConfirmingAll] = useState(false)
   const reduce = useReducedMotion()
 
   const load = useCallback(async () => {
@@ -69,18 +73,23 @@ export function ReviewTab({ onChanged }: { onChanged?: () => void } = {}) {
     else void post({ action: 'accept', responseId: item.responseId, revision: item.revision, aiScoreId: item.ai?.id }, `Confirmed ${item.ai?.score}`)
   }
 
-  /** The model agreed with the statement the evaluator chose, and no cap on 4s is crossed: safe to confirm together. */
-  const agreeing = (data?.items ?? []).filter((i) => i.ai && !i.decision && i.ai.score === i.chosen.level && !(i.ai.score === 4 && !i.fours.exempt && i.fours.used >= i.fours.limit))
-  async function confirmAgreeing() {
+  /** Every answer on screen with a model score still to confirm; the server applies the same checks as one at a time. */
+  const confirmable = (data?.items ?? []).filter((i) => i.ai && !i.decision)
+  const differing = confirmable.filter((i) => i.ai?.score !== i.chosen.level).length
+  async function confirmAll() {
+    setConfirmingAll(false)
     setBusy(true)
     let confirmed = 0
+    const skipped: string[] = []
     try {
-      // One at a time through the same check as a single confirmation; a 4 can use up the cap along the way.
-      for (const item of agreeing) {
-        await weeklyRequest('/api/admin/weekly/review', { method: 'POST', body: { action: 'accept', responseId: item.responseId, revision: item.revision, aiScoreId: item.ai?.id } })
-        confirmed += 1
+      const items = confirmable.map((i) => ({ responseId: i.responseId, revision: i.revision, aiScoreId: i.ai?.id }))
+      for (let start = 0; start < items.length; start += ACCEPT_ALL_BATCH) {
+        const result = await weeklyRequest<AcceptAllResponse>('/api/admin/weekly/review', { method: 'POST', body: { action: 'accept-all', items: items.slice(start, start + ACCEPT_ALL_BATCH) } })
+        confirmed += result.confirmed
+        skipped.push(...result.skipped.map((s) => s.message))
       }
       toast.success(`Confirmed ${confirmed} ${confirmed === 1 ? 'answer' : 'answers'}`)
+      if (skipped.length > 0) toast.warning(`${skipped.length} left for you to decide. ${skipped[0]}`)
     } catch (e) {
       toast.error(`${confirmed} confirmed; then: ${errorMessage(e, 'could not confirm the rest')}`)
     } finally {
@@ -128,8 +137,8 @@ export function ReviewTab({ onChanged }: { onChanged?: () => void } = {}) {
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-2xl text-sm text-muted-foreground">The model scores each answer from the statement the evaluator chose, their note and their earlier answers about the same person. Nothing counts until you confirm it.</p>
-        {filter === 'NEEDS_REVIEW' && agreeing.length > 1 && (
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => void confirmAgreeing()}>Confirm the {agreeing.length} that match the chosen statement</Button>
+        {filter === 'NEEDS_REVIEW' && confirmable.length > 1 && (
+          <Button size="sm" disabled={busy} onClick={() => setConfirmingAll(true)}>Confirm all {confirmable.length}</Button>
         )}
       </div>
       {!data ? (
@@ -165,6 +174,21 @@ export function ReviewTab({ onChanged }: { onChanged?: () => void } = {}) {
             ))}
           </AnimatePresence>
         </div>
+      )}
+      {confirmingAll && (
+        <Modal isOpen onClose={() => setConfirmingAll(false)} title={`Confirm all ${confirmable.length} scores?`}>
+          <div className="space-y-4">
+            <p className="text-sm">
+              Each answer gets the model’s score.
+              {differing > 0 && ` For ${differing} of them that differs from the statement the evaluator picked (marked in amber).`}
+              {' '}A 4 over an evaluator’s limit is left in the list for you to give a reason. You can still change any score afterwards under Decided.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setConfirmingAll(false)}>Cancel</Button>
+              <Button disabled={busy} onClick={() => void confirmAll()}>Confirm {confirmable.length}</Button>
+            </div>
+          </div>
+        </Modal>
       )}
       {setting && (
         <Modal isOpen onClose={() => setSetting(null)} title={setting.confirmFour ? 'Confirm a 4 over the limit' : 'Set the score'}>

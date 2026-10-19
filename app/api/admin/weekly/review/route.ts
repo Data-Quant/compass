@@ -4,7 +4,7 @@ import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
 import { reviewActionSchema, reviewFilterSchema } from '@/lib/weekly/schemas'
 import { actorFromUser } from '@/lib/weekly/service/context'
 import { WeeklyError } from '@/lib/weekly/service/errors'
-import { decideAnswer, retryScoring, reviewQueue } from '@/lib/weekly/service/review-queue'
+import { acceptAll, decideAnswer, retryScoring, reviewQueue } from '@/lib/weekly/service/review-queue'
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/** HR accepts the model's score, sets the score with a reason, or sends a failed answer back to the model. */
+/** HR accepts the model's score (one or all), sets the score with a reason, or sends a failed answer back to the model. */
 export async function POST(request: NextRequest) {
   try {
     const user = await requireWeeklySession({ admin: true })
@@ -29,6 +29,9 @@ export async function POST(request: NextRequest) {
     if (input.action === 'retry') {
       await retryScoring(actor, input.responseId, now)
       return NextResponse.json({ success: true })
+    }
+    if (input.action === 'accept-all') {
+      return NextResponse.json({ success: true, ...(await acceptAll(actor, input.items, now)) })
     }
     const decision = input.action === 'accept'
       ? { action: 'ACCEPT' as const, revision: input.revision, aiScoreId: input.aiScoreId, reason: input.reason }
