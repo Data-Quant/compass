@@ -209,7 +209,8 @@ const formatApiDate = (value: string, options?: Intl.DateTimeFormatOptions) => {
   return parsed.toLocaleDateString('en-US', options)
 }
 
-const hasLeaveEnded = (endDate: string) => {
+/** A leave can be cancelled until the day before its last day (lib/leave-utils canCancelLeave). */
+const isBeforeLastDay = (endDate: string) => {
   const parsed = parseInputDateAsLocal(toDateKey(endDate))
   if (!parsed) return false
 
@@ -217,7 +218,7 @@ const hasLeaveEnded = (endDate: string) => {
   today.setHours(0, 0, 0, 0)
   parsed.setHours(0, 0, 0, 0)
 
-  return parsed.getTime() < today.getTime()
+  return parsed.getTime() > today.getTime()
 }
 
 const isLeaveNotStarted = (startDate: string) => {
@@ -417,7 +418,7 @@ export default function LeavePage() {
   const editableStatuses = new Set(['PENDING', 'LEAD_APPROVED', 'HR_APPROVED'])
   const cancellableStatuses = new Set(['PENDING', 'LEAD_APPROVED', 'HR_APPROVED', 'APPROVED'])
   const canCancelRequest = (request: LeaveRequest) =>
-    cancellableStatuses.has(request.status) && !hasLeaveEnded(request.endDate)
+    cancellableStatuses.has(request.status) && isBeforeLastDay(request.endDate)
   const canCancelWfhRequest = (request: WfhRequest) =>
     cancellableStatuses.has(request.status) && !hasWfhEnded(new Date(request.endDate))
   const availableNotifyUsers = useMemo(

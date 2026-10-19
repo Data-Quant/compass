@@ -6,11 +6,11 @@ import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import {
   calculateLeaveDuration,
+  canCancelLeave,
   isValidLeaveDateRange,
-  leaveHasStarted,
   leaveRequiresLeadApproval,
 } from '@/lib/leave-utils'
-import { restoreUnstartedLeaveBalance } from '@/lib/leave-balance'
+import { restoreCancelledLeaveBalance } from '@/lib/leave-balance'
 import { stripHtml } from '@/lib/sanitize'
 import { normalizeLeaveTimeZone } from '@/lib/leave-timezone'
 import { isAdminRole } from '@/lib/permissions'
@@ -792,6 +792,8 @@ export async function PUT(request: NextRequest) {
 }
 
 // DELETE - Cancel leave request
+const CANCEL_TOO_LATE = 'This leave has reached its last day, so it counts as taken and can no longer be cancelled.'
+
 export async function DELETE(request: NextRequest) {
   try {
     const user = await getSession()
@@ -817,13 +819,21 @@ export async function DELETE(request: NextRequest) {
     }
     
     const isHR = isAdminRole(user.role)
+    // Non-HR users can only cancel their own request.
+    if (!isHR && leaveRequest.employeeId !== user.id) {
+      return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
+    }
+    // A leave stands as taken from its last day on: it can no longer be cancelled, by HR or the employee.
+    const active = leaveRequest.status !== 'REJECTED' && leaveRequest.status !== 'CANCELLED'
+    if (active && !canCancelLeave(new Date(leaveRequest.endDate))) {
+      return NextResponse.json({ error: CANCEL_TOO_LATE }, { status: 400 })
+    }
 
     if (isHR) {
       await prisma.$transaction(async (tx) => {
-        // Roll back used balance only if removing a not-yet-started approved
-        // entry; days for a leave already availed are never clawed back.
+        // An approved leave gives back the days from today (or its start) to its last day.
         if (leaveRequest.status === 'APPROVED') {
-          await restoreUnstartedLeaveBalance(tx, leaveRequest)
+          await restoreCancelledLeaveBalance(tx, leaveRequest)
         }
 
         await tx.leaveRequest.delete({
@@ -840,18 +850,6 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: true })
     }
 
-    // Non-HR users can only cancel their own request.
-    if (leaveRequest.employeeId !== user.id) {
-      return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
-    }
-
-    if (leaveHasStarted(new Date(leaveRequest.startDate))) {
-      return NextResponse.json(
-        { error: 'This leave has already started or been taken and cannot be cancelled.' },
-        { status: 400 }
-      )
-    }
-
     if (leaveRequest.status === 'REJECTED') {
       return NextResponse.json({ error: 'Cannot cancel a rejected request' }, { status: 400 })
     }
@@ -859,7 +857,7 @@ export async function DELETE(request: NextRequest) {
     if (leaveRequest.status !== 'CANCELLED') {
       await prisma.$transaction(async (tx) => {
         if (leaveRequest.status === 'APPROVED') {
-          await restoreUnstartedLeaveBalance(tx, leaveRequest)
+          await restoreCancelledLeaveBalance(tx, leaveRequest)
         }
 
         await tx.leaveRequest.update({
