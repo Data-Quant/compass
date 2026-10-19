@@ -47,7 +47,7 @@ const leave: PageInput = {
       id: 'v2',
       bodyMarkdown: 'INTERNAL_LEAVE_BODY',
       orderIndex: 0,
-      audiences: ['PAKISTAN', 'MOROCCO', 'COLOMBIA', 'INDONESIA'],
+      audiences: ['PAKISTAN', 'MOROCCO', 'COLOMBIA', 'INDONESIA', 'ECUADOR'],
     },
     { id: 'v3', bodyMarkdown: 'THREE_E_MA_LEAVE_BODY', orderIndex: 1, audiences: ['THREE_E_MOROCCO'] },
     { id: 'v4', bodyMarkdown: 'THREE_E_PK_LEAVE_BODY', orderIndex: 2, audiences: ['THREE_E_PAKISTAN'] },
@@ -61,14 +61,15 @@ const pages = [welcome, leave, draft]
 
 // ─── groups ──────────────────────────────────────────────────────────────────
 
-test('expandGroup EVERYONE is all seven teams', () => {
+test('expandGroup EVERYONE is all eight teams', () => {
   assert.deepEqual([...expandGroup('EVERYONE')].sort(), [...ALL_TEAMS].sort())
-  assert.equal(expandGroup('EVERYONE').length, 7)
+  assert.equal(expandGroup('EVERYONE').length, 8)
 })
 
 test('expandGroup PLUTUS21_INTERNAL excludes both 3E teams', () => {
   const internal = expandGroup('PLUTUS21_INTERNAL')
-  assert.equal(internal.length, 5)
+  assert.equal(internal.length, 6)
+  assert.ok(internal.includes('ECUADOR'))
   assert.ok(!internal.includes('THREE_E_PAKISTAN'))
   assert.ok(!internal.includes('THREE_E_MOROCCO'))
 })
@@ -91,12 +92,12 @@ test('selectVariant returns null when no variant addresses the tag', () => {
   assert.equal(selectVariant(pakistanOnly, 'NOBLE'), null)
 })
 
-test('untagged user gets a variant only when ONE variant covers all seven teams', () => {
+test('untagged user gets a variant only when ONE variant covers all eight teams', () => {
   assert.equal(selectVariant(welcome, null)?.bodyMarkdown, 'UNIVERSAL_BODY')
 })
 
-test('untagged user gets NOTHING from a page that reaches seven teams across variants', () => {
-  // Leave reaches all 7 collectively, but only by telling each team something
+test('untagged user gets NOTHING from a page that reaches eight teams across variants', () => {
+  // Leave reaches all 8 collectively, but only by telling each team something
   // different. An untagged user has no team, so there is no right answer.
   assert.equal(selectVariant(leave, null), null)
 })

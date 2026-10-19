@@ -10,6 +10,7 @@ const SHORT_LABELS: Record<string, string> = {
   MOROCCO: 'MA',
   COLOMBIA: 'CO',
   INDONESIA: 'ID',
+  ECUADOR: 'EC',
   NOBLE: 'NB',
   THREE_E_PAKISTAN: '3E PK',
   THREE_E_MOROCCO: '3E MA',

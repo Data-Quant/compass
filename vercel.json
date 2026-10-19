@@ -19,6 +19,18 @@
     {
       "path": "/api/cron/weekly-evaluations",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/security-checks/daily",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/security-checks/weekly",
+      "schedule": "0 4 * * 1"
+    },
+    {
+      "path": "/api/cron/security-checks/monthly",
+      "schedule": "30 4 1 * *"
     }
   ]
 }

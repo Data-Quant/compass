@@ -15,6 +15,24 @@ export const OFFICE_LOCATIONS: OfficeLocationGroup[] = [
   { country: 'United States', cities: ['Dallas'] },
   { country: 'Colombia', cities: ['Pereira', 'Bogota'] },
   { country: 'Indonesia', cities: ['Jakarta'] },
+  {
+    country: 'Ecuador',
+    cities: [
+      'Quito',
+      'Guayaquil',
+      'Cuenca',
+      'Santo Domingo',
+      'Machala',
+      'Manta',
+      'Portoviejo',
+      'Loja',
+      'Ambato',
+      'Duran',
+      'Riobamba',
+      'Esmeraldas',
+      'Ibarra',
+    ],
+  },
 ]
 
 export const OFFICE_LOCATION_CITIES: string[] = OFFICE_LOCATIONS.flatMap((group) => group.cities)

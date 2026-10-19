@@ -40,6 +40,7 @@ const pakistanOnly: AdminPageInput = {
     'MOROCCO',
     'COLOMBIA',
     'INDONESIA',
+    'ECUADOR',
     'NOBLE',
     'THREE_E_PAKISTAN',
     'THREE_E_MOROCCO',
@@ -70,7 +71,7 @@ test('every row has one cell per team, in ALL_TEAMS order', () => {
   const rows = computeCoverage(pages)
   assert.equal(rows.length, 3)
   for (const row of rows) {
-    assert.equal(row.cells.length, 7)
+    assert.equal(row.cells.length, ALL_TEAMS.length)
     assert.deepEqual(
       row.cells.map((c) => c.team),
       [...ALL_TEAMS]
@@ -119,10 +120,10 @@ test('COVERED wins over an intentional gap claiming the same team', () => {
 
 test('summarize counts every cell exactly once', () => {
   const s = summarizeCoverage(computeCoverage(pages))
-  assert.equal(s.total, 21) // 3 pages x 7 teams
-  assert.equal(s.covered, 7 + 1 + 5)
-  assert.equal(s.intentional, 6)
-  assert.equal(s.unreviewed, 2)
+  assert.equal(s.total, 24) // 3 pages x 8 teams
+  assert.equal(s.covered, 8 + 1 + 5)
+  assert.equal(s.intentional, 7)
+  assert.equal(s.unreviewed, 3)
   assert.equal(s.covered + s.intentional + s.unreviewed, s.total)
 })
 

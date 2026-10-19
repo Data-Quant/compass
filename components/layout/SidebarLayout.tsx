@@ -11,8 +11,8 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
-import { CalendarCheck, Handshake } from 'lucide-react'
-import { withGroupItem, withItemPatched } from '@/components/layout/sidebar-nav'
+import { CalendarCheck, Handshake, ShieldCheck } from 'lucide-react'
+import { withGroupItem, withItemPatched, withSecurityChecksNav, type SecurityChecksNavAccess } from '@/components/layout/sidebar-nav'
 
 // Context so child pages can access user info
 interface LayoutUser {
@@ -47,6 +47,8 @@ interface SidebarLayoutProps {
   sidebarConfig: SidebarConfig
   onboardingSidebarConfig?: SidebarConfig
   requiredRole?: string | string[]
+  /** Optional per-role sidebar, for pages shared by people with different consoles. */
+  sidebarConfigByRole?: Partial<Record<string, SidebarConfig>>
 }
 
 export function SidebarLayout({
@@ -54,6 +56,7 @@ export function SidebarLayout({
   sidebarConfig,
   onboardingSidebarConfig,
   requiredRole,
+  sidebarConfigByRole,
 }: SidebarLayoutProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -63,6 +66,8 @@ export function SidebarLayout({
   // would not reflect a fresh assignment until the next login.
   const [hasClientele, setHasClientele] = useState(false)
   const [weeklyMe, setWeeklyMe] = useState({ enabled: false, cycleActive: false, openCount: 0 })
+  // Security Checks entries appear only when the module is on.
+  const [securityChecksAccess, setSecurityChecksAccess] = useState<SecurityChecksNavAccess>({ enabled: false, console: false })
   const [loading, setLoading] = useState(true)
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -108,6 +113,12 @@ export function SidebarLayout({
             setWeeklyMe({ enabled: Boolean(me.enabled), cycleActive: Boolean(me.cycleActive), openCount: typeof me.openCount === 'number' ? me.openCount : 0 }),
           )
           .catch(() => setWeeklyMe({ enabled: false, cycleActive: false, openCount: 0 }))
+        fetch('/api/security-checks/me')
+          .then((res) => (res.ok ? res.json() : null))
+          .then((body: { data?: { enabled?: boolean; capabilities?: { console?: boolean } } } | null) =>
+            setSecurityChecksAccess({ enabled: Boolean(body?.data?.enabled), console: Boolean(body?.data?.capabilities?.console) }),
+          )
+          .catch(() => setSecurityChecksAccess({ enabled: false, console: false }))
         setLoading(false)
       })
       .catch(() => router.push('/login'))
@@ -135,10 +146,11 @@ export function SidebarLayout({
     return <LoadingScreen message="Loading..." />
   }
 
+  const roleSidebarConfig = (user?.role && sidebarConfigByRole?.[user.role]) || sidebarConfig
   const baseSidebarConfig =
     user?.onboardingCompleted === false && onboardingSidebarConfig
       ? onboardingSidebarConfig
-      : sidebarConfig
+      : roleSidebarConfig
 
   // The admin console has its own Clients page and must not get the employee
   // link: its only top-level item is the dashboard, so an injected entry landed
@@ -175,6 +187,10 @@ export function SidebarLayout({
       : isAdminConsole
         ? withGroupItem(effectiveSidebarConfig, 'Performance', { label: 'Evaluation round', href: '/admin/evaluation-round', icon: CalendarCheck }, 'start')
         : withItemPatched(effectiveSidebarConfig, '/evaluations/weekly', weeklyBadge)
+  const finalSidebarConfig =
+    baseSidebarConfig === onboardingSidebarConfig
+      ? sidebarConfigWithWeekly
+      : withSecurityChecksNav(sidebarConfigWithWeekly, securityChecksAccess, ShieldCheck)
 
   return (
     <LayoutUserContext.Provider value={user}>
@@ -182,7 +198,7 @@ export function SidebarLayout({
         {/* Desktop sidebar */}
         <div className="hidden lg:block shrink-0">
           <AppSidebar
-            config={sidebarConfigWithWeekly}
+            config={finalSidebarConfig}
             collapsed={collapsed}
             onToggle={toggleCollapsed}
             userRole={user?.role}
@@ -194,7 +210,7 @@ export function SidebarLayout({
           <SheetContent side="left" className="w-[240px] p-0 [&>button:first-child]:hidden">
             <SheetTitle className="sr-only">Navigation</SheetTitle>
             <AppSidebar
-              config={sidebarConfigWithWeekly}
+              config={finalSidebarConfig}
               collapsed={false}
               onToggle={() => setMobileOpen(false)}
               userRole={user?.role}

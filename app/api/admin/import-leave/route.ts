@@ -124,7 +124,7 @@ function parseCsv(text: string): CsvRow[] {
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i]
     // Skip section headers and empty rows
-    if (!line || line.startsWith(',') || /^(Morocco|Colombia|Indonesia)\s+Team/i.test(line)) continue
+    if (!line || line.startsWith(',') || /^(Morocco|Colombia|Indonesia|Ecuador)\s+Team/i.test(line)) continue
 
     // Simple CSV parse (handles quoted fields with commas)
     const fields: string[] = []
