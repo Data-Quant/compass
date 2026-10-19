@@ -4,8 +4,8 @@ import { getSession } from '@/lib/auth'
 import { sendLeaveApprovalNotification, sendLeaveCancellationNotification } from '@/lib/email'
 import { LeaveStatus, Prisma } from '@prisma/client'
 import { z } from 'zod'
-import { calculateLeaveDuration, leaveHasStarted } from '@/lib/leave-utils'
-import { restoreUnstartedLeaveBalance } from '@/lib/leave-balance'
+import { calculateLeaveDuration, canCancelLeave } from '@/lib/leave-utils'
+import { restoreCancelledLeaveBalance } from '@/lib/leave-balance'
 import { isAdminRole } from '@/lib/permissions'
 import { removeLeaveCalendarEvent, syncLeaveCalendarEvent } from '@/lib/google-calendar'
 import { stripHtml } from '@/lib/sanitize'
@@ -91,19 +91,19 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true, status: 'REJECTED' })
       }
 
-      // Disapproving an already-finalized (APPROVED) leave cancels it: restore
-      // the balance and remove the calendar invite — but only if it has not been
-      // availed yet. Once the leave has started, those days are committed.
+      // Disapproving an already-finalized (APPROVED) leave cancels it: the days from
+      // today (or its start) to its last day come back and the calendar invite goes.
+      // From its last day on, the leave counts as taken and cannot be reversed.
       if (leaveRequest.status === 'APPROVED') {
-        if (leaveHasStarted(new Date(leaveRequest.startDate))) {
+        if (!canCancelLeave(new Date(leaveRequest.endDate))) {
           return NextResponse.json(
-            { error: 'This leave has already started or been taken and cannot be reversed. Contact HR for any correction.' },
+            { error: 'This leave has reached its last day, so it counts as taken and cannot be reversed. Contact HR for any correction.' },
             { status: 400 }
           )
         }
 
         await prisma.$transaction(async (tx) => {
-          await restoreUnstartedLeaveBalance(tx, leaveRequest)
+          await restoreCancelledLeaveBalance(tx, leaveRequest)
           await tx.leaveRequest.update({
             where: { id: requestId },
             data: {

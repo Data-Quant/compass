@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import {
   calculateLeaveDays,
   calculateLeaveDuration,
+  canCancelLeave,
+  cancellableLeaveDays,
   getExpectedReturnDate,
   getNextBusinessDay,
   hasLeaveEnded,
@@ -107,4 +109,26 @@ test('hasLeaveEnded compares end date by calendar day', () => {
   assert.equal(hasLeaveEnded(new Date('2026-03-31T00:00:00.000Z'), now), true)
   assert.equal(hasLeaveEnded(new Date('2026-04-01T00:00:00.000Z'), now), false)
   assert.equal(hasLeaveEnded(new Date('2026-04-02T00:00:00.000Z'), now), false)
+})
+
+// Monday 19 October 2026 onwards; leave dates are stored as UTC midnight.
+const day = (d: number) => new Date(Date.UTC(2026, 9, d))
+const at = (d: number, hour = 9) => new Date(Date.UTC(2026, 9, d, hour))
+
+test('a leave can be cancelled until the day before its last day, never on or after it', () => {
+  assert.equal(canCancelLeave(day(21), at(19)), true)
+  assert.equal(canCancelLeave(day(21), at(20)), true)
+  assert.equal(canCancelLeave(day(21), at(21)), false)
+  assert.equal(canCancelLeave(day(21), at(22)), false)
+})
+
+test('cancelling gives back the working days from today to the end, including a leave that starts today', () => {
+  const leave = (start: number, end: number, isHalfDay = false) => ({ startDate: day(start), endDate: day(end), isHalfDay })
+  assert.equal(cancellableLeaveDays(leave(19, 21), at(19)), 3, 'starts today: every day comes back')
+  assert.equal(cancellableLeaveDays(leave(20, 21), at(19)), 2, 'not started: every day comes back')
+  assert.equal(cancellableLeaveDays(leave(16, 21), at(20)), 2, 'underway: today and the rest come back')
+  assert.equal(cancellableLeaveDays(leave(16, 20), at(17)), 2, 'cancelled on a weekend: the remaining working days')
+  assert.equal(cancellableLeaveDays(leave(19, 21), at(21)), 0, 'last day: nothing')
+  assert.equal(cancellableLeaveDays(leave(19, 19, true), at(19)), 0, 'a half day on its own day is its last day')
+  assert.equal(cancellableLeaveDays(leave(20, 20, true), at(19)), 0.5)
 })

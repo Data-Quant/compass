@@ -1,6 +1,6 @@
 import type { LeaveStatus } from '@prisma/client'
 import { prisma } from '@/lib/db'
-import { restoreUnstartedLeaveBalance } from '@/lib/leave-balance'
+import { restoreCancelledLeaveBalance } from '@/lib/leave-balance'
 import { leaveHasStarted } from '@/lib/leave-utils'
 import { removeLeaveCalendarEvent } from '@/lib/google-calendar'
 import { sendLeaveCancellationNotification } from '@/lib/email'
@@ -85,7 +85,7 @@ export async function autoCancelLeaveForMissingTransitionPlan(
       // Only an APPROVED request has had days deducted; the earlier statuses never did.
       const restoredDays =
         leaveRequest.status === 'APPROVED'
-          ? await restoreUnstartedLeaveBalance(tx, leaveRequest)
+          ? await restoreCancelledLeaveBalance(tx, leaveRequest)
           : 0
 
       await tx.leaveRequest.update({

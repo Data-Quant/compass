@@ -91,3 +91,19 @@ export function hasLeaveEnded(endDate: Date, now = new Date()): boolean {
 export function leaveHasStarted(startDate: Date, now = new Date()): boolean {
   return toUtcDateOnly(startDate).getTime() <= toUtcDateOnly(now).getTime()
 }
+
+/** A leave can be cancelled until the day before its last day; on or after the last day it stands as taken. */
+export function canCancelLeave(endDate: Date, now = new Date()): boolean {
+  return toUtcDateOnly(endDate).getTime() > toUtcDateOnly(now).getTime()
+}
+
+/**
+ * The days a cancellation gives back: the working days from today (or the start, if later) to the end.
+ * A leave starting today returns in full; one already underway returns today and the rest; none once it cannot be cancelled.
+ */
+export function cancellableLeaveDays(leave: { startDate: Date; endDate: Date; isHalfDay: boolean }, now = new Date()): number {
+  if (!canCancelLeave(leave.endDate, now)) return 0
+  const today = toUtcDateOnly(now)
+  const from = toUtcDateOnly(leave.startDate).getTime() > today.getTime() ? leave.startDate : today
+  return calculateLeaveDuration(from, leave.endDate, leave.isHalfDay)
+}
