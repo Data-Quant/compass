@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Checkbox } from '@/components/ui/checkbox'
 import { Check, Loader2, Pencil, X } from 'lucide-react'
 import { buildTravelTierPatch, toTravelTierDraft, type TravelTierDraft } from '@/lib/payroll/travel-tiers'
+import { formatCalendarDate, formatTimestampDate } from '@/lib/payroll/display-dates'
 import { ALL_TEAMS, TEAM_LABELS } from '@/lib/handbook/teams'
 import type { TeamTag } from '@prisma/client'
 
@@ -880,8 +881,8 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
                       </TableCell>
                       <TableCell>PKR {tier.monthlyRate.toLocaleString()}</TableCell>
                       <TableCell>
-                        {new Date(tier.effectiveFrom).toLocaleDateString()}
-                        {tier.effectiveTo ? ` → ${new Date(tier.effectiveTo).toLocaleDateString()}` : ''}
+                        {formatCalendarDate(tier.effectiveFrom)}
+                        {tier.effectiveTo ? ` → ${formatCalendarDate(tier.effectiveTo)}` : ''}
                       </TableCell>
                       <TableCell>{tier.isActive ? 'Active' : 'Inactive'}</TableCell>
                       {canEdit && (
@@ -1010,7 +1011,7 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-sm font-medium">{holiday.name}</p>
-                    <p className="text-xs text-muted-foreground">{new Date(holiday.holidayDate).toLocaleDateString()}</p>
+                    <p className="text-xs text-muted-foreground">{formatCalendarDate(holiday.holidayDate)}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {holiday.teamTags?.length
                         ? holiday.teamTags.map((t) => TEAM_LABELS[t]).join(', ')
@@ -1019,7 +1020,7 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
                     <p className="text-xs mt-0.5">
                       {holiday.notifiedAt ? (
                         <span className="text-muted-foreground">
-                          Announced {new Date(holiday.notifiedAt).toLocaleDateString()}
+                          Announced {formatTimestampDate(holiday.notifiedAt)}
                         </span>
                       ) : (
                         <span className="text-amber-600 font-medium">Not announced yet</span>
@@ -1155,7 +1156,7 @@ export function PayrollSettingsPanel({ canEdit }: Props) {
                     <div>
                       <p className="text-sm font-medium">{year.label}</p>
                       <p className="text-xs text-muted-foreground">
-                        {new Date(year.startDate).toLocaleDateString()} - {new Date(year.endDate).toLocaleDateString()}
+                        {formatCalendarDate(year.startDate)} - {formatCalendarDate(year.endDate)}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
