@@ -15,6 +15,7 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:onboarding": "tsx prisma/seed-onboarding.ts",
+    "db:seed:projects": "tsx prisma/seed-projects.ts",
     "db:seed:onboarding:apply": "tsx prisma/seed-onboarding.ts --apply",
     "leave:resync-calendar": "tsx scripts/resync-leave-calendar.ts",
     "payroll:import-history": "tsx scripts/import-historical-payroll.ts",
