@@ -13,13 +13,8 @@
     "@colyseus/schema": "^4.0.7",
     "@colyseus/ws-transport": "^0.17.13",
     "cors": "^2.8.5",
-<<<<<<< HEAD
     "dotenv": "^18.0.8",
-    "express": "^4.21.0",
-=======
-    "dotenv": "^16.4.5",
     "express": "^5.3.0",
->>>>>>> origin/dependabot/npm_and_yarn/server/multi-766765435e
     "jsonwebtoken": "^9.0.2"
   },
   "devDependencies": {
