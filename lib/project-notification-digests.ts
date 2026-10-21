@@ -10,6 +10,12 @@ export const PROJECT_NOTIFICATION_TIMEZONE = 'Asia/Karachi'
 
 const KARACHI_OFFSET_MINUTES = 5 * 60
 const MAX_DIGEST_ITEMS_PER_EMAIL = 100
+/** Older unsent items are skipped, never sent: two weeks covers a weekly digest, and a missed backlog is not news. */
+export const STALE_DIGEST_DAYS = 14
+
+export function staleDigestCutoff(now: Date): Date {
+  return new Date(now.getTime() - STALE_DIGEST_DAYS * 24 * 60 * 60 * 1000)
+}
 
 type DigestPreferenceInput = {
   digestFrequency: ProjectNotificationDigestFrequency
@@ -252,6 +258,14 @@ export async function sendDueProjectNotificationDigests(input: {
   const now = input.now ?? new Date()
   const dryRun = input.dryRun ?? false
   const appBaseUrl = getAppBaseUrl(input.origin)
+  const staleBefore = staleDigestCutoff(now)
+
+  // Items nobody was sent in time (for months, while this job could not run) are marked skipped, so they never arrive
+  // late. They stay in the table as a record.
+  const stale = { sentAt: null, skippedAt: null, createdAt: { lt: staleBefore } }
+  const staleSkipped = dryRun
+    ? await prisma.projectNotificationDigestItem.count({ where: stale })
+    : (await prisma.projectNotificationDigestItem.updateMany({ where: stale, data: { skippedAt: now } })).count
 
   const preferences = await prisma.projectNotificationPreference.findMany({
     where: {
@@ -279,7 +293,7 @@ export async function sendDueProjectNotificationDigests(input: {
         recipientId: preference.userId,
         sentAt: null,
         skippedAt: null,
-        createdAt: { lte: now },
+        createdAt: { gte: staleBefore, lte: now },
       },
       orderBy: { createdAt: 'asc' },
       take: MAX_DIGEST_ITEMS_PER_EMAIL,
@@ -373,6 +387,8 @@ export async function sendDueProjectNotificationDigests(input: {
     success: failed === 0,
     dryRun,
     eligibleUsers: preferences.length,
+    // Unsent items older than STALE_DIGEST_DAYS: skipped (a dry run counts them without skipping).
+    staleItemsSkipped: staleSkipped,
     sent: results.filter((result) => result.success && !result.skipped).length,
     skipped: results.filter((result) => result.skipped).length,
     failed,

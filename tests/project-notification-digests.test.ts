@@ -3,7 +3,14 @@ import assert from 'node:assert/strict'
 import {
   calculateNextProjectNotificationDigestAt,
   isValidProjectNotificationTime,
+  STALE_DIGEST_DAYS,
+  staleDigestCutoff,
 } from '../lib/project-notification-digests'
+
+test('digest items older than two weeks are stale: long enough for a weekly digest, short enough to drop a backlog', () => {
+  assert.equal(STALE_DIGEST_DAYS, 14)
+  assert.equal(staleDigestCutoff(new Date('2026-10-22T04:00:00.000Z')).toISOString(), '2026-10-08T04:00:00.000Z')
+})
 
 test('project notification time validation accepts only HH:mm values', () => {
   assert.equal(isValidProjectNotificationTime('00:00'), true)
