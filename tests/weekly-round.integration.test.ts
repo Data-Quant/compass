@@ -7,7 +7,8 @@ import { loadStandardBank } from '../lib/weekly/service/content'
 import { WeeklyError } from '../lib/weekly/service/errors'
 import { confirmMyLists, decidePeerRequest, myMapping, requestPeerChange } from '../lib/weekly/service/peer-requests'
 import { openReviewStage } from '../lib/weekly/service/review-stage'
-import { openRound, roundsList, roundView, setRoundLock, setupRound } from '../lib/weekly/service/round'
+import { deleteRound, draftContents, openRound, roundsList, roundView, setRoundLock, setupRound, updateRound } from '../lib/weekly/service/round'
+import { formatCalendarDate, karachiCalendarDate } from '../lib/weekly/calendar'
 import { at, HR_ACTOR } from './helpers/weekly-fixtures'
 import { resetWeeklyTestData, seedWeeklyBase, W, WEEKLY_DB_READY, WEEKLY_DB_TEST, weeklyActor } from './helpers/weekly-test-db'
 
@@ -48,6 +49,40 @@ test('HR sets up a round in one step: the quarter and its weekly cycle, in Draft
   assert.deepEqual([view.questionWeeks, view.totalWeeks], [11, 13])
   assert.equal(view.next?.action, 'open-review')
   assert.ok((await roundsList(HR_ACTOR)).some((r) => r.periodId === periodId && r.stage === 'DRAFT'))
+})
+
+test('HR can change every date of a round until it opens', WEEKLY_DB_TEST, async () => {
+  const day = (iso: string) => formatCalendarDate(karachiCalendarDate(new Date(iso)))
+  const { periodId } = await setupRound(HR_ACTOR, SETUP, at(1))
+  const moved = { ...SETUP, name: 'Q1 2027 moved', startDate: '2027-01-11', endDate: '2027-04-09', weekOneStartsOn: '2027-01-13', questionWeeks: 10, reviewDeadline: '2027-01-08' }
+  await assert.rejects(updateRound(weeklyActor(W.ana), periodId, moved), isStatus(403))
+  await assert.rejects(updateRound(HR_ACTOR, periodId, { ...moved, weekOneStartsOn: '2027-01-16' }), /weekday/)
+  await updateRound(HR_ACTOR, periodId, moved)
+  const view = await roundView(HR_ACTOR, periodId, at(1))
+  assert.deepEqual(
+    [view.name, day(view.startDate), day(view.endDate), day(view.weekOneStartsOn), view.questionWeeks, day(view.reviewDeadline!)],
+    ['Q1 2027 moved', '2027-01-11', '2027-04-09', '2027-01-13', 10, '2027-01-08'],
+  )
+  await openReviewStage(HR_ACTOR, periodId, at(1), send, APP)
+  await updateRound(HR_ACTOR, periodId, { ...moved, questionWeeks: 9 })
+  assert.equal((await roundView(HR_ACTOR, periodId, at(1))).questionWeeks, 9, 'still editable in the review stage')
+  await openRound(HR_ACTOR, periodId, at(1), send, APP)
+  await assert.rejects(updateRound(HR_ACTOR, periodId, moved), isStatus(409))
+})
+
+test('HR can delete a round that has not opened, with its quarter, and set it up again', WEEKLY_DB_TEST, async () => {
+  const { periodId } = await setupRound(HR_ACTOR, SETUP, at(1))
+  await openReviewStage(HR_ACTOR, periodId, at(1), send, APP)
+  await requestPeerChange(weeklyActor(W.ana), { peerId: W.ben.id, action: 'REMOVE', reasonCode: 'WRONG_PERSON' }, at(1), send, APP)
+  assert.equal((await draftContents(periodId)).requests, 1)
+  await assert.rejects(deleteRound(weeklyActor(W.ana), periodId), isStatus(403))
+  await deleteRound(HR_ACTOR, periodId)
+  assert.equal(await prisma.evaluationPeriod.count({ where: { id: periodId } }), 0)
+  assert.equal(await prisma.peerChangeRequest.count({ where: { periodId } }), 0)
+  const again = await setupRound(HR_ACTOR, SETUP, at(1))
+  await openReviewStage(HR_ACTOR, again.periodId, at(1), send, APP)
+  await openRound(HR_ACTOR, again.periodId, at(1), send, APP)
+  await assert.rejects(deleteRound(HR_ACTOR, again.periodId), isStatus(409))
 })
 
 test('opening the round needs the review stage; undecided requests expire; employees then ask HR instead', WEEKLY_DB_TEST, async () => {

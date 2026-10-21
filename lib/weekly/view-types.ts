@@ -341,6 +341,8 @@ export interface RoundView {
   checklist: RoundChecklistItem[]
   /** In Draft, for the "open review stage" summary: who is in the round and who is not evaluated. */
   people?: { included: number; excluded: number }
+  /** Before the round opens: what deleting it would undo. */
+  draft?: { requests: number; confirmations: number; listChanges: number }
   /** While open: how the round is going (HR's overview). */
   health?: { asked: number; answered: number; behind: number; waitingReview: number; openRequests: number; unreadSelfReviews: number }
   /** In Review, for the "open round" summary: the requests that would expire. */
