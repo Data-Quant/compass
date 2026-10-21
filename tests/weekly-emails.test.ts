@@ -1,6 +1,15 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { renderQuestionsEmail } from '../lib/weekly/emails'
+import { renderMappingEmail, renderQuestionsEmail } from '../lib/weekly/emails'
+
+test('the mapping email shows a C-suite evaluator to the people who have one, and only to them', () => {
+  const base = { name: 'Ana', periodName: 'Q4 2026', leads: ['Lead A'], reports: [], peers: ['Peer B'], appUrl: 'https://compass.example' }
+  const withCSuite = renderMappingEmail({ ...base, cSuite: ['Exec <C>'] })
+  assert.match(withCSuite.html, /C-suite/)
+  assert.match(withCSuite.html, /Exec &lt;C&gt;/)
+  assert.doesNotMatch(renderMappingEmail({ ...base, cSuite: [] }).html, /C-suite/)
+  assert.doesNotMatch(renderMappingEmail(base).html, /C-suite/)
+})
 import { renderDueTodayEmail, renderRoundOpenedEmail } from '../lib/weekly/emails-round'
 
 test('the round-opened email says in red that evaluations are open and when they are due', () => {

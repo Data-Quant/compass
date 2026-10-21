@@ -169,8 +169,10 @@ export function renderChangeForOtherEmail(input: Change & { name: string; reques
 }
 
 /** Pre-evaluation: who someone works with for the quarter, and how to ask for a peer change. */
-export function renderMappingEmail(input: { name: string; periodName: string; leads: string[]; reports: string[]; peers: string[]; deadline?: string | null; appUrl: string }): { subject: string; html: string } {
+/** `cSuite`: who from the C-suite evaluates this person at the end of the quarter; the line is left out when nobody does. */
+export function renderMappingEmail(input: { name: string; periodName: string; leads: string[]; reports: string[]; peers: string[]; cSuite?: string[]; deadline?: string | null; appUrl: string }): { subject: string; html: string } {
   const list = (names: string[]) => (names.length ? names.map(escapeHtml).join(', ') : 'None')
+  const cSuite = input.cSuite ?? []
   return {
     subject: input.deadline ? `Check your ${input.periodName} evaluation lists by ${input.deadline}` : `Your evaluation mapping for ${input.periodName}`,
     html: layout(input.name, [
@@ -178,6 +180,7 @@ export function renderMappingEmail(input: { name: string; periodName: string; le
       `<strong>Your lead:</strong> ${list(input.leads)}`,
       `<strong>Your reporting team members:</strong> ${list(input.reports)}`,
       `<strong>Your peers:</strong> ${list(input.peers)}`,
+      ...(cSuite.length > 0 ? [`<strong>C-suite evaluation:</strong> ${list(cSuite)} ${cSuite.length === 1 ? 'evaluates' : 'evaluate'} you at the end of the quarter.`] : []),
       escapeHtml('If anyone is wrong or missing, ask for a change on the page below. Your lead reviews each change first, then HR decides. If everything is right, say so there.'),
     ], `${base(input.appUrl)}/evaluations/weekly`, 'Review your mapping'),
   }
