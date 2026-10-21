@@ -17,6 +17,15 @@ export const PUBLIC_PATHS: readonly string[] = [
 // must authenticate the request itself with isCronAuthorized (lib/cron-auth.ts).
 export const CRON_PATH_PREFIX = '/api/cron/'
 
+// Scheduled jobs (vercel.json) that predate the /api/cron/ prefix. Matched exactly. Each route lets in only a request
+// with its Bearer CRON_SECRET or a signed-in admin, so passing the cookie check here does not open it up.
+export const SCHEDULED_JOB_PATHS: readonly string[] = [
+  '/api/leave/transition-plan-reminders',
+  '/api/projects/task-deadline-reminders',
+  '/api/projects/notification-digests',
+  '/api/payroll/public-holidays/reminders',
+]
+
 export function bypassesSessionCheck(pathname: string): boolean {
-  return pathname.startsWith(CRON_PATH_PREFIX) || PUBLIC_PATHS.some((path) => pathname.startsWith(path))
+  return pathname.startsWith(CRON_PATH_PREFIX) || SCHEDULED_JOB_PATHS.includes(pathname) || PUBLIC_PATHS.some((path) => pathname.startsWith(path))
 }

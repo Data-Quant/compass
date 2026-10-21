@@ -9,7 +9,17 @@ test('cron routes bypass the session cookie check', () => {
 test('lookalike and ordinary API paths still need a session', () => {
   assert.equal(bypassesSessionCheck('/api/cronjob'), false)
   assert.equal(bypassesSessionCheck('/api/weekly/me'), false)
-  assert.equal(bypassesSessionCheck('/api/leave/transition-plan-reminders'), false)
+  assert.equal(bypassesSessionCheck('/api/leave/requests'), false)
+})
+
+test('the scheduled jobs outside /api/cron/ reach their own secret check, at their exact paths only', () => {
+  // Vercel calls these with a Bearer CRON_SECRET and no cookie; each route refuses anyone without the secret or an admin login.
+  for (const path of ['/api/leave/transition-plan-reminders', '/api/projects/task-deadline-reminders', '/api/projects/notification-digests', '/api/payroll/public-holidays/reminders']) {
+    assert.equal(bypassesSessionCheck(path), true, path)
+  }
+  assert.equal(bypassesSessionCheck('/api/leave/transition-plan-reminders-x'), false)
+  assert.equal(bypassesSessionCheck('/api/projects/notification-digests/extra'), false)
+  assert.equal(bypassesSessionCheck('/api/payroll/public-holidays'), false)
 })
 
 test('existing public paths are unchanged', () => {
