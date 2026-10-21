@@ -548,9 +548,11 @@ export async function sendMappingEmails(actor: WeeklyActor, now: Date, send: Wee
     if (!person || isOutsideRedesign(person)) return []
     const mapping = mappingOf(userId, assignments)
     if (mapping.leads.length + mapping.reports.length + mapping.peers.length === 0) return []
+    // Who from the C-suite evaluates this person at the end of the quarter.
+    const cSuite = [...new Set(assignments.filter((a) => a.relationshipType === 'C_LEVEL' && a.evaluateeId === userId).map((a) => a.evaluatorId))]
     return [{
       userId, kind: 'weekly-mapping' as const, dedupeKey: `weekly-mapping:${period.id}:${userId}:${now.toISOString().slice(0, 10)}`,
-      render: (name: string) => renderMappingEmail({ name, periodName: period.name, leads: names(mapping.leads), reports: names(mapping.reports), peers: names(mapping.peers), deadline, appUrl }),
+      render: (name: string) => renderMappingEmail({ name, periodName: period.name, leads: names(mapping.leads), reports: names(mapping.reports), peers: names(mapping.peers), cSuite: names(cSuite), deadline, appUrl }),
     }]
   })
   const result = await deliverOnce(messages, send)
