@@ -34,7 +34,7 @@ async function prepare(actor: WeeklyActor, input: FormInput, now: Date) {
 }
 
 /** Same row shape as the classic form; a department form is written for every member of the pool. */
-export async function writeFormRows(tx: Prisma.TransactionClient, evaluatorId: string, cycle: CycleWithPeriod, unit: Pick<FormUnit, 'evaluateeIds'>, responses: Responses, submittedAt: Date | null): Promise<void> {
+export async function writeFormRows(tx: Prisma.TransactionClient, evaluatorId: string, cycle: Pick<CycleWithPeriod, 'periodId'>, unit: Pick<FormUnit, 'evaluateeIds'>, responses: Responses, submittedAt: Date | null): Promise<void> {
   for (const evaluateeId of unit.evaluateeIds) {
     for (const response of responses) {
       const where = {

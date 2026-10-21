@@ -14,21 +14,22 @@ const RELATIONSHIP_LABELS: Record<TableRelationshipTypeValue, string> = {
   PEER: 'As a peer', CROSS_DEPARTMENT: 'Cross-department', SELF: 'Self',
 }
 
-function TablesPanel({ kind }: { kind: FormTableKind }) {
+function TablesPanel({ kind, periodId }: { kind: FormTableKind; periodId?: string }) {
   const [data, setData] = useState<FormTablesResponse | null>(null)
   const load = useCallback(async () => {
     try {
-      setData(await weeklyRequest<FormTablesResponse>(`/api/admin/weekly/form-tables?kind=${kind}`))
+      const quarter = periodId ? `&periodId=${encodeURIComponent(periodId)}` : ''
+      setData(await weeklyRequest<FormTablesResponse>(`/api/admin/weekly/form-tables?kind=${kind}${quarter}`))
     } catch (e) {
       toast.error(errorMessage(e, 'Could not load the evaluations'))
     }
-  }, [kind])
+  }, [kind, periodId])
   useEffect(() => {
     void load()
   }, [load])
 
   if (!data) return <p className="text-sm text-muted-foreground">Loading…</p>
-  if (!data.cycle) return <p className="text-sm text-muted-foreground">No quarter is running on weekly evaluations.</p>
+  if (!data.quarter) return <p className="text-sm text-muted-foreground">No quarter is running on weekly evaluations.</p>
   if (data.tables.length === 0) {
     return <p className="text-sm text-muted-foreground">{kind === 'HR' ? 'You have no HR evaluations this quarter.' : 'No partner has evaluations mapped this quarter.'}</p>
   }
@@ -42,7 +43,7 @@ function TablesPanel({ kind }: { kind: FormTableKind }) {
             <h2 className="font-semibold">
               {kind === 'HR' ? 'HR evaluation' : `${table.evaluator.name} · ${RELATIONSHIP_LABELS[table.relationshipType]}`}
             </h2>
-            <FormTable kind={kind} table={table} editable={data.open && !data.locked} />
+            <FormTable kind={kind} table={table} editable={data.open && !data.locked} periodId={periodId} />
           </CardContent>
         </Card>
       ))}
@@ -50,8 +51,11 @@ function TablesPanel({ kind }: { kind: FormTableKind }) {
   )
 }
 
-/** The round's Quarter-end forms tab: HR's own HR evaluations, and the partners' evaluations it fills in on their behalf. */
-export function QuarterEvaluationsWorkspace() {
+/**
+ * The round's Quarter-end forms tab: HR's own HR evaluations, and the partners' evaluations it fills in on their behalf.
+ * `periodId`: an earlier quarter HR is finishing; the running round's when left out.
+ */
+export function QuarterEvaluationsWorkspace({ periodId }: { periodId?: string } = {}) {
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground">Score everyone in one table, 1 to 4 per question. Rows save as you go; submit a row when it is complete.</p>
@@ -60,10 +64,10 @@ export function QuarterEvaluationsWorkspace() {
           <TabsTrigger value="hr">HR evaluations</TabsTrigger>
           <TabsTrigger value="partners">Partner evaluations</TabsTrigger>
         </TabsList>
-        <TabsContent value="hr" className="pt-4"><TablesPanel kind="HR" /></TabsContent>
+        <TabsContent value="hr" className="pt-4"><TablesPanel kind="HR" periodId={periodId} /></TabsContent>
         <TabsContent value="partners" className="pt-4">
           <p className="mb-4 text-sm text-muted-foreground">Filled in by HR on the partners’ behalf. The partners do not see these on their own accounts.</p>
-          <TablesPanel kind="PARTNER" />
+          <TablesPanel kind="PARTNER" periodId={periodId} />
         </TabsContent>
       </Tabs>
     </div>

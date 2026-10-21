@@ -12,7 +12,8 @@ const STATUS_LABELS: Record<FormStatusValue, string> = {
 }
 const SCORES = [1, 2, 3, 4] as const
 
-interface FormTableProps { kind: FormTableKind; table: FormTableView; editable: boolean }
+/** `periodId`: an earlier quarter HR is finishing; the running round's when left out. */
+interface FormTableProps { kind: FormTableKind; table: FormTableView; editable: boolean; periodId?: string }
 
 const isComplete = (row: FormTableRow, questionIds: readonly string[]) => questionIds.every((id) => row.ratings[id] !== null)
 const totalOf = (row: FormTableRow) => {
@@ -21,7 +22,7 @@ const totalOf = (row: FormTableRow) => {
 }
 
 /** One row per person, a 1–4 picker per question, saved as HR goes. A submitted row re-submits on every change. */
-export function FormTable({ kind, table, editable }: FormTableProps) {
+export function FormTable({ kind, table, editable, periodId }: FormTableProps) {
   const [rows, setRowsState] = useState<FormTableRow[]>(table.rows)
   const [busy, setBusyState] = useState<Set<string>>(new Set())
   // Refs hold the latest rows and in-flight saves, so a long "Submit all" never sends a row's older ratings.
@@ -48,6 +49,7 @@ export function FormTable({ kind, table, editable }: FormTableProps) {
         body: {
           kind, evaluatorId: table.evaluator.id, relationshipType: table.relationshipType, evaluateeId: row.evaluateeId, submit,
           ratings: table.questions.map((q) => ({ questionId: q.id, questionSource: q.source, ratingValue: row.ratings[q.id] })),
+          ...(periodId ? { periodId } : {}),
         },
       })
       replace({ ...row, status: result.status })

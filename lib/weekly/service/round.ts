@@ -19,6 +19,7 @@ import { formsProgress } from './form-tables'
 import { deliverSafely, type WeeklySendMail } from './notifications'
 import { roundHealth, roundOpenedMessages } from './round-notices'
 import { formsOpenDate, formsOpenFor } from './forms'
+import { earlierQuarters } from './earlier-quarter'
 import { formatKarachiDate } from '../format'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -41,13 +42,15 @@ export async function periodRoundStage(periodId: string): Promise<RoundStage | n
   return cycle ? stageOf(cycle) : null
 }
 
+/** The weekly rounds, newest first, then the earlier quarters (run on the earlier evaluations) so all of them are here. */
 export async function roundsList(actor: WeeklyActor): Promise<RoundSummary[]> {
   assertHr(actor)
   const cycles = await prisma.weeklyCycle.findMany({ orderBy: { weekOneStartsOn: 'desc' }, select: { id: true } })
-  return Promise.all(cycles.map(async ({ id }) => {
+  const rounds = await Promise.all(cycles.map(async ({ id }) => {
     const cycle = await loadCycle(id)
     return { periodId: cycle.periodId, cycleId: cycle.id, name: cycle.period.name, stage: await stageOf(cycle) }
   }))
+  return [...rounds, ...(await earlierQuarters())]
 }
 
 export interface SetupRoundInput { name: string; startDate: string; endDate: string; weekOneStartsOn: string; questionWeeks?: number; reviewDeadline?: string }
@@ -293,10 +296,24 @@ export async function openRound(actor: WeeklyActor, periodId: string, now: Date,
  * HR locks a round once it is open: answers, lists and forms can no longer change, and the lists are kept as they are
  * now (the same snapshot the Periods page took). Unlocking an old quarter is refused while another one is active.
  */
+/**
+ * Locks or unlocks a round. For an earlier quarter (no weekly round) this is how HR closes it, once its quarter-end
+ * evaluations are in, and reopens it to correct one.
+ */
 export async function setRoundLock(actor: WeeklyActor, periodId: string, locked: boolean): Promise<void> {
   assertHr(actor)
   const cycle = await cycleForPeriod(periodId)
-  if (!cycle) throw new WeeklyError('This quarter has no evaluation round', 404)
+  if (!cycle) {
+    const period = await prisma.evaluationPeriod.findUnique({ where: { id: periodId }, select: { isLocked: true } })
+    if (!period) throw new WeeklyError('Quarter not found', 404)
+    if (period.isLocked === locked) throw new WeeklyError(locked ? 'This quarter is already closed' : 'This quarter is not closed', 409)
+    await prisma.$transaction(async (tx) => {
+      if (locked) await snapshotEvaluationPeriodAssignments(periodId, tx)
+      await tx.evaluationPeriod.update({ where: { id: periodId }, data: { isLocked: locked } })
+    }, { timeout: 60_000 })
+    await recordAudit(prisma, { actorId: actor.id, actorRole: 'HR', action: locked ? 'EARLIER_QUARTER_CLOSE' : 'EARLIER_QUARTER_REOPEN', objectType: 'EvaluationPeriod', objectId: periodId })
+    return
+  }
   const stage = await stageOf(cycle)
   if (stage === 'DRAFT' || stage === 'REVIEW') throw new WeeklyError('Lock a round once it is open', 409)
   const period = await prisma.evaluationPeriod.findUniqueOrThrow({ where: { id: periodId }, select: { isLocked: true, isActive: true } })

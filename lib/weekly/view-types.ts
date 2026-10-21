@@ -191,7 +191,15 @@ export interface FormTableView {
   rows: FormTableRow[]
 }
 export interface FormTableQuestion { id: string; source: 'GLOBAL' | 'LEAD'; text: string; ratingDescriptions: Record<'1' | '2' | '3' | '4', string | null> }
-export interface FormTablesResponse { cycle: CycleSummary | null; open: boolean; locked: boolean; opensAt: string | null; tables: FormTableView[] }
+export interface FormTablesResponse {
+  cycle: CycleSummary | null
+  /** The quarter the tables are for: the running round's, or an earlier quarter HR is finishing. */
+  quarter: { periodId: string; name: string; earlier: boolean } | null
+  open: boolean
+  locked: boolean
+  opensAt: string | null
+  tables: FormTableView[]
+}
 export interface FormDetailResponse extends FormSummaryView { open: boolean; questions: FormQuestionView[]; fourRatings: { max: number; used: number } | null }
 
 export interface DropCandidateView { evaluatee: PersonRef; perspective: Perspective; assignments: number }
@@ -317,7 +325,19 @@ export interface ReviewStageView {
 
 export type RoundStageValue = 'DRAFT' | 'REVIEW' | 'OPEN' | 'CLOSED' | 'RELEASED'
 export type RoundAction = 'open-review' | 'open-round' | 'close-round' | 'release'
-export interface RoundSummary { periodId: string; cycleId: string; name: string; stage: RoundStageValue }
+/** `earlier`: a quarter run on the earlier evaluations (no weekly round); cycleId is empty and stage is OPEN until HR closes it. */
+export interface RoundSummary { periodId: string; cycleId: string; name: string; stage: RoundStageValue; earlier?: boolean }
+
+/** A quarter run on the earlier evaluations, finished here: its quarter-end evaluations, then close and release. */
+export interface EarlierQuarterView {
+  kind: 'earlier'
+  periodId: string
+  name: string
+  startDate: string
+  endDate: string
+  locked: boolean
+  forms: { total: number; done: number }
+}
 export interface RoundNextStep { action: RoundAction; label: string; sentence: string }
 export interface RoundChecklistItem { key: string; label: string; done: boolean; count?: number; tab: 'overview' | 'people' | 'progress' | 'review' | 'self-reviews' | 'forms' | 'results' | 'advanced' }
 export interface RoundView {

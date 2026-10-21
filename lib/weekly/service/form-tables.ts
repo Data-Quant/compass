@@ -28,9 +28,39 @@ function unitOf(assignment: ResolvedEvaluationAssignment, evaluateeIds: string[]
   return { evaluateeId: assignment.evaluateeId, evaluateeIds, name: person?.name ?? 'Unknown person', position: person?.position ?? null, department: person?.department ?? null }
 }
 
-/** People this quarter evaluates: not leavers, late joiners (unless HR opted them in), 3E or named leaders. */
-async function evaluatedIds(cycle: CycleWithPeriod, ids: Iterable<string>, now: Date): Promise<Set<string>> {
+/**
+ * The quarter the tables work on: the running round's, a chosen round's, or an earlier quarter (one run on the earlier
+ * evaluations, with no weekly round) that HR is finishing here. An earlier quarter is open until HR closes (locks) it.
+ */
+interface TableScope { periodId: string; name: string; cycle: CycleWithPeriod | null; open: boolean; opensAt: string | null; endDate: Date }
+
+function cycleScope(cycle: CycleWithPeriod, now: Date): TableScope {
+  return { periodId: cycle.periodId, name: cycle.period.name, cycle, open: formsOpenFor(cycle, now), opensAt: formsOpenDate(cycle).toISOString(), endDate: cycle.period.endDate }
+}
+
+async function scopeFor(periodId: string | undefined, now: Date): Promise<TableScope | null> {
+  if (!periodId) {
+    const running = await findRunningCycle()
+    return running ? cycleScope(running, now) : null
+  }
+  const row = await prisma.weeklyCycle.findUnique({ where: { periodId }, select: { id: true } })
+  if (row) return cycleScope(await loadCycle(row.id), now)
+  const period = await prisma.evaluationPeriod.findUnique({ where: { id: periodId }, select: { name: true, endDate: true } })
+  if (!period) throw new WeeklyError('Quarter not found', 404)
+  return { periodId, name: period.name, cycle: null, open: true, opensAt: null, endDate: period.endDate }
+}
+
+/**
+ * People this quarter evaluates: not leavers, late joiners (unless HR opted them in), 3E or named leaders. An earlier
+ * quarter keeps its own rules, as of its last day: nobody who had left by then or joined after it.
+ */
+async function evaluatedIds(scope: TableScope, ids: Iterable<string>, now: Date): Promise<Set<string>> {
   const people = await loadPeople(ids)
+  const cycle = scope.cycle
+  if (!cycle) {
+    const asOf = { now: scope.endDate, opensAt: scope.endDate, optedIn: false }
+    return new Set([...people.values()].filter((p) => !evaluateeExclusion(p, asOf)).map((p) => p.id))
+  }
   const optIns = new Set((await prisma.weeklyParticipantOverride.findMany({ where: { cycleId: cycle.id, optIn: true }, select: { userId: true } })).map((o) => o.userId))
   return new Set([...people.values()]
     .filter((p) => !isOutsideRedesign(p) && !evaluateeExclusion(p, { now, opensAt: roundOpensAt(cycle), optedIn: optIns.has(p.id) }))
@@ -102,14 +132,14 @@ async function rowsFor(periodId: string, evaluatorId: string, type: Relationship
   })
 }
 
-async function tablesFor(cycle: CycleWithPeriod, evaluator: PersonRef, types: readonly RelationshipType[], now: Date): Promise<FormTableView[]> {
-  const assignments = await getResolvedEvaluationAssignments(cycle.periodId, { evaluatorId: evaluator.id, includeUsers: true })
-  const evaluated = await evaluatedIds(cycle, assignments.map((a) => a.evaluateeId), now)
+async function tablesFor(scope: TableScope, evaluator: PersonRef, types: readonly RelationshipType[], now: Date): Promise<FormTableView[]> {
+  const assignments = await getResolvedEvaluationAssignments(scope.periodId, { evaluatorId: evaluator.id, includeUsers: true })
+  const evaluated = await evaluatedIds(scope, assignments.map((a) => a.evaluateeId), now)
   const tables = await Promise.all(TABLE_ORDER.filter((type) => types.includes(type)).map(async (type) => {
     const units = tableUnits(type, assignments, evaluated)
     if (units.length === 0) return null
-    const questions = await tableQuestions(cycle.periodId, evaluator.id, type, units[0].evaluateeId)
-    return { evaluator, relationshipType: type, questions, rows: await rowsFor(cycle.periodId, evaluator.id, type, units, questions) }
+    const questions = await tableQuestions(scope.periodId, evaluator.id, type, units[0].evaluateeId)
+    return { evaluator, relationshipType: type, questions, rows: await rowsFor(scope.periodId, evaluator.id, type, units, questions) }
   }))
   return tables.filter((t): t is FormTableView => t !== null)
 }
@@ -118,14 +148,18 @@ async function isLocked(periodId: string): Promise<boolean> {
   return (await prisma.evaluationPeriod.findUnique({ where: { id: periodId }, select: { isLocked: true } }))?.isLocked ?? false
 }
 
-export async function formTables(actor: WeeklyActor, kind: FormTableKind, now: Date): Promise<FormTablesResponse> {
+/** The tables for the running round, or for `periodId` (a chosen round, or an earlier quarter HR is finishing). */
+export async function formTables(actor: WeeklyActor, kind: FormTableKind, now: Date, periodId?: string): Promise<FormTablesResponse> {
   assertHr(actor)
-  const cycle = await findRunningCycle()
-  if (!cycle) return { cycle: null, open: false, locked: false, opensAt: null, tables: [] }
+  const scope = await scopeFor(periodId, now)
+  if (!scope) return { cycle: null, quarter: null, open: false, locked: false, opensAt: null, tables: [] }
   const tables = kind === 'HR'
-    ? await tablesFor(cycle, { id: actor.id, name: actor.name, position: actor.position }, ['HR'], now)
-    : (await Promise.all((await partnerEvaluators()).map((partner) => tablesFor(cycle, partner, TABLE_ORDER.filter((t) => t !== 'HR'), now)))).flat()
-  return { cycle: cycleSummary(cycle, now), open: formsOpenFor(cycle, now), locked: await isLocked(cycle.periodId), opensAt: formsOpenDate(cycle).toISOString(), tables }
+    ? await tablesFor(scope, { id: actor.id, name: actor.name, position: actor.position }, ['HR'], now)
+    : (await Promise.all((await partnerEvaluators()).map((partner) => tablesFor(scope, partner, TABLE_ORDER.filter((t) => t !== 'HR'), now)))).flat()
+  return {
+    cycle: scope.cycle ? cycleSummary(scope.cycle, now) : null, quarter: { periodId: scope.periodId, name: scope.name, earlier: scope.cycle === null },
+    open: scope.open, locked: await isLocked(scope.periodId), opensAt: scope.opensAt, tables,
+  }
 }
 
 export interface TableRowInput {
@@ -135,6 +169,8 @@ export interface TableRowInput {
   evaluateeId: string
   ratings: Array<{ questionId: string; questionSource?: 'GLOBAL' | 'LEAD'; ratingValue: number | null }>
   submit: boolean
+  /** The quarter, when it is not the running round's (an earlier quarter HR is finishing). */
+  periodId?: string
 }
 
 async function checkEvaluator(actor: WeeklyActor, input: TableRowInput): Promise<void> {
@@ -150,14 +186,16 @@ async function checkEvaluator(actor: WeeklyActor, input: TableRowInput): Promise
 export async function saveTableRow(actor: WeeklyActor, input: TableRowInput, now: Date): Promise<{ status: FormStatusValue }> {
   assertHr(actor)
   await checkEvaluator(actor, input)
-  const cycle = await findRunningCycle()
-  if (!cycle) throw new WeeklyError('There is no weekly quarter running', 409)
-  if (!formsOpenFor(cycle, now)) throw new WeeklyError(`End-of-quarter evaluations open on ${formatKarachiDate(formsOpenDate(cycle).toISOString())}`, 409)
-  if (await isLocked(cycle.periodId)) throw new WeeklyError('This quarter is locked, so its evaluations can no longer change', 409)
-  const assignment = await getResolvedEvaluationAssignmentForPair(cycle.periodId, input.evaluatorId, input.evaluateeId, input.relationshipType)
-  if (!assignment || !(await evaluatedIds(cycle, [input.evaluateeId], now)).has(input.evaluateeId)) throw new WeeklyError(NOT_FOUND, 404)
+  const scope = await scopeFor(input.periodId, now)
+  if (!scope) throw new WeeklyError('There is no weekly quarter running', 409)
+  // Locked first: a closed earlier quarter says so, rather than that its forms are not open.
+  if (await isLocked(scope.periodId)) throw new WeeklyError('This quarter is locked, so its evaluations can no longer change', 409)
+  if (!scope.open) throw new WeeklyError(scope.opensAt ? `End-of-quarter evaluations open on ${formatKarachiDate(scope.opensAt)}` : 'This quarter’s evaluations are closed', 409)
+  const assignment = await getResolvedEvaluationAssignmentForPair(scope.periodId, input.evaluatorId, input.evaluateeId, input.relationshipType)
+  if (!assignment || !(await evaluatedIds(scope, [input.evaluateeId], now)).has(input.evaluateeId)) throw new WeeklyError(NOT_FOUND, 404)
+  const periodId = scope.periodId
 
-  const questions = await tableQuestions(cycle.periodId, input.evaluatorId, input.relationshipType, input.evaluateeId)
+  const questions = await tableQuestions(periodId, input.evaluatorId, input.relationshipType, input.evaluateeId)
   const known = new Map(questions.map((q) => [q.id, q]))
   const ratings = new Map<string, number | null>()
   for (const r of input.ratings) {
@@ -168,7 +206,7 @@ export async function saveTableRow(actor: WeeklyActor, input: TableRowInput, now
   }
   if (input.submit && questions.some((q) => !ratings.get(q.id))) throw new WeeklyError('Score every question before submitting this row')
 
-  const pool = input.relationshipType === 'DEPT' ? await getDeptEvaluationPoolContext({ periodId: cycle.periodId, evaluatorId: input.evaluatorId, evaluateeId: input.evaluateeId }) : null
+  const pool = input.relationshipType === 'DEPT' ? await getDeptEvaluationPoolContext({ periodId, evaluatorId: input.evaluatorId, evaluateeId: input.evaluateeId }) : null
   const unit = {
     relationshipType: input.relationshipType, evaluateeId: input.evaluateeId, evaluateeIds: pool?.evaluateeIds ?? [input.evaluateeId],
     name: assignment.evaluatee?.name ?? '', position: assignment.evaluatee?.position ?? null, department: assignment.evaluatee?.department ?? null,
@@ -176,18 +214,18 @@ export async function saveTableRow(actor: WeeklyActor, input: TableRowInput, now
   const responses: FormInput['responses'] = [...ratings].map(([questionId, ratingValue]) => ({ questionId, questionSource: known.get(questionId)!.source, ratingValue, textResponse: null }))
 
   await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`weekly-form:${cycle.periodId}:${input.evaluatorId}`}))::text`
-    if (input.relationshipType === 'HR') await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`weekly-hr-form:${cycle.periodId}:${input.evaluateeId}`}))::text`
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`weekly-form:${periodId}:${input.evaluatorId}`}))::text`
+    if (input.relationshipType === 'HR') await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`weekly-hr-form:${periodId}:${input.evaluateeId}`}))::text`
     // Checked under the locks, so a draft save racing a submit can never un-submit the row.
-    const saved = await savedRows(tx, cycle.periodId, input.relationshipType === 'HR' ? null : input.evaluatorId, [input.evaluateeId], questions)
+    const saved = await savedRows(tx, periodId, input.relationshipType === 'HR' ? null : input.evaluatorId, [input.evaluateeId], questions)
     if (input.relationshipType === 'HR' && saved.some((s) => s.evaluatorId !== input.evaluatorId && s.submittedAt)) throw new WeeklyError(HR_SLOT_CLOSED, 409)
     if (!input.submit && saved.some((s) => s.evaluatorId === input.evaluatorId && s.submittedAt)) throw new WeeklyError('This row was submitted. Submit it again to change it.', 409)
     if (input.submit && (input.relationshipType === 'C_LEVEL' || input.relationshipType === 'DEPT')) {
-      await assertFourRatingQuota(input.evaluatorId, cycle.periodId, { ...unit, relationshipType: input.relationshipType }, responses)
+      await assertFourRatingQuota(input.evaluatorId, periodId, { ...unit, relationshipType: input.relationshipType }, responses)
     }
-    await writeFormRows(tx, input.evaluatorId, cycle, unit, responses, input.submit ? now : null)
+    await writeFormRows(tx, input.evaluatorId, scope, unit, responses, input.submit ? now : null)
     await recordAudit(tx, {
-      cycleId: cycle.id, actorId: actor.id, actorRole: 'HR', action: input.submit ? 'TABLE_SUBMIT' : 'TABLE_SAVE', objectType: 'User', objectId: input.evaluateeId,
+      cycleId: scope.cycle?.id, actorId: actor.id, actorRole: 'HR', action: input.submit ? 'TABLE_SUBMIT' : 'TABLE_SAVE', objectType: 'User', objectId: input.evaluateeId,
       after: { kind: input.kind, evaluatorId: input.evaluatorId, relationshipType: input.relationshipType },
     })
   }, { timeout: 30_000 })
@@ -214,13 +252,12 @@ export async function formsProgress(periodId: string, now: Date = new Date()): P
     done += finished
     if (finished < units.length) pending.add(evaluatorId)
   }
-  const cycleRow = partners.length ? await prisma.weeklyCycle.findUnique({ where: { periodId }, select: { id: true } }) : null
+  const scope = partners.length ? await scopeFor(periodId, now) : null
   let partnersPending = false
-  if (cycleRow) {
-    const cycle = await loadCycle(cycleRow.id)
+  if (scope) {
     for (const partner of partners) {
       const mine = assignments.filter((a) => a.evaluatorId === partner.id)
-      const evaluated = await evaluatedIds(cycle, mine.map((a) => a.evaluateeId), now)
+      const evaluated = await evaluatedIds(scope, mine.map((a) => a.evaluateeId), now)
       for (const type of TABLE_ORDER.filter((t) => t !== 'HR')) {
         const units = tableUnits(type, mine, evaluated)
         if (units.length === 0) continue

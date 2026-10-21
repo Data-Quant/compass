@@ -73,6 +73,8 @@ export const formTableRowSchema = z.object({
   evaluateeId: z.string().min(1),
   ratings: z.array(z.object({ questionId: z.string().min(1), questionSource: z.enum(['GLOBAL', 'LEAD']).default('GLOBAL'), ratingValue: z.number().int().min(1).max(4).nullable() }).strict()).max(50),
   submit: z.boolean(),
+  // An earlier quarter HR is finishing; the running round's when left out.
+  periodId: z.string().min(1).optional(),
 }).strict()
 export const pairWindowSchema = z.object({
   cycleId: z.string().min(1), evaluatorId: z.string().min(1), evaluateeId: z.string().min(1),
