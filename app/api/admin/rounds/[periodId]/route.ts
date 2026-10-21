@@ -4,6 +4,7 @@ import { guardWeeklyMutation, requireWeeklySession } from '@/lib/weekly/http'
 import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
 import { roundActionSchema, setupRoundSchema } from '@/lib/weekly/schemas'
 import { actorFromUser } from '@/lib/weekly/service/context'
+import { earlierQuarterView, isEarlierQuarter } from '@/lib/weekly/service/earlier-quarter'
 import { openReviewStage } from '@/lib/weekly/service/review-stage'
 import { deleteRound, openRound, roundView, setRoundLock, updateRound } from '@/lib/weekly/service/round'
 
@@ -14,7 +15,10 @@ type Params = { params: Promise<{ periodId: string }> }
 export async function GET(_request: NextRequest, { params }: Params) {
   try {
     const user = await requireWeeklySession({ admin: true })
-    return NextResponse.json(await roundView(actorFromUser(user), (await params).periodId, new Date()))
+    const periodId = (await params).periodId
+    // A quarter run on the earlier evaluations has no weekly round: it gets the short view to finish and close it.
+    if (await isEarlierQuarter(periodId)) return NextResponse.json(await earlierQuarterView(actorFromUser(user), periodId))
+    return NextResponse.json(await roundView(actorFromUser(user), periodId, new Date()))
   } catch (error) {
     return weeklyErrorResponse(error)
   }

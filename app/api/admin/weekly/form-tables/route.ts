@@ -11,7 +11,8 @@ export async function GET(request: NextRequest) {
   try {
     const user = await requireWeeklySession({ admin: true })
     const kind = formTableKindSchema.parse(request.nextUrl.searchParams.get('kind') ?? 'HR')
-    return NextResponse.json(await formTables(actorFromUser(user), kind, new Date()))
+    const periodId = request.nextUrl.searchParams.get('periodId') || undefined
+    return NextResponse.json(await formTables(actorFromUser(user), kind, new Date(), periodId))
   } catch (error) {
     return weeklyErrorResponse(error)
   }

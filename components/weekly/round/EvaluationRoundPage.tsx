@@ -13,7 +13,8 @@ import { formatCalendarDate, karachiCalendarDate } from '@/lib/weekly/calendar'
 import { formatKarachiDate } from '@/lib/weekly/format'
 import { ROUND_STAGE_LABELS } from '@/lib/weekly/round-stage'
 import { cn } from '@/lib/utils'
-import type { RoundChecklistItem, RoundSummary, RoundView, WeeklyMeResponse } from '@/lib/weekly/view-types'
+import type { EarlierQuarterView, RoundChecklistItem, RoundSummary, RoundView, WeeklyMeResponse } from '@/lib/weekly/view-types'
+import { EarlierQuarterPanel } from './EarlierQuarterPanel'
 import { QuarterEvaluationsWorkspace } from '../form-tables/QuarterEvaluationsWorkspace'
 import { AiModelTab } from '../admin/AiModelTab'
 import { BankQuestions } from '../admin/BankQuestions'
@@ -67,6 +68,8 @@ export function EvaluationRoundPage() {
   const [rounds, setRounds] = useState<RoundSummary[] | null>(null)
   const [periodId, setPeriodId] = useState('')
   const [view, setView] = useState<RoundView | null>(null)
+  // A quarter run on the earlier evaluations: the short view to finish and close it.
+  const [earlier, setEarlier] = useState<EarlierQuarterView | null>(null)
   const [tab, setTab] = useState<Tab>('overview')
   const [advanced, setAdvanced] = useState('content')
   const [settingUp, setSettingUp] = useState(false)
@@ -81,16 +84,28 @@ export function EvaluationRoundPage() {
     try {
       const result = await weeklyRequest<{ rounds: RoundSummary[] }>('/api/admin/rounds')
       setRounds(result.rounds)
-      const preferred = select ?? result.rounds.find((r) => r.stage === 'OPEN')?.periodId ?? result.rounds[0]?.periodId ?? ''
+      // A weekly round first (the open one, else the newest); an earlier quarter only when there is no weekly round.
+      const weekly = result.rounds.filter((r) => !r.earlier)
+      const preferred = select ?? weekly.find((r) => r.stage === 'OPEN')?.periodId ?? weekly[0]?.periodId ?? result.rounds[0]?.periodId ?? ''
       setPeriodId(preferred)
     } catch (e) {
       toast.error(errorMessage(e, 'Could not load the rounds'))
     }
   }, [])
   const loadView = useCallback(async () => {
-    if (!periodId) return setView(null)
+    if (!periodId) {
+      setEarlier(null)
+      return setView(null)
+    }
     try {
-      setView(await weeklyRequest<RoundView>(`/api/admin/rounds/${periodId}`))
+      const result = await weeklyRequest<RoundView | EarlierQuarterView>(`/api/admin/rounds/${periodId}`)
+      if ('kind' in result && result.kind === 'earlier') {
+        setView(null)
+        setEarlier(result)
+      } else {
+        setEarlier(null)
+        setView(result as RoundView)
+      }
     } catch (e) {
       toast.error(errorMessage(e, 'Could not load the round'))
     }
@@ -168,8 +183,9 @@ export function EvaluationRoundPage() {
         <div>
           <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Evaluation round</p>
           <h1 className="mt-1 flex flex-wrap items-center gap-3 font-display text-3xl font-bold tracking-tight text-foreground">
-            {view ? view.name : 'Evaluations'}
+            {view?.name ?? earlier?.name ?? 'Evaluations'}
             {view && <Badge variant="outline" className="font-sans text-xs font-medium">{ROUND_STAGE_LABELS[view.stage]}</Badge>}
+            {earlier && <Badge variant="outline" className="font-sans text-xs font-medium">{earlier.locked ? 'Earlier quarter · closed' : 'Earlier quarter'}</Badge>}
             {view?.locked && <Badge variant="outline" className="gap-1 font-sans text-xs font-medium"><Lock className="h-3 w-3" aria-hidden /> Locked</Badge>}
           </h1>
           <p className="mt-1.5 text-muted-foreground">Run the quarter&apos;s evaluations from here, one step at a time.</p>
@@ -178,7 +194,13 @@ export function EvaluationRoundPage() {
           {rounds && rounds.length > 1 && (
             <Select value={periodId} onValueChange={setPeriodId}>
               <SelectTrigger className="w-56" aria-label="Round"><SelectValue /></SelectTrigger>
-              <SelectContent>{rounds.map((r) => <SelectItem key={r.periodId} value={r.periodId}>{r.name} · {ROUND_STAGE_LABELS[r.stage]}</SelectItem>)}</SelectContent>
+              <SelectContent>
+                {rounds.map((r) => (
+                  <SelectItem key={r.periodId} value={r.periodId}>
+                    {r.name} · {r.earlier ? (r.stage === 'CLOSED' ? 'Earlier quarter, closed' : 'Earlier quarter') : ROUND_STAGE_LABELS[r.stage]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
             </Select>
           )}
           <Button variant="outline" onClick={() => setSettingUp(true)}>Set up a new round</Button>
@@ -192,6 +214,8 @@ export function EvaluationRoundPage() {
           <Button onClick={() => setSettingUp(true)}>Set up round</Button>
         </CardContent></Card>
       )}
+
+      {earlier && <EarlierQuarterPanel view={earlier} onChanged={async () => { await loadRounds(earlier.periodId); await loadView() }} />}
 
       {view && (
         <Card className="overflow-hidden">

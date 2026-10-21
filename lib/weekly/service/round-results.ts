@@ -11,15 +11,21 @@ import { publishResults } from './close'
 import { assertHr, byName, type WeeklyActor } from './context'
 import { WeeklyError } from './errors'
 
-async function cycleOf(periodId: string) {
+/**
+ * Whether the quarter's scores are final, and when its reports were released. A weekly round is final once closed; an
+ * earlier quarter (run on the earlier evaluations, no weekly round) once HR closes it by locking it.
+ */
+async function stateOf(periodId: string): Promise<{ cycleId: string | null; closed: boolean; releasedAt: Date | null }> {
   const cycle = await prisma.weeklyCycle.findUnique({ where: { periodId }, select: { id: true, status: true, resultsPublishedAt: true } })
-  if (!cycle) throw new WeeklyError('This quarter has no evaluation round', 404)
-  return cycle
+  if (cycle) return { cycleId: cycle.id, closed: cycle.status === 'CLOSED', releasedAt: cycle.resultsPublishedAt }
+  const period = await prisma.evaluationPeriod.findUnique({ where: { id: periodId }, select: { isLocked: true } })
+  if (!period) throw new WeeklyError('Quarter not found', 404)
+  return { cycleId: null, closed: period.isLocked, releasedAt: null }
 }
 
 export async function roundResults(actor: WeeklyActor, periodId: string): Promise<RoundResultsResponse> {
   assertHr(actor)
-  const cycle = await cycleOf(periodId)
+  const state = await stateOf(periodId)
   const [users, assignments, reports, emails] = await Promise.all([
     prisma.user.findMany({ select: { id: true, name: true, position: true, department: true } }),
     getResolvedEvaluationAssignments(periodId),
@@ -38,7 +44,7 @@ export async function roundResults(actor: WeeklyActor, periodId: string): Promis
       }
     })
     .sort((a, b) => byName(a.person, b.person))
-  return { released: cycle.resultsPublishedAt?.toISOString() ?? null, closed: cycle.status === 'CLOSED', emailsOn: areWeeklyEmailsEnabled(), rows }
+  return { released: state.releasedAt?.toISOString() ?? null, closed: state.closed, emailsOn: areWeeklyEmailsEnabled(), rows }
 }
 
 /**
@@ -47,8 +53,8 @@ export async function roundResults(actor: WeeklyActor, periodId: string): Promis
  */
 export async function releaseReport(actor: WeeklyActor, periodId: string, employeeId: string): Promise<{ status: 'PENDING' | 'SENT' | 'FAILED' }> {
   assertHr(actor)
-  const cycle = await cycleOf(periodId)
-  if (cycle.status !== 'CLOSED') throw new WeeklyError('Close the round before releasing reports', 409)
+  const state = await stateOf(periodId)
+  if (!state.closed) throw new WeeklyError(state.cycleId ? 'Close the round before releasing reports' : 'Close the quarter before releasing reports', 409)
   await queueEmails(periodId, [employeeId])
   const pending = await prisma.emailQueue.findFirst({ where: { employeeId, report: { periodId }, emailStatus: 'PENDING' }, orderBy: { createdAt: 'desc' } })
   if (pending && areWeeklyEmailsEnabled()) {
@@ -59,13 +65,14 @@ export async function releaseReport(actor: WeeklyActor, periodId: string, employ
     }
   }
   const latest = await prisma.emailQueue.findFirst({ where: { employeeId, report: { periodId } }, orderBy: { createdAt: 'desc' }, select: { emailStatus: true } })
-  await recordAudit(prisma, { cycleId: cycle.id, actorId: actor.id, actorRole: 'HR', action: 'REPORT_RELEASE', objectType: 'User', objectId: employeeId })
+  await recordAudit(prisma, { cycleId: state.cycleId ?? undefined, actorId: actor.id, actorRole: 'HR', action: 'REPORT_RELEASE', objectType: 'User', objectId: employeeId })
   return { status: latest?.emailStatus ?? 'PENDING' }
 }
 
-/** Closed → Released, once the reports are out: from now on people can challenge their results. */
+/** Closed → Released, once the reports are out. An earlier quarter has no round to mark; its sent reports are the record. */
 export async function markRoundReleased(actor: WeeklyActor, periodId: string, now: Date): Promise<{ releasedAt: string }> {
   assertHr(actor)
-  const cycle = await cycleOf(periodId)
-  return publishResults(actor, cycle.id, now)
+  const state = await stateOf(periodId)
+  if (!state.cycleId) return { releasedAt: now.toISOString() }
+  return publishResults(actor, state.cycleId, now)
 }
