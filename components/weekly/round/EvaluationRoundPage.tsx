@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { formatCalendarDate, karachiCalendarDate } from '@/lib/weekly/calendar'
 import { formatKarachiDate } from '@/lib/weekly/format'
 import { ROUND_STAGE_LABELS } from '@/lib/weekly/round-stage'
 import { cn } from '@/lib/utils'
@@ -46,6 +47,21 @@ function tabCounts(view: RoundView): Partial<Record<Tab, number>> {
   }
 }
 
+/** A stored date as the YYYY-MM-DD the date inputs take, in Karachi. */
+const isoDay = (iso: string) => formatCalendarDate(karachiCalendarDate(new Date(iso)))
+
+/** What deleting a draft undoes, so HR decides knowingly. */
+function deleteMessage(view: RoundView): string {
+  const draft = view.draft ?? { requests: 0, confirmations: 0, listChanges: 0 }
+  const lost = [
+    draft.requests ? `${draft.requests} list change ${draft.requests === 1 ? 'request' : 'requests'}` : '',
+    draft.confirmations ? `${draft.confirmations} ${draft.confirmations === 1 ? 'person’s' : 'people’s'} “my lists look right”` : '',
+    draft.listChanges ? `${draft.listChanges} list ${draft.listChanges === 1 ? 'change' : 'changes'} approved for this round (peer changes are undone; lead and team changes stay in the org chart)` : '',
+  ].filter(Boolean)
+  const what = lost.length ? ` This also removes ${lost.join(', ')}.` : ''
+  return `The quarter and its round are removed, so you can set it up again and send the list emails afresh.${what} Nothing has been asked yet, so no answers are lost.`
+}
+
 /** UX spec, section 4: HR runs the whole round from here. It always says what is next, with one button for it. */
 export function EvaluationRoundPage() {
   const [rounds, setRounds] = useState<RoundSummary[] | null>(null)
@@ -54,6 +70,8 @@ export function EvaluationRoundPage() {
   const [tab, setTab] = useState<Tab>('overview')
   const [advanced, setAdvanced] = useState('content')
   const [settingUp, setSettingUp] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [locking, setLocking] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -114,6 +132,22 @@ export function EvaluationRoundPage() {
       await loadView()
     } catch (e) {
       toast.error(errorMessage(e, locked ? 'Could not lock the round' : 'Could not unlock the round'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** Deletes a round that has not opened, so HR can set it up again and send the list emails afresh. */
+  async function deleteDraft() {
+    setBusy(true)
+    try {
+      await weeklyRequest(`/api/admin/rounds/${encodeURIComponent(periodId)}`, { method: 'DELETE' })
+      toast.success('Draft deleted. Set up the round again when you are ready.')
+      setDeleting(false)
+      setView(null)
+      await loadRounds()
+    } catch (e) {
+      toast.error(errorMessage(e, 'Could not delete the draft'))
     } finally {
       setBusy(false)
     }
@@ -234,7 +268,10 @@ export function EvaluationRoundPage() {
             </div>
             <TabsContent value="overview" className="space-y-4 pt-4">
               {view.health && view.currentWeek && <RoundHealthPanel view={view} onOpen={setTab} />}
-              <RoundKeyDates view={view} />
+              <RoundKeyDates
+                view={view}
+                {...(view.stage === 'DRAFT' || view.stage === 'REVIEW' ? { onEdit: () => setEditing(true), onDelete: () => setDeleting(true) } : {})}
+              />
               {view.checklist.length === 0 && !view.health && <p className="px-1 text-sm text-muted-foreground">Nothing is waiting on you at this stage.</p>}
             </TabsContent>
             <TabsContent value="people" className="pt-4"><PeopleTab /></TabsContent>
@@ -271,6 +308,34 @@ export function EvaluationRoundPage() {
             setSettingUp(false)
             await loadRounds(id)
           }}
+        />
+      )}
+      {editing && view && (
+        <SetupRoundDialog
+          edit={{
+            periodId: view.periodId,
+            initial: {
+              name: view.name, startDate: isoDay(view.startDate), endDate: isoDay(view.endDate), weekOneStartsOn: isoDay(view.weekOneStartsOn),
+              questionWeeks: String(view.questionWeeks), reviewDeadline: view.reviewDeadline ? isoDay(view.reviewDeadline) : '',
+            },
+          }}
+          onClose={() => setEditing(false)}
+          onCreated={async () => {
+            setEditing(false)
+            await loadRounds(view.periodId)
+            await loadView()
+          }}
+        />
+      )}
+      {deleting && view && (
+        <ConfirmDialog
+          isOpen
+          title={`Delete the ${view.name} draft?`}
+          message={deleteMessage(view)}
+          confirmText="Delete draft"
+          variant="danger"
+          onConfirm={() => void deleteDraft()}
+          onClose={() => setDeleting(false)}
         />
       )}
       {locking && view && (

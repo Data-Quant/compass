@@ -2,10 +2,10 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { sendMail } from '@/lib/email'
 import { guardWeeklyMutation, requireWeeklySession } from '@/lib/weekly/http'
 import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
-import { roundActionSchema } from '@/lib/weekly/schemas'
+import { roundActionSchema, setupRoundSchema } from '@/lib/weekly/schemas'
 import { actorFromUser } from '@/lib/weekly/service/context'
 import { openReviewStage } from '@/lib/weekly/service/review-stage'
-import { openRound, roundView, setRoundLock } from '@/lib/weekly/service/round'
+import { deleteRound, openRound, roundView, setRoundLock, updateRound } from '@/lib/weekly/service/round'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,6 +15,30 @@ export async function GET(_request: NextRequest, { params }: Params) {
   try {
     const user = await requireWeeklySession({ admin: true })
     return NextResponse.json(await roundView(actorFromUser(user), (await params).periodId, new Date()))
+  } catch (error) {
+    return weeklyErrorResponse(error)
+  }
+}
+
+/** Changes the quarter and weekly schedule of a round that has not opened yet. */
+export async function PUT(request: NextRequest, { params }: Params) {
+  try {
+    const user = await requireWeeklySession({ admin: true })
+    await guardWeeklyMutation(request, user.id)
+    await updateRound(actorFromUser(user), (await params).periodId, setupRoundSchema.parse(await request.json()))
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    return weeklyErrorResponse(error)
+  }
+}
+
+/** Deletes a round that has not opened yet, with its quarter, so HR can set it up again. */
+export async function DELETE(request: NextRequest, { params }: Params) {
+  try {
+    const user = await requireWeeklySession({ admin: true })
+    await guardWeeklyMutation(request, user.id)
+    await deleteRound(actorFromUser(user), (await params).periodId)
+    return NextResponse.json({ success: true })
   } catch (error) {
     return weeklyErrorResponse(error)
   }

@@ -3,8 +3,11 @@
 import { motion, useReducedMotion } from 'framer-motion'
 import { ArrowUpRight } from 'lucide-react'
 import { EASE_SOFT } from '@/components/motion/ease'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { formatKarachiDate } from '@/lib/weekly/format'
+import { roundSchedule } from '@/lib/weekly/round-schedule'
+import { RoundScheduleSummary } from './RoundScheduleSummary'
 import { cn } from '@/lib/utils'
 import type { RoundChecklistItem, RoundView } from '@/lib/weekly/view-types'
 
@@ -69,20 +72,27 @@ export function RoundHealthPanel({ view, onOpen }: { view: RoundView; onOpen: (t
   )
 }
 
-/** The round's dates at a glance. */
-export function RoundKeyDates({ view }: { view: RoundView }) {
+/** The round's dates: the schedule people see, date by date, then the quarter and the list review. */
+export function RoundKeyDates({ view, onEdit, onDelete }: { view: RoundView; onEdit?: () => void; onDelete?: () => void }) {
   const rows: Array<{ label: string; value: string }> = [
-    { label: 'Quarter', value: `${formatKarachiDate(view.startDate)} to ${formatKarachiDate(view.endDate)}` },
-    { label: 'Weekly questions', value: `From ${formatKarachiDate(view.weekOneStartsOn)}, ${view.questionWeeks} weeks plus 2 catch-up` },
-    ...(view.reviewOpenedAt ? [{ label: 'Review stage opened', value: formatKarachiDate(view.reviewOpenedAt) }] : []),
-    ...(view.reviewDeadline ? [{ label: 'Review stage ends', value: formatKarachiDate(view.reviewDeadline) }] : []),
-    { label: 'Round closes', value: formatKarachiDate(view.closesOn) },
+    { label: 'Quarter (for reports)', value: `${formatKarachiDate(view.startDate)} to ${formatKarachiDate(view.endDate)}` },
+    ...(view.reviewOpenedAt ? [{ label: 'List review opened', value: formatKarachiDate(view.reviewOpenedAt) }] : []),
+    ...(view.reviewDeadline ? [{ label: 'List review ends', value: formatKarachiDate(view.reviewDeadline) }] : []),
   ]
   return (
     <Card>
-      <CardContent className="p-6">
-        <p className="mb-4 text-sm font-semibold">Key dates</p>
-        <dl className="flex flex-wrap gap-x-12 gap-y-4">
+      <CardContent className="space-y-6 p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm font-semibold">Key dates</p>
+          {(onEdit || onDelete) && (
+            <div className="flex gap-2">
+              {onEdit && <Button size="sm" variant="outline" onClick={onEdit}>Change dates</Button>}
+              {onDelete && <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={onDelete}>Delete draft</Button>}
+            </div>
+          )}
+        </div>
+        <RoundScheduleSummary schedule={roundSchedule(new Date(view.weekOneStartsOn), view.questionWeeks)} />
+        <dl className="flex flex-wrap gap-x-12 gap-y-4 border-t border-border/70 pt-4">
           {rows.map((r) => (
             <div key={r.label}>
               <dt className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">{r.label}</dt>

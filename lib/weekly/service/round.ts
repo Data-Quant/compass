@@ -12,7 +12,7 @@ import type { RoundChecklistItem, RoundNextStep, RoundSummary, RoundView } from 
 import { recordAudit } from './audit'
 import { readyCompetencyCount } from './content'
 import { assertHr, loadPeople, personRef, type WeeklyActor } from './context'
-import { createCycle, loadCycle, roundOpensAt, updateCycle, type CycleWithPeriod } from './cycles'
+import { checkQuestionWeeks, checkWeekOne, createCycle, loadCycle, roundOpensAt, updateCycle, type CycleWithPeriod } from './cycles'
 import { WeeklyError } from './errors'
 import { loadAnswerRecords } from './answer-states'
 import { formsProgress } from './form-tables'
@@ -52,9 +52,8 @@ export async function roundsList(actor: WeeklyActor): Promise<RoundSummary[]> {
 
 export interface SetupRoundInput { name: string; startDate: string; endDate: string; weekOneStartsOn: string; questionWeeks?: number; reviewDeadline?: string }
 
-/** Creates the quarter and its weekly cycle together, in Draft. */
-export async function setupRound(actor: WeeklyActor, input: SetupRoundInput, now: Date): Promise<{ periodId: string; cycleId: string }> {
-  assertHr(actor)
+/** The quarter's dates from the form; the review deadline only when HR gave one. */
+function parseQuarter(input: SetupRoundInput): { startDate: Date; endDate: Date; reviewDeadline: Date | null } {
   const start = parseCalendarDate(input.startDate)
   const end = parseCalendarDate(input.endDate)
   if (!start || !end) throw new WeeklyError('Enter the quarter start and end dates (YYYY-MM-DD)')
@@ -63,13 +62,22 @@ export async function setupRound(actor: WeeklyActor, input: SetupRoundInput, now
   if (endDate < startDate) throw new WeeklyError('The quarter must end after it starts')
   const deadline = input.reviewDeadline ? parseCalendarDate(input.reviewDeadline) : null
   if (input.reviewDeadline && !deadline) throw new WeeklyError('Enter the review deadline as a date (YYYY-MM-DD)')
+  return { startDate, endDate, reviewDeadline: deadline ? startOfKarachiDay(deadline) : null }
+}
+
+const reportsStart = (endDate: Date) => new Date(endDate.getTime() + REPORTS_AFTER_QUARTER_DAYS * DAY_MS)
+
+/** Creates the quarter and its weekly cycle together, in Draft. */
+export async function setupRound(actor: WeeklyActor, input: SetupRoundInput, now: Date): Promise<{ periodId: string; cycleId: string }> {
+  assertHr(actor)
+  const { startDate, endDate, reviewDeadline: deadline } = parseQuarter(input)
   const period = await prisma.evaluationPeriod.create({
-    data: { name: input.name.trim(), startDate, endDate, reviewStartDate: new Date(endDate.getTime() + REPORTS_AFTER_QUARTER_DAYS * DAY_MS), isActive: false },
+    data: { name: input.name.trim(), startDate, endDate, reviewStartDate: reportsStart(endDate), isActive: false },
   })
   try {
     const cycle = await createCycle(actor, { periodId: period.id, weekOneStartsOn: input.weekOneStartsOn, questionWeeks: input.questionWeeks })
     // By default the review stage runs for a week from today.
-    const reviewDeadline = deadline ? startOfKarachiDay(deadline) : new Date(now.getTime() + 7 * DAY_MS)
+    const reviewDeadline = deadline ?? new Date(now.getTime() + 7 * DAY_MS)
     await prisma.weeklyCycle.update({ where: { id: cycle.id }, data: { reviewDeadline } })
     await recordAudit(prisma, { cycleId: cycle.id, actorId: actor.id, actorRole: 'HR', action: 'ROUND_SETUP', objectType: 'EvaluationPeriod', objectId: period.id, after: input })
     return { periodId: period.id, cycleId: cycle.id }
@@ -78,6 +86,84 @@ export async function setupRound(actor: WeeklyActor, input: SetupRoundInput, now
     await prisma.evaluationPeriod.delete({ where: { id: period.id } }).catch(() => undefined)
     throw error
   }
+}
+
+const NOT_OPEN_YET = 'This round is already open, so its dates are fixed and it cannot be deleted'
+
+/** A round that has not opened yet (Draft or Review), or a 409. */
+async function unopenedRound(periodId: string): Promise<CycleWithPeriod> {
+  const cycle = await cycleForPeriod(periodId)
+  if (!cycle) throw new WeeklyError('This quarter has no evaluation round', 404)
+  if (cycle.status !== 'SETUP') throw new WeeklyError(NOT_OPEN_YET, 409)
+  return cycle
+}
+
+/** Changes the quarter and the weekly schedule of a round that has not opened yet. */
+export async function updateRound(actor: WeeklyActor, periodId: string, input: SetupRoundInput): Promise<void> {
+  assertHr(actor)
+  const cycle = await unopenedRound(periodId)
+  const { startDate, endDate, reviewDeadline } = parseQuarter(input)
+  const weekOneStartsOn = checkWeekOne(input.weekOneStartsOn, endDate)
+  const questionWeeks = checkQuestionWeeks(input.questionWeeks, weekOneStartsOn, endDate)
+  await prisma.$transaction(async (tx) => {
+    // Guarded on status, so a round opened at the same moment keeps its dates.
+    const moved = await tx.weeklyCycle.updateMany({ where: { id: cycle.id, status: 'SETUP' }, data: { weekOneStartsOn, questionWeeks, ...(reviewDeadline ? { reviewDeadline } : {}) } })
+    if (moved.count === 0) throw new WeeklyError(NOT_OPEN_YET, 409)
+    await tx.evaluationPeriod.update({ where: { id: periodId }, data: { name: input.name.trim(), startDate, endDate, reviewStartDate: reportsStart(endDate) } })
+    await recordAudit(tx, {
+      cycleId: cycle.id, actorId: actor.id, actorRole: 'HR', action: 'ROUND_EDIT', objectType: 'EvaluationPeriod', objectId: periodId,
+      before: { name: cycle.period.name, startDate: cycle.period.startDate.toISOString(), endDate: cycle.period.endDate.toISOString(), weekOneStartsOn: cycle.weekOneStartsOn.toISOString(), questionWeeks: cycle.questionWeeks },
+      after: { ...input, questionWeeks },
+    })
+  })
+}
+
+/** What deleting an unopened round undoes, for HR's confirmation: requests, confirmations and approved list changes. */
+export async function draftContents(periodId: string): Promise<{ requests: number; confirmations: number; listChanges: number }> {
+  const [requests, confirmations, listChanges] = await Promise.all([
+    prisma.peerChangeRequest.count({ where: { periodId } }),
+    prisma.mappingConfirmation.count({ where: { periodId } }),
+    prisma.evaluationPeriodAssignmentOverride.count({ where: { periodId } }),
+  ])
+  return { requests, confirmations, listChanges }
+}
+
+/**
+ * Deletes a round that has not opened yet, with its quarter, so HR can set it up again (and send the list emails
+ * again). Lead and team changes already went into the org chart and stay; this round's peer changes, requests and
+ * confirmations go. The audit trail stays.
+ */
+export async function deleteRound(actor: WeeklyActor, periodId: string): Promise<void> {
+  assertHr(actor)
+  const cycle = await unopenedRound(periodId)
+  await prisma.$transaction(async (tx) => {
+    const [row] = await tx.$queryRaw<Array<{ status: string }>>`SELECT status::text AS status FROM "WeeklyCycle" WHERE id = ${cycle.id} FOR UPDATE`
+    if (row?.status !== 'SETUP') throw new WeeklyError(NOT_OPEN_YET, 409)
+    if ((await tx.weeklyPrompt.count({ where: { cycleId: cycle.id } })) > 0) throw new WeeklyError('This round already has questions, so it cannot be deleted', 409)
+    const where = { cycleId: cycle.id }
+    await tx.weeklyRelease.deleteMany({ where })
+    await tx.weeklySlot.deleteMany({ where })
+    await tx.weeklyParticipantOverride.deleteMany({ where })
+    await tx.weeklyPairWindow.deleteMany({ where })
+    await tx.roundWarningAcceptance.deleteMany({ where })
+    await tx.weeklyAggregationRun.deleteMany({ where })
+    // Topics written for this round only (leads' questions), with their wordings.
+    const topics = (await tx.weeklyCompetency.findMany({ where, select: { id: true } })).map((t) => t.id)
+    await tx.weeklyCompetencyPrompt.deleteMany({ where: { competencyId: { in: topics } } })
+    await tx.weeklyCompetency.deleteMany({ where: { id: { in: topics } } })
+    await tx.weeklyCycle.delete({ where: { id: cycle.id } })
+    const byPeriod = { where: { periodId } }
+    await tx.peerChangeRequest.deleteMany(byPeriod)
+    await tx.mappingConfirmation.deleteMany(byPeriod)
+    await tx.surveyResponse.deleteMany(byPeriod)
+    await tx.surveyCompletion.deleteMany(byPeriod)
+    await tx.surveyQuestion.deleteMany(byPeriod)
+    await tx.selfReview.deleteMany(byPeriod)
+    await tx.selfReviewQuestion.deleteMany(byPeriod)
+    // The rest (list overrides, snapshots) goes with the quarter.
+    await tx.evaluationPeriod.delete({ where: { id: periodId } })
+    await recordAudit(tx, { actorId: actor.id, actorRole: 'HR', action: 'ROUND_DELETE', objectType: 'EvaluationPeriod', objectId: periodId, before: { name: cycle.period.name, cycleId: cycle.id } })
+  })
 }
 
 const NEXT: Record<RoundStage, RoundNextStep | null> = {
@@ -145,6 +231,7 @@ export async function roundView(actor: WeeklyActor, periodId: string, now: Date)
     currentWeek: stage === 'OPEN' ? Math.min(total, Math.max(1, effectiveWeek(cycle.weekOneStartsOn, cycle.simulatedWeek, now))) : null,
     next: NEXT[stage], checklist: await checklist(cycle, stage, now),
     ...(stage === 'DRAFT' ? { people: await peopleCounts(cycle, now) } : {}),
+    ...(stage === 'DRAFT' || stage === 'REVIEW' ? { draft: await draftContents(periodId) } : {}),
     ...(stage === 'REVIEW' ? { pendingRequests: await pendingRequests(periodId) } : {}),
     ...(stage === 'OPEN' ? { health: await roundHealth(cycle, { through: weekNow(cycle, now), current: weekNow(cycle, now) }) } : {}),
   }

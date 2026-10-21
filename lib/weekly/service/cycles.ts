@@ -68,7 +68,7 @@ export async function adminCycles(actor: WeeklyActor, now: Date): Promise<AdminC
   }
 }
 
-function checkWeekOne(value: string, periodEnd: Date): Date {
+export function checkWeekOne(value: string, periodEnd: Date): Date {
   const weekOne = parseWeekOneStart(value)
   if (!weekOne) throw new WeeklyError('Week 1 must start on a weekday, Monday to Friday')
   if (weekOne > periodEnd || totalWeeks(weekOne, periodEnd) < MIN_WEEKS) throw new WeeklyError('Week 1 must leave at least three weeks before the period ends')
@@ -76,7 +76,7 @@ function checkWeekOne(value: string, periodEnd: Date): Date {
 }
 
 /** HR's number, or by default every week up to the period end less the catch-up weeks. */
-function checkQuestionWeeks(value: number | undefined, weekOne: Date, periodEnd: Date): number {
+export function checkQuestionWeeks(value: number | undefined, weekOne: Date, periodEnd: Date): number {
   const most = defaultQuestionWeeks(weekOne, periodEnd)
   if (value === undefined) return most
   if (value > most) throw new WeeklyError(`With this week 1 the quarter has room for at most ${most} question weeks (plus ${CATCH_UP_WEEKS} catch-up weeks)`)
