@@ -49,3 +49,19 @@ test('safeImageSrc allows http, https and root-relative, nothing else', () => {
     assert.equal(safeImageSrc(value), null, value)
   }
 })
+
+test('every value the helpers accept from markdown also passes the sink guard in TaskDetailPanel', () => {
+  // Same pattern as SAFE_URL in components/projects/TaskDetailPanel.tsx.
+  const SAFE_URL = /^(?:https?:\/\/|\/(?![/\\]))/i
+  for (const value of [
+    'https://example.com/a?b=1#c',
+    'HTTP://Example.com',
+    'www.example.com/page',
+    '/api/projects/images/file?pathname=a%2Fb.png',
+  ]) {
+    const href = safeLinkHref(value)
+    const src = safeImageSrc(value)
+    assert.ok(href && SAFE_URL.test(href), value)
+    assert.ok(src && SAFE_URL.test(src), value)
+  }
+})

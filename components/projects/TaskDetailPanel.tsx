@@ -182,6 +182,11 @@ function appendMarkdownImage(content: string, url: string) {
   return `${prefix}![image](${url})`
 }
 
+// Extra guard at each link/image sink, on the exact value rendered. lib/safe-url
+// is the real allowlist; this inline check lets static analysis see a scheme
+// check that dominates the attribute.
+const SAFE_URL = /^(?:https?:\/\/|\/(?![/\\]))/i
+
 function renderInlineText(text: string, keyPrefix: string, depth = 0): React.ReactNode[] {
   const inlineRegex = /\[([^\]]+)\]\(((?:https?:\/\/|www\.)[^)\s]+)\)|\*\*([^*]+)\*\*|<u>(.*?)<\/u>|\b((?:https?:\/\/|www\.)[^\s<>()]+)/gi
   const nodes: React.ReactNode[] = []
@@ -194,9 +199,9 @@ function renderInlineText(text: string, keyPrefix: string, depth = 0): React.Rea
     }
 
     const linkHref = match[1] && match[2] ? safeLinkHref(match[2]) : null
-    if (match[1] && match[2] && !linkHref) {
+    if (match[1] && match[2] && !(linkHref && SAFE_URL.test(linkHref))) {
       nodes.push(match[0])
-    } else if (match[1] && linkHref) {
+    } else if (match[1] && linkHref && SAFE_URL.test(linkHref)) {
       nodes.push(
         <a
           key={`${keyPrefix}-link-${match.index}`}
@@ -226,7 +231,7 @@ function renderInlineText(text: string, keyPrefix: string, depth = 0): React.Rea
       const linkText = trailingPunctuation ? rawUrl.slice(0, -trailingPunctuation.length) : rawUrl
       const urlHref = safeLinkHref(linkText)
 
-      nodes.push(urlHref ? (
+      nodes.push(urlHref && SAFE_URL.test(urlHref) ? (
         <a
           key={`${keyPrefix}-url-${match.index}`}
           href={urlHref}
@@ -320,9 +325,7 @@ function RichTextContent({ content }: { content: string }) {
     }
     const imageHref = safeLinkHref(match[2])
     const imageSrc = safeImageSrc(match[2])
-    nodes.push(!imageHref || !imageSrc ? (
-      <p key={`image-text-${match.index}`} className="whitespace-pre-wrap break-all">{match[0]}</p>
-    ) : (
+    nodes.push(imageHref && imageSrc && SAFE_URL.test(imageHref) && SAFE_URL.test(imageSrc) ? (
       <a
         key={`image-link-${match.index}`}
         href={imageHref}
@@ -337,6 +340,8 @@ function RichTextContent({ content }: { content: string }) {
           className="my-2 max-h-72 max-w-full rounded-lg border border-border/50 object-contain"
         />
       </a>
+    ) : (
+      <p key={`image-text-${match.index}`} className="whitespace-pre-wrap break-all">{match[0]}</p>
     ))
     lastIndex = imageRegex.lastIndex
   }

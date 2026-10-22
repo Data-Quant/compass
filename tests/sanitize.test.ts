@@ -2,23 +2,62 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { stripHtml, stripHtmlOptional } from '../lib/sanitize'
 
-const OLD_TAG_PATTERN = /<\/?[a-zA-Z][^>]*>/g
-const OLD_CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g
-const oldStripHtml = (input: string) => input.replace(OLD_TAG_PATTERN, '').replace(OLD_CONTROL_CHARS, '')
+// Test-only reference implementations, written as plain loops (no regex
+// replace) so they are obviously correct and not themselves sanitizers.
+// oldStripHtml: the original single-pass /<\/?[a-zA-Z][^>]*>/g removal.
+// loopStripHtml: the previous repeat-until-stable /<\/?[a-zA-Z][^<>]*>/g
+// version plus the leftover tag-opener drop. lib/sanitize.ts must match it.
+const isLetter = (ch: string) => (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')
+const isControl = (ch: string) => {
+  const c = ch.charCodeAt(0)
+  return c <= 0x08 || c === 0x0b || c === 0x0c || (c >= 0x0e && c <= 0x1f) || c === 0x7f
+}
+const dropControlChars = (input: string) => Array.from(input).filter((ch) => !isControl(ch)).join('')
 
-// Reference: the previous (quadratic) loop implementation, kept here only to
-// prove the single-pass version in lib/sanitize.ts gives identical output.
+// Index just past the tag starting at `i`, or -1. `allowInnerLt` = old pattern
+// ([^>]* may contain `<`); otherwise the body stops at the next `<`.
+function tagEnd(input: string, i: number, allowInnerLt: boolean): number {
+  if (input[i] !== '<') return -1
+  let j = i + 1
+  if (input[j] === '/') j++
+  if (!isLetter(input[j] ?? '')) return -1
+  for (j++; j < input.length; j++) {
+    if (input[j] === '>') return j + 1
+    if (input[j] === '<' && !allowInnerLt) return -1
+  }
+  return -1
+}
+
+// One left-to-right, non-overlapping removal pass (what a global regex replace does).
+function removeTagsOnce(input: string, allowInnerLt: boolean): string {
+  let out = ''
+  for (let i = 0; i < input.length; ) {
+    const end = tagEnd(input, i, allowInnerLt)
+    if (end === -1) out += input[i++]
+    else i = end
+  }
+  return out
+}
+
+const oldStripHtml = (input: string) => dropControlChars(removeTagsOnce(input, true))
+
 function loopStripHtml(input: string): string {
-  const tag = /<\/?[a-zA-Z][^<>]*>/g
   let output = input
   let previous: string
   do {
     previous = output
-    output = output.replace(tag, '')
+    output = removeTagsOnce(output, false)
   } while (output !== previous)
-  return output
-    .replace(/<+/g, (run, offset: number, str: string) => (/[a-zA-Z/!?]/.test(str.charAt(offset + run.length)) ? '' : run))
-    .replace(OLD_CONTROL_CHARS, '')
+  let out = ''
+  for (let i = 0; i < output.length; ) {
+    if (output[i] !== '<') { out += output[i++]; continue }
+    let j = i
+    while (output[j] === '<') j++
+    const next = output[j] ?? ''
+    if (!(isLetter(next) || next === '/' || next === '!' || next === '?')) out += output.slice(i, j)
+    i = j
+  }
+  return dropControlChars(out)
 }
 
 // mulberry32: small seeded PRNG so the property test is reproducible.
