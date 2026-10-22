@@ -1,5 +1,6 @@
 import PDFDocument from 'pdfkit'
 import QRCode from 'qrcode'
+import { compassUrl } from '@/lib/compass-url'
 
 export interface AssetQrLabelItem {
   id: string
@@ -12,42 +13,19 @@ export interface AssetQrLabelItem {
   ownerName?: string | null
 }
 
-const DEFAULT_APP_URL = 'http://localhost:3000'
 const QR_SIZE = 512
-
-function trimTrailingSlash(value: string) {
-  return value.replace(/\/+$/, '')
-}
-
-function normalizeBaseUrl(value: string | null | undefined) {
-  if (!value) return null
-  const trimmed = value.trim()
-  if (!trimmed) return null
-  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
-  return trimTrailingSlash(withProtocol)
-}
-
-export function getCompassBaseUrl(origin?: string | null) {
-  return (
-    normalizeBaseUrl(process.env.NEXT_PUBLIC_APP_URL) ||
-    normalizeBaseUrl(process.env.APP_URL) ||
-    normalizeBaseUrl(process.env.VERCEL_PROJECT_PRODUCTION_URL) ||
-    normalizeBaseUrl(process.env.VERCEL_URL) ||
-    normalizeBaseUrl(origin) ||
-    DEFAULT_APP_URL
-  )
-}
 
 export function getAssetScanPath(equipmentId: string) {
   return `/assets/scan/${encodeURIComponent(equipmentId)}`
 }
 
-export function getAssetScanUrl(equipmentId: string, origin?: string | null) {
-  return `${getCompassBaseUrl(origin)}${getAssetScanPath(equipmentId)}`
+/** Printed labels must keep working: always Compass's own address, never the deployment the label was made on. */
+export function getAssetScanUrl(equipmentId: string) {
+  return compassUrl(getAssetScanPath(equipmentId))
 }
 
-export async function createAssetQrPngBuffer(equipmentId: string, origin?: string | null) {
-  return QRCode.toBuffer(getAssetScanUrl(equipmentId, origin), {
+export async function createAssetQrPngBuffer(equipmentId: string) {
+  return QRCode.toBuffer(getAssetScanUrl(equipmentId), {
     type: 'png',
     errorCorrectionLevel: 'M',
     margin: 2,
@@ -83,10 +61,7 @@ function drawLabelText(
   })
 }
 
-export async function createAssetLabelsPdfBuffer(
-  assets: AssetQrLabelItem[],
-  origin?: string | null
-) {
+export async function createAssetLabelsPdfBuffer(assets: AssetQrLabelItem[]) {
   const doc = new PDFDocument({
     size: 'A4',
     margin: 36,
@@ -121,7 +96,7 @@ export async function createAssetLabelsPdfBuffer(
       const row = Math.floor(pageIndex / columns)
       const x = margin + column * (labelWidth + columnGap)
       const y = margin + row * (labelHeight + rowGap)
-      const qrBuffer = await createAssetQrPngBuffer(asset.equipmentId, origin)
+      const qrBuffer = await createAssetQrPngBuffer(asset.equipmentId)
       const textX = x + qrSize + 22
       const textWidth = labelWidth - qrSize - 34
       const meta = [asset.category, asset.brand, asset.model].filter(Boolean).join(' / ')

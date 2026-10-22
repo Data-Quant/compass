@@ -9,7 +9,6 @@ export async function recordTaskActivity(input: {
   kind: string
   metadata?: Prisma.InputJsonValue
   notify?: boolean
-  origin?: string | null
 }) {
   const activity = await prisma.taskActivity.create({
     data: {
@@ -28,7 +27,6 @@ export async function recordTaskActivity(input: {
         taskId: input.taskId,
         actorId: input.actorId,
         summary: input.summary,
-        origin: input.origin,
       })
     } catch (error) {
       console.error('Failed to send task activity notification:', error)

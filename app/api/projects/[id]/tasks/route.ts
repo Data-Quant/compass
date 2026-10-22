@@ -319,7 +319,6 @@ export async function POST(
         summary: `${displayName(user)} created this task`,
         kind: 'created',
         notify: false,
-        origin: request.nextUrl.origin,
       })
     } catch (activityError) {
       // The task is already committed. Activity history is supplementary and
@@ -333,7 +332,6 @@ export async function POST(
           taskId: task.id,
           userIds: [normalizedAssigneeId],
           actorId: user.id,
-          origin: request.nextUrl.origin,
           context: 'assignee',
         })
       } catch (notificationError) {
@@ -347,7 +345,6 @@ export async function POST(
           taskId: task.id,
           userIds: taskAssistantIds,
           actorId: user.id,
-          origin: request.nextUrl.origin,
           context: 'assistant',
         })
       } catch (notificationError) {
@@ -357,7 +354,7 @@ export async function POST(
 
     if (taskStatus === 'DONE' && task.parentTaskId) {
       try {
-        await sendChildTaskCompletedNotification(task.id, request.nextUrl.origin)
+        await sendChildTaskCompletedNotification(task.id)
       } catch (notificationError) {
         console.error('Failed to send child task completion notification:', notificationError)
       }
@@ -637,7 +634,6 @@ export async function PUT(
           summary: activity.summary,
           kind: activity.kind,
           metadata: { taskId: task.id },
-          origin: request.nextUrl.origin,
         })
       } catch (activityError) {
         // Preserve the successful task mutation even when its audit entry
@@ -652,7 +648,6 @@ export async function PUT(
           taskId: task.id,
           userIds: [normalizedAssigneeId],
           actorId: user.id,
-          origin: request.nextUrl.origin,
           context: 'assignee',
         })
       } catch (notificationError) {
@@ -668,7 +663,6 @@ export async function PUT(
             taskId: task.id,
             userIds: newAssistantIds,
             actorId: user.id,
-            origin: request.nextUrl.origin,
             context: 'assistant',
           })
         } catch (notificationError) {
@@ -679,7 +673,7 @@ export async function PUT(
 
     if (task.status === 'DONE' && existingTask.status !== 'DONE' && task.parentTaskId) {
       try {
-        await sendChildTaskCompletedNotification(task.id, request.nextUrl.origin)
+        await sendChildTaskCompletedNotification(task.id)
       } catch (notificationError) {
         console.error('Failed to send child task completion notification:', notificationError)
       }

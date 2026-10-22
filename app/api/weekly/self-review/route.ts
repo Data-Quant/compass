@@ -5,10 +5,9 @@ import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
 import { selfReviewSubmitSchema } from '@/lib/weekly/schemas'
 import { actorFromUser } from '@/lib/weekly/service/context'
 import { mySelfReview, submitSelfReview } from '@/lib/weekly/service/self-review'
+import { COMPASS_URL } from '@/lib/compass-url'
 
 export const dynamic = 'force-dynamic'
-
-const appUrlOf = (request: NextRequest) => process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || request.nextUrl.origin
 
 export async function GET() {
   try {
@@ -25,7 +24,7 @@ export async function POST(request: NextRequest) {
     const user = await requireWeeklySession()
     await guardWeeklyMutation(request, user.id)
     const input = selfReviewSubmitSchema.parse(await request.json())
-    return NextResponse.json({ success: true, ...(await submitSelfReview(actorFromUser(user), input, new Date(), sendMail, appUrlOf(request))) })
+    return NextResponse.json({ success: true, ...(await submitSelfReview(actorFromUser(user), input, new Date(), sendMail, COMPASS_URL)) })
   } catch (error) {
     return weeklyErrorResponse(error)
   }

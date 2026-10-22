@@ -2,23 +2,7 @@ import { prisma } from '@/lib/db'
 import { sendMail } from '@/lib/email'
 import { queueOrSendProjectNotification } from '@/lib/project-notification-digests'
 import { escapeHtml } from '@/lib/sanitize'
-
-function normalizeBaseUrl(value: string | null | undefined) {
-  const trimmed = value?.trim().replace(/\/+$/, '')
-  if (!trimmed) return null
-  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
-}
-
-export function getAppBaseUrl(origin?: string | null) {
-  return (
-    normalizeBaseUrl(process.env.NEXT_PUBLIC_APP_URL) ||
-    normalizeBaseUrl(process.env.APP_URL) ||
-    normalizeBaseUrl(process.env.VERCEL_PROJECT_PRODUCTION_URL) ||
-    normalizeBaseUrl(process.env.VERCEL_URL) ||
-    normalizeBaseUrl(origin) ||
-    'http://localhost:3000'
-  )
-}
+import { COMPASS_URL } from '@/lib/compass-url'
 
 function uniqueEmails(values: Array<string | null | undefined>) {
   const seen = new Set<string>()
@@ -65,7 +49,6 @@ export async function sendProjectInvitationNotification(input: {
   projectId: string
   userId: string
   actorId: string
-  origin?: string | null
 }) {
   const project = await prisma.project.findUnique({
     where: { id: input.projectId },
@@ -80,7 +63,7 @@ export async function sendProjectInvitationNotification(input: {
     return { success: false, skipped: true, reason: 'No project or recipient email found' }
   }
 
-  const projectUrl = `${getAppBaseUrl(input.origin)}/projects/${encodeURIComponent(project.id)}`
+  const projectUrl = `${COMPASS_URL}/projects/${encodeURIComponent(project.id)}`
   const subject = `You were added to ${project.name}`
   const heading = 'Project invitation'
   const bodyHtml = `
@@ -113,7 +96,6 @@ export async function sendTaskAssignmentNotification(input: {
   taskId: string
   userIds: string[]
   actorId: string
-  origin?: string | null
   context?: 'assignee' | 'assistant'
 }) {
   const task = await prisma.task.findUnique({
@@ -138,7 +120,7 @@ export async function sendTaskAssignmentNotification(input: {
   ])
 
   const actorEmail = actor?.email?.trim().toLowerCase()
-  const projectUrl = `${getAppBaseUrl(input.origin)}/projects/${encodeURIComponent(task.project.id)}`
+  const projectUrl = `${COMPASS_URL}/projects/${encodeURIComponent(task.project.id)}`
   const results: Array<{ userId: string; email: string; success: boolean; queued?: boolean; error?: string }> = []
 
   for (const recipient of recipients) {
@@ -191,7 +173,6 @@ export async function sendTaskActivityNotification(input: {
   taskId: string
   actorId: string | null
   summary: string
-  origin?: string | null
 }) {
   const task = await prisma.task.findUnique({
     where: { id: input.taskId },
@@ -233,7 +214,7 @@ export async function sendTaskActivityNotification(input: {
     return { success: false, skipped: true, reason: 'No notification recipients found' }
   }
 
-  const projectUrl = `${getAppBaseUrl(input.origin)}/projects/${encodeURIComponent(task.project.id)}`
+  const projectUrl = `${COMPASS_URL}/projects/${encodeURIComponent(task.project.id)}`
   const results: Array<{ email: string; success: boolean; queued?: boolean; error?: string }> = []
 
   for (const recipient of recipients) {
@@ -279,7 +260,7 @@ export async function sendTaskActivityNotification(input: {
   return { success: results.every((result) => result.success), results }
 }
 
-export async function sendChildTaskCompletedNotification(taskId: string, origin?: string | null) {
+export async function sendChildTaskCompletedNotification(taskId: string) {
   const childTask = await prisma.task.findUnique({
     where: { id: taskId },
     select: {
@@ -314,7 +295,7 @@ export async function sendChildTaskCompletedNotification(taskId: string, origin?
     return { success: false, skipped: true, reason: 'No parent task recipient email found' }
   }
 
-  const projectUrl = `${getAppBaseUrl(origin)}/projects/${encodeURIComponent(childTask.project.id)}`
+  const projectUrl = `${COMPASS_URL}/projects/${encodeURIComponent(childTask.project.id)}`
   const subject = `Subtask completed: ${childTask.title}`
   const heading = 'Subtask Completed'
   const bodyHtml = `

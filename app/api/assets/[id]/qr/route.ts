@@ -33,7 +33,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const buffer = await createAssetQrPngBuffer(asset.equipmentId, request.nextUrl.origin)
+    const buffer = await createAssetQrPngBuffer(asset.equipmentId)
     const disposition = request.nextUrl.searchParams.get('download') === '1' ? 'attachment' : 'inline'
 
     return new NextResponse(new Uint8Array(buffer), {

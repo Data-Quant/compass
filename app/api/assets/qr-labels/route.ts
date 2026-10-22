@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
       assets.map((asset) => [asset.id, { ...asset, ownerName: asset.currentAssignee?.name ?? null }])
     )
     const orderedAssets = requestedIds.map((id) => byId.get(id)!)
-    const buffer = await createAssetLabelsPdfBuffer(orderedAssets, request.nextUrl.origin)
+    const buffer = await createAssetLabelsPdfBuffer(orderedAssets)
 
     return new NextResponse(new Uint8Array(buffer), {
       headers: {

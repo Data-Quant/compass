@@ -82,7 +82,6 @@ export async function POST(
         summary: `${user.name || 'Someone'} commented on this task`,
         kind: 'comment',
         metadata: { commentId: comment.id },
-        origin: request.nextUrl.origin,
       })
     } catch (activityError) {
       console.error('Failed to record comment activity:', activityError)

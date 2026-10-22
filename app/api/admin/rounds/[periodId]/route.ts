@@ -8,6 +8,7 @@ import { earlierQuarterView, isEarlierQuarter } from '@/lib/weekly/service/earli
 import { setLateForms } from '@/lib/weekly/service/late-forms'
 import { openReviewStage } from '@/lib/weekly/service/review-stage'
 import { deleteRound, openRound, roundView, setRoundLock, updateRound } from '@/lib/weekly/service/round'
+import { COMPASS_URL } from '@/lib/compass-url'
 
 export const dynamic = 'force-dynamic'
 
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     const { action } = roundActionSchema.parse(await request.json())
     const actor = actorFromUser(user)
     const periodId = (await params).periodId
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || request.nextUrl.origin
+    const appUrl = COMPASS_URL
     if (action === 'open-review') return NextResponse.json({ success: true, ...(await openReviewStage(actor, periodId, new Date(), sendMail, appUrl)) })
     if (action === 'lock' || action === 'unlock') {
       await setRoundLock(actor, periodId, action === 'lock')

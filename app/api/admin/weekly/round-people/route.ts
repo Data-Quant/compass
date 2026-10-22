@@ -5,6 +5,7 @@ import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
 import { roundPeopleActionSchema } from '@/lib/weekly/schemas'
 import { actorFromUser } from '@/lib/weekly/service/context'
 import { acceptRoundWarning, changeRoundMapping } from '@/lib/weekly/service/round-people'
+import { COMPASS_URL } from '@/lib/compass-url'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,7 +19,7 @@ export async function POST(request: NextRequest) {
     if (input.action === 'accept-warning') {
       await acceptRoundWarning(actor, input.cycleId, { userId: input.userId, warning: input.warning, reason: input.reason })
     } else {
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || request.nextUrl.origin
+      const appUrl = COMPASS_URL
       await changeRoundMapping(actor, input.cycleId, { userId: input.userId, otherId: input.otherId, relation: input.relation, action: input.change, reason: input.reason }, new Date(), sendMail, appUrl)
     }
     return NextResponse.json({ success: true })

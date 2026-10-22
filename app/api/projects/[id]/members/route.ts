@@ -34,7 +34,6 @@ export async function POST(
         projectId,
         userId,
         actorId: user.id,
-        origin: request.nextUrl.origin,
       })
     } catch (emailError) {
       console.error('Failed to send project invitation notification:', emailError)
