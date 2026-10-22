@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { PeopleStack } from './PeopleStack'
 import type { PanelTask } from './TaskDetailPanel'
-import { dueState, PRIORITY_ICON, PRIORITY_LABEL, type DueStateKind } from './workspace-utils'
+import { dueState, formatShortDue, PRIORITY_ICON, PRIORITY_LABEL, type DueStateKind } from './workspace-utils'
 
 interface TaskCardProps {
   task: PanelTask
@@ -22,6 +22,8 @@ interface TaskCardProps {
   pending?: boolean
   /** Per-project board: -1 so the sortable wrapper is the card's only tab stop. */
   titleTabIndex?: number
+  /** Done columns: title, project, assignee, done date only. */
+  compact?: boolean
 }
 
 const DUE_CLASS: Record<DueStateKind, string> = {
@@ -32,7 +34,7 @@ const DUE_CLASS: Record<DueStateKind, string> = {
   done: 'text-muted-foreground',
 }
 
-export function TaskCard({ task, overdue, done, project, onOpen, dragHandleProps, dragging, pending, titleTabIndex }: TaskCardProps) {
+export function TaskCard({ task, overdue, done, project, onOpen, dragHandleProps, dragging, pending, titleTabIndex, compact }: TaskCardProps) {
   const due = dueState(task.dueDate, { done, overdue })
   const { icon: PriorityIcon, className: priorityTone } = PRIORITY_ICON[task.priority]
   const assistants = task.assistants ?? []
@@ -96,6 +98,18 @@ export function TaskCard({ task, overdue, done, project, onOpen, dragHandleProps
         <span className="sr-only"> {srPeople} {srDue}</span>
       </button>
 
+      {compact ? (
+        <div className="flex items-center gap-2">
+          <span className="relative z-10 flex min-w-0 items-center">
+            <PeopleStack assignee={task.assignee} size="sm" />
+          </span>
+          <span className="ml-auto flex shrink-0 items-center gap-2 text-[11px] tabular-nums text-muted-foreground">
+            {task.completedLate && <span className="text-orange-700 dark:text-orange-400">Completed late</span>}
+            <span>{task.completedAt ? `Done ${formatShortDue(task.completedAt)}` : 'Done'}</span>
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" aria-label="Done" />
+          </span>
+        </div>
+      ) : <>
       {task.parentTask && (
         <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
           <CornerDownRight aria-hidden className="h-3 w-3 shrink-0" />
@@ -151,6 +165,7 @@ export function TaskCard({ task, overdue, done, project, onOpen, dragHandleProps
           {done && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" aria-label="Done" />}
         </span>
       </div>
+      </>}
     </Card>
   )
 }

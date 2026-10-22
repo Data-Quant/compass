@@ -53,6 +53,7 @@ interface BoardColumnShellProps {
   color: string
   description?: string
   count: number
+  countTitle?: string
   isOver: boolean
   dropRef: (node: HTMLElement | null) => void
   headerStart?: React.ReactNode
@@ -70,6 +71,7 @@ export function BoardColumnShell({
   color,
   description,
   count,
+  countTitle,
   isOver,
   dropRef,
   headerStart,
@@ -91,7 +93,7 @@ export function BoardColumnShell({
         {headerStart}
         <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
         <h2 id={`board-column-${id}`} title={description} className="truncate text-sm font-medium">{name}</h2>
-        <span className="text-xs tabular-nums text-muted-foreground">{count}</span>
+        <span title={countTitle} className="text-xs tabular-nums text-muted-foreground">{count}</span>
         {headerEnd && <div className="ml-auto flex items-center">{headerEnd}</div>}
       </div>
       <div
@@ -108,8 +110,23 @@ export function BoardColumnShell({
   )
 }
 
-export function BoardColumnEmpty() {
-  return <div className="py-8 text-center text-xs text-muted-foreground">Drop tasks here</div>
+export function BoardColumnEmpty({ label = 'Drop tasks here' }: { label?: string }) {
+  return <div className="py-8 text-center text-xs text-muted-foreground">{label}</div>
+}
+
+// Done columns: recent cards plus a toggle for older ones. Hidden when there are none.
+export function ShowOlderButton({ count, expanded, onToggle }: { count: number; expanded: boolean; onToggle: () => void }) {
+  if (count === 0) return null
+  return (
+    <button
+      type="button"
+      aria-expanded={expanded}
+      onClick={onToggle}
+      className="h-8 w-full rounded-md text-xs text-muted-foreground transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {expanded ? 'Show less' : `Show ${count} older`}
+    </button>
+  )
 }
 
 // autoFocus: set when a composer closes from the keyboard, so focus returns to this button.

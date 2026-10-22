@@ -302,6 +302,29 @@ export function sortTasksByDeadline<T>(
     compareNullableString(dateInputValue(getDueDate(left)), dateInputValue(getDueDate(right))))
 }
 
+export const DONE_RECENT_DAYS = 14
+
+// Done columns: completed within the last `days` days (inclusive) vs the rest, both newest first.
+// Missing or unparseable completedAt counts as older and sorts last.
+export function splitDoneTasks<T>(
+  items: T[],
+  getCompletedAt: (item: T) => string | null | undefined,
+  now: Date = new Date(),
+  days = DONE_RECENT_DAYS,
+): { recent: T[]; older: T[] } {
+  const cutoff = now.getTime() - days * DAY_MS
+  const time = (item: T) => {
+    const value = getCompletedAt(item)
+    const ms = value ? new Date(value).getTime() : NaN
+    return Number.isNaN(ms) ? -Infinity : ms
+  }
+  const sorted = items.map((item) => ({ item, ms: time(item) })).sort((a, b) => b.ms - a.ms || 0)
+  return {
+    recent: sorted.filter(({ ms }) => ms >= cutoff).map(({ item }) => item),
+    older: sorted.filter(({ ms }) => ms < cutoff).map(({ item }) => item),
+  }
+}
+
 export function sortWorkspaceTaskItems(
   items: WorkspaceTaskItem[],
   key: WorkspaceSortKey,

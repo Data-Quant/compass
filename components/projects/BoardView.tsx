@@ -23,8 +23,8 @@ import { cn } from '@/lib/utils'
 import { calculateTaskVariance, isTaskAssignedTo } from '@/lib/project-progress'
 import type { PanelTask, ProjectStatusSection } from './TaskDetailPanel'
 import { TaskCard } from './TaskCard'
-import { AddTaskButton, BoardColumnEmpty, BoardColumnShell, BoardScroller, TASK_NAME_INPUT_CLASS } from './BoardColumn'
-import { sortableCardKeyDown, sortTasksByDeadline } from './workspace-utils'
+import { AddTaskButton, BoardColumnEmpty, BoardColumnShell, BoardScroller, ShowOlderButton, TASK_NAME_INPUT_CLASS } from './BoardColumn'
+import { DONE_RECENT_DAYS, sortableCardKeyDown, sortTasksByDeadline, splitDoneTasks } from './workspace-utils'
 
 interface BoardViewProps {
   projectId: string
@@ -76,6 +76,9 @@ export function BoardView({ projectId, tasks, sections, viewerId, canManage, onT
   )
 
   const activeTask = activeId ? localTasks.find((task) => task.id === activeId) : null
+  // A task dropped into Done locally has no completedAt until refetch; count it as just finished.
+  const completedAtFor = (task: PanelTask) =>
+    task.completedAt ?? (tasks.find((original) => original.id === task.id)?.sectionId !== task.sectionId ? new Date().toISOString() : null)
   const canEditTask = (task: PanelTask) => canManage || isTaskAssignedTo(task, viewerId)
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -273,7 +276,8 @@ export function BoardView({ projectId, tasks, sections, viewerId, canManage, onT
           <BoardColumn
             key={section.id}
             section={section}
-            tasks={sortTasksByDeadline(localTasks.filter((task) => task.sectionId === section.id))}
+            tasks={localTasks.filter((task) => task.sectionId === section.id)}
+            completedAtFor={completedAtFor}
             viewerId={viewerId}
             canManage={canManage}
             canDelete={canManage && localSections.length > 1}
@@ -328,7 +332,8 @@ export function BoardView({ projectId, tasks, sections, viewerId, canManage, onT
 
 function BoardColumn({
   section,
-  tasks,
+  tasks: sectionTasks,
+  completedAtFor,
   viewerId,
   canManage,
   canDelete,
@@ -339,6 +344,7 @@ function BoardColumn({
 }: {
   section: ProjectStatusSection
   tasks: PanelTask[]
+  completedAtFor: (task: PanelTask) => string | null | undefined
   viewerId: string
   canManage: boolean
   canDelete: boolean
@@ -350,6 +356,10 @@ function BoardColumn({
   const [adding, setAdding] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [returnFocus, setReturnFocus] = useState(false)
+  const [showOlder, setShowOlder] = useState(false)
+  const isDoneColumn = section.isDone || section.canonicalStatus === 'DONE'
+  const done = isDoneColumn ? splitDoneTasks(sectionTasks, completedAtFor) : null
+  const tasks = done ? (showOlder ? [...done.recent, ...done.older] : done.recent) : sortTasksByDeadline(sectionTasks)
   const { setNodeRef, isOver } = useDroppable({ id: section.id })
   const {
     attributes,
@@ -374,7 +384,8 @@ function BoardColumn({
       id={section.id}
       name={section.name}
       color={section.color}
-      count={tasks.length}
+      count={sectionTasks.length}
+      countTitle={done ? `${done.recent.length} shown from the last ${DONE_RECENT_DAYS} days` : undefined}
       isOver={isOver}
       dropRef={setNodeRef}
       outerRef={setSortableRef}
@@ -437,21 +448,23 @@ function BoardColumn({
       )}
     >
       <SortableContext items={tasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
-        {tasks.length === 0 && <BoardColumnEmpty />}
+        {tasks.length === 0 && <BoardColumnEmpty label={sectionTasks.length > 0 ? `Nothing finished in the last ${DONE_RECENT_DAYS} days` : undefined} />}
         {tasks.map((task) => (
           <SortableTaskCard
             key={task.id}
             task={task}
+            compact={isDoneColumn}
             disabled={!canManage && !isTaskAssignedTo(task, viewerId)}
             onClick={() => onTaskClick(task)}
           />
         ))}
       </SortableContext>
+      {done && <ShowOlderButton count={done.older.length} expanded={showOlder} onToggle={() => setShowOlder((value) => !value)} />}
     </BoardColumnShell>
   )
 }
 
-function SortableTaskCard({ task, disabled, onClick }: { task: PanelTask; disabled: boolean; onClick: () => void }) {
+function SortableTaskCard({ task, disabled, compact, onClick }: { task: PanelTask; disabled: boolean; compact?: boolean; onClick: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id, disabled })
 
   const style = {
@@ -469,16 +482,16 @@ function SortableTaskCard({ task, disabled, onClick }: { task: PanelTask; disabl
       onKeyDown={(event) => sortableCardKeyDown(event, { isDragging, onOpen: onClick, onDragKey: (keyEvent) => listeners?.onKeyDown?.(keyEvent) })}
       className={cn('rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', isDragging && 'opacity-25', disabled && 'cursor-default')}
     >
-      <BoardTaskCard task={task} titleTabIndex={-1} onOpen={() => { if (!isDragging) onClick() }} />
+      <BoardTaskCard task={task} compact={compact} titleTabIndex={-1} onOpen={() => { if (!isDragging) onClick() }} />
     </div>
   )
 }
 
-function BoardTaskCard({ task, dragging, titleTabIndex, onOpen }: { task: PanelTask; dragging?: boolean; titleTabIndex?: number; onOpen?: () => void }) {
+function BoardTaskCard({ task, dragging, compact, titleTabIndex, onOpen }: { task: PanelTask; dragging?: boolean; compact?: boolean; titleTabIndex?: number; onOpen?: () => void }) {
   const overdue = calculateTaskVariance({
     status: task.status,
     dueDate: task.dueDate,
     section: { isBacklog: Boolean(task.section?.isBacklog) },
   }).isOverdue
-  return <TaskCard task={task} overdue={overdue} done={task.status === 'DONE'} dragging={dragging} titleTabIndex={titleTabIndex} onOpen={onOpen} />
+  return <TaskCard task={task} overdue={overdue} done={task.status === 'DONE'} dragging={dragging} compact={compact} titleTabIndex={titleTabIndex} onOpen={onOpen} />
 }
