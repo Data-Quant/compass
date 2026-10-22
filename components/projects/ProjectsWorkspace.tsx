@@ -410,10 +410,15 @@ export function ProjectsWorkspace() {
         normalizeTask(latestProject, data.task as Partial<WorkspaceTask>, task)
       ), data.projectStatus))
       // Auto-moved ancestors, so the parent's card reflects its new status.
-      for (const parent of (data.syncedParentTasks ?? []) as WorkspaceTask[]) {
-        commitWorkspace((value) => updateProjectTask(value, projectId, parent.id, (task, latestProject) => (
-          normalizeTask(latestProject, parent, task)
-        )))
+      // Own try/catch: the server already saved, so a merge failure must not roll the child back.
+      try {
+        for (const parent of (data.syncedParentTasks ?? []) as WorkspaceTask[]) {
+          commitWorkspace((value) => updateProjectTask(value, projectId, parent.id, (task, latestProject) => (
+            normalizeTask(latestProject, parent, task)
+          )))
+        }
+      } catch (mergeError) {
+        console.error('Failed to merge synced parent tasks:', mergeError)
       }
       return true
     } catch (error) {

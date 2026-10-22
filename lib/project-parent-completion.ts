@@ -156,6 +156,12 @@ export async function syncParentTasks(input: {
     }
   }
   if (changed.size === 0) return []
-  const tasks = await prisma.task.findMany({ where: { id: { in: [...changed] } }, include: PROJECT_TASK_INCLUDE })
-  return input.visibilityScope ? filterTasksForBacklogAccess(tasks, false, input.visibilityScope) : tasks
+  // Never throws: callers run this after their own mutation is already committed.
+  try {
+    const tasks = await prisma.task.findMany({ where: { id: { in: [...changed] } }, include: PROJECT_TASK_INCLUDE })
+    return input.visibilityScope ? filterTasksForBacklogAccess(tasks, false, input.visibilityScope) : tasks
+  } catch (error) {
+    console.error('Failed to load synced parent tasks:', error)
+    return []
+  }
 }
