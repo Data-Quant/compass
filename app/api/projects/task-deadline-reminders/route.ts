@@ -6,6 +6,7 @@ import { sendMail } from '@/lib/email'
 import { isAdminRole } from '@/lib/permissions'
 import { queueOrSendProjectNotification } from '@/lib/project-notification-digests'
 import { escapeHtml } from '@/lib/sanitize'
+import { COMPASS_URL } from '@/lib/compass-url'
 
 export const runtime = 'nodejs'
 
@@ -31,23 +32,6 @@ type PendingTask = {
   project: { id: string; name: string }
   assignee: { id: string; name: string; email: string | null } | null
   assistants: Array<{ user: { id: string; name: string; email: string | null } }>
-}
-
-function normalizeBaseUrl(value: string | null | undefined) {
-  const trimmed = value?.trim().replace(/\/+$/, '')
-  if (!trimmed) return null
-  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
-}
-
-function getAppBaseUrl(origin: string) {
-  return (
-    normalizeBaseUrl(process.env.NEXT_PUBLIC_APP_URL) ||
-    normalizeBaseUrl(process.env.APP_URL) ||
-    normalizeBaseUrl(process.env.VERCEL_PROJECT_PRODUCTION_URL) ||
-    normalizeBaseUrl(process.env.VERCEL_URL) ||
-    normalizeBaseUrl(origin) ||
-    'http://localhost:3000'
-  )
 }
 
 function isReminderJobAuthorized(request: NextRequest) {
@@ -156,7 +140,6 @@ async function runProjectTaskDeadlineReminders(input: {
   daysBeforeDue?: number
   includeOverdue?: boolean
   dryRun?: boolean
-  origin: string
 }) {
   const daysBeforeDue = input.daysBeforeDue ?? 1
   const includeOverdue = input.includeOverdue ?? true
@@ -245,7 +228,7 @@ async function runProjectTaskDeadlineReminders(input: {
     }
   }
 
-  const appBaseUrl = getAppBaseUrl(input.origin)
+  const appBaseUrl = COMPASS_URL
   const results: Array<{ userId: string; email: string; success: boolean; queued?: boolean; taskCount: number; error?: string }> = []
 
   for (const group of tasksByAssignee.values()) {
@@ -338,7 +321,6 @@ export async function GET(request: NextRequest) {
       daysBeforeDue: parsed.data.daysBeforeDue,
       includeOverdue: parsed.data.includeOverdue,
       dryRun: parsed.data.dryRun,
-      origin: request.nextUrl.origin,
     })
     return NextResponse.json(result)
   } catch (error) {
@@ -374,7 +356,6 @@ export async function POST(request: NextRequest) {
       daysBeforeDue: parsed.data.daysBeforeDue,
       includeOverdue: parsed.data.includeOverdue,
       dryRun: parsed.data.dryRun,
-      origin: request.nextUrl.origin,
     })
     return NextResponse.json(result)
   } catch (error) {

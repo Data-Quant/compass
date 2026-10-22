@@ -12,6 +12,7 @@ import { normalizeCoverPersonIds } from '@/lib/leave-cover'
 import { shouldReceiveReportForPeriod } from '@/lib/evaluation-profile-rules'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import { renderLeaveRequestEmailAction } from '@/lib/leave-deep-links'
+import { compassUrl } from '@/lib/compass-url'
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -947,8 +948,7 @@ export async function sendTransitionPlanReminderNotification(requestId: string) 
   leaveStart.setHours(0, 0, 0, 0)
   const daysUntilStart = Math.ceil((leaveStart.getTime() - today.getTime()) / msPerDay)
 
-  const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || '').replace(/\/$/, '')
-  const leavePageUrl = appBaseUrl ? `${appBaseUrl}/leave` : ''
+  const leavePageUrl = compassUrl('/leave')
   const timelineMessage =
     daysUntilStart <= 0
       ? 'Your leave starts today.'
@@ -1524,8 +1524,7 @@ export async function sendTeamLeadFormRequestNotification(newHireId: string) {
     return { success: false, message: 'No team lead email configured' }
   }
 
-  const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || '').replace(/\/$/, '')
-  const formUrl = appBaseUrl ? `${appBaseUrl}/team-lead-form/${newHire.id}` : '/team-lead-form'
+  const formUrl = compassUrl(`/team-lead-form/${encodeURIComponent(newHire.id)}`)
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -1539,11 +1538,7 @@ export async function sendTeamLeadFormRequestNotification(newHireId: string) {
       <p style="color: #475569; margin: 0 0 14px;">
         Please complete the team lead onboarding form so security and HR can proceed.
       </p>
-      ${
-        appBaseUrl
-          ? `<p><a href="${formUrl}" style="display:inline-block;background:#0D9488;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;">Open Team Lead Form</a></p>`
-          : ''
-      }
+      <p><a href="${formUrl}" style="display:inline-block;background:#0D9488;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;">Open Team Lead Form</a></p>
     </div>
   `
 
@@ -1659,8 +1654,7 @@ export async function sendOnboardingCompletedNotification(userId: string) {
 }
 
 function getLeavePageUrl() {
-  const base = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || '').replace(/\/$/, '')
-  return base ? `${base}/leave` : ''
+  return compassUrl('/leave')
 }
 
 function leaveDateRangeLabels(leaveRequest: { startDate: Date; endDate: Date }) {

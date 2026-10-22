@@ -6,6 +6,7 @@ import { reviewStageSchema } from '@/lib/weekly/schemas'
 import { actorFromUser } from '@/lib/weekly/service/context'
 import { WeeklyError } from '@/lib/weekly/service/errors'
 import { openReviewStage, reviewStageView } from '@/lib/weekly/service/review-stage'
+import { COMPASS_URL } from '@/lib/compass-url'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
     const user = await requireWeeklySession({ admin: true })
     await guardWeeklyMutation(request, user.id)
     const { periodId } = reviewStageSchema.parse(await request.json())
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || request.nextUrl.origin
+    const appUrl = COMPASS_URL
     return NextResponse.json({ success: true, ...(await openReviewStage(actorFromUser(user), periodId, new Date(), sendMail, appUrl)) })
   } catch (error) {
     return weeklyErrorResponse(error)

@@ -48,7 +48,6 @@ export async function GET(request: NextRequest) {
     }
 
     const result = await sendDueProjectNotificationDigests({
-      origin: request.nextUrl.origin,
       dryRun: parsed.data.dryRun,
     })
     return NextResponse.json(result)
@@ -79,7 +78,6 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await sendDueProjectNotificationDigests({
-      origin: request.nextUrl.origin,
       dryRun: parsed.data.dryRun,
     })
     return NextResponse.json(result)

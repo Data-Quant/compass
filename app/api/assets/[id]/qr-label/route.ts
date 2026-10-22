@@ -36,10 +36,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Asset not found' }, { status: 404 })
     }
 
-    const buffer = await createAssetLabelsPdfBuffer(
-      [{ ...asset, ownerName: asset.currentAssignee?.name ?? null }],
-      request.nextUrl.origin
-    )
+    const buffer = await createAssetLabelsPdfBuffer([{ ...asset, ownerName: asset.currentAssignee?.name ?? null }])
 
     return new NextResponse(new Uint8Array(buffer), {
       headers: {

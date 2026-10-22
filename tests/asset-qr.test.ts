@@ -10,22 +10,8 @@ test('asset QR scan path uses the permanent equipment ID', () => {
   assert.equal(getAssetScanPath('AST-000123'), '/assets/scan/AST-000123')
 })
 
-test('asset QR scan URL prefers the configured Compass app URL', () => {
-  const previous = process.env.NEXT_PUBLIC_APP_URL
-  process.env.NEXT_PUBLIC_APP_URL = 'https://compass.example.com/'
-
-  try {
-    assert.equal(
-      getAssetScanUrl('AST-000123', 'https://preview.example.com'),
-      'https://compass.example.com/assets/scan/AST-000123'
-    )
-  } finally {
-    if (previous === undefined) {
-      delete process.env.NEXT_PUBLIC_APP_URL
-    } else {
-      process.env.NEXT_PUBLIC_APP_URL = previous
-    }
-  }
+test('asset QR scan URL always points at Compass itself, so printed labels work wherever they were made', () => {
+  assert.equal(getAssetScanUrl('AST-000123'), 'https://compass-blond.vercel.app/assets/scan/AST-000123')
 })
 
 test('asset QR label generator returns a PDF document', async () => {
@@ -42,7 +28,6 @@ test('asset QR label generator returns a PDF document', async () => {
         ownerName: 'Jane Doe',
       },
     ],
-    'https://compass.example.com'
   )
 
   assert.equal(pdf.subarray(0, 4).toString(), '%PDF')

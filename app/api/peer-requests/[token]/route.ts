@@ -7,6 +7,7 @@ import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
 import { peerVoteSchema } from '@/lib/weekly/schemas'
 import { WeeklyError } from '@/lib/weekly/service/errors'
 import { peerRequestByToken, replyToPeerRequest, voteOnPeerRequest } from '@/lib/weekly/service/peer-requests'
+import { COMPASS_URL } from '@/lib/compass-url'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     await limit(request)
     const input = peerVoteSchema.parse(await request.json())
     const { token } = await params
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || request.nextUrl.origin
+    const appUrl = COMPASS_URL
     if ('reply' in input) {
       await replyToPeerRequest(token, input.reply, new Date(), sendMail, appUrl)
       return NextResponse.json({ success: true })

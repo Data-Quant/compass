@@ -5,6 +5,7 @@ import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
 import { selfReviewLeadSchema } from '@/lib/weekly/schemas'
 import { actorFromUser } from '@/lib/weekly/service/context'
 import { markSelfReviewRead, replyToSelfReview, teamSelfReviews } from '@/lib/weekly/service/self-review'
+import { COMPASS_URL } from '@/lib/compass-url'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest) {
     const input = selfReviewLeadSchema.parse(await request.json())
     const now = new Date()
     if (input.action === 'read') await markSelfReviewRead(actor, input.reviewId, now)
-    else await replyToSelfReview(actor, input.reviewId, input.text, now, sendMail, process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || request.nextUrl.origin)
+    else await replyToSelfReview(actor, input.reviewId, input.text, now, sendMail, COMPASS_URL)
     return NextResponse.json({ success: true })
   } catch (error) {
     return weeklyErrorResponse(error)

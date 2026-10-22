@@ -150,7 +150,6 @@ export async function PATCH(
           actorId: sessionUser.id,
           summary: `${actorName} moved the task to ${updatedTask.section?.name || updatedTask.status}`,
           kind: 'status',
-          origin: request.nextUrl.origin,
         })
       }
       if (body.dueDate !== undefined && (task.dueDate?.toISOString().slice(0, 10) || null) !== (updatedTask.dueDate?.toISOString().slice(0, 10) || null)) {
@@ -162,7 +161,6 @@ export async function PATCH(
           actorId: sessionUser.id,
           summary: `${actorName} changed the deadline to ${dueLabel}`,
           kind: 'dueDate',
-          origin: request.nextUrl.origin,
         })
       }
     } catch (activityError) {
@@ -171,7 +169,7 @@ export async function PATCH(
 
     if (updatedTask.status === 'DONE' && task.status !== 'DONE' && task.parentTaskId) {
       try {
-        await sendChildTaskCompletedNotification(task.id, request.nextUrl.origin)
+        await sendChildTaskCompletedNotification(task.id)
       } catch (notificationError) {
         console.error('Failed to send child task completion notification:', notificationError)
       }

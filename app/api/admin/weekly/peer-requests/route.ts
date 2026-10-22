@@ -5,6 +5,7 @@ import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
 import { peerDecisionSchema } from '@/lib/weekly/schemas'
 import { actorFromUser } from '@/lib/weekly/service/context'
 import { adminPeerRequests, decidePeerRequest, resendPeerRequestLinks } from '@/lib/weekly/service/peer-requests'
+import { COMPASS_URL } from '@/lib/compass-url'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,7 +24,7 @@ export async function POST(request: NextRequest) {
     const user = await requireWeeklySession({ admin: true })
     await guardWeeklyMutation(request, user.id)
     const input = peerDecisionSchema.parse(await request.json())
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || request.nextUrl.origin
+    const appUrl = COMPASS_URL
     if ('action' in input) return NextResponse.json({ success: true, ...(await resendPeerRequestLinks(actorFromUser(user), input.requestId, new Date(), sendMail, appUrl)) })
     return NextResponse.json({ success: true, ...(await decidePeerRequest(actorFromUser(user), input.requestId, input.decision, input.note, new Date(), sendMail, appUrl)) })
   } catch (error) {

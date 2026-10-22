@@ -2,6 +2,7 @@ import type { ProjectNotificationDigestFrequency } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { sendMail } from '@/lib/email'
 import { escapeHtml } from '@/lib/sanitize'
+import { COMPASS_URL } from '@/lib/compass-url'
 
 export const PROJECT_NOTIFICATION_FREQUENCIES: ProjectNotificationDigestFrequency[] = ['DAILY', 'WEEKLY']
 export const DEFAULT_PROJECT_NOTIFICATION_TIME = '09:00'
@@ -22,23 +23,6 @@ type DigestPreferenceInput = {
   digestTime: string
   digestWeekday?: number
   from?: Date
-}
-
-function normalizeBaseUrl(value: string | null | undefined) {
-  const trimmed = value?.trim().replace(/\/+$/, '')
-  if (!trimmed) return null
-  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
-}
-
-function getAppBaseUrl(origin?: string | null) {
-  return (
-    normalizeBaseUrl(process.env.NEXT_PUBLIC_APP_URL) ||
-    normalizeBaseUrl(process.env.APP_URL) ||
-    normalizeBaseUrl(process.env.VERCEL_PROJECT_PRODUCTION_URL) ||
-    normalizeBaseUrl(process.env.VERCEL_URL) ||
-    normalizeBaseUrl(origin) ||
-    'http://localhost:3000'
-  )
 }
 
 export function isValidProjectNotificationTime(value: string) {
@@ -251,13 +235,12 @@ function buildDigestEmailHtml(input: {
 }
 
 export async function sendDueProjectNotificationDigests(input: {
-  origin?: string | null
   dryRun?: boolean
   now?: Date
 }) {
   const now = input.now ?? new Date()
   const dryRun = input.dryRun ?? false
-  const appBaseUrl = getAppBaseUrl(input.origin)
+  const appBaseUrl = COMPASS_URL
   const staleBefore = staleDigestCutoff(now)
 
   // Items nobody was sent in time (for months, while this job could not run) are marked skipped, so they never arrive

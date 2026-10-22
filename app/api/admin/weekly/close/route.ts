@@ -8,6 +8,7 @@ import { actorFromUser } from '@/lib/weekly/service/context'
 import { WeeklyError } from '@/lib/weekly/service/errors'
 import { openForms } from '@/lib/weekly/service/forms'
 import { announceRoundClosed } from '@/lib/weekly/service/round-notices'
+import { COMPASS_URL } from '@/lib/compass-url'
 
 export const dynamic = 'force-dynamic'
 // Closing aggregates the whole quarter in one transaction.
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest) {
       case 'close': {
         const closed = await closeCycle(actor, input.cycleId, { drops: input.drops, formsAcknowledged: input.formsAcknowledged }, now)
         // The round is closed whether or not the emails go out; a failed send is logged, not shown as a failed close.
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || request.nextUrl.origin
+        const appUrl = COMPASS_URL
         await announceRoundClosed(input.cycleId, sendMail, appUrl).catch((error: unknown) => console.error('[weekly] round closed emails failed', { cycleId: input.cycleId, error }))
         return NextResponse.json({ success: true, ...closed })
       }

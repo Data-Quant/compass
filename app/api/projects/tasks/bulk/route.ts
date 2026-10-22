@@ -255,7 +255,6 @@ export async function PATCH(request: NextRequest) {
           summary,
           kind: parsed.data.action === 'ASSIGNEE' ? 'assignee' : parsed.data.action === 'PRIORITY' ? 'priority' : 'dueDate',
           metadata: { bulk: true, action: parsed.data.action },
-          origin: request.nextUrl.origin,
         })
 
         if (parsed.data.action === 'ASSIGNEE' && assigneeId && before.assigneeId !== assigneeId) {
@@ -263,7 +262,6 @@ export async function PATCH(request: NextRequest) {
             taskId: task.id,
             userIds: [assigneeId],
             actorId: user.id,
-            origin: request.nextUrl.origin,
             context: 'assignee',
           })
         }

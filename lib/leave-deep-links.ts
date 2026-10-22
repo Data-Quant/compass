@@ -1,6 +1,5 @@
+import { COMPASS_URL } from '@/lib/compass-url'
 import { escapeHtml } from '@/lib/sanitize'
-
-const PRODUCTION_COMPASS_URL = 'https://compass-blond.vercel.app'
 
 type DeepLinkTarget = 'approval' | 'own' | 'unavailable'
 
@@ -21,15 +20,9 @@ export function normalizeCompassBaseUrl(value: string | null | undefined) {
   }
 }
 
+/** Compass's address, unless a caller names another explicitly; never the deployment a request happened to hit. */
 export function getCompassBaseUrl(explicitBaseUrl?: string | null) {
-  return (
-    normalizeCompassBaseUrl(explicitBaseUrl) ||
-    normalizeCompassBaseUrl(process.env.NEXT_PUBLIC_APP_URL) ||
-    normalizeCompassBaseUrl(process.env.APP_URL) ||
-    normalizeCompassBaseUrl(process.env.VERCEL_PROJECT_PRODUCTION_URL) ||
-    normalizeCompassBaseUrl(process.env.VERCEL_URL) ||
-    (process.env.NODE_ENV === 'production' ? PRODUCTION_COMPASS_URL : 'http://localhost:3000')
-  )
+  return normalizeCompassBaseUrl(explicitBaseUrl) || COMPASS_URL
 }
 
 export function getLeaveRequestPath(requestId: string) {
