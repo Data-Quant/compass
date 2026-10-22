@@ -23,10 +23,13 @@ interface PriorityPillProps {
 }
 
 export function PriorityPill({ priority, editable = false, onChange, disabled, ariaLabel }: PriorityPillProps) {
+  // Outer span takes SelectTrigger's `[&>span]:line-clamp-1` (display:-webkit-box); the inner one keeps icon and label on one line.
   const content = (
-    <span className="inline-flex items-center gap-1.5">
-      <PriorityIcon priority={priority} />
-      <span>{PRIORITY_LABEL[priority]}</span>
+    <span>
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+        <PriorityIcon priority={priority} />
+        <span>{PRIORITY_LABEL[priority]}</span>
+      </span>
     </span>
   )
 

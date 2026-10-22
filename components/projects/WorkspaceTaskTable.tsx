@@ -1053,10 +1053,14 @@ function ProjectMatrixRow({
   const selectedCount = selectableTaskIds.filter((id) => selectedIds.has(id)).length
   const hasOverdue = tasks.some((task) => isTaskOverdue(project, task))
   const progressText = progress.total === 0 ? 'No tasks' : `${progress.completed} of ${progress.total}`
-  const nearestDeadline = tasks
+  const earliestDue = (list: WorkspaceTask[]) => list
     .map((task) => task.dueDate)
     .filter((dueDate): dueDate is string => Boolean(dueDate))
     .sort()[0] || null
+  // Open work decides the deadline; done tasks only fill in for display and never turn it red.
+  const openDeadline = earliestDue(tasks.filter((task) => !isDoneTask(project, task)))
+  const nearestDeadline = openDeadline || earliestDue(tasks)
+  const deadlineLate = Boolean(openDeadline) && hasOverdue && (daysFromToday(openDeadline) ?? 0) < 0
   const assignedPeople = tasks
     .flatMap(taskAssignees)
     .filter((person, index, people) => people.findIndex((candidate) => candidate.id === person.id) === index)
@@ -1298,7 +1302,7 @@ function ProjectMatrixRow({
               />
             )}
             <div className="min-w-0">
-              <p className={cn('text-[13px] tabular-nums', (daysFromToday(nearestDeadline) ?? 0) < 0 && 'text-red-600 dark:text-red-400')}>
+              <p className={cn('text-[13px] tabular-nums', deadlineLate && 'text-red-600 dark:text-red-400')}>
                 {displayDueDate(nearestDeadline)}
               </p>
               <p className="text-xs text-muted-foreground">{relativeDueDate(nearestDeadline)}</p>
@@ -1347,10 +1351,13 @@ const STATUS_DOT: Record<string, string> = {
 }
 
 function ProjectStatusLabel({ status }: { status: string }) {
+  // Outer span takes SelectTrigger's `[&>span]:line-clamp-1` (display:-webkit-box); the inner one keeps dot and label inline.
   return (
-    <span className="inline-flex items-center gap-1.5">
-      <span aria-hidden className={cn('h-2 w-2 shrink-0 rounded-full', STATUS_DOT[status] || 'bg-slate-400')} />
-      {PROJECT_STATUSES.find((option) => option.value === status)?.label || status}
+    <span>
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+        <span aria-hidden className={cn('h-2 w-2 shrink-0 rounded-full', STATUS_DOT[status] || 'bg-slate-400')} />
+        {PROJECT_STATUSES.find((option) => option.value === status)?.label || status}
+      </span>
     </span>
   )
 }

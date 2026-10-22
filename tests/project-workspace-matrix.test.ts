@@ -96,7 +96,7 @@ const view: WorkspaceProjectView = {
   progress: { completed: 0, total: 3, percent: 0 },
 }
 
-async function render(options: { groupMode?: 'project' | 'assignee'; assigneeFilter?: string } = {}) {
+async function render(options: { groupMode?: 'project' | 'assignee'; assigneeFilter?: string; views?: WorkspaceProjectView[] } = {}) {
   // The repository's test runner preserves the classic JSX transform, while
   // Next supplies the JSX runtime during application builds.
   ;(globalThis as typeof globalThis & { React: typeof React }).React = React
@@ -107,7 +107,7 @@ async function render(options: { groupMode?: 'project' | 'assignee'; assigneeFil
   const router = { push: () => undefined } as never
 
   return renderToStaticMarkup(React.createElement(AppRouterContext.Provider, { value: router }, React.createElement(WorkspaceTaskTable, {
-    projectViews: [view],
+    projectViews: options.views || [view],
     viewerId: 'user-1',
     people: [project.owner, ...project.members],
     progressScopeLabel: 'Your tasks',
@@ -256,4 +256,22 @@ test('person grouping renders shared tasks under every assigned person', async (
   assert.match(html, /aria-label="Collapse tasks for Areebah"/)
   assert.match(html, /aria-label="Collapse tasks for Shoaib"/)
   assert.equal(html.match(/aria-label="Collapse subtasks for Draft the investment memo"/g)?.length, 2)
+})
+
+test('a completed project with a past deadline shows no red date and keeps its status dot', async () => {
+  const doneTask: WorkspaceTask = { ...task, status: 'DONE', sectionId: done.id, section: done, dueDate: '2024-01-10' }
+  const completedProject: WorkspaceProject = { ...project, status: 'COMPLETED', tasks: [doneTask] }
+  const html = await render({
+    views: [{
+      project: completedProject,
+      scopedTasks: [doneTask],
+      visibleActiveTasks: [doneTask],
+      visibleBacklogTasks: [],
+      progress: { completed: 1, total: 1, percent: 100 },
+    }],
+  })
+
+  assert.match(html, /Jan 10, 2024/)
+  assert.doesNotMatch(html, /text-red-600/)
+  assert.match(html, /bg-sky-500/)
 })
