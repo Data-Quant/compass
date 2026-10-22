@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils'
 import { calculateTaskVariance, isTaskAssignedTo } from '@/lib/project-progress'
 import type { PanelTask, ProjectStatusSection } from './TaskDetailPanel'
 import { TaskCard } from './TaskCard'
+import { AddTaskButton, BoardColumnEmpty, BoardColumnShell, BoardScroller, TASK_NAME_INPUT_CLASS } from './BoardColumn'
 import { sortTasksByDeadline } from './workspace-utils'
 
 interface BoardViewProps {
@@ -267,7 +268,7 @@ export function BoardView({ projectId, tasks, sections, viewerId, canManage, onT
       onDragEnd={handleDragEnd}
     >
       <SortableContext items={localSections.map((section) => `${SECTION_PREFIX}${section.id}`)} strategy={horizontalListSortingStrategy}>
-      <div className="flex gap-4 overflow-x-auto pb-4 min-h-[400px]">
+      <BoardScroller>
         {localSections.map((section) => (
           <BoardColumn
             key={section.id}
@@ -283,7 +284,7 @@ export function BoardView({ projectId, tasks, sections, viewerId, canManage, onT
           />
         ))}
 
-        {canManage && <div className="flex-shrink-0 w-72 pt-10">
+        {canManage && <div className="w-[288px] shrink-0 pt-9">
           {addingStatus ? (
             <input
               autoFocus
@@ -298,18 +299,20 @@ export function BoardView({ projectId, tasks, sections, viewerId, canManage, onT
               }}
               onBlur={handleAddStatus}
               placeholder="Status name"
-              className="w-full rounded-lg border border-border/40 bg-card px-3 py-2 text-sm outline-none focus:border-primary/40"
+              className={TASK_NAME_INPUT_CLASS}
             />
           ) : (
             <button
+              type="button"
               onClick={() => setAddingStatus(true)}
-              className="w-full rounded-xl border border-dashed border-border/50 px-3 py-3 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+              className="flex h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              + Add status
+              <Plus className="h-3.5 w-3.5" />
+              Add status
             </button>
           )}
         </div>}
-      </div>
+      </BoardScroller>
       </SortableContext>
 
       <DragOverlay>
@@ -366,91 +369,73 @@ function BoardColumn({
   }
 
   return (
-    <div
-      ref={setSortableRef}
+    <BoardColumnShell
+      id={section.id}
+      name={section.name}
+      color={section.color}
+      count={tasks.length}
+      isOver={isOver}
+      dropRef={setNodeRef}
+      outerRef={setSortableRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
-      className={cn('flex-shrink-0 w-72', isDragging && 'opacity-60 z-10')}
+      className={cn(isDragging && 'z-10 opacity-60')}
+      headerStart={canManage && (
+        <button
+          type="button"
+          ref={setActivatorNodeRef}
+          {...attributes}
+          {...listeners}
+          aria-label={`Move ${section.name} section`}
+          className="-ml-1 inline-flex h-7 w-5 cursor-grab items-center justify-center rounded-md text-muted-foreground/60 opacity-0 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing group-hover/col:opacity-100 [@media(hover:none)]:opacity-100"
+        >
+          <GripVertical className="h-3.5 w-3.5" />
+        </button>
+      )}
+      headerEnd={canManage && (
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={!canDelete || deleting}
+          aria-label={`Remove ${section.name} section`}
+          title={canDelete ? `Remove ${section.name}` : 'Add another section before removing this one'}
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground/60 opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-30 group-hover/col:opacity-100 [@media(hover:none)]:opacity-100"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      )}
+      top={adding ? (
+        <input
+          autoFocus
+          value={newTitle}
+          onChange={(event) => setNewTitle(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') handleAdd()
+            if (event.key === 'Escape') {
+              setAdding(false)
+              setNewTitle('')
+            }
+          }}
+          onBlur={handleAdd}
+          placeholder="Task name…"
+          aria-label={`New task in ${section.name}`}
+          className={TASK_NAME_INPUT_CLASS}
+        />
+      ) : (
+        <AddTaskButton onClick={() => setAdding(true)} />
+      )}
     >
-      <div className="group flex items-center gap-2 px-2 py-2 mb-2">
-        {canManage && (
-          <button
-            type="button"
-            ref={setActivatorNodeRef}
-            {...attributes}
-            {...listeners}
-            aria-label={`Move ${section.name} section`}
-            className="inline-flex h-7 w-5 cursor-grab items-center justify-center rounded-md text-muted-foreground/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
-          >
-            <GripVertical className="h-3.5 w-3.5" />
-          </button>
-        )}
-        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: section.color }} />
-        <span className="text-sm font-semibold">{section.name}</span>
-        <span className="text-xs text-muted-foreground ml-auto">{tasks.length}</span>
-        {canManage && (
-          <button
-            type="button"
-            onClick={onDelete}
-            disabled={!canDelete || deleting}
-            aria-label={`Remove ${section.name} section`}
-            title={canDelete ? `Remove ${section.name}` : 'Add another section before removing this one'}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground/60 opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-30 group-hover:opacity-100"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        )}
-      </div>
-
-      <div
-        ref={setNodeRef}
-        className={cn(
-          'rounded-xl border p-2 min-h-[200px] transition-colors duration-200',
-          isOver ? 'bg-primary/5 border-primary/30' : 'border-border/40'
-        )}
-        style={!isOver ? { borderColor: `${section.color}33`, backgroundColor: `${section.color}0d` } : undefined}
-      >
-        {adding ? (
-          <div className="mb-2">
-            <input
-              autoFocus
-              value={newTitle}
-              onChange={(event) => setNewTitle(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') handleAdd()
-                if (event.key === 'Escape') {
-                  setAdding(false)
-                  setNewTitle('')
-                }
-              }}
-              onBlur={handleAdd}
-              placeholder="Task name"
-              className="w-full bg-card border border-border/40 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary/40"
-            />
-          </div>
-        ) : (
-          <button
-            onClick={() => setAdding(true)}
-            className="mb-2 w-full flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground/50 hover:text-muted-foreground rounded-lg hover:bg-card/50 transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Add task
-          </button>
-        )}
-
-        <SortableContext items={tasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
-          <div className="space-y-2">
-            {tasks.map((task) => (
-              <SortableTaskCard
-                key={task.id}
-                task={task}
-                disabled={!canManage && !isTaskAssignedTo(task, viewerId)}
-                onClick={() => onTaskClick(task)}
-              />
-            ))}
-          </div>
-        </SortableContext>
-      </div>
-    </div>
+      <SortableContext items={tasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
+        {tasks.length === 0 && <BoardColumnEmpty />}
+        {tasks.map((task) => (
+          <SortableTaskCard
+            key={task.id}
+            task={task}
+            disabled={!canManage && !isTaskAssignedTo(task, viewerId)}
+            onClick={() => onTaskClick(task)}
+          />
+        ))}
+      </SortableContext>
+    </BoardColumnShell>
   )
 }
 

@@ -22,6 +22,7 @@ import {
   sortWorkspaceTaskItems,
   taskMatchesAssignee,
   taskMatchesSearch,
+  targetSectionForNewTask,
 } from '../components/projects/workspace-utils'
 
 const backlog: WorkspaceSection = {
@@ -393,4 +394,15 @@ test('dueState: done is never overdue or soon', () => {
 test('dueState: different year appends the year', () => {
   const s = dueState('2025-12-30T00:00:00Z', { done: true, overdue: false, now: NOW })
   assert.equal(s.label, 'Dec 30, 2025')
+})
+
+test('targetSectionForNewTask picks the column section, or the parent task section for subtasks', () => {
+  const inProgress: WorkspaceSection = { ...todo, id: 'doing', name: 'In Progress', canonicalStatus: 'IN_PROGRESS', orderIndex: 2 }
+  const value = project([], { sections: [backlog, todo, inProgress, done] })
+  assert.equal(targetSectionForNewTask(value, 'TODO')?.id, 'todo')
+  assert.equal(targetSectionForNewTask(value, 'IN_PROGRESS')?.id, 'doing')
+  assert.equal(targetSectionForNewTask(value, 'DONE')?.id, 'done')
+  const parent = task({ id: 'parent', title: 'Parent', sectionId: inProgress.id, section: inProgress })
+  assert.equal(targetSectionForNewTask(value, 'TODO', parent)?.id, 'doing')
+  assert.equal(targetSectionForNewTask(project([], { sections: [backlog, todo, done] }), 'IN_PROGRESS'), null)
 })

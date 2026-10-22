@@ -53,8 +53,8 @@ export const PRIORITY_CLASS: Record<WorkspacePriority, string> = {
 export const PRIORITY_ICON: Record<WorkspacePriority, { icon: LucideIcon; className: string }> = {
   URGENT: { icon: AlertOctagon, className: 'text-red-500' },
   HIGH: { icon: SignalHigh, className: 'text-orange-500' },
-  MEDIUM: { icon: SignalMedium, className: 'text-muted-foreground' },
-  LOW: { icon: SignalLow, className: 'text-muted-foreground/70' },
+  MEDIUM: { icon: SignalMedium, className: 'text-foreground/60' },
+  LOW: { icon: SignalLow, className: 'text-muted-foreground' },
 }
 
 const TASK_STATUS_ORDER: Record<WorkspaceTaskStatus, number> = {
@@ -405,6 +405,15 @@ export function sectionForColumn(project: WorkspaceProject, column: KanbanColumn
   return ordered.find((section) => !section.isBacklog && section.canonicalStatus === 'IN_PROGRESS' && section.isDefault)
     || ordered.find((section) => !section.isBacklog && section.canonicalStatus === 'IN_PROGRESS')
     || null
+}
+
+// Subtasks inherit their parent's section; new top-level tasks go to the column's section.
+export function targetSectionForNewTask(
+  project: WorkspaceProject,
+  column: KanbanColumnId,
+  parentTask?: WorkspaceTask | null,
+): WorkspaceSection | null {
+  return parentTask?.section || sectionForColumn(project, column)
 }
 
 export function columnForTask(project: WorkspaceProject, task: WorkspaceTask): KanbanColumnId {
