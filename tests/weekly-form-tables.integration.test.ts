@@ -62,8 +62,21 @@ test('a row saves as a draft, submits only when every question is scored, and cl
   assert.deepEqual([table.rows[0].status, table.rows[0].total], ['SUBMITTED', 7])
   const saved = await prisma.evaluation.findMany({ where: { evaluateeId: W.ana.id, questionId: { in: [q1, q2] } } })
   assert.ok(saved.every((e) => e.evaluatorId === W.hr.id && e.submittedAt !== null))
-  assert.equal((await formTables(hr2, 'HR', at(12))).tables[0].rows[0].status, 'CLOSED_BY_OTHER')
+  // The other HR person sees whose scores closed the row, not blanks that look lost.
+  const [other] = (await formTables(hr2, 'HR', at(12))).tables[0].rows
+  assert.deepEqual([other.status, other.ratings[q1], other.ratings[q2]], ['CLOSED_BY_OTHER', 3, 4])
   await assert.rejects(saveTableRow(hr2, { ...row, evaluatorId: F.hr2.id, ratings: [{ questionId: q1, ratingValue: 2 }, { questionId: q2, ratingValue: 2 }], submit: true }, at(12)), isStatus(409))
+})
+
+test('the table takes scores in quarter steps (2.5, 2.75, 3.25) and totals them; anything else is refused', WEEKLY_DB_TEST, async () => {
+  const [q1, q2] = await ids('HR')
+  const row = { kind: 'HR' as const, evaluatorId: W.hr.id, relationshipType: 'HR' as const, evaluateeId: W.ana.id }
+  await saveTableRow(HR_ACTOR, { ...row, ratings: [{ questionId: q1, ratingValue: 2.75 }, { questionId: q2, ratingValue: 3.5 }], submit: true }, at(12))
+  const [saved] = (await formTables(HR_ACTOR, 'HR', at(12))).tables[0].rows
+  assert.deepEqual([saved.status, saved.ratings[q1], saved.ratings[q2], saved.total], ['SUBMITTED', 2.75, 3.5, 6.25])
+  for (const bad of [2.6, 0.75, 4.25]) {
+    await assert.rejects(saveTableRow(HR_ACTOR, { ...row, ratings: [{ questionId: q1, ratingValue: bad }, { questionId: q2, ratingValue: 3 }], submit: true }, at(12)), /steps of 0.25/)
+  }
 })
 
 test('the table opens with the end-of-quarter forms, refuses edits once the quarter is locked, and is HR only', WEEKLY_DB_TEST, async () => {

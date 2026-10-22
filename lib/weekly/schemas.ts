@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { MAX_FIELD_CHARS } from './answer-rules'
 import { parseWeekOneStart } from './calendar'
+import { isTableScore } from './table-scores'
 
 const field = z.string().max(MAX_FIELD_CHARS, `Keep each box under ${MAX_FIELD_CHARS} characters`)
 /** A multiple-choice answer (the chosen statement and an optional or required note), or a comment. */
@@ -71,7 +72,8 @@ export const formTableRowSchema = z.object({
   evaluatorId: z.string().min(1),
   relationshipType: z.enum(['C_LEVEL', 'DEPT', 'HR', 'TEAM_LEAD', 'DIRECT_REPORT', 'PEER', 'CROSS_DEPARTMENT']),
   evaluateeId: z.string().min(1),
-  ratings: z.array(z.object({ questionId: z.string().min(1), questionSource: z.enum(['GLOBAL', 'LEAD']).default('GLOBAL'), ratingValue: z.number().int().min(1).max(4).nullable() }).strict()).max(50),
+  // Quarter steps from 1 to 4 (2.5, 2.75 ...): the tables take finer scores than the employees' own forms.
+  ratings: z.array(z.object({ questionId: z.string().min(1), questionSource: z.enum(['GLOBAL', 'LEAD']).default('GLOBAL'), ratingValue: z.number().refine(isTableScore, 'Scores go from 1 to 4 in steps of 0.25').nullable() }).strict()).max(50),
   submit: z.boolean(),
   // An earlier quarter HR is finishing; the running round's when left out.
   periodId: z.string().min(1).optional(),
@@ -125,7 +127,7 @@ export const setupRoundSchema = z.object({
   name: z.string().trim().min(2, 'Name the quarter').max(80), startDate: dateSchema, endDate: dateSchema, weekOneStartsOn: dateSchema,
   questionWeeks: z.number().int().min(1).max(26).optional(), reviewDeadline: dateSchema.optional(),
 }).strict()
-export const roundActionSchema = z.object({ action: z.enum(['open-review', 'open-round', 'lock', 'unlock']) }).strict()
+export const roundActionSchema = z.object({ action: z.enum(['open-review', 'open-round', 'lock', 'unlock', 'open-late-forms', 'stop-late-forms']) }).strict()
 export const roundPeopleActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('accept-warning'), cycleId: z.string().min(1), userId: z.string().min(1), warning: z.enum(['NO_LEAD', 'FEW_PEERS']), reason: reasonSchema }).strict(),
   z.object({
@@ -138,6 +140,10 @@ export const roundResultsActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('mark-released') }).strict(),
 ])
 export const formQuerySchema = z.object({ relationshipType: formRelationshipTypeSchema, evaluateeId: z.string().min(1) })
+// An earlier quarter's evaluations, finished late: every kind but HR's own.
+const lateFormTypeSchema = z.enum(['C_LEVEL', 'DEPT', 'TEAM_LEAD', 'DIRECT_REPORT', 'PEER', 'CROSS_DEPARTMENT'])
+export const lateFormQuerySchema = z.object({ periodId: z.string().min(1), relationshipType: lateFormTypeSchema, evaluateeId: z.string().min(1) }).strict()
+export const lateFormInputSchema = lateFormQuerySchema.extend({ responses: z.array(formResponseSchema).max(200) }).strict()
 
 export const closeActionSchema = z.discriminatedUnion('action', [
   z.object({

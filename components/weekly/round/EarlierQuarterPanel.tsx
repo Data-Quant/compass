@@ -13,6 +13,41 @@ import { QuarterEvaluationsWorkspace } from '../form-tables/QuarterEvaluationsWo
 import { errorMessage, weeklyRequest } from '../weekly-api'
 import { RoundResultsCard } from './RoundResultsCard'
 
+/** Employees' own unfinished evaluations of the quarter: HR lets them finish on their Evaluations page, and sees who is behind. */
+function LateFormsCard({ view, busy, onSet }: { view: EarlierQuarterView; busy: boolean; onSet: (open: boolean) => Promise<void> }) {
+  const { openedAt, left, people } = view.lateForms
+  if (!openedAt && left === 0) return null
+  return (
+    <Card>
+      <CardContent className="space-y-3 p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 max-w-2xl space-y-1">
+            <p className="font-medium text-foreground">Employees’ unfinished evaluations</p>
+            <p className="text-sm text-muted-foreground">
+              {openedAt
+                ? `Open to employees since ${formatKarachiDate(openedAt)}: each person sees what they have left on their Evaluations page. ${left === 0 ? 'Everyone has finished.' : `${left} left across ${people.length} ${people.length === 1 ? 'person' : 'people'}.`} Closing the quarter stops it.`
+                : `${left} ${left === 1 ? 'evaluation' : 'evaluations'} across ${people.length} ${people.length === 1 ? 'person' : 'people'} were never finished. Let employees finish them on their Evaluations page before you close the quarter. Nobody is emailed.`}
+            </p>
+          </div>
+          {openedAt
+            ? <Button variant="outline" disabled={busy} onClick={() => void onSet(false)}>Stop</Button>
+            : <Button disabled={busy} onClick={() => void onSet(true)}>Let employees finish them</Button>}
+        </div>
+        {people.length > 0 && (
+          <details className="text-sm">
+            <summary className="cursor-pointer text-muted-foreground">Who still has evaluations left</summary>
+            <ul className="mt-2 grid gap-x-6 gap-y-1 sm:grid-cols-2">
+              {people.map((p) => (
+                <li key={p.id} className="flex justify-between gap-3"><span>{p.name}</span><span className="tabular-nums text-muted-foreground">{p.left}</span></li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 /**
  * A quarter run on the earlier evaluations, finished here: HR fills in what is left in the quarter-end tables (the
  * partners' evaluations among them), closes the quarter so its scores are final, then releases its reports.
@@ -31,6 +66,19 @@ export function EarlierQuarterPanel({ view, onChanged }: { view: EarlierQuarterV
       await onChanged()
     } catch (e) {
       toast.error(errorMessage(e, closed ? 'Could not close the quarter' : 'Could not reopen the quarter'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function setLateForms(open: boolean) {
+    setBusy(true)
+    try {
+      await weeklyRequest(`/api/admin/rounds/${encodeURIComponent(view.periodId)}`, { method: 'POST', body: { action: open ? 'open-late-forms' : 'stop-late-forms' } })
+      toast.success(open ? `Employees can now finish their ${view.name} evaluations` : `Employees can no longer finish ${view.name}`)
+      await onChanged()
+    } catch (e) {
+      toast.error(errorMessage(e, open ? 'Could not reopen the quarter to employees' : 'Could not stop it'))
     } finally {
       setBusy(false)
     }
@@ -57,6 +105,8 @@ export function EarlierQuarterPanel({ view, onChanged }: { view: EarlierQuarterV
         </CardContent>
       </Card>
 
+      {!view.locked && <LateFormsCard view={view} busy={busy} onSet={setLateForms} />}
+
       <Tabs defaultValue={view.locked ? 'results' : 'forms'}>
         <TabsList>
           <TabsTrigger value="forms">Quarter-end forms</TabsTrigger>
@@ -74,7 +124,7 @@ export function EarlierQuarterPanel({ view, onChanged }: { view: EarlierQuarterV
         <ConfirmDialog
           isOpen
           title={`Close ${view.name}?`}
-          message={`Its scores become final and the quarter-end tables lock.${left > 0 ? ` ${left} quarter-end ${left === 1 ? 'evaluation is' : 'evaluations are'} still not done and will count as missing.` : ''} You can reopen it to correct something.`}
+          message={`Its scores become final and the quarter-end tables lock.${left > 0 ? ` ${left} quarter-end ${left === 1 ? 'evaluation is' : 'evaluations are'} still not done and will count as missing.` : ''}${view.lateForms.left > 0 ? ` Employees still have ${view.lateForms.left} of their own ${view.lateForms.left === 1 ? 'evaluation' : 'evaluations'} unfinished; those count as missing too.` : ''} You can reopen it to correct something.`}
           confirmText="Close quarter"
           variant="warning"
           onConfirm={() => void setClosed(true)}

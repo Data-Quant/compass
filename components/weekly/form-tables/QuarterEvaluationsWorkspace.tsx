@@ -58,7 +58,7 @@ function TablesPanel({ kind, periodId }: { kind: FormTableKind; periodId?: strin
 export function QuarterEvaluationsWorkspace({ periodId }: { periodId?: string } = {}) {
   return (
     <div className="space-y-6">
-      <p className="text-sm text-muted-foreground">Score everyone in one table, 1 to 4 per question. Rows save as you go; submit a row when it is complete.</p>
+      <p className="text-sm text-muted-foreground">Score everyone in one table, 1 to 4 per question (quarter steps like 2.75 or 3.5 are fine). Rows save as you go; submit a row when it is complete.</p>
       <Tabs defaultValue="hr">
         <TabsList>
           <TabsTrigger value="hr">HR evaluations</TabsTrigger>

@@ -562,6 +562,8 @@ model EvaluationPeriod {
   reviewStartDate         DateTime
   isActive                Boolean                    @default(true)
   isLocked                Boolean                    @default(false) // Prevents new submissions when locked
+  /// An earlier quarter (no weekly round) HR reopened so employees can finish their evaluations late; until it locks.
+  lateFormsOpenedAt       DateTime?
   preEvaluationTriggeredAt DateTime?
   preEvaluationTriggerSource PreEvaluationTriggerSource?
   preEvaluationTriggeredById String?

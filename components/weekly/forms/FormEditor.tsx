@@ -7,30 +7,42 @@ import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/ui/modal'
 import { Textarea } from '@/components/ui/textarea'
 import { LEVEL_LABELS, type LevelKey } from '@/lib/weekly/levels'
-import type { FormDetailResponse, FormSummaryView } from '@/lib/weekly/view-types'
+import type { FormDetailResponse, FormSummaryView, LateFormSummaryView } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest } from '../weekly-api'
 
-export const FORM_LABELS: Record<FormSummaryView['relationshipType'], string> = { C_LEVEL: 'C-Level', DEPT: 'Department', HR: 'HR' }
+export const FORM_LABELS: Record<FormSummaryView['relationshipType'] | LateFormSummaryView['relationshipType'], string> = {
+  C_LEVEL: 'C-Level', DEPT: 'Department', HR: 'HR', TEAM_LEAD: 'As their lead', DIRECT_REPORT: 'As a member of their team', PEER: 'As a peer', CROSS_DEPARTMENT: 'Cross-department',
+}
 const RATINGS: readonly LevelKey[] = ['1', '2', '3', '4']
 type Answer = { ratingValue: number | null; textResponse: string }
+type Detail = Pick<FormDetailResponse, 'status' | 'questions' | 'fourRatings'>
 
-export function FormEditor({ form, onClose, onSubmitted }: { form: FormSummaryView; onClose: () => void; onSubmitted: () => Promise<void> }) {
-  const [detail, setDetail] = useState<FormDetailResponse | null>(null)
+/**
+ * One quarter-end form. With `periodId` it is a late form: an earlier quarter HR reopened, finished after it ended,
+ * through the late-forms endpoints.
+ */
+interface FormEditorProps { form: FormSummaryView | LateFormSummaryView; periodId?: string; onClose: () => void; onSubmitted: () => Promise<void> }
+
+export function FormEditor({ form, periodId, onClose, onSubmitted }: FormEditorProps) {
+  const [detail, setDetail] = useState<Detail | null>(null)
   const [answers, setAnswers] = useState<Record<string, Answer>>({})
   const [busy, setBusy] = useState(false)
+  const api = periodId ? '/api/weekly/late-forms' : '/api/weekly/forms'
 
   useEffect(() => {
-    const query = `relationshipType=${form.relationshipType}&evaluateeId=${encodeURIComponent(form.evaluatee.id)}`
-    weeklyRequest<FormDetailResponse>(`/api/weekly/forms/detail?${query}`)
+    const quarter = periodId ? `&periodId=${encodeURIComponent(periodId)}` : ''
+    const query = `relationshipType=${form.relationshipType}&evaluateeId=${encodeURIComponent(form.evaluatee.id)}${quarter}`
+    weeklyRequest<Detail>(`${api}/detail?${query}`)
       .then((result) => {
         setDetail(result)
         setAnswers(Object.fromEntries(result.questions.map((q) => [q.id, { ratingValue: q.ratingValue, textResponse: q.textResponse ?? '' }])))
       })
       .catch((e: unknown) => toast.error(errorMessage(e, 'Could not load the form')))
-  }, [form])
+  }, [form, periodId, api])
 
   const set = (id: string, change: Partial<Answer>) => setAnswers((current) => ({ ...current, [id]: { ...(current[id] ?? { ratingValue: null, textResponse: '' }), ...change } }))
   const payload = () => ({
+    ...(periodId ? { periodId } : {}),
     relationshipType: form.relationshipType,
     evaluateeId: form.evaluatee.id,
     responses: (detail?.questions ?? []).map((q) => ({
@@ -43,7 +55,7 @@ export function FormEditor({ form, onClose, onSubmitted }: { form: FormSummaryVi
   async function save(submit: boolean) {
     setBusy(true)
     try {
-      await weeklyRequest(submit ? '/api/weekly/forms/submit' : '/api/weekly/forms/draft', { method: submit ? 'POST' : 'PUT', body: payload() })
+      await weeklyRequest(submit ? `${api}/submit` : `${api}/draft`, { method: submit ? 'POST' : 'PUT', body: payload() })
       toast.success(submit ? 'Form submitted' : 'Draft saved')
       if (submit) await onSubmitted()
     } catch (e) {
@@ -54,16 +66,18 @@ export function FormEditor({ form, onClose, onSubmitted }: { form: FormSummaryVi
   }
 
   const who = form.relationshipType === 'DEPT' ? `${form.department ?? 'Unassigned'} department (${form.memberCount} people)` : form.evaluatee.name
-  const closed = detail?.status === 'CLOSED_BY_OTHER'
+  // A late form is filled in once; a submitted one is read-only.
+  const lateDone = periodId !== undefined && detail?.status === 'SUBMITTED'
+  const closed = detail?.status === 'CLOSED_BY_OTHER' || lateDone
   return (
-    <Modal isOpen onClose={onClose} title={`${FORM_LABELS[form.relationshipType]} form — ${who}`} size="xl">
+    <Modal isOpen onClose={onClose} title={periodId ? `${who} · ${FORM_LABELS[form.relationshipType]}` : `${FORM_LABELS[form.relationshipType]} form — ${who}`} size="xl">
       {!detail ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : (
         <div className="space-y-5">
-          {closed && <p className="text-sm">Another HR evaluator already submitted this person’s HR evaluation. This slot is closed.</p>}
+          {closed && <p className="text-sm">{lateDone ? 'You already submitted this evaluation.' : 'Another HR evaluator already submitted this person’s HR evaluation. This slot is closed.'}</p>}
           {detail.fourRatings && (
-            <p className="text-sm text-muted-foreground">You can give up to {detail.fourRatings.max} ratings of 4 across all your {FORM_LABELS[form.relationshipType]} questions this quarter; {detail.fourRatings.used} used so far.</p>
+            <p className="text-sm text-muted-foreground">You can give up to {detail.fourRatings.max} ratings of 4 across all your {periodId ? 'evaluations of this kind' : `${FORM_LABELS[form.relationshipType]} questions`} this quarter; {detail.fourRatings.used} used so far.</p>
           )}
           {detail.questions.map((q) => {
             const answer = answers[q.id] ?? { ratingValue: null, textResponse: '' }

@@ -5,6 +5,7 @@ import { weeklyErrorResponse } from '@/lib/weekly/http-errors'
 import { roundActionSchema, setupRoundSchema } from '@/lib/weekly/schemas'
 import { actorFromUser } from '@/lib/weekly/service/context'
 import { earlierQuarterView, isEarlierQuarter } from '@/lib/weekly/service/earlier-quarter'
+import { setLateForms } from '@/lib/weekly/service/late-forms'
 import { openReviewStage } from '@/lib/weekly/service/review-stage'
 import { deleteRound, openRound, roundView, setRoundLock, updateRound } from '@/lib/weekly/service/round'
 
@@ -60,6 +61,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (action === 'open-review') return NextResponse.json({ success: true, ...(await openReviewStage(actor, periodId, new Date(), sendMail, appUrl)) })
     if (action === 'lock' || action === 'unlock') {
       await setRoundLock(actor, periodId, action === 'lock')
+      return NextResponse.json({ success: true })
+    }
+    // An earlier quarter: let employees finish their evaluations of it, or stop.
+    if (action === 'open-late-forms' || action === 'stop-late-forms') {
+      await setLateForms(actor, periodId, action === 'open-late-forms', new Date())
       return NextResponse.json({ success: true })
     }
     await openRound(actor, periodId, new Date(), sendMail, appUrl)

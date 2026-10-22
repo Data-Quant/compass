@@ -80,18 +80,27 @@ export function EvaluationRoundPage() {
   const [busy, setBusy] = useState(false)
   const [testTools, setTestTools] = useState(false)
 
+  const choosePeriod = useCallback((id: string) => {
+    setPeriodId(id)
+    const url = new URL(window.location.href)
+    if (id) url.searchParams.set('period', id)
+    else url.searchParams.delete('period')
+    window.history.replaceState(null, '', url)
+  }, [])
   const loadRounds = useCallback(async (select?: string) => {
     try {
       const result = await weeklyRequest<{ rounds: RoundSummary[] }>('/api/admin/rounds')
       setRounds(result.rounds)
-      // A weekly round first (the open one, else the newest); an earlier quarter only when there is no weekly round.
+      // The quarter HR had open (kept in the address, so a reload stays on it); else a weekly round first (the open
+      // one, else the newest), and an earlier quarter only when there is no weekly round.
+      const kept = select ?? new URLSearchParams(window.location.search).get('period')
       const weekly = result.rounds.filter((r) => !r.earlier)
-      const preferred = select ?? weekly.find((r) => r.stage === 'OPEN')?.periodId ?? weekly[0]?.periodId ?? result.rounds[0]?.periodId ?? ''
-      setPeriodId(preferred)
+      const preferred = result.rounds.find((r) => r.periodId === kept)?.periodId ?? weekly.find((r) => r.stage === 'OPEN')?.periodId ?? weekly[0]?.periodId ?? result.rounds[0]?.periodId ?? ''
+      choosePeriod(preferred)
     } catch (e) {
       toast.error(errorMessage(e, 'Could not load the rounds'))
     }
-  }, [])
+  }, [choosePeriod])
   const loadView = useCallback(async () => {
     if (!periodId) {
       setEarlier(null)
@@ -192,7 +201,7 @@ export function EvaluationRoundPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {rounds && rounds.length > 1 && (
-            <Select value={periodId} onValueChange={setPeriodId}>
+            <Select value={periodId} onValueChange={choosePeriod}>
               <SelectTrigger className="w-56" aria-label="Round"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {rounds.map((r) => (
