@@ -20,6 +20,7 @@ import {
   sortableCardKeyDown,
   sortTasksByDeadline,
   splitDoneTasks,
+  doneCountLabel,
   sortWorkspaceTaskItems,
   taskMatchesAssignee,
   taskMatchesSearch,
@@ -446,4 +447,9 @@ test('splitDoneTasks honours a custom window', () => {
   const items = [{ completedAt: '2026-10-20T12:00:00Z' }]
   assert.equal(splitDoneTasks(items, (item) => item.completedAt, now, 1).recent.length, 0)
   assert.equal(splitDoneTasks(items, (item) => item.completedAt, now, 2).recent.length, 1)
+})
+
+test('doneCountLabel names the total and the recent count', () => {
+  assert.equal(doneCountLabel(23, 14), '23 done in total, 14 finished in the last 14 days')
+  assert.equal(doneCountLabel(1, 0, 1), '1 done in total, 0 finished in the last 1 day')
 })

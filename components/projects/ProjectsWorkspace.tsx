@@ -672,6 +672,7 @@ export function ProjectsWorkspace() {
       assigneeId: promotion.assigneeId,
       assignee,
       dueDate: promotion.dueDate,
+      completedAt: promotion.column === 'DONE' ? new Date().toISOString() : null,
     })
     setPromoting(false)
     if (ok) {

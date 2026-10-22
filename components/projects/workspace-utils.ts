@@ -304,6 +304,10 @@ export function sortTasksByDeadline<T>(
 
 export const DONE_RECENT_DAYS = 14
 
+export function doneCountLabel(total: number, recent: number, days = DONE_RECENT_DAYS) {
+  return `${total} done in total, ${recent} finished in the last ${days} day${days === 1 ? '' : 's'}`
+}
+
 // Done columns: completed within the last `days` days (inclusive) vs the rest, both newest first.
 // Missing or unparseable completedAt counts as older and sorts last.
 export function splitDoneTasks<T>(

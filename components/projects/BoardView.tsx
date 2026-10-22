@@ -24,7 +24,7 @@ import { calculateTaskVariance, isTaskAssignedTo } from '@/lib/project-progress'
 import type { PanelTask, ProjectStatusSection } from './TaskDetailPanel'
 import { TaskCard } from './TaskCard'
 import { AddTaskButton, BoardColumnEmpty, BoardColumnShell, BoardScroller, ShowOlderButton, TASK_NAME_INPUT_CLASS } from './BoardColumn'
-import { DONE_RECENT_DAYS, sortableCardKeyDown, sortTasksByDeadline, splitDoneTasks } from './workspace-utils'
+import { DONE_RECENT_DAYS, doneCountLabel, sortableCardKeyDown, sortTasksByDeadline, splitDoneTasks } from './workspace-utils'
 
 interface BoardViewProps {
   projectId: string
@@ -322,7 +322,7 @@ export function BoardView({ projectId, tasks, sections, viewerId, canManage, onT
       <DragOverlay>
         {activeTask && (
           <div className="w-72 rotate-1 opacity-95 shadow-2xl">
-            <BoardTaskCard task={activeTask} dragging />
+            <BoardTaskCard task={activeTask} compact={Boolean(activeTask.section?.isDone || activeTask.section?.canonicalStatus === 'DONE')} dragging />
           </div>
         )}
       </DragOverlay>
@@ -385,7 +385,7 @@ function BoardColumn({
       name={section.name}
       color={section.color}
       count={sectionTasks.length}
-      countTitle={done ? `${done.recent.length} shown from the last ${DONE_RECENT_DAYS} days` : undefined}
+      countTitle={done ? doneCountLabel(sectionTasks.length, done.recent.length) : undefined}
       isOver={isOver}
       dropRef={setNodeRef}
       outerRef={setSortableRef}

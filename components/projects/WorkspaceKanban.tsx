@@ -28,6 +28,7 @@ import {
   columnForTask,
   isDoneTask,
   DONE_RECENT_DAYS,
+  doneCountLabel,
   isTaskOverdue,
   sortTasksByDeadline,
   splitDoneTasks,
@@ -135,7 +136,7 @@ export function WorkspaceKanban({
       <DragOverlay dropAnimation={{ duration: 180, easing: 'ease-out' }}>
         {activeItem ? (
           <div className="w-72 rotate-1 opacity-95 shadow-2xl">
-            <KanbanTaskCard project={activeItem.project} task={activeItem.task} dragging />
+            <KanbanTaskCard project={activeItem.project} task={activeItem.task} compact={columnForTask(activeItem.project, activeItem.task) === 'DONE'} dragging />
           </div>
         ) : null}
       </DragOverlay>
@@ -177,7 +178,7 @@ function KanbanColumn({
       color={column.color}
       description={column.description}
       count={items.length}
-      countTitle={done ? `${done.recent.length} shown from the last ${DONE_RECENT_DAYS} days` : undefined}
+      countTitle={done ? doneCountLabel(items.length, done.recent.length) : undefined}
       isOver={isOver}
       dropRef={setNodeRef}
       top={composing ? (

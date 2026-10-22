@@ -93,7 +93,8 @@ export function BoardColumnShell({
         {headerStart}
         <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
         <h2 id={`board-column-${id}`} title={description} className="truncate text-sm font-medium">{name}</h2>
-        <span title={countTitle} className="text-xs tabular-nums text-muted-foreground">{count}</span>
+        <span title={countTitle} aria-hidden={countTitle ? true : undefined} className="text-xs tabular-nums text-muted-foreground">{count}</span>
+        {countTitle && <span className="sr-only">{countTitle}</span>}
         {headerEnd && <div className="ml-auto flex items-center">{headerEnd}</div>}
       </div>
       <div
