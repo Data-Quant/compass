@@ -202,6 +202,15 @@ export interface FormTablesResponse {
 }
 export interface FormDetailResponse extends FormSummaryView { open: boolean; questions: FormQuestionView[]; fourRatings: { max: number; used: number } | null }
 
+/** An earlier quarter's evaluations, finished late by the people who owe them: every kind but HR's own, which HR fills in. */
+export type LateFormTypeValue = 'C_LEVEL' | 'DEPT' | 'TEAM_LEAD' | 'DIRECT_REPORT' | 'PEER' | 'CROSS_DEPARTMENT'
+export interface LateFormSummaryView extends Omit<FormSummaryView, 'relationshipType'> { relationshipType: LateFormTypeValue }
+/** What this person has left of the earlier quarter HR reopened (only unfinished forms), out of `total`. */
+export interface LateFormsResponse { quarter: { periodId: string; name: string } | null; total: number; forms: LateFormSummaryView[] }
+export interface LateFormDetailResponse extends LateFormSummaryView { periodId: string; questions: FormQuestionView[]; fourRatings: { max: number; used: number } | null }
+/** For HR: whether employees can finish the quarter late, and who still has evaluations left. */
+export interface LateFormsProgress { openedAt: string | null; left: number; people: Array<PersonRef & { left: number }> }
+
 export interface DropCandidateView { evaluatee: PersonRef; perspective: Perspective; assignments: number }
 export interface AggregationRunView { id: string; at: string; runBy: string; counts: AggregationCounts; drops: number }
 export interface CloseViewResponse {
@@ -337,6 +346,7 @@ export interface EarlierQuarterView {
   endDate: string
   locked: boolean
   forms: { total: number; done: number }
+  lateForms: LateFormsProgress
 }
 export interface RoundNextStep { action: RoundAction; label: string; sentence: string }
 export interface RoundChecklistItem { key: string; label: string; done: boolean; count?: number; tab: 'overview' | 'people' | 'progress' | 'review' | 'self-reviews' | 'forms' | 'results' | 'advanced' }

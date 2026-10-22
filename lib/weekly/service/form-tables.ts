@@ -5,7 +5,6 @@ import type { Prisma, RelationshipType } from '@prisma/client'
 import { getDeptEvaluationPoolContext, groupDeptAssignmentsByDepartment, pickRepresentativeDeptAssignment } from '@/lib/dept-evaluation-pool'
 import { prisma } from '@/lib/db'
 import { getResolvedEvaluationAssignmentForPair, getResolvedEvaluationAssignments, type ResolvedEvaluationAssignment } from '@/lib/evaluation-assignments'
-import { getResolvedEvaluationQuestions } from '@/lib/pre-evaluation'
 import { evaluateeExclusion, isOutsideRedesign } from '../eligibility'
 import { formatKarachiDate } from '../format'
 import { hrFilledPartnerNames, isHrFilledPartner } from '../partners'
@@ -19,6 +18,7 @@ import { cycleSummary, findRunningCycle, loadCycle, roundOpensAt, type CycleWith
 import { WeeklyError } from './errors'
 import { assertFourRatingQuota, HR_SLOT_CLOSED, writeFormRows } from './form-submit'
 import { formsOpenDate, formsOpenFor, formStatuses, formUnits } from './forms'
+import { evaluatedAtQuarterEnd, quarterEndQuestions } from './quarter-end'
 
 const TABLE_ORDER: RelationshipType[] = ['C_LEVEL', 'DEPT', 'HR', 'TEAM_LEAD', 'DIRECT_REPORT', 'PEER', 'CROSS_DEPARTMENT']
 const NOT_FOUND = 'Evaluation not found'
@@ -57,12 +57,9 @@ async function scopeFor(periodId: string | undefined, now: Date): Promise<TableS
  * quarter keeps its own rules, as of its last day: nobody who had left by then or joined after it.
  */
 async function evaluatedIds(scope: TableScope, ids: Iterable<string>, now: Date): Promise<Set<string>> {
-  const people = await loadPeople(ids)
   const cycle = scope.cycle
-  if (!cycle) {
-    const asOf = { now: scope.endDate, opensAt: scope.endDate, optedIn: false }
-    return new Set([...people.values()].filter((p) => !evaluateeExclusion(p, asOf)).map((p) => p.id))
-  }
+  if (!cycle) return evaluatedAtQuarterEnd(scope.endDate, ids)
+  const people = await loadPeople(ids)
   const optIns = new Set((await prisma.weeklyParticipantOverride.findMany({ where: { cycleId: cycle.id, optIn: true }, select: { userId: true } })).map((o) => o.userId))
   return new Set([...people.values()]
     .filter((p) => !isOutsideRedesign(p) && !evaluateeExclusion(p, { now, opensAt: roundOpensAt(cycle), optedIn: optIns.has(p.id) }))
@@ -78,18 +75,9 @@ function tableUnits(type: RelationshipType, assignments: readonly ResolvedEvalua
   return units.sort((a, b) => a.name.localeCompare(b.name))
 }
 
-/**
- * The rating questions this evaluator answers for this relationship: the bank's, plus a lead's own pre-evaluation
- * questions for TEAM_LEAD, as on every other form. Written comments are not part of the table.
- */
+/** The rating questions this evaluator answers for this relationship, as on every other form. Written comments are not part of the table. */
 async function tableQuestions(periodId: string, evaluatorId: string, type: RelationshipType, evaluateeId: string): Promise<FormTableQuestion[]> {
-  const resolved = await getResolvedEvaluationQuestions({ relationshipType: type, periodId, evaluatorId, evaluateeId })
-  if (resolved.error) throw new WeeklyError(resolved.error, 409)
-  // A department's own weekly topics apply only to that department, so they are not columns everyone must fill.
-  const topics = await prisma.weeklyCompetency.findMany({ where: { sourceQuestionId: { not: null } }, select: { sourceQuestionId: true, departments: true } })
-  const common = new Set(topics.filter((t) => t.departments.length === 0).map((t) => t.sourceQuestionId))
-  const departmentOnly = new Set(topics.filter((t) => t.departments.length > 0 && !common.has(t.sourceQuestionId)).map((t) => t.sourceQuestionId))
-  return resolved.questions.filter((q) => q.questionType === 'RATING' && !(q.sourceType === 'GLOBAL' && departmentOnly.has(q.id))).map((q) => {
+  return (await quarterEndQuestions(periodId, evaluatorId, type, evaluateeId)).filter((q) => q.questionType === 'RATING').map((q) => {
     const d = q.ratingDescriptions
     return { id: q.id, source: q.sourceType, text: q.questionText, ratingDescriptions: { '1': d?.[1] ?? null, '2': d?.[2] ?? null, '3': d?.[3] ?? null, '4': d?.[4] ?? null } }
   })

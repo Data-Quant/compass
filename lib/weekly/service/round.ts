@@ -308,8 +308,11 @@ export async function setRoundLock(actor: WeeklyActor, periodId: string, locked:
     if (!period) throw new WeeklyError('Quarter not found', 404)
     if (period.isLocked === locked) throw new WeeklyError(locked ? 'This quarter is already closed' : 'This quarter is not closed', 409)
     await prisma.$transaction(async (tx) => {
+      // Waits for any late form an employee is saving (they hold the row FOR SHARE), so none lands after the close.
+      await tx.$queryRaw`SELECT id FROM "EvaluationPeriod" WHERE id = ${periodId} FOR UPDATE`
       if (locked) await snapshotEvaluationPeriodAssignments(periodId, tx)
-      await tx.evaluationPeriod.update({ where: { id: periodId }, data: { isLocked: locked } })
+      // Closing also ends employees' late forms for good: reopening to correct something does not bring them back.
+      await tx.evaluationPeriod.update({ where: { id: periodId }, data: locked ? { isLocked: true, lateFormsOpenedAt: null } : { isLocked: false } })
     }, { timeout: 60_000 })
     await recordAudit(prisma, { actorId: actor.id, actorRole: 'HR', action: locked ? 'EARLIER_QUARTER_CLOSE' : 'EARLIER_QUARTER_REOPEN', objectType: 'EvaluationPeriod', objectId: periodId })
     return

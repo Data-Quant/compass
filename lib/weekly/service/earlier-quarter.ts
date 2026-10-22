@@ -6,6 +6,7 @@ import type { EarlierQuarterView, RoundSummary } from '../view-types'
 import { assertHr, type WeeklyActor } from './context'
 import { WeeklyError } from './errors'
 import { formsProgress } from './form-tables'
+import { lateFormsProgress } from './late-forms'
 
 /** Every quarter without a weekly round, newest first: open until HR closes it, then closed. */
 export async function earlierQuarters(): Promise<RoundSummary[]> {
@@ -28,9 +29,9 @@ export async function earlierQuarterView(actor: WeeklyActor, periodId: string, n
   const period = await prisma.evaluationPeriod.findUnique({ where: { id: periodId }, select: { id: true, name: true, startDate: true, endDate: true, isLocked: true } })
   if (!period) throw new WeeklyError('Quarter not found', 404)
   if (!(await isEarlierQuarter(periodId))) throw new WeeklyError('This quarter has a weekly round', 409)
-  const { total, done } = await formsProgress(periodId, now)
+  const [{ total, done }, lateForms] = await Promise.all([formsProgress(periodId, now), lateFormsProgress(periodId, now)])
   return {
     kind: 'earlier', periodId, name: period.name, startDate: period.startDate.toISOString(), endDate: period.endDate.toISOString(),
-    locked: period.isLocked, forms: { total, done },
+    locked: period.isLocked, forms: { total, done }, lateForms,
   }
 }
