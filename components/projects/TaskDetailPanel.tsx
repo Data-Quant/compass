@@ -16,6 +16,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { copyTextToClipboard } from '@/lib/copy-text'
 import { buildTaskShareUrl } from '@/lib/project-task-utils'
 
 /* ─── Types ───────────────────────────────────────────────────────────── */
@@ -791,10 +792,11 @@ export function TaskDetailPanel({
           </div>
           <div className="flex items-center gap-1">
             <button
-              onClick={async () => {
+              onClick={async (e) => {
                 if (!task) return
                 try {
-                  await navigator.clipboard.writeText(buildTaskShareUrl(window.location.origin, projectId, task.id))
+                  const ok = await copyTextToClipboard(buildTaskShareUrl(window.location.origin, projectId, task.id), e.currentTarget)
+                  if (!ok) throw new Error('copy failed')
                   toast.success('Link copied')
                   setLinkCopied(true)
                   if (linkCopiedTimerRef.current) clearTimeout(linkCopiedTimerRef.current)
