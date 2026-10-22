@@ -1,13 +1,13 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Check, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
-import { filterPeopleByQuery } from './workspace-utils'
+import { filterPeopleByQuery, nextFocusIndex } from './workspace-utils'
 
 // Mounted only while its dropdown is open, so the query resets and the input takes focus on every open.
 export function PeopleSearchList<T extends { name: string; email?: string | null }>({
@@ -21,15 +21,33 @@ export function PeopleSearchList<T extends { name: string; email?: string | null
 }) {
   const [query, setQuery] = useState('')
   const filtered = filterPeopleByQuery(people, query)
+  const root = useRef<HTMLDivElement>(null)
+
+  // Arrows walk input -> buttons; Enter in the input picks the first match (buttons marked data-person-option).
+  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const fromInput = (event.target as HTMLElement).tagName === 'INPUT'
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      const items = Array.from(root.current?.querySelectorAll<HTMLElement>('input, button:not(:disabled)') ?? [])
+      const at = items.indexOf(event.target as HTMLElement)
+      if (at >= 0) {
+        event.preventDefault()
+        items[nextFocusIndex(at, items.length, event.key)]?.focus()
+      }
+    } else if (fromInput && event.key === 'Enter') {
+      event.preventDefault()
+      root.current?.querySelector<HTMLElement>('[data-person-option]:not(:disabled)')?.click()
+    }
+    // Keep typing from reaching the menu's typeahead; Escape still closes.
+    if (fromInput && event.key !== 'Escape') event.stopPropagation()
+  }
+
   return (
-    <div>
+    <div ref={root} onKeyDown={onKeyDown}>
       <div className="p-1">
         <Input
           autoFocus
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          // Keep typing from reaching the menu's typeahead; Escape still closes (Radix listens in capture).
-          onKeyDown={(event) => { if (event.key !== 'Escape') event.stopPropagation() }}
           onClick={(event) => event.stopPropagation()}
           placeholder="Search people"
           aria-label="Search people"
@@ -102,7 +120,7 @@ export function PersonSelect<T extends { id: string; name: string; email?: strin
           {(filtered) => (
             <div className="max-h-60 overflow-y-auto">
               {filtered.map((person) => (
-                <button key={person.id} type="button" onClick={() => choose(person.id)} className={itemClass}>
+                <button key={person.id} type="button" data-person-option onClick={() => choose(person.id)} className={itemClass}>
                   <Check className={cn('h-4 w-4 shrink-0', person.id !== value && 'opacity-0')} />
                   <span className="truncate">{person.name}</span>
                 </button>

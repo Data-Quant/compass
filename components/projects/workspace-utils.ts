@@ -380,10 +380,15 @@ export function isRowNavigationClick(
   return !target.closest(ROW_INTERACTIVE_SELECTOR)
 }
 
-const foldText = (value: string) => value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+const foldText = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 
 export function filterPeopleByQuery<T extends { name: string; email?: string | null }>(people: T[], query: string): T[] {
   const needle = foldText(query.trim())
   if (!needle) return people
   return people.filter((person) => foldText(person.name).includes(needle) || foldText(person.email || '').includes(needle))
+}
+
+// Index of the item to focus next in a list whose first item is the search input.
+export function nextFocusIndex(current: number, count: number, key: 'ArrowDown' | 'ArrowUp'): number {
+  return key === 'ArrowDown' ? Math.min(current + 1, count - 1) : Math.max(current - 1, 0)
 }

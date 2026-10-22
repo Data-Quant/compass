@@ -1872,6 +1872,7 @@ function TaskAssignees({
                   key={person.id}
                   type="button"
                   role="checkbox"
+                  data-person-option
                   aria-checked={assignedIds.has(person.id)}
                   disabled={pending}
                   onClick={() => togglePerson(person.id)}

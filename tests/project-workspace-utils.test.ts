@@ -8,6 +8,7 @@ import type {
 import {
   calculateProgress,
   filterPeopleByQuery,
+  nextFocusIndex,
   calculateOverallProgress,
   groupWorkspaceTaskItemsByAssignee,
   isRowNavigationClick,
@@ -334,4 +335,12 @@ test('ignores accents', () => {
 })
 test('no match returns an empty list', () => {
   assert.deepEqual(filterPeopleByQuery(searchablePeople, 'zzz'), [])
+})
+
+test('nextFocusIndex moves down and up and stops at the ends', () => {
+  assert.equal(nextFocusIndex(0, 3, 'ArrowDown'), 1)
+  assert.equal(nextFocusIndex(2, 3, 'ArrowDown'), 2)
+  assert.equal(nextFocusIndex(2, 3, 'ArrowUp'), 1)
+  assert.equal(nextFocusIndex(0, 3, 'ArrowUp'), 0)
+  assert.equal(nextFocusIndex(0, 1, 'ArrowDown'), 0)
 })

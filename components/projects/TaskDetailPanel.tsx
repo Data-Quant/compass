@@ -365,16 +365,22 @@ function Dropdown({ trigger, children, className }: {
     function handle(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
     }
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOpen(false)
-    }
     document.addEventListener('mousedown', handle)
-    document.addEventListener('keydown', handleKey)
-    return () => {
-      document.removeEventListener('mousedown', handle)
-      document.removeEventListener('keydown', handleKey)
-    }
+    return () => document.removeEventListener('mousedown', handle)
   }, [])
+
+  // Window capture runs before the Sheet's own Escape handler, so one Escape closes only this menu.
+  useEffect(() => {
+    if (!open) return
+    function handleKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      e.stopPropagation()
+      setOpen(false)
+    }
+    window.addEventListener('keydown', handleKey, true)
+    return () => window.removeEventListener('keydown', handleKey, true)
+  }, [open])
 
   return (
     <div className="relative" ref={ref}>
@@ -933,6 +939,7 @@ export function TaskDetailPanel({
                         {filtered.map((m) => (
                           <button
                             key={m.id}
+                            data-person-option
                             onClick={() => updateTask({ assigneeId: m.id })}
                             className={cn(
                               'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors',
@@ -1012,6 +1019,7 @@ export function TaskDetailPanel({
                         {filtered.map((m) => (
                           <button
                             key={m.id}
+                            data-person-option
                             onClick={(e) => { e.stopPropagation(); toggleAssistant(m.id) }}
                             className={cn(
                               'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors',
