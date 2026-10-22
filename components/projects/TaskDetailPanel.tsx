@@ -19,7 +19,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { copyTextToClipboard } from '@/lib/copy-text'
 import { buildTaskShareUrl } from '@/lib/project-task-utils'
-import { safeImageSrc, safeLinkHref } from '@/lib/safe-url'
+import { imageUrlFromMarkdown, safeLinkHref } from '@/lib/safe-url'
 
 /* ─── Types ───────────────────────────────────────────────────────────── */
 
@@ -323,18 +323,18 @@ function RichTextContent({ content }: { content: string }) {
         </div>
       )
     }
-    const imageHref = safeLinkHref(match[2])
-    const imageSrc = safeImageSrc(match[2])
-    nodes.push(imageHref && imageSrc && SAFE_URL.test(imageHref) && SAFE_URL.test(imageSrc) ? (
+    // Rebuilt from parsed parts; the same value feeds both href and src.
+    const imageUrl = imageUrlFromMarkdown(match[2])
+    nodes.push(imageUrl && SAFE_URL.test(imageUrl) ? (
       <a
         key={`image-link-${match.index}`}
-        href={imageHref}
+        href={imageUrl}
         target="_blank"
         rel="noreferrer"
         className="block"
       >
         <img
-          src={imageSrc}
+          src={imageUrl}
           alt={match[1] || 'Task image'}
           loading="lazy"
           className="my-2 max-h-72 max-w-full rounded-lg border border-border/50 object-contain"

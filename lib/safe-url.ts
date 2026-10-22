@@ -35,3 +35,28 @@ export function safeLinkHref(value: string): string | null {
 export function safeImageSrc(value: string): string | null {
   return safeUrl(value, ['http:', 'https:'])
 }
+
+const UPLOAD_PATH = '/api/projects/images/file'
+
+// Image URL for markdown `![alt](url)`, rebuilt from parsed parts so the
+// rendered value always starts with a constant scheme or path literal (never
+// the raw user string). Same result as safeImageSrc for real image URLs; only
+// cosmetic normalisation differs (lower-case scheme/host, default port and
+// user:password@ dropped).
+export function imageUrlFromMarkdown(raw: string): string | null {
+  const safe = safeImageSrc(raw)
+  if (safe === null) return null
+  if (safe.startsWith('/')) {
+    const url = new URL(safe, RELATIVE_BASE)
+    if (url.pathname === UPLOAD_PATH) {
+      // Uploads only ever carry `pathname` (app/api/projects/images/route.ts).
+      return UPLOAD_PATH + '?pathname=' + encodeURIComponent(url.searchParams.get('pathname') ?? '')
+    }
+    return '/' + url.pathname.slice(1) + url.search + url.hash
+  }
+  const url = new URL(safe)
+  const rest = url.host + url.pathname + url.search + url.hash
+  if (url.protocol === 'https:') return 'https://' + rest
+  if (url.protocol === 'http:') return 'http://' + rest
+  return null
+}
