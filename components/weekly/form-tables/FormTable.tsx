@@ -4,13 +4,15 @@ import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { formatScore, TABLE_SCORES } from '@/lib/weekly/table-scores'
 import type { FormStatusValue, FormTableKind, FormTableRow, FormTableView } from '@/lib/weekly/view-types'
 import { errorMessage, weeklyRequest } from '../weekly-api'
 
 const STATUS_LABELS: Record<FormStatusValue, string> = {
   NOT_STARTED: 'Not started', DRAFT: 'Draft', SUBMITTED: 'Submitted', CLOSED_BY_OTHER: 'Done by another HR evaluator',
 }
-const SCORES = [1, 2, 3, 4] as const
+// The four levels the question bank describes; the picker also offers the quarter steps between them.
+const LEVELS = [1, 2, 3, 4] as const
 
 /** `periodId`: an earlier quarter HR is finishing; the running round's when left out. */
 interface FormTableProps { kind: FormTableKind; table: FormTableView; editable: boolean; periodId?: string }
@@ -18,10 +20,10 @@ interface FormTableProps { kind: FormTableKind; table: FormTableView; editable: 
 const isComplete = (row: FormTableRow, questionIds: readonly string[]) => questionIds.every((id) => row.ratings[id] !== null)
 const totalOf = (row: FormTableRow) => {
   const scored = Object.values(row.ratings).filter((v): v is number => v !== null)
-  return scored.length ? scored.reduce((a, b) => a + b, 0) : null
+  return scored.length ? formatScore(scored.reduce((a, b) => a + b, 0)) : '–'
 }
 
-/** One row per person, a 1–4 picker per question, saved as HR goes. A submitted row re-submits on every change. */
+/** One row per person, a 1–4 picker (in quarter steps) per question, saved as HR goes. A submitted row re-submits on every change. */
 export function FormTable({ kind, table, editable, periodId }: FormTableProps) {
   const [rows, setRowsState] = useState<FormTableRow[]>(table.rows)
   const [busy, setBusyState] = useState<Set<string>>(new Set())
@@ -97,7 +99,7 @@ export function FormTable({ kind, table, editable, periodId }: FormTableProps) {
               <th className="min-w-32 p-2 text-left font-medium">Designation</th>
               <th className="min-w-32 p-2 text-left font-medium">Department</th>
               {table.questions.map((q) => (
-                <th key={q.id} className="min-w-36 max-w-48 p-2 text-left text-xs font-medium" title={SCORES.map((s) => `${s}: ${q.ratingDescriptions[String(s) as '1'] ?? ''}`).join('\n')}>{q.text}</th>
+                <th key={q.id} className="min-w-36 max-w-48 p-2 text-left text-xs font-medium" title={LEVELS.map((s) => `${s}: ${q.ratingDescriptions[String(s) as '1'] ?? ''}`).join('\n')}>{q.text}</th>
               ))}
               <th className="p-2 text-right font-medium">Total</th>
               <th className="min-w-36 p-2 text-left font-medium">Status</th>
@@ -119,17 +121,17 @@ export function FormTable({ kind, table, editable, periodId }: FormTableProps) {
                     <td key={q.id} className="p-1">
                       <select
                         aria-label={`${q.text} for ${name}`}
-                        className="h-8 w-16 rounded border bg-background px-1 text-right disabled:opacity-60"
+                        className="h-8 w-20 rounded border bg-background px-1 text-right tabular-nums disabled:opacity-60"
                         value={row.ratings[q.id] ?? ''}
                         disabled={locked}
                         onChange={(e) => score(row, q.id, e.target.value)}
                       >
                         {row.status !== 'SUBMITTED' && <option value="">–</option>}
-                        {SCORES.map((s) => <option key={s} value={s}>{s}</option>)}
+                        {TABLE_SCORES.map((s) => <option key={s} value={s}>{formatScore(s)}</option>)}
                       </select>
                     </td>
                   ))}
-                  <td className="p-2 text-right font-semibold tabular-nums">{totalOf(row) ?? '–'}</td>
+                  <td className="p-2 text-right font-semibold tabular-nums">{totalOf(row)}</td>
                   <td className="p-2">
                     {row.status === 'SUBMITTED' || row.status === 'CLOSED_BY_OTHER' || !editable ? (
                       <Badge variant={row.status === 'SUBMITTED' ? 'default' : 'outline'}>{STATUS_LABELS[row.status]}</Badge>

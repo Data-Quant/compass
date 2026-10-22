@@ -24,10 +24,12 @@ export function AdminRoundSummary() {
       // Weekly evaluations may be switched off, or there may be no round yet: then the panel stays out of the way.
       try {
         const { rounds } = await weeklyRequest<{ rounds: RoundSummary[] }>('/api/admin/rounds')
-        const current = rounds.find((r) => r.stage === 'OPEN') ?? rounds.find((r) => r.stage !== 'RELEASED')
+        // Earlier quarters have no weekly round (their view has another shape): this panel is about the weekly round.
+        const weekly = rounds.filter((r) => !r.earlier)
+        const current = weekly.find((r) => r.stage === 'OPEN') ?? weekly.find((r) => r.stage !== 'RELEASED')
         if (!current) return
-        const next = await weeklyRequest<RoundView>(`/api/admin/rounds/${current.periodId}`)
-        if (!cancelled) setView(next)
+        const next = await weeklyRequest<RoundView | { kind: 'earlier' }>(`/api/admin/rounds/${current.periodId}`)
+        if (!cancelled && !('kind' in next)) setView(next)
       } catch {
         if (!cancelled) setView(null)
       }

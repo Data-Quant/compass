@@ -1,4 +1,5 @@
-// HR's end-of-quarter evaluations as tables: a row per person, a 1 to 4 column per rating question, and a total.
+// HR's end-of-quarter evaluations as tables: a row per person, a 1 to 4 column per rating question (quarter steps
+// allowed), and a total.
 // "HR" is HR's own HR form; "PARTNER" is every evaluation mapped to a partner HR fills in on their behalf.
 import type { Prisma, RelationshipType } from '@prisma/client'
 import { getDeptEvaluationPoolContext, groupDeptAssignmentsByDepartment, pickRepresentativeDeptAssignment } from '@/lib/dept-evaluation-pool'
@@ -10,6 +11,7 @@ import { formatKarachiDate } from '../format'
 import { hrFilledPartnerNames, isHrFilledPartner } from '../partners'
 import { isFormRelationshipType } from '../perspectives'
 import type { FormInput } from '../schemas'
+import { isTableScore } from '../table-scores'
 import type { FormStatusValue, FormTableKind, FormTableQuestion, FormTableRow, FormTablesResponse, FormTableView, PersonRef } from '../view-types'
 import { recordAudit } from './audit'
 import { assertHr, loadPeople, type WeeklyActor } from './context'
@@ -118,12 +120,13 @@ async function rowsFor(periodId: string, evaluatorId: string, type: Relationship
   return units.map((unit) => {
     const forPerson = saved.filter((s) => s.evaluateeId === unit.evaluateeId)
     const mine = forPerson.filter((s) => s.evaluatorId === evaluatorId)
+    const otherHr = type === 'HR' ? forPerson.find((s) => s.evaluatorId !== evaluatorId && s.submittedAt)?.evaluatorId : undefined
     const status: FormStatusValue = mine.some((s) => s.submittedAt)
       ? 'SUBMITTED'
-      : type === 'HR' && forPerson.some((s) => s.evaluatorId !== evaluatorId && s.submittedAt)
-        ? 'CLOSED_BY_OTHER'
-        : mine.length > 0 ? 'DRAFT' : 'NOT_STARTED'
-    const ratings = Object.fromEntries(questions.map((q) => [q.id, mine.find((s) => (q.source === 'LEAD' ? s.leadQuestionId : s.questionId) === q.id)?.ratingValue ?? null]))
+      : otherHr ? 'CLOSED_BY_OTHER' : mine.length > 0 ? 'DRAFT' : 'NOT_STARTED'
+    // A row another HR evaluator submitted shows their scores (read-only), not blanks that look lost.
+    const shown = status === 'CLOSED_BY_OTHER' ? forPerson.filter((s) => s.evaluatorId === otherHr) : mine
+    const ratings = Object.fromEntries(questions.map((q) => [q.id, shown.find((s) => (q.source === 'LEAD' ? s.leadQuestionId : s.questionId) === q.id)?.ratingValue ?? null]))
     const scored = Object.values(ratings).filter((v): v is number => v !== null)
     return {
       evaluateeId: unit.evaluateeId, name: unit.name, designation: unit.position, department: unit.department,
@@ -202,6 +205,7 @@ export async function saveTableRow(actor: WeeklyActor, input: TableRowInput, now
     const question = known.get(r.questionId)
     if (!question || (r.questionSource ?? 'GLOBAL') !== question.source) throw new WeeklyError('One or more questions are not part of this evaluation')
     if (ratings.has(r.questionId)) throw new WeeklyError('Duplicate question responses are not allowed')
+    if (r.ratingValue !== null && !isTableScore(r.ratingValue)) throw new WeeklyError('Scores go from 1 to 4 in steps of 0.25')
     ratings.set(r.questionId, r.ratingValue)
   }
   if (input.submit && questions.some((q) => !ratings.get(q.id))) throw new WeeklyError('Score every question before submitting this row')

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { MAX_FIELD_CHARS } from './answer-rules'
 import { parseWeekOneStart } from './calendar'
+import { isTableScore } from './table-scores'
 
 const field = z.string().max(MAX_FIELD_CHARS, `Keep each box under ${MAX_FIELD_CHARS} characters`)
 /** A multiple-choice answer (the chosen statement and an optional or required note), or a comment. */
@@ -71,7 +72,8 @@ export const formTableRowSchema = z.object({
   evaluatorId: z.string().min(1),
   relationshipType: z.enum(['C_LEVEL', 'DEPT', 'HR', 'TEAM_LEAD', 'DIRECT_REPORT', 'PEER', 'CROSS_DEPARTMENT']),
   evaluateeId: z.string().min(1),
-  ratings: z.array(z.object({ questionId: z.string().min(1), questionSource: z.enum(['GLOBAL', 'LEAD']).default('GLOBAL'), ratingValue: z.number().int().min(1).max(4).nullable() }).strict()).max(50),
+  // Quarter steps from 1 to 4 (2.5, 2.75 ...): the tables take finer scores than the employees' own forms.
+  ratings: z.array(z.object({ questionId: z.string().min(1), questionSource: z.enum(['GLOBAL', 'LEAD']).default('GLOBAL'), ratingValue: z.number().refine(isTableScore, 'Scores go from 1 to 4 in steps of 0.25').nullable() }).strict()).max(50),
   submit: z.boolean(),
   // An earlier quarter HR is finishing; the running round's when left out.
   periodId: z.string().min(1).optional(),
