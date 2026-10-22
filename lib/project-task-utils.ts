@@ -72,3 +72,12 @@ export function getTaskStatusForSectionName(name: string | null | undefined): Pr
 
   return null
 }
+
+export function buildTaskShareUrl(origin: string, projectId: string, taskId: string) {
+  return `${origin}/projects/${encodeURIComponent(projectId)}?task=${encodeURIComponent(taskId)}`
+}
+
+export function readSharedTaskId(params: { get(name: string): string | null }) {
+  const value = (params.get('task') || '').trim()
+  return value && value.length <= 64 ? value : null
+}

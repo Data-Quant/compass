@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { Suspense, useEffect, useRef, useState, useCallback } from 'react'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { UserAvatar } from '@/components/composed/UserAvatar'
@@ -19,6 +19,7 @@ import {
   CheckCircle2, RotateCcw, AlertTriangle, PauseCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { readSharedTaskId } from '@/lib/project-task-utils'
 import { calculateTaskVariance } from '@/lib/project-progress'
 
 /* ─── Types ───────────────────────────────────────────────────────────── */
@@ -54,9 +55,21 @@ const LABEL_COLORS = [
 
 /* ─── Page ────────────────────────────────────────────────────────────── */
 
+// useSearchParams needs a Suspense boundary or `next build` fails
 export default function ProjectDetailPage() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <ProjectDetail />
+    </Suspense>
+  )
+}
+
+function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const sharedTaskId = readSharedTaskId(searchParams)
+  const openedSharedTaskRef = useRef<string | null>(null)
   const viewer = useLayoutUser()
 
   const [project, setProject] = useState<Project | null>(null)
@@ -75,12 +88,22 @@ export default function ProjectDetailPage() {
   const [newLabelName, setNewLabelName] = useState('')
   const [newLabelColor, setNewLabelColor] = useState(LABEL_COLORS[0])
 
+  // Keep ?task= in the URL so the open task can be shared
+  const setTaskParam = useCallback((taskId: string | null) => {
+    router.replace(taskId ? `/projects/${id}?task=${encodeURIComponent(taskId)}` : `/projects/${id}`, { scroll: false })
+  }, [router, id])
+
+  const closePanel = useCallback(() => {
+    setPanelOpen(false)
+    setSelectedTask(null)
+    setTaskParam(null)
+  }, [setTaskParam])
+
   // Keyboard shortcuts
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === 'Escape' && panelOpen) {
-        setPanelOpen(false)
-        setSelectedTask(null)
+        closePanel()
       }
       // Switch views with number keys (when not in an input)
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
@@ -89,7 +112,7 @@ export default function ProjectDetailPage() {
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [panelOpen])
+  }, [panelOpen, closePanel])
 
   const loadProject = useCallback(async () => {
     try {
@@ -111,6 +134,20 @@ export default function ProjectDetailPage() {
 
   useEffect(() => { loadProject() }, [loadProject])
 
+  // Open the task from a shared link once per ?task= value
+  useEffect(() => {
+    if (!project || !sharedTaskId || openedSharedTaskRef.current === sharedTaskId) return
+    openedSharedTaskRef.current = sharedTaskId
+    const task = project.tasks.find((t) => t.id === sharedTaskId)
+    if (!task) {
+      toast.error('That task no longer exists or you do not have access to it')
+      setTaskParam(null)
+      return
+    }
+    setSelectedTask(task)
+    setPanelOpen(true)
+  }, [project, sharedTaskId, setTaskParam])
+
   useEffect(() => {
     if (!editingDescription) setDescriptionDraft(project?.description || '')
   }, [editingDescription, project?.description])
@@ -118,6 +155,7 @@ export default function ProjectDetailPage() {
   const handleTaskClick = (task: PanelTask) => {
     setSelectedTask(task)
     setPanelOpen(true)
+    setTaskParam(task.id)
   }
 
   const handleTaskUpdate = (updatedTask: PanelTask) => {
@@ -125,8 +163,7 @@ export default function ProjectDetailPage() {
   }
 
   const handleTaskDelete = (taskId: string) => {
-    setPanelOpen(false)
-    setSelectedTask(null)
+    closePanel()
   }
 
   const handleOpenTaskById = (taskId: string) => {
@@ -134,6 +171,7 @@ export default function ProjectDetailPage() {
     if (!nextTask) return
     setSelectedTask(nextTask)
     setPanelOpen(true)
+    setTaskParam(nextTask.id)
   }
 
   const handleDeleteProject = async () => {
@@ -702,7 +740,7 @@ export default function ProjectDetailPage() {
         sections={visibleSections}
         labels={project.labels}
         open={panelOpen}
-        onClose={() => { setPanelOpen(false); setSelectedTask(null) }}
+        onClose={closePanel}
         onTaskUpdate={handleTaskUpdate}
         onTaskDelete={handleTaskDelete}
         onTasksChange={loadProject}

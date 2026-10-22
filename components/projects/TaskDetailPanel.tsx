@@ -10,11 +10,12 @@ import { UserAvatar } from '@/components/composed/UserAvatar'
 import {
   X, Trash2, Calendar as CalendarIcon, Flag, Tag, Users, MessageSquare,
   Send, ChevronDown, Check, GitBranch, Plus, UserRoundCheck, Image as ImageIcon,
-  History, Loader2, Bold, Underline, List
+  History, Loader2, Bold, Underline, List, Link2
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { buildTaskShareUrl } from '@/lib/project-task-utils'
 
 /* ─── Types ───────────────────────────────────────────────────────────── */
 
@@ -769,6 +770,22 @@ export function TaskDetailPanel({
             )}
           </div>
           <div className="flex items-center gap-1">
+            <button
+              onClick={async () => {
+                if (!task) return
+                try {
+                  await navigator.clipboard.writeText(buildTaskShareUrl(window.location.origin, projectId, task.id))
+                  toast.success('Link copied')
+                } catch {
+                  toast.error('Could not copy the link')
+                }
+              }}
+              className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+              title="Copy link"
+              aria-label="Copy link to this task"
+            >
+              <Link2 className="w-4 h-4" />
+            </button>
             {canManage && (
               <button
                 onClick={handleDelete}
