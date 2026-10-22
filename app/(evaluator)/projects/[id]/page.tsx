@@ -16,10 +16,12 @@ import { MemberManager } from '@/components/projects/MemberManager'
 import {
   List, LayoutGrid, UserPlus, Settings, ListTodo,
   ChevronLeft, MoreHorizontal, Pencil, Archive, Trash2, Tag, Plus,
-  CheckCircle2, RotateCcw, AlertTriangle, PauseCircle,
+  CheckCircle2, RotateCcw, AlertTriangle, PauseCircle, Lock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { readSharedTaskId } from '@/lib/project-task-utils'
+import Link from 'next/link'
+import { Button } from '@/components/ui/button'
+import { projectLoadFailure, readSharedTaskId } from '@/lib/project-task-utils'
 import { calculateTaskVariance } from '@/lib/project-progress'
 
 /* ─── Types ───────────────────────────────────────────────────────────── */
@@ -74,6 +76,7 @@ function ProjectDetail() {
 
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadFailure, setLoadFailure] = useState<ReturnType<typeof projectLoadFailure> | null>(null)
   const [view, setView] = useState<'list' | 'board'>('list')
   const [selectedTask, setSelectedTask] = useState<PanelTask | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
@@ -117,8 +120,10 @@ function ProjectDetail() {
   const loadProject = useCallback(async () => {
     try {
       const res = await fetch(`/api/projects/${id}`)
+      if (!res.ok) setLoadFailure(projectLoadFailure(res.status))
       const data = await res.json()
       if (data.project) {
+        setLoadFailure(null)
         setProject(data.project)
         setSelectedTask((current) => {
           if (!current) return current
@@ -127,6 +132,7 @@ function ProjectDetail() {
       }
     } catch {
       toast.error('Failed to load project')
+      setLoadFailure((current) => current ?? 'error')
     } finally {
       setLoading(false)
     }
@@ -302,7 +308,28 @@ function ProjectDetail() {
   }
 
   if (loading) return <LoadingScreen message="Loading project..." />
-  if (!project) return <EmptyState icon={<ListTodo className="h-12 w-12" />} title="Project not found" />
+  if (!project) {
+    const copy = {
+      forbidden: { icon: <Lock className="h-12 w-12" />, title: "You don't have access to this project", description: 'Ask a project lead to add you, then open the link again.' },
+      not_found: { icon: <ListTodo className="h-12 w-12" />, title: 'Project not found', description: 'It may have been deleted, or the link is incomplete.' },
+      error: { icon: <ListTodo className="h-12 w-12" />, title: "Couldn't load this project", description: 'Check your connection and try again.' },
+    }[loadFailure ?? 'not_found']
+    return (
+      <EmptyState
+        icon={copy.icon}
+        title={copy.title}
+        description={copy.description}
+        action={
+          <div className="flex items-center gap-2">
+            {loadFailure === 'error' && (
+              <Button variant="outline" size="sm" onClick={() => { setLoading(true); loadProject() }}>Try again</Button>
+            )}
+            <Button size="sm" asChild><Link href="/projects">Back to Projects</Link></Button>
+          </div>
+        }
+      />
+    )
+  }
 
   const members = project.members.map((m) => ({ ...m.user, role: m.role }))
   const canManage = project.canManage ?? (

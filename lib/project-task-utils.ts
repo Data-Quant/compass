@@ -81,3 +81,9 @@ export function readSharedTaskId(params: { get(name: string): string | null }) {
   const value = (params.get('task') || '').trim()
   return value && value.length <= 64 ? value : null
 }
+
+export function projectLoadFailure(status: number): 'forbidden' | 'not_found' | 'error' {
+  if (status === 403) return 'forbidden'
+  if (status === 404) return 'not_found'
+  return 'error'
+}

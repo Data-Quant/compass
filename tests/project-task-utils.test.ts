@@ -7,6 +7,7 @@ import {
   isProjectTaskPriority,
   isProjectTaskStatus,
   parseProjectPriority,
+  projectLoadFailure,
   readSharedTaskId,
   shiftProjectTaskDateByCalendarDays,
   wouldCreateTaskParentCycle,
@@ -76,4 +77,11 @@ test('readSharedTaskId returns a usable id or null', () => {
   assert.equal(readSharedTaskId(new URLSearchParams('')), null)
   assert.equal(readSharedTaskId(new URLSearchParams('task=')), null)
   assert.equal(readSharedTaskId(new URLSearchParams(`task=${'x'.repeat(65)}`)), null)
+})
+
+test('projectLoadFailure names the reason a project could not be opened', () => {
+  assert.equal(projectLoadFailure(403), 'forbidden')
+  assert.equal(projectLoadFailure(404), 'not_found')
+  assert.equal(projectLoadFailure(500), 'error')
+  assert.equal(projectLoadFailure(401), 'error')
 })

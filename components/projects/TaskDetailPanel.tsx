@@ -426,6 +426,12 @@ export function TaskDetailPanel({
   const commentTextareaRef = useRef<HTMLTextAreaElement>(null)
   const descriptionImageInputRef = useRef<HTMLInputElement>(null)
   const commentImageInputRef = useRef<HTMLInputElement>(null)
+  const [linkCopied, setLinkCopied] = useState(false)
+  const linkCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    setLinkCopied(false)
+    return () => { if (linkCopiedTimerRef.current) clearTimeout(linkCopiedTimerRef.current) }
+  }, [task?.id])
   const activeTaskKeyRef = useRef<string | null>(null)
   const commentsRequestRef = useRef(0)
   const activitiesRequestRef = useRef(0)
@@ -784,15 +790,19 @@ export function TaskDetailPanel({
                 try {
                   await navigator.clipboard.writeText(buildTaskShareUrl(window.location.origin, projectId, task.id))
                   toast.success('Link copied')
+                  setLinkCopied(true)
+                  if (linkCopiedTimerRef.current) clearTimeout(linkCopiedTimerRef.current)
+                  linkCopiedTimerRef.current = setTimeout(() => setLinkCopied(false), 2000)
                 } catch {
                   toast.error('Could not copy the link')
                 }
               }}
               className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-              title="Copy link"
+              title={linkCopied ? 'Link copied' : 'Copy link'}
               aria-label="Copy link to this task"
             >
-              <Link2 className="w-4 h-4" />
+              {linkCopied ? <Check className="w-4 h-4 text-emerald-500" /> : <Link2 className="w-4 h-4" />}
+              <span className="sr-only" aria-live="polite">{linkCopied ? 'Link copied' : ''}</span>
             </button>
             {canManage && (
               <button
