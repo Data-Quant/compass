@@ -1354,7 +1354,7 @@ function ProjectStatusLabel({ status }: { status: string }) {
   // Outer span takes SelectTrigger's `[&>span]:line-clamp-1` (display:-webkit-box); the inner one keeps dot and label inline.
   return (
     <span>
-      <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+      <span className="flex items-center gap-1.5 whitespace-nowrap leading-none">
         <span aria-hidden className={cn('h-2 w-2 shrink-0 rounded-full', STATUS_DOT[status] || 'bg-slate-400')} />
         {PROJECT_STATUSES.find((option) => option.value === status)?.label || status}
       </span>
@@ -1765,26 +1765,28 @@ function WorkspacePopupTaskRow({
             disabled={pending || !canEdit}
             className="h-4 w-4 rounded-full border-[1.5px] border-muted-foreground/50 shadow-none hover:border-emerald-500 data-[state=checked]:border-emerald-500 data-[state=checked]:bg-emerald-500 data-[state=checked]:text-white [&_svg]:h-3 [&_svg]:w-3"
           />
-          <InlineTitle project={project} task={task} pending={pending || !canEdit} onPatchTask={onPatchTask} />
-          {labels.length > 0 && (
-            <span className="flex shrink-0 items-center gap-1" aria-label={`Labels for ${task.title}`}>
-              {labels.slice(0, 2).map((assignment) => (
-                <span
-                  key={assignment.label.id}
-                  title={assignment.label.name}
-                  className="max-w-24 truncate rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium leading-none"
-                  style={{ backgroundColor: `${assignment.label.color}20`, color: assignment.label.color }}
-                >
-                  {assignment.label.name}
-                </span>
-              ))}
-              {hiddenLabels.length > 0 && (
-                <span className="text-[11px] tabular-nums text-muted-foreground" title={hiddenLabels.map((assignment) => assignment.label.name).join(', ')}>
-                  +{hiddenLabels.length}
-                </span>
-              )}
-            </span>
-          )}
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <InlineTitle project={project} task={task} pending={pending || !canEdit} onPatchTask={onPatchTask} fit />
+            {labels.length > 0 && (
+              <span className="flex shrink-0 items-center gap-1" aria-label={`Labels for ${task.title}`}>
+                {labels.slice(0, 2).map((assignment) => (
+                  <span
+                    key={assignment.label.id}
+                    title={assignment.label.name}
+                    className="max-w-24 truncate rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium leading-none"
+                    style={{ backgroundColor: `${assignment.label.color}20`, color: assignment.label.color }}
+                  >
+                    {assignment.label.name}
+                  </span>
+                ))}
+                {hiddenLabels.length > 0 && (
+                  <span className="text-[11px] tabular-nums text-muted-foreground" title={hiddenLabels.map((assignment) => assignment.label.name).join(', ')}>
+                    +{hiddenLabels.length}
+                  </span>
+                )}
+              </span>
+            )}
+          </div>
           {childCount > 0 && (
             <span className="inline-flex shrink-0 items-center gap-1 text-xs tabular-nums text-muted-foreground" title={`${childCount} subtasks`}>
               <ListChecks className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1794,7 +1796,7 @@ function WorkspacePopupTaskRow({
           {task.completedLate && (
             <span className="shrink-0 whitespace-nowrap text-[11px] text-orange-600 dark:text-orange-400">Completed late</span>
           )}
-          {onAddSubtask && (
+          {onAddSubtask && !expanded && (
             <button
               type="button"
               onClick={onAddSubtask}
@@ -2024,11 +2026,13 @@ function InlineTitle({
   task,
   pending,
   onPatchTask,
+  fit = false,
 }: {
   project: WorkspaceProject
   task: WorkspaceTask
   pending: boolean
   onPatchTask: WorkspaceTaskTableProps['onPatchTask']
+  fit?: boolean
 }) {
   const [value, setValue] = useState(task.title)
   useEffect(() => setValue(task.title), [task.title])
@@ -2058,8 +2062,11 @@ function InlineTitle({
       }}
       aria-label={`Task title: ${task.title}`}
       disabled={pending}
+      // fit: width follows the text (shrinks to truncate) so trailing labels sit right after the title.
+      style={fit ? { width: `${Math.max(value.length, 8) + 2}ch` } : undefined}
       className={cn(
-        'h-8 min-w-0 flex-1 truncate rounded-md border border-transparent bg-transparent px-2 text-sm outline-none transition-colors hover:bg-muted/60 focus:border-input focus:bg-background disabled:hover:bg-transparent',
+        fit ? 'min-w-[8ch] max-w-full' : 'min-w-0 flex-1',
+        'h-8 truncate rounded-md border border-transparent bg-transparent px-2 text-sm outline-none transition-colors hover:bg-muted/60 focus:border-input focus:bg-background disabled:hover:bg-transparent',
         isDoneTask(project, task) && 'text-muted-foreground',
       )}
     />

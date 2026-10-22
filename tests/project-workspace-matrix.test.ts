@@ -190,6 +190,8 @@ test('opened project table offers a subtask action on every task and a composer 
   assert.match(html, /aria-label="Add subtask under Attach the signed schedule"/)
   // Composer rows sit after the children of the two expanded parents; the leaf only has the hover "+".
   assert.equal(html.match(/data-row-kind="new-subtask"/g)?.length, 2)
+  // Expanded parents hide the hover "+", so each "Add subtask under" name is unique.
+  assert.equal(html.match(/aria-label="Add subtask under Draft the investment memo"/g)?.length, 1)
   assert.equal(html.match(/>New subtask</g)?.length, 2)
   assert.ok(html.indexOf('data-row-kind="new-subtask" data-parent-task-id="task-2"') > html.indexOf('Attach the signed schedule'))
   assert.match(html, /aria-label="Due date for Draft the investment memo"/)
