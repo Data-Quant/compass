@@ -37,7 +37,7 @@ const LEAVE_STATUS_LABELS: Record<LeaveStatus, string> = {
 }
 
 function warnCalendarSkip(operation: 'sync' | 'remove', leaveRequestId: string, reason: string) {
-  console.warn(`[leave-calendar] ${operation} skipped for leave ${leaveRequestId}: ${reason}`)
+  console.warn('[leave-calendar] skipped', { operation, leaveRequestId, reason })
 }
 
 export function shouldIncludeExecutiveLeaveInviteForPosition(position: string | null | undefined) {

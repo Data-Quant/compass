@@ -1240,7 +1240,7 @@ export async function sendNewTicketNotificationToHR(ticketId: string) {
   })
 
   if (!ticket) {
-    console.error(`[Email] New ticket ${ticketId} not found`)
+    console.error('[Email] New ticket not found', { ticketId })
     return { success: false, message: 'Ticket not found' }
   }
 
@@ -1289,7 +1289,7 @@ export async function sendNewTicketNotificationToHR(ticketId: string) {
       subject: `New Device Support Ticket [${ticket.priority}]: ${ticket.title}`,
       html: htmlContent,
     })
-    console.log(`[Email] New ticket notification sent to support team: ${ticketId}`)
+    console.log('[Email] New ticket notification sent to support team', { ticketId })
     return { success: true, data: { messageId: info.messageId } }
   } catch (error: any) {
     console.error(`[Email] Failed to send new ticket notification to support team:`, error)
@@ -1302,7 +1302,7 @@ export async function sendTicketStatusNotification(
   updatedByName?: string,
   updatedByRole?: 'EMPLOYEE' | 'HR' | 'SECURITY' | 'OA' | 'EXECUTION'
 ) {
-  console.log(`[Email] Triggering status notification for ticket: ${ticketId}`)
+  console.log('[Email] Triggering status notification for ticket', { ticketId })
 
   const ticket = await prisma.deviceTicket.findUnique({
     where: { id: ticketId },
@@ -1312,7 +1312,7 @@ export async function sendTicketStatusNotification(
   })
 
   if (!ticket) {
-    console.error(`[Email] Ticket ${ticketId} not found for notification`)
+    console.error('[Email] Ticket not found for notification', { ticketId })
     return { success: false, message: 'Ticket not found' }
   }
 
@@ -1389,7 +1389,7 @@ export async function sendTicketStatusNotification(
       html: htmlContent,
     })
 
-    console.log(`[Email] Status notification sent to ${recipients.length} recipients for ticket: ${ticketId}`)
+    console.log('[Email] Status notification sent', { recipients: recipients.length, ticketId })
     return { success: true, data: { messageId: info.messageId } }
   } catch (error: any) {
     console.error('[Email] Failed to send status notification for ticket:', ticketId, error)

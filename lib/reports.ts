@@ -730,7 +730,7 @@ export async function generateHRSpreadsheet(periodId: string): Promise<Buffer> {
       const report = await generateReport(employee.id, periodId)
       reports.push(report)
     } catch (error) {
-      console.error(`Error generating report for ${employee.name}:`, error)
+      console.error('Error generating report', { employeeName: employee.name }, error)
     }
   }
 

@@ -23,7 +23,7 @@ async function syncHolidayCalendarQuietly(holidayId: string, operation: 'sync' |
       await syncHolidayCalendarEvent(holidayId)
     }
   } catch (error) {
-    console.error(`Failed to ${operation} holiday calendar event for ${holidayId}:`, error)
+    console.error('Failed to sync holiday calendar event', { operation, holidayId }, error)
   }
 }
 
