@@ -10,6 +10,7 @@ import {
 } from '@/lib/project-status-sections'
 import { getProjectAuthorization, projectAuthorizationFailure } from '@/lib/project-access'
 import { syncProjectCompletion } from '@/lib/project-completion'
+import { syncParentTasks } from '@/lib/project-parent-completion'
 
 const MAX_SECTION_ORDER_INDEX = 1_000_000_000
 
@@ -185,6 +186,12 @@ export async function DELETE(
       )
     }
 
+    const movedParents = await prisma.task.findMany({
+      where: { sectionId, parentTaskId: { not: null } },
+      select: { parentTaskId: true },
+      distinct: ['parentTaskId'],
+    })
+
     // Move tasks and remove the status atomically so a failed delete
     // cannot leave a partially migrated project.
     const [movedTasks] = await prisma.$transaction([
@@ -199,6 +206,12 @@ export async function DELETE(
       }),
       prisma.taskSection.delete({ where: { id: sectionId } }),
     ])
+    // The moved tasks' status may have changed with their section.
+    await syncParentTasks({
+      parentTaskIds: movedParents.map((task) => task.parentTaskId as string),
+      actorId: user.id,
+      origin: request.nextUrl.origin,
+    })
     try {
       await syncProjectCompletion(projectId)
     } catch (syncError) {

@@ -3,6 +3,7 @@ import type { TaskStatus } from '@prisma/client'
 import { shouldMarkTaskCompletedLate } from '@/lib/project-progress'
 import { getTaskStatusForSection, resolveTaskStatusSection } from '@/lib/project-status-sections'
 import { recordTaskActivity } from '@/lib/project-task-activity'
+import { filterTasksForBacklogAccess, PROJECT_TASK_INCLUDE } from '@/lib/project-task-data'
 
 export const MAX_PARENT_SYNC_DEPTH = 10
 
@@ -113,4 +114,48 @@ export async function syncParentTaskStatus(input: {
   }
 
   return changed
+}
+
+type ParentSyncSnapshot = { status: TaskStatus; sectionId: string | null; parentTaskId: string | null }
+
+/**
+ * Parent ids whose status may change because a task was created (before = null),
+ * deleted (after = null) or edited. Only status, section or parent changes count.
+ */
+export function computeParentSyncTargets(
+  before: ParentSyncSnapshot | null,
+  after: ParentSyncSnapshot | null
+): string[] {
+  const moved =
+    !before || !after ||
+    before.status !== after.status ||
+    before.sectionId !== after.sectionId ||
+    before.parentTaskId !== after.parentTaskId
+  if (!moved) return []
+  return [...new Set([before?.parentTaskId, after?.parentTaskId].filter((id): id is string => Boolean(id)))]
+}
+
+/**
+ * Syncs each target, swallowing failures per target. Returns the changed task ids.
+ * With `visibilityScope` (non-participants) results are filtered like the route's own `task`.
+ */
+export async function syncParentTasks(input: {
+  parentTaskIds: string[]
+  actorId: string
+  origin: string
+  visibilityScope?: Array<{ id: string; section: { isBacklog: boolean } | null }> | null
+}) {
+  const changed = new Set<string>()
+  for (const parentTaskId of input.parentTaskIds) {
+    try {
+      for (const id of await syncParentTaskStatus({ parentTaskId, actorId: input.actorId, origin: input.origin })) {
+        changed.add(id)
+      }
+    } catch (syncError) {
+      console.error('Failed to sync parent task status:', syncError)
+    }
+  }
+  if (changed.size === 0) return []
+  const tasks = await prisma.task.findMany({ where: { id: { in: [...changed] } }, include: PROJECT_TASK_INCLUDE })
+  return input.visibilityScope ? filterTasksForBacklogAccess(tasks, false, input.visibilityScope) : tasks
 }

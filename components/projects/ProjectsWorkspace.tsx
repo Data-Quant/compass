@@ -409,6 +409,12 @@ export function ProjectsWorkspace() {
       commitWorkspace((value) => updateProjectTask(value, projectId, taskId, (task, latestProject) => (
         normalizeTask(latestProject, data.task as Partial<WorkspaceTask>, task)
       ), data.projectStatus))
+      // Auto-moved ancestors, so the parent's card reflects its new status.
+      for (const parent of (data.syncedParentTasks ?? []) as WorkspaceTask[]) {
+        commitWorkspace((value) => updateProjectTask(value, projectId, parent.id, (task, latestProject) => (
+          normalizeTask(latestProject, parent, task)
+        )))
+      }
       return true
     } catch (error) {
       commitWorkspace((value) => updateProjectTask(value, projectId, taskId, () => previous))
