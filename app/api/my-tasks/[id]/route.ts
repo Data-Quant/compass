@@ -180,7 +180,6 @@ export async function PATCH(
     const syncedParentTasks = await syncParentTasks({
       parentTaskIds: computeParentSyncTargets(task, updatedTask),
       actorId: sessionUser.id,
-      origin: request.nextUrl.origin,
       visibilityScope: authorization.isParticipant
         ? null
         : await prisma.task.findMany({
