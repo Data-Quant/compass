@@ -39,7 +39,6 @@ export function resolveParentTaskStatus(
 export async function syncParentTaskStatus(input: {
   parentTaskId: string | null
   actorId: string
-  origin: string
 }): Promise<string[]> {
   const changed: string[] = []
   const visited = new Set<string>()
@@ -106,7 +105,6 @@ export async function syncParentTaskStatus(input: {
           next === 'DONE'
             ? 'Moved to Done automatically because all subtasks are done'
             : 'Reopened automatically because a subtask is open again',
-        origin: input.origin,
         notify: false, // recordTaskActivity emails unless notify is false
       })
     } catch (error) {
@@ -146,13 +144,12 @@ export function computeParentSyncTargets(
 export async function syncParentTasks(input: {
   parentTaskIds: string[]
   actorId: string
-  origin: string
   visibilityScope?: Array<{ id: string; section: { isBacklog: boolean } | null }> | null
 }) {
   const changed = new Set<string>()
   for (const parentTaskId of input.parentTaskIds) {
     try {
-      for (const id of await syncParentTaskStatus({ parentTaskId, actorId: input.actorId, origin: input.origin })) {
+      for (const id of await syncParentTaskStatus({ parentTaskId, actorId: input.actorId })) {
         changed.add(id)
       }
     } catch (syncError) {

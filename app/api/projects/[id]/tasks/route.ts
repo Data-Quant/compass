@@ -364,7 +364,6 @@ export async function POST(
     const syncedParentTasks = await syncParentTasks({
       parentTaskIds: computeParentSyncTargets(null, task),
       actorId: user.id,
-      origin: request.nextUrl.origin,
       visibilityScope: authorization.isParticipant
         ? null
         : await prisma.task.findMany({
@@ -682,7 +681,6 @@ export async function PUT(
     const syncedParentTasks = await syncParentTasks({
       parentTaskIds: computeParentSyncTargets(existingTask, task),
       actorId: user.id,
-      origin: request.nextUrl.origin,
       visibilityScope: responseVisibilityScope,
     })
 
@@ -759,7 +757,6 @@ export async function DELETE(
     const syncedParentTasks = await syncParentTasks({
       parentTaskIds: computeParentSyncTargets(task, null),
       actorId: user.id,
-      origin: request.nextUrl.origin,
       visibilityScope: authorization.isParticipant ? null : projectTasks,
     })
 

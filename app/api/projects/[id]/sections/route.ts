@@ -259,7 +259,6 @@ export async function DELETE(
     await syncParentTasks({
       parentTaskIds: movedParents.map((task) => task.parentTaskId as string),
       actorId: user.id,
-      origin: request.nextUrl.origin,
     })
     try {
       await syncProjectCompletion(projectId)
