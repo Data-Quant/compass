@@ -173,7 +173,7 @@ test('inline task composer exposes a Notion-style new task action', async () => 
   assert.match(html, />New task</)
 })
 
-test('opened project table exposes a nested subtask action under every visible task', async () => {
+test('opened project table offers a subtask action on every task and a composer row only under expanded parents', async () => {
   const { OpenedProjectTaskTable } = await import('../components/projects/WorkspaceTaskTable')
   const html = renderToStaticMarkup(React.createElement(OpenedProjectTaskTable, {
     project,
@@ -188,9 +188,12 @@ test('opened project table exposes a nested subtask action under every visible t
   assert.match(html, /aria-label="Add subtask under Draft the investment memo"/)
   assert.match(html, /aria-label="Add subtask under Confirm the legal clauses"/)
   assert.match(html, /aria-label="Add subtask under Attach the signed schedule"/)
-  assert.equal(html.match(/data-row-kind="new-subtask"/g)?.length, 3)
-  assert.equal(html.match(/>New subtask</g)?.length, 3)
+  // Composer rows sit after the children of the two expanded parents; the leaf only has the hover "+".
+  assert.equal(html.match(/data-row-kind="new-subtask"/g)?.length, 2)
+  assert.equal(html.match(/>New subtask</g)?.length, 2)
+  assert.ok(html.indexOf('data-row-kind="new-subtask" data-parent-task-id="task-2"') > html.indexOf('Attach the signed schedule'))
   assert.match(html, /aria-label="Due date for Draft the investment memo"/)
+  assert.doesNotMatch(html, /type="date"/)
   assert.match(html, /aria-label="Priority for Draft the investment memo"/)
 })
 

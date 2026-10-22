@@ -40,6 +40,7 @@ import { PersonSelect } from './PeopleSearchList'
 import { WorkspaceBulkActions } from './WorkspaceBulkActions'
 import { WorkspaceKanban } from './WorkspaceKanban'
 import { WorkspaceTaskTable } from './WorkspaceTaskTable'
+import { DueDatePicker } from './DueDatePicker'
 import type {
   AssigneeFilter,
   CreateProjectInput,
@@ -1205,12 +1206,13 @@ export function ProjectsWorkspace() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="promotion-due-date">Due date</Label>
-            <Input
+            <DueDatePicker
               id="promotion-due-date"
-              type="date"
-              value={promotion?.dueDate || ''}
-              onChange={(event) => setPromotion((current) => current ? { ...current, dueDate: event.target.value } : current)}
+              dueDate={promotion?.dueDate || null}
+              onChange={(dueDate) => setPromotion((current) => current ? { ...current, dueDate: dueDate || '' } : current)}
               disabled={promoting}
+              ariaLabel="Due date"
+              className="h-9 w-full justify-start border border-input px-3 text-sm"
             />
           </div>
           <div className="flex justify-end gap-2">

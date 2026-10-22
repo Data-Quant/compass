@@ -11,6 +11,7 @@ import {
   Check,
   ChevronRight,
   FileText,
+  ListChecks,
   GitBranch,
   MoreHorizontal,
   Pencil,
@@ -40,6 +41,8 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { PeopleSearchList } from './PeopleSearchList'
 import { PriorityPill } from './PriorityPill'
+import { PeopleStack } from './PeopleStack'
+import { DueDatePicker } from './DueDatePicker'
 import {
   Table,
   TableBody,
@@ -69,14 +72,12 @@ import type {
 } from './workspace-types'
 import {
   assigneeIdForFilter,
-  dateInputValue,
   daysFromToday,
   displayDueDate,
   groupWorkspaceTaskItemsByAssignee,
   isDoneTask,
   isRowNavigationClick,
   isTaskOverdue,
-  overdueDays,
   plainTextPreview,
   PRIORITY_CLASS,
   PRIORITY_LABEL,
@@ -703,19 +704,14 @@ function PersonTaskRow({
         </Link>
       </TableCell>
       <TableCell>
-        <div className="space-y-0.5">
-          <Input
-            type="date"
-            value={dateInputValue(task.dueDate)}
-            onChange={(event) => void onPatchTask(project.id, task.id, { dueDate: event.target.value || null }, { dueDate: event.target.value || null })}
-            aria-label={`Due date for ${task.title}`}
-            disabled={pending || !canEdit}
-            className={cn('h-8 min-w-[142px] border-transparent bg-transparent px-2 text-xs shadow-none hover:border-border focus:border-border', overdue && 'font-semibold text-red-600 dark:text-red-300')}
-          />
-          <p className={cn('px-2 text-[10px] text-muted-foreground', overdue && 'font-semibold text-red-600 dark:text-red-300')}>
-            {relativeDueDate(task.dueDate)}
-          </p>
-        </div>
+        <DueDatePicker
+          dueDate={task.dueDate}
+          done={done}
+          overdue={overdue}
+          disabled={pending || !canEdit}
+          ariaLabel={`Due date for ${task.title}`}
+          onChange={(dueDate) => void onPatchTask(project.id, task.id, { dueDate }, { dueDate })}
+        />
       </TableCell>
       <TableCell>
         <button
@@ -1449,13 +1445,13 @@ export function OpenedProjectTaskTable({
         <div className="px-5 py-8 text-center text-sm text-muted-foreground">{emptyMessage}</div>
       ) : (
         <div className={cn('overflow-auto', scrollClassName)}>
-          <Table className="min-w-[920px]">
+          <Table className="min-w-[760px] table-fixed">
             <TableHeader className="sticky top-0 z-10 bg-popover">
-              <TableRow>
-                <TableHead className="min-w-[390px]">Task</TableHead>
-                <TableHead className="w-44">Deadline</TableHead>
-                <TableHead className="min-w-[230px]">Assignees</TableHead>
-                <TableHead className="w-36">Priority</TableHead>
+              <TableRow className="hover:bg-transparent [&>th]:h-9 [&>th]:px-2 [&>th]:text-xs [&>th]:font-medium [&>th]:text-muted-foreground">
+                <TableHead>Task</TableHead>
+                <TableHead className="w-36">Due</TableHead>
+                <TableHead className="w-52">Assignees</TableHead>
+                <TableHead className="w-32">Priority</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1482,7 +1478,7 @@ export function OpenedProjectTaskTable({
         </div>
       )}
       {project.status !== 'ARCHIVED' && (
-        <div className="border-t border-border/60 px-4 py-2">
+        <div className="border-t px-3 py-2">
           <InlineTaskComposer
             projectName={project.name}
             creating={creatingTask}
@@ -1525,6 +1521,22 @@ function WorkspacePopupTaskRows({
 }) {
   const { task, children } = node
   const expanded = children.length > 0 && expandedTaskIds.has(task.id)
+  const canAddSubtask = project.status !== 'ARCHIVED' && canEditTask(project, task, viewerId)
+  // The hover "+" opens the composer in edit mode; expanded parents also keep an idle one after their children.
+  const [composing, setComposing] = useState(false)
+  const composer = canAddSubtask && (expanded || composing) ? (
+    <InlineSubtaskComposerRow
+      parentTask={task}
+      depth={depth + 1}
+      editing={composing}
+      onEditingChange={setComposing}
+      onCreate={async (title) => {
+        const ok = await onCreateTask(task.id, title)
+        if (ok && !expanded) onToggleTask(task.id)
+        return ok
+      }}
+    />
+  ) : null
   return (
     <Fragment>
       <WorkspacePopupTaskRow
@@ -1541,18 +1553,9 @@ function WorkspacePopupTaskRows({
         onPatchTask={onPatchTask}
         onOpenTask={onOpenTask}
         onFilterByAssignee={onFilterByAssignee}
+        onAddSubtask={canAddSubtask ? () => setComposing(true) : undefined}
       />
-      {project.status !== 'ARCHIVED' && canEditTask(project, task, viewerId) && (
-        <InlineSubtaskComposerRow
-          parentTask={task}
-          depth={depth + 1}
-          onCreate={async (title) => {
-            const ok = await onCreateTask(task.id, title)
-            if (ok && !expanded) onToggleTask(task.id)
-            return ok
-          }}
-        />
-      )}
+      {!expanded && composer}
       {expanded && children.map((child) => (
         <WorkspacePopupTaskRows
           key={child.task.id}
@@ -1571,6 +1574,7 @@ function WorkspacePopupTaskRows({
           onCreateTask={onCreateTask}
         />
       ))}
+      {expanded && composer}
     </Fragment>
   )
 }
@@ -1579,12 +1583,19 @@ export function InlineSubtaskComposerRow({
   parentTask,
   depth,
   onCreate,
+  editing: editingProp,
+  onEditingChange,
 }: {
   parentTask: Pick<WorkspaceTask, 'id' | 'title'>
   depth: number
   onCreate: (title: string) => Promise<boolean>
+  /** Optional control from the parent row's hover "+" button. */
+  editing?: boolean
+  onEditingChange?: (editing: boolean) => void
 }) {
-  const [editing, setEditing] = useState(false)
+  const [localEditing, setLocalEditing] = useState(false)
+  const editing = editingProp ?? localEditing
+  const setEditing = onEditingChange ?? setLocalEditing
   const [title, setTitle] = useState('')
   const [creating, setCreating] = useState(false)
 
@@ -1610,10 +1621,10 @@ export function InlineSubtaskComposerRow({
       data-task-depth={depth}
       className="border-0 bg-popover hover:bg-muted/20"
     >
-      <TableCell colSpan={4} className="h-7 py-0" style={{ paddingLeft: `${24 + depth * 24}px` }}>
+      {/* Lines up with the child title: select gutter (20) + chevron spacer (24) + toggle (16) + gaps. */}
+      <TableCell colSpan={4} className="h-8 py-0" style={{ paddingLeft: `${8 + 20 + depth * 20 + 52}px` }}>
         {editing ? (
-          <div className="flex min-w-0 items-center gap-1.5 py-1">
-            <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <div className="flex min-w-0 items-center gap-1.5">
             <Input
               autoFocus
               value={title}
@@ -1642,7 +1653,7 @@ export function InlineSubtaskComposerRow({
             type="button"
             onClick={() => setEditing(true)}
             aria-label={`Add subtask under ${parentTask.title}`}
-            className="flex h-7 w-full items-center gap-1.5 rounded px-1.5 text-left text-[11px] text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            className="flex h-7 w-full items-center gap-1.5 rounded px-2 text-left text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           >
             <Plus className="h-3 w-3" />
             <span>New subtask</span>
@@ -1667,6 +1678,7 @@ function WorkspacePopupTaskRow({
   onPatchTask,
   onOpenTask,
   onFilterByAssignee,
+  onAddSubtask,
 }: {
   project: WorkspaceProject
   task: WorkspaceTask
@@ -1681,11 +1693,13 @@ function WorkspacePopupTaskRow({
   onPatchTask: WorkspaceTaskTableProps['onPatchTask']
   onOpenTask: (projectId: string, taskId: string) => void
   onFilterByAssignee: (assigneeId: string) => void
+  onAddSubtask?: () => void
 }) {
   const done = isDoneTask(project, task)
   const overdue = isTaskOverdue(project, task)
-  const lateDays = overdueDays(project, task)
   const canEdit = canEditTask(project, task, viewerId)
+  const labels = task.labelAssignments
+  const hiddenLabels = labels.slice(2)
 
   const toggleDone = async (checked: boolean) => {
     const section = sectionForColumn(project, checked ? 'DONE' : 'TODO')
@@ -1707,42 +1721,90 @@ function WorkspacePopupTaskRow({
       data-task-depth={depth}
       data-parent-task-id={task.parentTaskId || undefined}
       data-state={selected ? 'selected' : undefined}
-      className={cn('bg-popover', overdue && 'bg-red-500/[0.07] hover:bg-red-500/[0.11]', pending && 'opacity-65')}
+      aria-busy={pending || undefined}
+      className={cn(
+        'group/row h-10 bg-popover hover:bg-muted/40 data-[state=selected]:bg-primary/[0.04] [&>td]:px-2 [&>td]:py-1',
+        pending && 'opacity-60',
+      )}
     >
-      <TableCell style={{ paddingLeft: `${12 + depth * 24}px` }}>
-        <div className="flex min-w-0 items-center gap-2">
+      <TableCell>
+        <div className="flex min-w-0 items-center gap-1">
+          <span className="flex w-5 shrink-0 justify-center">
+            <Checkbox
+              checked={selected}
+              onCheckedChange={(checked) => onToggleSelected(task.id, checked === true)}
+              aria-label={`Select ${task.title}`}
+              disabled={pending || !canEdit}
+              className="rounded opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 data-[state=checked]:opacity-100 [@media(hover:none)]:opacity-100"
+            />
+          </span>
+          {depth > 0 && <span className="shrink-0" style={{ width: `${depth * 20}px` }} aria-hidden="true" />}
+          {depth > 0 && <span className="sr-only">Subtask</span>}
           {childCount > 0 ? (
             <button
               type="button"
               onClick={onToggleChildren}
               aria-expanded={expanded}
               aria-label={`${expanded ? 'Collapse' : 'Expand'} subtasks for ${task.title}`}
-              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <ChevronRight className={cn('h-4 w-4 transition-transform', expanded && 'rotate-90')} />
             </button>
-          ) : <span className="h-7 w-7 shrink-0" aria-hidden="true" />}
-          <Checkbox checked={selected} onCheckedChange={(checked) => onToggleSelected(task.id, checked === true)} aria-label={`Select ${task.title}`} disabled={pending || !canEdit} />
+          ) : <span className="h-6 w-6 shrink-0" aria-hidden="true" />}
           <Checkbox
             checked={done}
             onCheckedChange={(checked) => void toggleDone(checked === true)}
             aria-label={`Mark ${task.title} ${done ? 'incomplete' : 'complete'}`}
             disabled={pending || !canEdit}
-            className="h-5 w-5 rounded-full"
+            className="h-4 w-4 rounded-full border-[1.5px] border-muted-foreground/50 shadow-none hover:border-emerald-500 data-[state=checked]:border-emerald-500 data-[state=checked]:bg-emerald-500 data-[state=checked]:text-white [&_svg]:h-3 [&_svg]:w-3"
           />
-          {depth > 0 && <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Subtask" />}
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <InlineTitle project={project} task={task} pending={pending || !canEdit} onPatchTask={onPatchTask} />
-            <TaskLabelBadges task={task} className="px-2" />
-          </div>
-          {childCount > 0 && <Badge variant="secondary" className="shrink-0 px-1.5 text-[9px]">{childCount}</Badge>}
+          <InlineTitle project={project} task={task} pending={pending || !canEdit} onPatchTask={onPatchTask} />
+          {labels.length > 0 && (
+            <span className="flex shrink-0 items-center gap-1" aria-label={`Labels for ${task.title}`}>
+              {labels.slice(0, 2).map((assignment) => (
+                <span
+                  key={assignment.label.id}
+                  title={assignment.label.name}
+                  className="max-w-24 truncate rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium leading-none"
+                  style={{ backgroundColor: `${assignment.label.color}20`, color: assignment.label.color }}
+                >
+                  {assignment.label.name}
+                </span>
+              ))}
+              {hiddenLabels.length > 0 && (
+                <span className="text-[11px] tabular-nums text-muted-foreground" title={hiddenLabels.map((assignment) => assignment.label.name).join(', ')}>
+                  +{hiddenLabels.length}
+                </span>
+              )}
+            </span>
+          )}
+          {childCount > 0 && (
+            <span className="inline-flex shrink-0 items-center gap-1 text-xs tabular-nums text-muted-foreground" title={`${childCount} subtasks`}>
+              <ListChecks className="h-3.5 w-3.5" aria-hidden="true" />
+              {childCount}
+            </span>
+          )}
           {task.completedLate && (
-            <Badge variant="outline" className="shrink-0 border-orange-500/20 bg-orange-500/10 text-[10px] text-orange-600 dark:text-orange-300">Completed late</Badge>
+            <span className="shrink-0 whitespace-nowrap text-[11px] text-orange-600 dark:text-orange-400">Completed late</span>
+          )}
+          {onAddSubtask && (
+            <button
+              type="button"
+              onClick={onAddSubtask}
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-colors hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/row:opacity-100 [@media(hover:none)]:opacity-100"
+              aria-label={`Add subtask under ${task.title}`}
+              title="Add subtask"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
           )}
           <button
             type="button"
             onClick={() => onOpenTask(project.id, task.id)}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className={cn(
+              'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              !task.description && 'opacity-0 group-hover/row:opacity-100 [@media(hover:none)]:opacity-100',
+            )}
             aria-label={`Open notes and details for ${task.title}`}
             title={plainTextPreview(task.description) || 'Open notes and details'}
           >
@@ -1751,20 +1813,14 @@ function WorkspacePopupTaskRow({
         </div>
       </TableCell>
       <TableCell>
-        <div className="space-y-1">
-          <Input
-            type="date"
-            value={dateInputValue(task.dueDate)}
-            onChange={(event) => void onPatchTask(project.id, task.id, { dueDate: event.target.value || null }, { dueDate: event.target.value || null })}
-            aria-label={`Due date for ${task.title}`}
-            disabled={pending || !canEdit}
-            className={cn('h-8 min-w-[142px] border-transparent bg-transparent px-2 text-xs shadow-none hover:border-border focus:border-border', overdue && 'font-semibold text-red-600 dark:text-red-300')}
-          />
-          <div className="flex min-h-4 items-center gap-1.5 px-2">
-            <span className={cn('text-[10px] text-muted-foreground', overdue && 'font-semibold text-red-600 dark:text-red-300')}>{relativeDueDate(task.dueDate)}</span>
-            {overdue && <Badge className="border border-red-500/20 bg-red-500/10 px-1.5 py-0 text-[9px] text-red-600 hover:bg-red-500/10 dark:text-red-300">{lateDays}d overdue</Badge>}
-          </div>
-        </div>
+        <DueDatePicker
+          dueDate={task.dueDate}
+          done={done}
+          overdue={overdue}
+          disabled={pending || !canEdit}
+          ariaLabel={`Due date for ${task.title}`}
+          onChange={(dueDate) => void onPatchTask(project.id, task.id, { dueDate }, { dueDate })}
+        />
       </TableCell>
       <TableCell>
         <TaskAssignees
@@ -1776,14 +1832,13 @@ function WorkspacePopupTaskRow({
         />
       </TableCell>
       <TableCell>
-        <Select
-          value={task.priority}
-          onValueChange={(value) => void onPatchTask(project.id, task.id, { priority: value as WorkspacePriority }, { priority: value as WorkspacePriority })}
+        <PriorityPill
+          priority={task.priority}
+          editable
           disabled={pending || !canEdit}
-        >
-          <SelectTrigger aria-label={`Priority for ${task.title}`} className={cn('h-8 border px-2 text-xs shadow-none', PRIORITY_CLASS[task.priority])}><SelectValue /></SelectTrigger>
-          <SelectContent>{PRIORITIES.map((priority) => <SelectItem key={priority} value={priority}>{PRIORITY_LABEL[priority]}</SelectItem>)}</SelectContent>
-        </Select>
+          ariaLabel={`Priority for ${task.title}`}
+          onChange={(priority) => void onPatchTask(project.id, task.id, { priority }, { priority })}
+        />
       </TableCell>
     </TableRow>
   )
@@ -1807,39 +1862,42 @@ function TaskAssignees({
     .filter((person, index, people) => people.findIndex((candidate) => candidate.id === person.id) === index)
   const assignedIds = new Set(assignedPeople.map((person) => person.id))
 
-  const summary = assignedPeople.length === 0 ? (
-    <span className="text-xs text-muted-foreground">Unassigned</span>
-  ) : (
-    <span className="flex min-w-0 items-center gap-2">
-      <span className="flex shrink-0 -space-x-1.5">
-        {assignedPeople.slice(0, 3).map((person) => (
-          <UserAvatar key={person.id} name={person.name} size="xs" className="ring-2 ring-background" />
-        ))}
-      </span>
-      <span className="truncate text-xs">
-        {assignedPeople.length === 1 ? assignedPeople[0].name : `${assignedPeople.length} people`}
-      </span>
-    </span>
+  const summary = (
+    <PeopleStack
+      assignee={task.assignee || null}
+      assistants={(task.assistants || []).filter((assistant) => assistant.user.id !== task.assignee?.id)}
+      size="md"
+    />
   )
 
   if (!project.canManage) {
     if (assignedPeople.length === 0) return summary
+    const hidden = assignedPeople.slice(3)
     return (
-      <div className="flex flex-wrap gap-1.5">
-        {assignedPeople.map((person, index) => (
-          <button
-            key={person.id}
-            type="button"
-            onClick={() => onFilterByAssignee(person.id)}
-            className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/70 bg-background px-2 py-1 text-[11px] transition-colors hover:border-primary/30 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label={`Show tasks assigned to ${person.name}`}
-            title={`${index === 0 && task.assignee?.id === person.id ? 'Primary assignee' : 'Co-assignee'}: ${person.name}`}
-          >
-            <UserAvatar name={person.name} size="xs" />
-            <span className="max-w-28 truncate">{person.name}</span>
-          </button>
-        ))}
-      </div>
+      <span className="inline-flex min-w-0 items-center">
+        <span className="flex -space-x-1.5">
+          {assignedPeople.slice(0, 3).map((person, index) => (
+            <button
+              key={person.id}
+              type="button"
+              onClick={() => onFilterByAssignee(person.id)}
+              className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label={`Show tasks assigned to ${person.name}`}
+              title={`${index === 0 && task.assignee?.id === person.id ? 'Primary assignee' : 'Co-assignee'}: ${person.name}`}
+            >
+              <UserAvatar name={person.name} size="xs" className="ring-2 ring-card" title={`${index === 0 && task.assignee?.id === person.id ? 'Primary assignee' : 'Co-assignee'}: ${person.name}`} />
+            </button>
+          ))}
+        </span>
+        {hidden.length > 0 && (
+          <span className="ml-1 text-[11px] tabular-nums text-muted-foreground" title={hidden.map((person) => person.name).join(', ')}>
+            +{hidden.length}
+          </span>
+        )}
+        {assignedPeople.length === 1 && (
+          <span className="ml-1.5 max-w-[96px] truncate text-xs text-foreground">{assignedPeople[0].name.split(' ')[0]}</span>
+        )}
+      </span>
     )
   }
 
@@ -1884,7 +1942,7 @@ function TaskAssignees({
         <Button
           type="button"
           variant="ghost"
-          className="h-auto min-h-8 w-full justify-start px-2 py-1 font-normal"
+          className="h-8 max-w-full justify-start px-2 py-1 font-normal"
           aria-label={`Edit assignees for ${task.title}`}
           disabled={pending}
         >
@@ -1994,8 +2052,8 @@ function InlineTitle({
       aria-label={`Task title: ${task.title}`}
       disabled={pending}
       className={cn(
-        'min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1.5 text-sm outline-none transition-colors hover:border-border focus:border-primary/40',
-        isDoneTask(project, task) && 'text-muted-foreground line-through',
+        'h-8 min-w-0 flex-1 truncate rounded-md border border-transparent bg-transparent px-2 text-sm outline-none transition-colors hover:bg-muted/60 focus:border-input focus:bg-background disabled:hover:bg-transparent',
+        isDoneTask(project, task) && 'text-muted-foreground',
       )}
     />
   )
@@ -2234,24 +2292,12 @@ function BacklogGroup({
                       </Select>
                     </TableCell>
                     <TableCell>
-                      <div className="space-y-0.5">
-                        <Input
-                          type="date"
-                          value={dateInputValue(task.dueDate)}
-                          onChange={(event) => void onPatchTask(
-                            project.id,
-                            task.id,
-                            { dueDate: event.target.value || null },
-                            { dueDate: event.target.value || null },
-                          )}
-                          aria-label={`Due date for ${task.title}`}
-                          disabled={pendingTaskIds.has(task.id) || !canEditTask(project, task, viewerId)}
-                          className="h-8 min-w-[142px] border-transparent bg-transparent px-2 text-xs shadow-none hover:border-border focus:border-border"
-                        />
-                        <p className="px-2 text-[10px] text-muted-foreground">
-                          {task.dueDate ? relativeDueDate(task.dueDate) : 'Optional'}
-                        </p>
-                      </div>
+                      <DueDatePicker
+                        dueDate={task.dueDate}
+                        disabled={pendingTaskIds.has(task.id) || !canEditTask(project, task, viewerId)}
+                        ariaLabel={`Due date for ${task.title}`}
+                        onChange={(dueDate) => void onPatchTask(project.id, task.id, { dueDate }, { dueDate })}
+                      />
                     </TableCell>
                     <TableCell>
                       <AssigneeCell
