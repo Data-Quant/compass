@@ -14,6 +14,7 @@ import {
   projectMatchesSearch,
   progressBand,
   sortTasks,
+  sortTasksByDeadline,
   sortWorkspaceTaskItems,
   taskMatchesAssignee,
   taskMatchesSearch,
@@ -282,4 +283,30 @@ test('a click inside portal content does not navigate', () => {
 })
 test('no target does not navigate', () => {
   assert.equal(isRowNavigationClick(null, fakeRow(true)), false)
+})
+
+const deadlineTask = (id: string, dueDate: string | null) => ({ id, dueDate })
+
+test('earlier deadlines come first and undated tasks go last', () => {
+  const sorted = sortTasksByDeadline([deadlineTask('none', null), deadlineTask('late', '2026-11-20'), deadlineTask('soon', '2026-10-25')])
+  assert.deepEqual(sorted.map((task) => task.id), ['soon', 'late', 'none'])
+})
+
+test('tasks with the same deadline keep their existing order', () => {
+  const sorted = sortTasksByDeadline([deadlineTask('b', '2026-10-25'), deadlineTask('a', '2026-10-25'), deadlineTask('x', null), deadlineTask('y', null)])
+  assert.deepEqual(sorted.map((task) => task.id), ['b', 'a', 'x', 'y'])
+})
+
+test('sorts wrapped items through the accessor', () => {
+  const sorted = sortTasksByDeadline(
+    [{ task: deadlineTask('late', '2026-11-20') }, { task: deadlineTask('soon', '2026-10-25') }],
+    ({ task }) => task.dueDate,
+  )
+  assert.deepEqual(sorted.map(({ task }) => task.id), ['soon', 'late'])
+})
+
+test('sortTasksByDeadline does not mutate the input', () => {
+  const input = [deadlineTask('late', '2026-11-20'), deadlineTask('soon', '2026-10-25')]
+  sortTasksByDeadline(input)
+  assert.deepEqual(input.map((task) => task.id), ['late', 'soon'])
 })

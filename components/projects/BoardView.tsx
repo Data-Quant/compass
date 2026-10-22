@@ -23,6 +23,7 @@ import { UserAvatar } from '@/components/composed/UserAvatar'
 import { cn } from '@/lib/utils'
 import { calculateTaskVariance, isTaskAssignedTo, PROJECT_TASK_TIME_ZONE } from '@/lib/project-progress'
 import type { PanelTask, ProjectStatusSection } from './TaskDetailPanel'
+import { sortTasksByDeadline } from './workspace-utils'
 
 const TASK_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   timeZone: PROJECT_TASK_TIME_ZONE,
@@ -284,7 +285,7 @@ export function BoardView({ projectId, tasks, sections, viewerId, canManage, onT
           <BoardColumn
             key={section.id}
             section={section}
-            tasks={localTasks.filter((task) => task.sectionId === section.id)}
+            tasks={sortTasksByDeadline(localTasks.filter((task) => task.sectionId === section.id))}
             viewerId={viewerId}
             canManage={canManage}
             canDelete={canManage && localSections.length > 1}
@@ -417,21 +418,8 @@ function BoardColumn({
         )}
         style={!isOver ? { borderColor: `${section.color}33`, backgroundColor: `${section.color}0d` } : undefined}
       >
-        <SortableContext items={tasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
-          <div className="space-y-2">
-            {tasks.map((task) => (
-              <SortableTaskCard
-                key={task.id}
-                task={task}
-                disabled={!canManage && !isTaskAssignedTo(task, viewerId)}
-                onClick={() => onTaskClick(task)}
-              />
-            ))}
-          </div>
-        </SortableContext>
-
         {adding ? (
-          <div className="mt-2">
+          <div className="mb-2">
             <input
               autoFocus
               value={newTitle}
@@ -451,12 +439,25 @@ function BoardColumn({
         ) : (
           <button
             onClick={() => setAdding(true)}
-            className="mt-2 w-full flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground/50 hover:text-muted-foreground rounded-lg hover:bg-card/50 transition-colors"
+            className="mb-2 w-full flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground/50 hover:text-muted-foreground rounded-lg hover:bg-card/50 transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
             Add task
           </button>
         )}
+
+        <SortableContext items={tasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
+          <div className="space-y-2">
+            {tasks.map((task) => (
+              <SortableTaskCard
+                key={task.id}
+                task={task}
+                disabled={!canManage && !isTaskAssignedTo(task, viewerId)}
+                onClick={() => onTaskClick(task)}
+              />
+            ))}
+          </div>
+        </SortableContext>
       </div>
     </div>
   )

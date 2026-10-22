@@ -35,6 +35,7 @@ import {
   PRIORITY_CLASS,
   PRIORITY_LABEL,
   relativeDueDate,
+  sortTasksByDeadline,
 } from './workspace-utils'
 
 interface WorkspaceKanbanProps {
@@ -111,7 +112,10 @@ export function WorkspaceKanban({
       <div className="overflow-x-auto pb-4">
         <div className="grid min-w-[1160px] grid-cols-4 gap-4">
           {COLUMNS.map((column) => {
-            const columnItems = items.filter(({ project, task }) => columnForTask(project, task) === column.id)
+            const columnItems = sortTasksByDeadline(
+              items.filter(({ project, task }) => columnForTask(project, task) === column.id),
+              ({ task }) => task.dueDate,
+            )
             return (
               <KanbanColumn
                 key={column.id}

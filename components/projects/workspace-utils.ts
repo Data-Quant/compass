@@ -267,6 +267,14 @@ function compareNullableString(
   return direction === 'asc' ? result : -result
 }
 
+export function sortTasksByDeadline<T>(
+  items: T[],
+  getDueDate: (item: T) => string | null = (item) => (item as { dueDate: string | null }).dueDate,
+): T[] {
+  return [...items].sort((left, right) =>
+    compareNullableString(dateInputValue(getDueDate(left)), dateInputValue(getDueDate(right))))
+}
+
 export function sortWorkspaceTaskItems(
   items: WorkspaceTaskItem[],
   key: WorkspaceSortKey,
