@@ -35,7 +35,7 @@ export async function GET(request: NextRequest, context: Context) {
         return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
     }
   } catch (error) {
-    console.error(`[security-checks] cron ${job} failed`, error)
+    console.error('[security-checks] cron failed', { job }, error)
     return NextResponse.json({ success: false, error: 'Job failed' }, { status: 500 })
   }
 }

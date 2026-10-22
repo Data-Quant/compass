@@ -14,8 +14,8 @@ import {
   type CompanyView,
 } from '@/lib/company-branding'
 import bcrypt from 'bcryptjs'
+import { isValidEmailAddress } from '@/lib/email-address'
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const COMPANY_COOKIE_MAX_AGE = 60 * 60 * 24 * 30
 
 function rateLimitResponse(resetAt: Date) {
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
 
     const { email, password } = await request.json()
 
-    if (!email || typeof email !== 'string' || !EMAIL_REGEX.test(email.trim())) {
+    if (!email || typeof email !== 'string' || !isValidEmailAddress(email)) {
       return NextResponse.json({ error: 'A valid email is required' }, { status: 400 })
     }
     if (!password || typeof password !== 'string') {

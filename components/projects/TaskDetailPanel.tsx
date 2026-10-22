@@ -19,6 +19,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { copyTextToClipboard } from '@/lib/copy-text'
 import { buildTaskShareUrl } from '@/lib/project-task-utils'
+import { imageUrlFromMarkdown, safeLinkHref } from '@/lib/safe-url'
 
 /* ─── Types ───────────────────────────────────────────────────────────── */
 
@@ -181,10 +182,10 @@ function appendMarkdownImage(content: string, url: string) {
   return `${prefix}![image](${url})`
 }
 
-function normalizeLinkHref(value: string) {
-  if (value.startsWith('/')) return value
-  return value.startsWith('http://') || value.startsWith('https://') ? value : `https://${value}`
-}
+// Extra guard at each link/image sink, on the exact value rendered. lib/safe-url
+// is the real allowlist; this inline check lets static analysis see a scheme
+// check that dominates the attribute.
+const SAFE_URL = /^(?:https?:\/\/|\/(?![/\\]))/i
 
 function renderInlineText(text: string, keyPrefix: string, depth = 0): React.ReactNode[] {
   const inlineRegex = /\[([^\]]+)\]\(((?:https?:\/\/|www\.)[^)\s]+)\)|\*\*([^*]+)\*\*|<u>(.*?)<\/u>|\b((?:https?:\/\/|www\.)[^\s<>()]+)/gi
@@ -197,11 +198,14 @@ function renderInlineText(text: string, keyPrefix: string, depth = 0): React.Rea
       nodes.push(text.slice(lastIndex, match.index))
     }
 
-    if (match[1] && match[2]) {
+    const linkHref = match[1] && match[2] ? safeLinkHref(match[2]) : null
+    if (match[1] && match[2] && !(linkHref && SAFE_URL.test(linkHref))) {
+      nodes.push(match[0])
+    } else if (match[1] && linkHref && SAFE_URL.test(linkHref)) {
       nodes.push(
         <a
           key={`${keyPrefix}-link-${match.index}`}
-          href={normalizeLinkHref(match[2])}
+          href={linkHref}
           target="_blank"
           rel="noreferrer"
           className="break-all text-primary underline underline-offset-2 hover:text-primary/80"
@@ -225,18 +229,19 @@ function renderInlineText(text: string, keyPrefix: string, depth = 0): React.Rea
       const rawUrl = match[5]
       const trailingPunctuation = rawUrl.match(/[.,!?;:]+$/)?.[0] ?? ''
       const linkText = trailingPunctuation ? rawUrl.slice(0, -trailingPunctuation.length) : rawUrl
+      const urlHref = safeLinkHref(linkText)
 
-      nodes.push(
+      nodes.push(urlHref && SAFE_URL.test(urlHref) ? (
         <a
           key={`${keyPrefix}-url-${match.index}`}
-          href={normalizeLinkHref(linkText)}
+          href={urlHref}
           target="_blank"
           rel="noreferrer"
           className="break-all text-primary underline underline-offset-2 hover:text-primary/80"
         >
           {linkText}
         </a>
-      )
+      ) : linkText)
       if (trailingPunctuation) nodes.push(trailingPunctuation)
     }
 
@@ -318,22 +323,26 @@ function RichTextContent({ content }: { content: string }) {
         </div>
       )
     }
-    nodes.push(
+    // Rebuilt from parsed parts; the same value feeds both href and src.
+    const imageUrl = imageUrlFromMarkdown(match[2])
+    nodes.push(imageUrl && SAFE_URL.test(imageUrl) ? (
       <a
         key={`image-link-${match.index}`}
-        href={normalizeLinkHref(match[2])}
+        href={imageUrl}
         target="_blank"
         rel="noreferrer"
         className="block"
       >
         <img
-          src={normalizeLinkHref(match[2])}
+          src={imageUrl}
           alt={match[1] || 'Task image'}
           loading="lazy"
           className="my-2 max-h-72 max-w-full rounded-lg border border-border/50 object-contain"
         />
       </a>
-    )
+    ) : (
+      <p key={`image-text-${match.index}`} className="whitespace-pre-wrap break-all">{match[0]}</p>
+    ))
     lastIndex = imageRegex.lastIndex
   }
 

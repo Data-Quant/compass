@@ -280,7 +280,7 @@ export async function POST(request: NextRequest) {
           })
         }
       } catch (error) {
-        console.error(`Error processing user ${name}:`, error)
+        console.error('Error processing user', { name }, error)
         result.errors.push(`Error processing user ${name}`)
       }
     }

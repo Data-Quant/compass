@@ -46,7 +46,7 @@ export type HolidayCalendarResult =
   | { success: false; action: 'skipped'; reason: string }
 
 function warnHolidaySkip(operation: 'sync' | 'remove' | 'sweep', holidayId: string, reason: string) {
-  console.warn(`[holiday-calendar] ${operation} skipped for holiday ${holidayId}: ${reason}`)
+  console.warn('[holiday-calendar] skipped', { operation, holidayId, reason })
 }
 
 function observingTeamsLabel(holiday: Pick<HolidayForCalendar, 'teamTags'>): string {

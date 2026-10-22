@@ -139,13 +139,13 @@ export async function autoCancelLeaveForMissingTransitionPlan(
   try {
     await removeLeaveCalendarEvent(requestId)
   } catch (error) {
-    console.error(`Failed to remove calendar event for auto-cancelled leave ${requestId}:`, error)
+    console.error('Failed to remove calendar event for auto-cancelled leave', { requestId }, error)
   }
 
   try {
     await sendLeaveCancellationNotification(requestId, AUTOMATED_ACTOR_LABEL, reason)
   } catch (error) {
-    console.error(`Failed to send cancellation notice for auto-cancelled leave ${requestId}:`, error)
+    console.error('Failed to send cancellation notice for auto-cancelled leave', { requestId }, error)
   }
 
   return outcome

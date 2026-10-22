@@ -153,7 +153,7 @@ async function importUsers(data: any[]) {
       })
       results.created++
     } catch (error) {
-      console.error(`Row ${rowNum} import error:`, error)
+      console.error('Row import error', { rowNum }, error)
       if (error instanceof Error && 'code' in error && (error as any).code === 'P2002') {
         results.errors.push(`Row ${rowNum}: Duplicate email`)
       } else {
@@ -277,7 +277,7 @@ async function importMappings(data: any[]) {
       touchedUserIds.add(evaluatee.id)
       results.created++
     } catch (error) {
-      console.error(`Row ${rowNum} mapping import error:`, error)
+      console.error('Row mapping import error', { rowNum }, error)
       results.errors.push(`Row ${rowNum}: Import error`)
     }
   }

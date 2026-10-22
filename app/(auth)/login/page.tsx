@@ -13,6 +13,7 @@ import { useCompanyBranding } from '@/components/providers/company-branding-prov
 import { BackgroundBeams } from '@/components/aceternity/background-beams'
 import { ShimmerButton } from '@/components/magicui/shimmer-button'
 import { Lock, Eye, EyeOff, Mail } from 'lucide-react'
+import { isValidEmailAddress } from '@/lib/email-address'
 
 /* ─── Design-system easing curves ─── */
 const ease = {
@@ -21,7 +22,6 @@ const ease = {
   out: [0.16, 1, 0.3, 1] as [number, number, number, number],
 }
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function getSafeNextPath(value: string | null) {
   if (!value || !value.startsWith('/') || value.startsWith('//')) return '/dashboard'
@@ -299,7 +299,7 @@ export default function LoginPage() {
   }
 
   const canSubmit =
-    EMAIL_REGEX.test(email.trim()) && password.length > 0 && csrfToken.length > 0
+    isValidEmailAddress(email) && password.length > 0 && csrfToken.length > 0
 
   if (!mounted) return null
   const splashVisible = showSplash

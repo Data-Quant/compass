@@ -49,8 +49,8 @@ import {
   type AvatarHeadCoveringType,
   type AvatarOutfitType,
 } from '@/shared/avatar-v2'
+import { isValidEmailAddress } from '@/lib/email-address'
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const WEEKDAYS = [
   { value: '0', label: 'Sunday' },
   { value: '1', label: 'Monday' },
@@ -298,7 +298,7 @@ export default function ProfilePage() {
     const normalizedEmail = email.trim()
     const normalizedDiscordId = discordId.trim()
 
-    if (normalizedEmail && !EMAIL_REGEX.test(normalizedEmail)) {
+    if (normalizedEmail && !isValidEmailAddress(normalizedEmail)) {
       toast.error('Please enter a valid email address')
       return
     }

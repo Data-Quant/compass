@@ -250,7 +250,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           successCount += 1
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Unknown email send error'
-          console.error(`Pay slip send failed for ${receipt.payrollName} (${receipt.id}):`, error)
+          console.error('Pay slip send failed', { payrollName: receipt.payrollName, receiptId: receipt.id }, error)
           failures.push({ receiptId: receipt.id, payrollName: receipt.payrollName, reason: message })
 
           // Bookkeeping must not abort the batch: if the failure record cannot
@@ -264,7 +264,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
               errorMessage: message,
             })
           } catch (recordError) {
-            console.error(`Failed to record pay slip failure for ${receipt.id}:`, recordError)
+            console.error('Failed to record pay slip failure', { receiptId: receipt.id }, recordError)
           }
         }
       }
