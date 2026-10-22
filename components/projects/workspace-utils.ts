@@ -359,3 +359,15 @@ export function plainTextPreview(value: string | null | undefined) {
     .replace(/\s+/g, ' ')
     .trim()
 }
+
+export const ROW_INTERACTIVE_SELECTOR =
+  'a,button,input,textarea,select,label,[role="checkbox"],[role="combobox"],[role="menuitem"],[data-row-nav-ignore]'
+
+// React events from portaled popovers/menus bubble to the row, so require the DOM target to be inside it.
+export function isRowNavigationClick(
+  target: { closest(selector: string): unknown } | null,
+  row: { contains(node: unknown): boolean },
+): boolean {
+  if (!target || !row.contains(target)) return false
+  return !target.closest(ROW_INTERACTIVE_SELECTOR)
+}

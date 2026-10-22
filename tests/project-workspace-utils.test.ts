@@ -9,6 +9,7 @@ import {
   calculateProgress,
   calculateOverallProgress,
   groupWorkspaceTaskItemsByAssignee,
+  isRowNavigationClick,
   isTaskOverdue,
   projectMatchesSearch,
   progressBand,
@@ -265,4 +266,20 @@ test('variance excludes backlog and completed tasks, and progress bands meet the
   assert.equal(progressBand(34).fill, 'bg-amber-500')
   assert.equal(progressBand(67).fill, 'bg-blue-500')
   assert.equal(progressBand(100).fill, 'bg-emerald-500')
+})
+
+const fakeTarget = (matches: boolean) => ({ closest: () => (matches ? {} : null) })
+const fakeRow = (contains: boolean) => ({ contains: () => contains })
+
+test('a click on plain row space opens the project', () => {
+  assert.equal(isRowNavigationClick(fakeTarget(false), fakeRow(true)), true)
+})
+test('a click on a control in the row does not navigate', () => {
+  assert.equal(isRowNavigationClick(fakeTarget(true), fakeRow(true)), false)
+})
+test('a click inside portal content does not navigate', () => {
+  assert.equal(isRowNavigationClick(fakeTarget(false), fakeRow(false)), false)
+})
+test('no target does not navigate', () => {
+  assert.equal(isRowNavigationClick(null, fakeRow(true)), false)
 })

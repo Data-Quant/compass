@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   Archive,
   ArrowDown,
@@ -73,6 +74,7 @@ import {
   displayDueDate,
   groupWorkspaceTaskItemsByAssignee,
   isDoneTask,
+  isRowNavigationClick,
   isTaskOverdue,
   overdueDays,
   plainTextPreview,
@@ -1068,6 +1070,8 @@ function ProjectMatrixRow({
     .flatMap(taskAssignees)
     .filter((person, index, people) => people.findIndex((candidate) => candidate.id === person.id) === index)
 
+  const router = useRouter()
+
   useEffect(() => setNameDraft(project.name), [project.name])
   useEffect(() => setColorDraft(project.color), [project.color])
   useEffect(() => setStatusDraft(project.status), [project.status])
@@ -1104,7 +1108,13 @@ function ProjectMatrixRow({
   }
 
   return (
-    <TableRow data-row-kind="project" className="bg-muted/10 hover:bg-muted/30 [&>td]:py-1">
+    <TableRow
+      data-row-kind="project"
+      className="cursor-pointer bg-muted/10 hover:bg-muted/30 [&>td]:py-1"
+      onClick={(event) => {
+        if (isRowNavigationClick(event.target as Element, event.currentTarget)) router.push(`/projects/${project.id}`)
+      }}
+    >
       <TableCell
         className="py-1"
         style={{ borderLeftColor: project.color || 'transparent', borderLeftStyle: 'solid', borderLeftWidth: 3 }}
@@ -1206,7 +1216,9 @@ function ProjectMatrixRow({
               className="h-7 min-w-0 flex-1 border-transparent bg-transparent px-1.5 text-sm font-semibold shadow-none hover:border-border focus:border-border disabled:opacity-70"
             />
           ) : (
-            <span className="min-w-0 flex-1 truncate px-1 font-semibold text-foreground">{project.name}</span>
+            <Link href={`/projects/${project.id}`} className="min-w-0 flex-1 truncate px-1 font-semibold text-foreground hover:underline">
+              {project.name}
+            </Link>
           )}
 
           {project.canManage ? (
