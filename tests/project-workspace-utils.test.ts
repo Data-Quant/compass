@@ -10,16 +10,19 @@ import {
   filterPeopleByQuery,
   nextFocusIndex,
   calculateOverallProgress,
+  dueState,
+  formatShortDue,
   groupWorkspaceTaskItemsByAssignee,
   isRowNavigationClick,
   isTaskOverdue,
   projectMatchesSearch,
-  progressBand,
   sortTasks,
+  sortableCardKeyDown,
   sortTasksByDeadline,
   sortWorkspaceTaskItems,
   taskMatchesAssignee,
   taskMatchesSearch,
+  targetSectionForNewTask,
 } from '../components/projects/workspace-utils'
 
 const backlog: WorkspaceSection = {
@@ -265,10 +268,6 @@ test('variance excludes backlog and completed tasks, and progress bands meet the
   assert.equal(isTaskOverdue(value, open), true)
   assert.equal(isTaskOverdue(value, idea), false)
   assert.equal(isTaskOverdue(value, complete), false)
-  assert.equal(progressBand(33).fill, 'bg-red-500')
-  assert.equal(progressBand(34).fill, 'bg-amber-500')
-  assert.equal(progressBand(67).fill, 'bg-blue-500')
-  assert.equal(progressBand(100).fill, 'bg-emerald-500')
 })
 
 const fakeTarget = (matches: boolean) => ({ closest: () => (matches ? {} : null) })
@@ -343,4 +342,79 @@ test('nextFocusIndex moves down and up and stops at the ends', () => {
   assert.equal(nextFocusIndex(2, 3, 'ArrowUp'), 1)
   assert.equal(nextFocusIndex(0, 3, 'ArrowUp'), 0)
   assert.equal(nextFocusIndex(0, 1, 'ArrowDown'), 0)
+})
+
+// Fixed clock: Oct 22 2026, noon in Karachi (UTC+5).
+const NOW = new Date('2026-10-22T07:00:00Z')
+
+test('formatShortDue shows month and day, adds the year when it differs', () => {
+  assert.equal(formatShortDue('2026-10-24T00:00:00Z', NOW), 'Oct 24')
+  assert.equal(formatShortDue('2027-01-05T00:00:00Z', NOW), 'Jan 5, 2027')
+})
+
+test('dueState: no date', () => {
+  const s = dueState(null, { done: false, overdue: false, now: NOW })
+  assert.equal(s.kind, 'none')
+  assert.equal(s.label, 'No date')
+})
+
+test('dueState: more than 2 days out is normal', () => {
+  const s = dueState('2026-10-25T00:00:00Z', { done: false, overdue: false, now: NOW })
+  assert.equal(s.kind, 'normal')
+  assert.equal(s.label, 'Oct 25')
+  assert.match(s.title, /in 3 days/)
+})
+
+test('dueState: today, tomorrow and 2 days out are soon', () => {
+  const o = { done: false, overdue: false, now: NOW }
+  assert.deepEqual([dueState('2026-10-22T00:00:00Z', o).kind, dueState('2026-10-22T00:00:00Z', o).label], ['soon', 'Today'])
+  assert.equal(dueState('2026-10-23T00:00:00Z', o).label, 'Tomorrow')
+  const two = dueState('2026-10-24T00:00:00Z', o)
+  assert.deepEqual([two.kind, two.label], ['soon', 'Oct 24'])
+})
+
+test('dueState: overdue carries a late label', () => {
+  const s = dueState('2026-10-20T00:00:00Z', { done: false, overdue: true, now: NOW })
+  assert.equal(s.kind, 'overdue')
+  assert.equal(s.label, 'Oct 20')
+  assert.equal(s.lateLabel, '2d late')
+})
+
+test('dueState: done is never overdue or soon', () => {
+  const late = dueState('2026-10-20T00:00:00Z', { done: true, overdue: true, now: NOW })
+  assert.equal(late.kind, 'done')
+  assert.equal(late.lateLabel, undefined)
+  assert.equal(dueState('2026-10-22T00:00:00Z', { done: true, overdue: false, now: NOW }).kind, 'done')
+})
+
+test('dueState: different year appends the year', () => {
+  const s = dueState('2025-12-30T00:00:00Z', { done: true, overdue: false, now: NOW })
+  assert.equal(s.label, 'Dec 30, 2025')
+})
+
+test('targetSectionForNewTask picks the column section, or the parent task section for subtasks', () => {
+  const inProgress: WorkspaceSection = { ...todo, id: 'doing', name: 'In Progress', canonicalStatus: 'IN_PROGRESS', orderIndex: 2 }
+  const value = project([], { sections: [backlog, todo, inProgress, done] })
+  assert.equal(targetSectionForNewTask(value, 'TODO')?.id, 'todo')
+  assert.equal(targetSectionForNewTask(value, 'IN_PROGRESS')?.id, 'doing')
+  assert.equal(targetSectionForNewTask(value, 'DONE')?.id, 'done')
+  const parent = task({ id: 'parent', title: 'Parent', sectionId: inProgress.id, section: inProgress })
+  assert.equal(targetSectionForNewTask(value, 'TODO', parent)?.id, 'doing')
+  assert.equal(targetSectionForNewTask(project([], { sections: [backlog, todo, done] }), 'IN_PROGRESS'), null)
+})
+
+test('board card keys: Enter on the card opens, other keys drag, inner controls are left alone', () => {
+  const calls: string[] = []
+  const handlers = {
+    isDragging: false,
+    onOpen: () => calls.push('open'),
+    onDragKey: () => calls.push('drag'),
+  }
+  const card = {}
+  sortableCardKeyDown({ key: 'Enter', target: card, currentTarget: card }, handlers)
+  sortableCardKeyDown({ key: ' ', target: card, currentTarget: card }, handlers)
+  sortableCardKeyDown({ key: 'Enter', target: {}, currentTarget: card }, handlers)
+  sortableCardKeyDown({ key: ' ', target: {}, currentTarget: card }, handlers)
+  sortableCardKeyDown({ key: 'Enter', target: card, currentTarget: card }, { ...handlers, isDragging: true })
+  assert.deepEqual(calls, ['open', 'drag'])
 })

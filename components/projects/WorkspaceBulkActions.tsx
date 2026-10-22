@@ -115,7 +115,8 @@ export function WorkspaceBulkActions({ selections, applying, onApply, onClear }:
               disabled={applying}
             />
             <span className="whitespace-nowrap text-xs text-muted-foreground">
-              days {undatedCount > 0 && `· ${undatedCount} undated skipped`}
+              days
+              {undatedCount > 0 && <span className="ml-2">{undatedCount} undated skipped</span>}
             </span>
           </div>
         )}

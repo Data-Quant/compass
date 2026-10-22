@@ -97,7 +97,7 @@ export function TaskRow({ task, onClick, showProject }: TaskRowProps) {
         {isOverdue && (
           <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-500">
             <AlertTriangle className="h-3 w-3" />
-            Overdue · {daysLate}d
+            {daysLate}d late
           </span>
         )}
 

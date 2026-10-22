@@ -78,6 +78,7 @@ const project: WorkspaceProject = {
   description: 'Close the remaining diligence work',
   color: '#2563eb',
   status: 'ACTIVE',
+  priority: 'MEDIUM',
   owner: { id: 'owner-1', name: 'Project owner' },
   members: [{ id: 'user-1', name: 'Areebah', role: 'EMPLOYEE' }],
   canManage: true,
@@ -95,7 +96,7 @@ const view: WorkspaceProjectView = {
   progress: { completed: 0, total: 3, percent: 0 },
 }
 
-async function render(options: { groupMode?: 'project' | 'assignee'; assigneeFilter?: string } = {}) {
+async function render(options: { groupMode?: 'project' | 'assignee'; assigneeFilter?: string; views?: WorkspaceProjectView[] } = {}) {
   // The repository's test runner preserves the classic JSX transform, while
   // Next supplies the JSX runtime during application builds.
   ;(globalThis as typeof globalThis & { React: typeof React }).React = React
@@ -106,7 +107,7 @@ async function render(options: { groupMode?: 'project' | 'assignee'; assigneeFil
   const router = { push: () => undefined } as never
 
   return renderToStaticMarkup(React.createElement(AppRouterContext.Provider, { value: router }, React.createElement(WorkspaceTaskTable, {
-    projectViews: [view],
+    projectViews: options.views || [view],
     viewerId: 'user-1',
     people: [project.owner, ...project.members],
     progressScopeLabel: 'Your tasks',
@@ -149,7 +150,7 @@ test('project matrix keeps task rows and the task composer out until its project
   assert.equal(html.match(/>Project</g)?.length, 1)
   assert.equal(html.match(/>Tasks</g)?.length, 1)
   assert.equal(html.match(/>Deadline</g)?.length, 1)
-  assert.equal(html.match(/>Assignee</g)?.length, 1)
+  assert.equal(html.match(/>People</g)?.length, 1)
   assert.equal(html.match(/>Priority</g)?.length, 1)
   assert.match(html, /aria-expanded="false"/)
   assert.match(html, /aria-label="Project name for Harbor paperwork"/)
@@ -172,7 +173,7 @@ test('inline task composer exposes a Notion-style new task action', async () => 
   assert.match(html, />New task</)
 })
 
-test('opened project table exposes a nested subtask action under every visible task', async () => {
+test('opened project table offers a subtask action on every task and a composer row only under expanded parents', async () => {
   const { OpenedProjectTaskTable } = await import('../components/projects/WorkspaceTaskTable')
   const html = renderToStaticMarkup(React.createElement(OpenedProjectTaskTable, {
     project,
@@ -187,9 +188,14 @@ test('opened project table exposes a nested subtask action under every visible t
   assert.match(html, /aria-label="Add subtask under Draft the investment memo"/)
   assert.match(html, /aria-label="Add subtask under Confirm the legal clauses"/)
   assert.match(html, /aria-label="Add subtask under Attach the signed schedule"/)
-  assert.equal(html.match(/data-row-kind="new-subtask"/g)?.length, 3)
-  assert.equal(html.match(/>New subtask</g)?.length, 3)
+  // Composer rows sit after the children of the two expanded parents; the leaf only has the hover "+".
+  assert.equal(html.match(/data-row-kind="new-subtask"/g)?.length, 2)
+  // Expanded parents hide the hover "+", so each "Add subtask under" name is unique.
+  assert.equal(html.match(/aria-label="Add subtask under Draft the investment memo"/g)?.length, 1)
+  assert.equal(html.match(/>New subtask</g)?.length, 2)
+  assert.ok(html.indexOf('data-row-kind="new-subtask" data-parent-task-id="task-2"') > html.indexOf('Attach the signed schedule'))
   assert.match(html, /aria-label="Due date for Draft the investment memo"/)
+  assert.doesNotMatch(html, /type="date"/)
   assert.match(html, /aria-label="Priority for Draft the investment memo"/)
 })
 
@@ -252,4 +258,22 @@ test('person grouping renders shared tasks under every assigned person', async (
   assert.match(html, /aria-label="Collapse tasks for Areebah"/)
   assert.match(html, /aria-label="Collapse tasks for Shoaib"/)
   assert.equal(html.match(/aria-label="Collapse subtasks for Draft the investment memo"/g)?.length, 2)
+})
+
+test('a completed project with a past deadline shows no red date and keeps its status dot', async () => {
+  const doneTask: WorkspaceTask = { ...task, status: 'DONE', sectionId: done.id, section: done, dueDate: '2024-01-10' }
+  const completedProject: WorkspaceProject = { ...project, status: 'COMPLETED', tasks: [doneTask] }
+  const html = await render({
+    views: [{
+      project: completedProject,
+      scopedTasks: [doneTask],
+      visibleActiveTasks: [doneTask],
+      visibleBacklogTasks: [],
+      progress: { completed: 1, total: 1, percent: 100 },
+    }],
+  })
+
+  assert.match(html, /Jan 10, 2024/)
+  assert.doesNotMatch(html, /text-red-600/)
+  assert.match(html, /bg-sky-500/)
 })

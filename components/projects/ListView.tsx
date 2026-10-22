@@ -108,7 +108,7 @@ export function ListView({ project, viewerId, onTaskClick, onTasksChange }: List
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border/60 bg-card shadow-none">
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-none">
       <OpenedProjectTaskTable
         project={project}
         tasks={project.tasks}

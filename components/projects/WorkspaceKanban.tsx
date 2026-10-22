@@ -1,7 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import Link from 'next/link'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext,
   DragEndEvent,
@@ -16,10 +15,8 @@ import {
 } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { CalendarDays, CheckCircle2, CircleAlert, GripVertical, Loader2, MessageSquare, Plus } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
-import { Card } from '@/components/ui/card'
-import { UserAvatar } from '@/components/composed/UserAvatar'
+import { Loader2, Plus, X } from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import type {
   KanbanColumnId,
@@ -29,39 +26,38 @@ import type {
 } from './workspace-types'
 import {
   columnForTask,
-  displayDueDate,
+  isDoneTask,
   isTaskOverdue,
-  overdueDays,
-  PRIORITY_CLASS,
-  PRIORITY_LABEL,
-  relativeDueDate,
   sortTasksByDeadline,
 } from './workspace-utils'
+import { TaskCard } from './TaskCard'
+import { AddTaskButton, BoardColumnEmpty, BoardColumnShell, BoardScroller } from './BoardColumn'
 
 interface WorkspaceKanbanProps {
   projectViews: WorkspaceProjectView[]
   quickAddProjects: WorkspaceProject[]
+  activeProjects: WorkspaceProject[]
   quickAddProjectId: string
-  quickAdding: boolean
   viewerId: string
   pendingTaskIds: Set<string>
   onOpenTask: (projectId: string, taskId: string) => void
   onMoveTask: (project: WorkspaceProject, task: WorkspaceTask, column: KanbanColumnId) => void
   onQuickAddProjectChange: (projectId: string) => void
   onQuickAdd: (title: string) => Promise<boolean>
+  onCreateTask: (projectId: string, title: string, column: KanbanColumnId) => Promise<boolean>
 }
 
+// Hex dots so the shared column shell can take one color form for both boards.
 const COLUMNS: Array<{
   id: KanbanColumnId
   label: string
   description: string
-  tone: string
-  dot: string
+  color: string
 }> = [
-  { id: 'BACKLOG', label: 'Backlog', description: 'Future work', tone: 'border-slate-400/25 bg-slate-500/[0.04]', dot: 'bg-slate-400' },
-  { id: 'TODO', label: 'To Do', description: 'Ready to start', tone: 'border-violet-500/20 bg-violet-500/[0.04]', dot: 'bg-violet-500' },
-  { id: 'IN_PROGRESS', label: 'In Progress', description: 'Work underway', tone: 'border-blue-500/20 bg-blue-500/[0.04]', dot: 'bg-blue-500' },
-  { id: 'DONE', label: 'Done', description: 'Completed work', tone: 'border-emerald-500/20 bg-emerald-500/[0.04]', dot: 'bg-emerald-500' },
+  { id: 'BACKLOG', label: 'Backlog', description: 'Future work', color: '#94a3b8' },
+  { id: 'TODO', label: 'To Do', description: 'Ready to start', color: '#8b5cf6' },
+  { id: 'IN_PROGRESS', label: 'In Progress', description: 'Work underway', color: '#3b82f6' },
+  { id: 'DONE', label: 'Done', description: 'Completed work', color: '#10b981' },
 ]
 
 interface KanbanTaskItem {
@@ -72,14 +68,15 @@ interface KanbanTaskItem {
 export function WorkspaceKanban({
   projectViews,
   quickAddProjects,
+  activeProjects,
   quickAddProjectId,
-  quickAdding,
   viewerId,
   pendingTaskIds,
   onOpenTask,
   onMoveTask,
   onQuickAddProjectChange,
   onQuickAdd,
+  onCreateTask,
 }: WorkspaceKanbanProps) {
   const [activeId, setActiveId] = useState<string | null>(null)
   const sensors = useSensors(
@@ -109,38 +106,36 @@ export function WorkspaceKanban({
 
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      <div className="overflow-x-auto pb-4">
-        <div className="grid min-w-[1160px] grid-cols-4 gap-4">
-          {COLUMNS.map((column) => {
-            const columnItems = sortTasksByDeadline(
-              items.filter(({ project, task }) => columnForTask(project, task) === column.id),
-              ({ task }) => task.dueDate,
-            )
-            return (
-              <KanbanColumn
-                key={column.id}
-                column={column}
-                items={columnItems}
-                viewerId={viewerId}
-                pendingTaskIds={pendingTaskIds}
-                onOpenTask={onOpenTask}
-                quickAdd={column.id === 'BACKLOG' ? {
-                  projects: quickAddProjects,
-                  projectId: quickAddProjectId,
-                  adding: quickAdding,
-                  onProjectChange: onQuickAddProjectChange,
-                  onAdd: onQuickAdd,
-                } : undefined}
-              />
-            )
-          })}
-        </div>
-      </div>
+      <BoardScroller>
+        {COLUMNS.map((column) => {
+          const columnItems = sortTasksByDeadline(
+            items.filter(({ project, task }) => columnForTask(project, task) === column.id),
+            ({ task }) => task.dueDate,
+          )
+          const backlog = column.id === 'BACKLOG'
+          return (
+            <KanbanColumn
+              key={column.id}
+              column={column}
+              items={columnItems}
+              viewerId={viewerId}
+              pendingTaskIds={pendingTaskIds}
+              onOpenTask={onOpenTask}
+              projects={backlog ? quickAddProjects : activeProjects}
+              defaultProjectId={quickAddProjectId}
+              onProjectChange={backlog ? onQuickAddProjectChange : undefined}
+              onAdd={backlog
+                ? (_projectId, title) => onQuickAdd(title)
+                : (projectId, title) => onCreateTask(projectId, title, column.id)}
+            />
+          )
+        })}
+      </BoardScroller>
 
       <DragOverlay dropAnimation={{ duration: 180, easing: 'ease-out' }}>
         {activeItem ? (
           <div className="w-72 rotate-1 opacity-95 shadow-2xl">
-            <KanbanTaskCardContent project={activeItem.project} task={activeItem.task} dragging />
+            <KanbanTaskCard project={activeItem.project} task={activeItem.task} dragging />
           </div>
         ) : null}
       </DragOverlay>
@@ -154,116 +149,156 @@ function KanbanColumn({
   viewerId,
   pendingTaskIds,
   onOpenTask,
-  quickAdd,
+  projects,
+  defaultProjectId,
+  onProjectChange,
+  onAdd,
 }: {
   column: (typeof COLUMNS)[number]
   items: KanbanTaskItem[]
   viewerId: string
   pendingTaskIds: Set<string>
   onOpenTask: (projectId: string, taskId: string) => void
-  quickAdd?: {
-    projects: WorkspaceProject[]
-    projectId: string
-    adding: boolean
-    onProjectChange: (projectId: string) => void
-    onAdd: (title: string) => Promise<boolean>
-  }
+  projects: WorkspaceProject[]
+  defaultProjectId: string
+  onProjectChange?: (projectId: string) => void
+  onAdd: (projectId: string, title: string) => Promise<boolean>
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `kanban:${column.id}` })
+  const [composing, setComposing] = useState(false)
+  const [returnFocus, setReturnFocus] = useState(false)
   return (
-    <section aria-labelledby={`kanban-heading-${column.id}`} className="min-w-0">
-      <div className="mb-2 flex items-center gap-2 px-1">
-        <span className={cn('h-2.5 w-2.5 rounded-full', column.dot)} />
-        <div>
-          <h2 id={`kanban-heading-${column.id}`} className="text-sm font-semibold">{column.label}</h2>
-          <p className="text-[10px] text-muted-foreground">{column.description}</p>
-        </div>
-        <Badge variant="secondary" className="ml-auto">{items.length}</Badge>
-      </div>
-      <div
-        ref={setNodeRef}
-        className={cn(
-          'min-h-[440px] space-y-2 rounded-xl border p-2 transition-colors',
-          column.tone,
-          isOver && 'border-primary/45 bg-primary/[0.07] ring-2 ring-primary/15',
-        )}
-      >
-        {quickAdd && <KanbanQuickAdd {...quickAdd} />}
-        {items.length === 0 && (
-          <div className="flex min-h-32 items-center justify-center rounded-lg border border-dashed border-border/50 px-4 text-center text-xs text-muted-foreground">
-            Drop tasks here
-          </div>
-        )}
-        {items.map(({ project, task }) => (
-          <DraggableTaskCard
-            key={task.id}
-            project={project}
-            task={task}
-            disabled={pendingTaskIds.has(task.id) || (
-              !project.canManage
-              && task.assigneeId !== viewerId
-              && !task.assistants?.some((assistant) => assistant.user.id === viewerId)
-            )}
-            onOpen={() => onOpenTask(project.id, task.id)}
-          />
-        ))}
-      </div>
-    </section>
+    <BoardColumnShell
+      id={`kanban-${column.id}`}
+      name={column.label}
+      color={column.color}
+      description={column.description}
+      count={items.length}
+      isOver={isOver}
+      dropRef={setNodeRef}
+      top={composing ? (
+        <KanbanComposer
+          column={column}
+          projects={projects}
+          defaultProjectId={defaultProjectId}
+          onProjectChange={onProjectChange}
+          onAdd={onAdd}
+          onClose={() => {
+            setReturnFocus(true)
+            setComposing(false)
+          }}
+        />
+      ) : projects.length > 0 && (
+        <AddTaskButton columnName={column.label} autoFocus={returnFocus} onClick={() => setComposing(true)} />
+      )}
+    >
+      {items.length === 0 && <BoardColumnEmpty />}
+      {items.map(({ project, task }) => (
+        <DraggableTaskCard
+          key={task.id}
+          project={project}
+          task={task}
+          pending={pendingTaskIds.has(task.id)}
+          disabled={pendingTaskIds.has(task.id) || (
+            !project.canManage
+            && task.assigneeId !== viewerId
+            && !task.assistants?.some((assistant) => assistant.user.id === viewerId)
+          )}
+          onOpen={() => onOpenTask(project.id, task.id)}
+        />
+      ))}
+    </BoardColumnShell>
   )
 }
 
-function KanbanQuickAdd({
+// Inline composer at the top of a column. The Backlog column keeps the shared quick-add
+// project in sync; the other columns keep their own pick, starting from it.
+function KanbanComposer({
+  column,
   projects,
-  projectId,
-  adding,
+  defaultProjectId,
   onProjectChange,
   onAdd,
+  onClose,
 }: {
+  column: (typeof COLUMNS)[number]
   projects: WorkspaceProject[]
-  projectId: string
-  adding: boolean
-  onProjectChange: (projectId: string) => void
-  onAdd: (title: string) => Promise<boolean>
+  defaultProjectId: string
+  onProjectChange?: (projectId: string) => void
+  onAdd: (projectId: string, title: string) => Promise<boolean>
+  onClose: () => void
 }) {
   const [title, setTitle] = useState('')
+  const [pickedProjectId, setPickedProjectId] = useState(defaultProjectId)
+  const [adding, setAdding] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  // The input is disabled while adding, so focus it once adding has finished (also covers the first open).
+  useEffect(() => {
+    if (!adding) inputRef.current?.focus()
+  }, [adding])
+  const selectedId = onProjectChange ? defaultProjectId : pickedProjectId
+  const projectId = projects.some((project) => project.id === selectedId) ? selectedId : projects[0]?.id || ''
+  const isBacklog = column.id === 'BACKLOG'
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
     const cleanTitle = title.trim()
     if (!cleanTitle || !projectId || adding) return
-    if (await onAdd(cleanTitle)) setTitle('')
+    setAdding(true)
+    try {
+      if (await onAdd(projectId, cleanTitle)) setTitle('')
+    } finally {
+      setAdding(false)
+    }
   }
 
   return (
-    <form onSubmit={submit} className="space-y-2 rounded-lg border border-dashed border-slate-400/40 bg-background/70 p-2.5">
-      <label htmlFor="kanban-backlog-title" className="sr-only">Backlog task title</label>
+    <form
+      onSubmit={submit}
+      onKeyDown={(event) => {
+        // Ignore Escape from the project Select's portal; Radix closes the menu itself.
+        if (event.key === 'Escape' && !event.defaultPrevented && event.currentTarget.contains(event.target as Node)) onClose()
+      }}
+      className="space-y-1.5 rounded-md border border-border bg-card p-2"
+    >
       <input
-        id="kanban-backlog-title"
+        ref={inputRef}
         value={title}
         onChange={(event) => setTitle(event.target.value)}
-        placeholder="Add a backlog item..."
-        className="h-8 w-full rounded-md border border-border/60 bg-background px-2.5 text-xs outline-none transition-colors placeholder:text-muted-foreground focus:border-primary/50 focus:ring-2 focus:ring-primary/10"
+        placeholder={isBacklog ? 'Add a backlog item...' : 'Task name...'}
+        aria-label={isBacklog ? 'Backlog task title' : `New task in ${column.label}`}
+        className="h-8 w-full rounded-md border border-border bg-background px-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary/50 focus:ring-2 focus:ring-primary/15"
         disabled={adding || projects.length === 0}
       />
       <div className="flex gap-1.5">
-        <label htmlFor="kanban-backlog-project" className="sr-only">Project</label>
-        <select
-          id="kanban-backlog-project"
+        <Select
           value={projectId}
-          onChange={(event) => onProjectChange(event.target.value)}
-          className="h-8 min-w-0 flex-1 rounded-md border border-border/60 bg-background px-2 text-[11px] outline-none focus:border-primary/50"
+          onValueChange={(value) => (onProjectChange ? onProjectChange(value) : setPickedProjectId(value))}
           disabled={adding || projects.length === 0}
         >
-          {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-        </select>
+          <SelectTrigger aria-label="Project" className="h-8 min-w-0 flex-1 bg-background px-2 text-xs text-foreground">
+            <SelectValue placeholder="No projects" />
+          </SelectTrigger>
+          <SelectContent>
+            {projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
         <button
           type="submit"
           disabled={!title.trim() || !projectId || adding}
-          className="inline-flex h-8 items-center gap-1 rounded-md bg-primary px-2.5 text-[11px] font-medium text-primary-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
-          aria-label="Add backlog task"
+          className="inline-flex h-8 items-center gap-1 rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label={isBacklog ? 'Add backlog task' : `Add task to ${column.label}`}
         >
           {adding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
           Add
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Cancel"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <X className="h-3.5 w-3.5" />
         </button>
       </div>
     </form>
@@ -274,11 +309,13 @@ function DraggableTaskCard({
   project,
   task,
   disabled,
+  pending,
   onOpen,
 }: {
   project: WorkspaceProject
   task: WorkspaceTask
   disabled: boolean
+  pending: boolean
   onOpen: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: task.id, disabled })
@@ -286,110 +323,27 @@ function DraggableTaskCard({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform) }}
-      className={cn(isDragging && 'opacity-25', disabled && 'opacity-60')}
+      className={cn(isDragging && 'opacity-25')}
     >
-      <KanbanTaskCardContent
+      <KanbanTaskCard
         project={project}
         task={task}
+        pending={pending}
         onOpen={onOpen}
-        dragHandleProps={{ ...attributes, ...listeners }}
+        dragHandleProps={disabled ? undefined : { ...attributes, ...listeners }}
       />
     </div>
   )
 }
 
-function KanbanTaskCardContent({
-  project,
-  task,
-  onOpen,
-  dragHandleProps,
-  dragging,
-}: {
+function KanbanTaskCard({ project, task, ...props }: {
   project: WorkspaceProject
   task: WorkspaceTask
   onOpen?: () => void
   dragHandleProps?: React.ButtonHTMLAttributes<HTMLButtonElement>
   dragging?: boolean
+  pending?: boolean
 }) {
-  const overdue = isTaskOverdue(project, task)
-  const daysLate = overdueDays(project, task)
-  return (
-    <Card className={cn(
-      'group overflow-hidden border-border/60 bg-card p-3 shadow-sm transition-all hover:border-primary/30 hover:shadow-md',
-      overdue && 'border-red-500/30 bg-red-500/[0.055]',
-      dragging && 'border-primary/40',
-    )}>
-      <div className="mb-2 flex items-start gap-2">
-        <button
-          type="button"
-          onClick={onOpen}
-          disabled={!onOpen}
-          className="min-w-0 flex-1 rounded text-left text-sm font-semibold leading-snug text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:text-foreground"
-        >
-          {task.title}
-        </button>
-        {dragHandleProps && (
-          <button
-            type="button"
-            {...dragHandleProps}
-            className="touch-none rounded p-1 text-muted-foreground opacity-60 transition-colors hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
-            aria-label={`Move ${task.title}`}
-          >
-            <GripVertical className="h-4 w-4" />
-          </button>
-        )}
-      </div>
-
-      <div className="mb-3 flex flex-wrap items-center gap-1.5">
-        <Link
-          href={`/projects/${project.id}`}
-          className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground hover:text-primary"
-        >
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: project.color || '#94a3b8' }} />
-          <span className="truncate">{project.name}</span>
-        </Link>
-        <Badge variant="outline" className={cn('text-[10px]', PRIORITY_CLASS[task.priority])}>
-          {PRIORITY_LABEL[task.priority]}
-        </Badge>
-        {task.completedLate && (
-          <Badge variant="outline" className="border-orange-500/25 bg-orange-500/10 text-[10px] text-orange-600 dark:text-orange-300">
-            Completed late
-          </Badge>
-        )}
-      </div>
-
-      <div className="space-y-2 text-xs text-muted-foreground">
-        <div className="flex items-center gap-2">
-          <CalendarDays className={cn('h-3.5 w-3.5 shrink-0', overdue && 'text-red-500')} />
-          <span className={cn(overdue && 'font-semibold text-red-600 dark:text-red-300')} title={displayDueDate(task.dueDate)}>
-            {task.dueDate ? relativeDueDate(task.dueDate) : 'No due date'}
-          </span>
-          {overdue && (
-            <Badge className="ml-auto border border-red-500/20 bg-red-500/10 text-[10px] text-red-600 hover:bg-red-500/10 dark:text-red-300">
-              Overdue · {daysLate}d
-            </Badge>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {task.assignee ? (
-            <>
-              <UserAvatar name={task.assignee.name} size="xs" />
-              <span className="truncate">{task.assignee.name}</span>
-            </>
-          ) : (
-            <>
-              <CircleAlert className="h-3.5 w-3.5" />
-              <span>Unassigned</span>
-            </>
-          )}
-          {task._count.comments > 0 && (
-            <span className="ml-auto inline-flex items-center gap-1">
-              <MessageSquare className="h-3.5 w-3.5" /> {task._count.comments}
-            </span>
-          )}
-          {task.status === 'DONE' && <CheckCircle2 className="ml-auto h-4 w-4 text-emerald-500" aria-label="Done" />}
-        </div>
-      </div>
-    </Card>
-  )
+  return <TaskCard task={task} project={project} overdue={isTaskOverdue(project, task)} done={isDoneTask(project, task)} {...props} />
 }
+

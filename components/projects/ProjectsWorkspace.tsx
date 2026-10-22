@@ -40,6 +40,7 @@ import { PersonSelect } from './PeopleSearchList'
 import { WorkspaceBulkActions } from './WorkspaceBulkActions'
 import { WorkspaceKanban } from './WorkspaceKanban'
 import { WorkspaceTaskTable } from './WorkspaceTaskTable'
+import { DueDatePicker } from './DueDatePicker'
 import type {
   AssigneeFilter,
   CreateProjectInput,
@@ -67,6 +68,7 @@ import {
   projectMatchesStatus,
   projectMatchesSearch,
   sectionForColumn,
+  targetSectionForNewTask,
   shiftDate,
   taskMatchesAssignee,
   taskMatchesSearch,
@@ -254,6 +256,11 @@ export function ProjectsWorkspace() {
 
   const quickAddProjects = useMemo(
     () => (workspace?.projects || []).filter((project) => project.canUseBacklog && project.status !== 'ARCHIVED'),
+    [workspace],
+  )
+
+  const activeProjects = useMemo(
+    () => (workspace?.projects || []).filter((project) => project.status !== 'ARCHIVED'),
     [workspace],
   )
 
@@ -478,7 +485,7 @@ export function ProjectsWorkspace() {
     }
   }
 
-  const createActiveTask = async (projectId: string, title: string, parentTaskId?: string) => {
+  const createActiveTask = async (projectId: string, title: string, parentTaskId?: string, column: KanbanColumnId = 'TODO') => {
     const currentWorkspace = workspaceRef.current
     const project = currentWorkspace?.projects.find((candidate) => candidate.id === projectId)
     if (!currentWorkspace || !project) return false
@@ -489,7 +496,7 @@ export function ProjectsWorkspace() {
     const parentTask = parentTaskId
       ? project.tasks.find((task) => task.id === parentTaskId)
       : null
-    const targetSection = parentTask?.section || sectionForColumn(project, 'TODO')
+    const targetSection = targetSectionForNewTask(project, column, parentTask)
     if (!targetSection) {
       toast.error(`${project.name} does not have a compatible status section`)
       return false
@@ -1081,14 +1088,15 @@ export function ProjectsWorkspace() {
         <WorkspaceKanban
           projectViews={projectViews}
           quickAddProjects={quickAddProjects}
+          activeProjects={activeProjects}
           quickAddProjectId={quickAddProjectId}
-          quickAdding={quickAdding}
           viewerId={workspace.viewer.id}
           pendingTaskIds={pendingTaskIds}
           onOpenTask={(projectId, taskId) => setSelectedTaskKey({ projectId, taskId })}
           onMoveTask={moveTask}
           onQuickAddProjectChange={setQuickAddProjectId}
           onQuickAdd={quickAdd}
+          onCreateTask={(projectId, title, column) => createActiveTask(projectId, title, undefined, column)}
         />
       )}
 
@@ -1198,12 +1206,13 @@ export function ProjectsWorkspace() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="promotion-due-date">Due date</Label>
-            <Input
+            <DueDatePicker
               id="promotion-due-date"
-              type="date"
-              value={promotion?.dueDate || ''}
-              onChange={(event) => setPromotion((current) => current ? { ...current, dueDate: event.target.value } : current)}
+              dueDate={promotion?.dueDate || null}
+              onChange={(dueDate) => setPromotion((current) => current ? { ...current, dueDate: dueDate || '' } : current)}
               disabled={promoting}
+              ariaLabel="Due date"
+              className="h-9 w-full justify-start border border-input px-3 text-sm"
             />
           </div>
           <div className="flex justify-end gap-2">
