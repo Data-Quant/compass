@@ -20,6 +20,12 @@ export function isProjectTaskPriority(value: unknown): value is ProjectTaskPrior
   )
 }
 
+// undefined = absent, null = invalid
+export function parseProjectPriority(value: unknown): ProjectTaskPriority | undefined | null {
+  if (value === undefined) return undefined
+  return isProjectTaskPriority(value) ? value : null
+}
+
 export function shiftProjectTaskDateByCalendarDays(value: Date | string, days: number) {
   const shifted = value instanceof Date ? new Date(value) : new Date(value)
   if (Number.isNaN(shifted.getTime()) || !Number.isInteger(days)) return null

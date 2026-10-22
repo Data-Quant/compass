@@ -1051,6 +1051,8 @@ function ProjectMatrixRow({
   const [savingName, setSavingName] = useState(false)
   const [savingColor, setSavingColor] = useState(false)
   const [savingStatus, setSavingStatus] = useState(false)
+  const [priorityDraft, setPriorityDraft] = useState(project.priority)
+  const [savingPriority, setSavingPriority] = useState(false)
   const selectableTaskIds = tasks.filter((task) => canEditTask(project, task, viewerId)).map((task) => task.id)
   const selectedCount = selectableTaskIds.filter((id) => selectedIds.has(id)).length
   const hasOverdue = tasks.some((task) => isTaskOverdue(project, task))
@@ -1062,10 +1064,6 @@ function ProjectMatrixRow({
     .map((task) => task.dueDate)
     .filter((dueDate): dueDate is string => Boolean(dueDate))
     .sort()[0] || null
-  const priorityOrder: Record<WorkspacePriority, number> = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 }
-  const highestPriority = tasks.reduce<WorkspacePriority | null>((current, task) => (
-    current === null || priorityOrder[task.priority] < priorityOrder[current] ? task.priority : current
-  ), null)
   const assignedPeople = tasks
     .flatMap(taskAssignees)
     .filter((person, index, people) => people.findIndex((candidate) => candidate.id === person.id) === index)
@@ -1073,6 +1071,7 @@ function ProjectMatrixRow({
   const router = useRouter()
 
   useEffect(() => setNameDraft(project.name), [project.name])
+  useEffect(() => setPriorityDraft(project.priority), [project.priority])
   useEffect(() => setColorDraft(project.color), [project.color])
   useEffect(() => setStatusDraft(project.status), [project.status])
 
@@ -1105,6 +1104,15 @@ function ProjectMatrixRow({
     const ok = await onPatchProject(project.id, { status })
     if (!ok) setStatusDraft(project.status)
     setSavingStatus(false)
+  }
+
+  const savePriority = async (priority: WorkspacePriority) => {
+    if (!project.canManage || savingPriority || priority === project.priority) return
+    setPriorityDraft(priority)
+    setSavingPriority(true)
+    const ok = await onPatchProject(project.id, { priority })
+    if (!ok) setPriorityDraft(project.priority)
+    setSavingPriority(false)
   }
 
   return (
@@ -1304,9 +1312,25 @@ function ProjectMatrixRow({
         ) : <span className="text-xs text-muted-foreground">Unassigned</span>}
       </TableCell>
       <TableCell>
-        {highestPriority ? (
-          <Badge variant="outline" className={cn('font-normal', PRIORITY_CLASS[highestPriority])}>{PRIORITY_LABEL[highestPriority]}</Badge>
-        ) : <span className="text-xs text-muted-foreground">—</span>}
+        {project.canManage ? (
+          <Select
+            value={priorityDraft}
+            onValueChange={(priority) => void savePriority(priority as WorkspacePriority)}
+            disabled={savingPriority}
+          >
+            <SelectTrigger
+              aria-label={`Project priority for ${project.name}`}
+              className={cn('h-7 w-[104px] shrink-0 border px-2 text-xs shadow-none', PRIORITY_CLASS[priorityDraft])}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PRIORITIES.map((priority) => <SelectItem key={priority} value={priority}>{PRIORITY_LABEL[priority]}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        ) : (
+          <Badge variant="outline" className={cn('font-normal', PRIORITY_CLASS[project.priority])}>{PRIORITY_LABEL[project.priority]}</Badge>
+        )}
       </TableCell>
     </TableRow>
   )

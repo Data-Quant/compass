@@ -28,6 +28,7 @@ export interface ProjectPatchRequest {
   description?: string | null
   color?: string | null
   status?: WorkspaceProjectStatus
+  priority?: WorkspacePriority
 }
 
 export interface WorkspaceMember extends WorkspacePerson {
@@ -55,6 +56,7 @@ export interface WorkspaceProject {
   description: string | null
   color: string | null
   status: string
+  priority: WorkspacePriority
   owner: WorkspacePerson
   members: WorkspaceMember[]
   canManage: boolean

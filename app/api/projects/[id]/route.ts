@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { parseProjectPriority } from '@/lib/project-task-utils'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { ensureProjectStatusSections } from '@/lib/project-status-sections'
@@ -73,7 +74,11 @@ export async function PUT(
     if (authorizationFailure) {
       return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
     }
-    const { name, description, status, color } = await request.json()
+    const { name, description, status, color, priority } = await request.json()
+    const parsedPriority = parseProjectPriority(priority)
+    if (parsedPriority === null) {
+      return NextResponse.json({ error: 'Invalid project priority' }, { status: 400 })
+    }
 
     if (status !== undefined && !['ACTIVE', 'ON_HOLD', 'COMPLETED', 'ARCHIVED'].includes(status)) {
       return NextResponse.json({ error: 'Invalid project status' }, { status: 400 })
@@ -95,6 +100,7 @@ export async function PUT(
         ...(description !== undefined && { description: description?.trim() || null }),
         ...(status && { status }),
         ...(color !== undefined && { color }),
+        ...(parsedPriority && { priority: parsedPriority }),
       },
     })
 

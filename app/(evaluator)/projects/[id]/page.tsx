@@ -32,6 +32,7 @@ interface Project {
   description: string | null
   color: string | null
   status: string
+  priority: WorkspaceProject['priority']
   owner: { id: string; name: string }
   members: Array<{ user: { id: string; name: string }; role: string }>
   sections: ProjectStatusSection[]
@@ -285,6 +286,7 @@ export default function ProjectDetailPage() {
     description: project.description,
     color: project.color,
     status: project.status,
+    priority: project.priority,
     owner: project.owner,
     members,
     canManage,

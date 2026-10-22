@@ -5,6 +5,7 @@ import {
   isProjectTaskDateRangeValid,
   isProjectTaskPriority,
   isProjectTaskStatus,
+  parseProjectPriority,
   shiftProjectTaskDateByCalendarDays,
   wouldCreateTaskParentCycle,
 } from '../lib/project-task-utils'
@@ -52,4 +53,12 @@ test('task parents cannot create direct, descendant, or pre-existing cycles', ()
   assert.equal(wouldCreateTaskParentCycle('grandchild', 'root', tasks), false)
   assert.equal(wouldCreateTaskParentCycle('unrelated', 'cycle-a', tasks), true)
   assert.equal(wouldCreateTaskParentCycle('root', null, tasks), false)
+})
+
+test('parseProjectPriority accepts the task priorities and rejects anything else', () => {
+  assert.equal(parseProjectPriority(undefined), undefined)
+  assert.equal(parseProjectPriority('HIGH'), 'HIGH')
+  assert.equal(parseProjectPriority('URGENT'), null)
+  assert.equal(parseProjectPriority('high'), null)
+  assert.equal(parseProjectPriority(3), null)
 })

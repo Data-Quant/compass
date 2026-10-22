@@ -724,6 +724,7 @@ export function ProjectsWorkspace() {
             ...(request.description !== undefined ? { description: saved.description !== undefined ? saved.description : request.description } : {}),
             ...(request.color !== undefined ? { color: saved.color !== undefined ? saved.color : request.color } : {}),
             ...(request.status !== undefined ? { status: saved.status !== undefined ? saved.status : request.status } : {}),
+            ...(request.priority !== undefined ? { priority: saved.priority !== undefined ? saved.priority : request.priority } : {}),
           }
           : candidate),
       }))

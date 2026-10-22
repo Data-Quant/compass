@@ -1726,6 +1726,7 @@ model Project {
   description String?
   color       String?       // Hex color for visual distinction on cards
   status      ProjectStatus @default(ACTIVE)
+  priority    TaskPriority  @default(MEDIUM)
   ownerId     String
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
