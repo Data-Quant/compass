@@ -19,6 +19,8 @@ import {
   sortTasks,
   sortableCardKeyDown,
   sortTasksByDeadline,
+  splitDoneTasks,
+  doneCountLabel,
   sortWorkspaceTaskItems,
   taskMatchesAssignee,
   taskMatchesSearch,
@@ -417,4 +419,37 @@ test('board card keys: Enter on the card opens, other keys drag, inner controls 
   sortableCardKeyDown({ key: ' ', target: {}, currentTarget: card }, handlers)
   sortableCardKeyDown({ key: 'Enter', target: card, currentTarget: card }, { ...handlers, isDragging: true })
   assert.deepEqual(calls, ['open', 'drag'])
+})
+
+test('splitDoneTasks keeps the last 14 days in recent, newest first', () => {
+  const now = new Date('2026-10-22T12:00:00Z')
+  const day = 24 * 60 * 60 * 1000
+  const at = (days: number) => new Date(now.getTime() - days * day).toISOString()
+  const items = [
+    { id: 'old', completedAt: at(30) },
+    { id: 'none', completedAt: null },
+    { id: 'two', completedAt: at(2) },
+    { id: 'edge', completedAt: at(14) },
+    { id: 'justOut', completedAt: new Date(now.getTime() - 14 * day - 1).toISOString() },
+    { id: 'zero', completedAt: at(0) },
+    { id: 'missing' } as { id: string; completedAt?: string | null },
+  ]
+  const snapshot = items.map((item) => item.id)
+  const { recent, older } = splitDoneTasks(items, (item) => item.completedAt, now)
+  assert.deepEqual(recent.map((item) => item.id), ['zero', 'two', 'edge'])
+  assert.deepEqual(older.map((item) => item.id).slice(0, 2), ['justOut', 'old'])
+  assert.deepEqual(new Set(older.map((item) => item.id).slice(2)), new Set(['none', 'missing']))
+  assert.deepEqual(items.map((item) => item.id), snapshot)
+})
+
+test('splitDoneTasks honours a custom window', () => {
+  const now = new Date('2026-10-22T12:00:00Z')
+  const items = [{ completedAt: '2026-10-20T12:00:00Z' }]
+  assert.equal(splitDoneTasks(items, (item) => item.completedAt, now, 1).recent.length, 0)
+  assert.equal(splitDoneTasks(items, (item) => item.completedAt, now, 2).recent.length, 1)
+})
+
+test('doneCountLabel names the total and the recent count', () => {
+  assert.equal(doneCountLabel(23, 14), '23 done in total, 14 finished in the last 14 days')
+  assert.equal(doneCountLabel(1, 0, 1), '1 done in total, 0 finished in the last 1 day')
 })

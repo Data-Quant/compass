@@ -27,11 +27,14 @@ import type {
 import {
   columnForTask,
   isDoneTask,
+  DONE_RECENT_DAYS,
+  doneCountLabel,
   isTaskOverdue,
   sortTasksByDeadline,
+  splitDoneTasks,
 } from './workspace-utils'
 import { TaskCard } from './TaskCard'
-import { AddTaskButton, BoardColumnEmpty, BoardColumnShell, BoardScroller } from './BoardColumn'
+import { AddTaskButton, BoardColumnEmpty, BoardColumnShell, BoardScroller, ShowOlderButton } from './BoardColumn'
 
 interface WorkspaceKanbanProps {
   projectViews: WorkspaceProjectView[]
@@ -108,10 +111,8 @@ export function WorkspaceKanban({
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <BoardScroller>
         {COLUMNS.map((column) => {
-          const columnItems = sortTasksByDeadline(
-            items.filter(({ project, task }) => columnForTask(project, task) === column.id),
-            ({ task }) => task.dueDate,
-          )
+          const inColumn = items.filter(({ project, task }) => columnForTask(project, task) === column.id)
+          const columnItems = column.id === 'DONE' ? inColumn : sortTasksByDeadline(inColumn, ({ task }) => task.dueDate)
           const backlog = column.id === 'BACKLOG'
           return (
             <KanbanColumn
@@ -135,7 +136,7 @@ export function WorkspaceKanban({
       <DragOverlay dropAnimation={{ duration: 180, easing: 'ease-out' }}>
         {activeItem ? (
           <div className="w-72 rotate-1 opacity-95 shadow-2xl">
-            <KanbanTaskCard project={activeItem.project} task={activeItem.task} dragging />
+            <KanbanTaskCard project={activeItem.project} task={activeItem.task} compact={columnForTask(activeItem.project, activeItem.task) === 'DONE'} dragging />
           </div>
         ) : null}
       </DragOverlay>
@@ -167,6 +168,9 @@ function KanbanColumn({
   const { setNodeRef, isOver } = useDroppable({ id: `kanban:${column.id}` })
   const [composing, setComposing] = useState(false)
   const [returnFocus, setReturnFocus] = useState(false)
+  const [showOlder, setShowOlder] = useState(false)
+  const done = column.id === 'DONE' ? splitDoneTasks(items, ({ task }) => task.completedAt) : null
+  const shown = done ? (showOlder ? [...done.recent, ...done.older] : done.recent) : items
   return (
     <BoardColumnShell
       id={`kanban-${column.id}`}
@@ -174,6 +178,7 @@ function KanbanColumn({
       color={column.color}
       description={column.description}
       count={items.length}
+      countTitle={done ? doneCountLabel(items.length, done.recent.length) : undefined}
       isOver={isOver}
       dropRef={setNodeRef}
       top={composing ? (
@@ -192,12 +197,13 @@ function KanbanColumn({
         <AddTaskButton columnName={column.label} autoFocus={returnFocus} onClick={() => setComposing(true)} />
       )}
     >
-      {items.length === 0 && <BoardColumnEmpty />}
-      {items.map(({ project, task }) => (
+      {shown.length === 0 && <BoardColumnEmpty label={items.length > 0 ? `Nothing finished in the last ${DONE_RECENT_DAYS} days` : undefined} />}
+      {shown.map(({ project, task }) => (
         <DraggableTaskCard
           key={task.id}
           project={project}
           task={task}
+          compact={Boolean(done)}
           pending={pendingTaskIds.has(task.id)}
           disabled={pendingTaskIds.has(task.id) || (
             !project.canManage
@@ -207,6 +213,7 @@ function KanbanColumn({
           onOpen={() => onOpenTask(project.id, task.id)}
         />
       ))}
+      {done && <ShowOlderButton count={done.older.length} expanded={showOlder} onToggle={() => setShowOlder((value) => !value)} />}
     </BoardColumnShell>
   )
 }
@@ -310,12 +317,14 @@ function DraggableTaskCard({
   task,
   disabled,
   pending,
+  compact,
   onOpen,
 }: {
   project: WorkspaceProject
   task: WorkspaceTask
   disabled: boolean
   pending: boolean
+  compact?: boolean
   onOpen: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: task.id, disabled })
@@ -329,6 +338,7 @@ function DraggableTaskCard({
         project={project}
         task={task}
         pending={pending}
+        compact={compact}
         onOpen={onOpen}
         dragHandleProps={disabled ? undefined : { ...attributes, ...listeners }}
       />
@@ -343,6 +353,7 @@ function KanbanTaskCard({ project, task, ...props }: {
   dragHandleProps?: React.ButtonHTMLAttributes<HTMLButtonElement>
   dragging?: boolean
   pending?: boolean
+  compact?: boolean
 }) {
   return <TaskCard task={task} project={project} overdue={isTaskOverdue(project, task)} done={isDoneTask(project, task)} {...props} />
 }

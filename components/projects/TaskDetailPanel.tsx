@@ -105,6 +105,8 @@ export interface PanelTask {
   section: ProjectStatusSection | null
   orderIndex: number
   completedLate?: boolean
+  completedAt?: string | null
+  updatedAt?: string
   parentTaskId?: string | null
   parentTask?: ParentTaskSummary | null
   childTasks?: ChildTaskSummary[]

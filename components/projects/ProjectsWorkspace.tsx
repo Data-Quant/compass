@@ -650,6 +650,8 @@ export function ProjectsWorkspace() {
       section,
       status: section.canonicalStatus,
       completedLate: column === 'DONE' && isTaskOverdue(project, task) ? true : task.completedLate,
+      // Optimistic: so the card lands in the recent Done list before the refetch.
+      completedAt: column === 'DONE' ? new Date().toISOString() : null,
     })
   }
 
@@ -670,6 +672,7 @@ export function ProjectsWorkspace() {
       assigneeId: promotion.assigneeId,
       assignee,
       dueDate: promotion.dueDate,
+      completedAt: promotion.column === 'DONE' ? new Date().toISOString() : null,
     })
     setPromoting(false)
     if (ok) {
