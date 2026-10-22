@@ -1,7 +1,6 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import Link from 'next/link'
 import {
   DndContext,
   DragEndEvent,
@@ -16,10 +15,8 @@ import {
 } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { CalendarDays, CheckCircle2, CircleAlert, GripVertical, Loader2, MessageSquare, Plus } from 'lucide-react'
+import { Loader2, Plus } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
-import { Card } from '@/components/ui/card'
-import { UserAvatar } from '@/components/composed/UserAvatar'
 import { cn } from '@/lib/utils'
 import type {
   KanbanColumnId,
@@ -29,14 +26,11 @@ import type {
 } from './workspace-types'
 import {
   columnForTask,
-  displayDueDate,
+  isDoneTask,
   isTaskOverdue,
-  overdueDays,
-  PRIORITY_CLASS,
-  PRIORITY_LABEL,
-  relativeDueDate,
   sortTasksByDeadline,
 } from './workspace-utils'
+import { TaskCard } from './TaskCard'
 
 interface WorkspaceKanbanProps {
   projectViews: WorkspaceProjectView[]
@@ -140,7 +134,7 @@ export function WorkspaceKanban({
       <DragOverlay dropAnimation={{ duration: 180, easing: 'ease-out' }}>
         {activeItem ? (
           <div className="w-72 rotate-1 opacity-95 shadow-2xl">
-            <KanbanTaskCardContent project={activeItem.project} task={activeItem.task} dragging />
+            <KanbanTaskCard project={activeItem.project} task={activeItem.task} dragging />
           </div>
         ) : null}
       </DragOverlay>
@@ -199,6 +193,7 @@ function KanbanColumn({
             key={task.id}
             project={project}
             task={task}
+            pending={pendingTaskIds.has(task.id)}
             disabled={pendingTaskIds.has(task.id) || (
               !project.canManage
               && task.assigneeId !== viewerId
@@ -274,11 +269,13 @@ function DraggableTaskCard({
   project,
   task,
   disabled,
+  pending,
   onOpen,
 }: {
   project: WorkspaceProject
   task: WorkspaceTask
   disabled: boolean
+  pending: boolean
   onOpen: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: task.id, disabled })
@@ -286,110 +283,27 @@ function DraggableTaskCard({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform) }}
-      className={cn(isDragging && 'opacity-25', disabled && 'opacity-60')}
+      className={cn(isDragging && 'opacity-25')}
     >
-      <KanbanTaskCardContent
+      <KanbanTaskCard
         project={project}
         task={task}
+        pending={pending}
         onOpen={onOpen}
-        dragHandleProps={{ ...attributes, ...listeners }}
+        dragHandleProps={disabled ? undefined : { ...attributes, ...listeners }}
       />
     </div>
   )
 }
 
-function KanbanTaskCardContent({
-  project,
-  task,
-  onOpen,
-  dragHandleProps,
-  dragging,
-}: {
+function KanbanTaskCard({ project, task, ...props }: {
   project: WorkspaceProject
   task: WorkspaceTask
   onOpen?: () => void
   dragHandleProps?: React.ButtonHTMLAttributes<HTMLButtonElement>
   dragging?: boolean
+  pending?: boolean
 }) {
-  const overdue = isTaskOverdue(project, task)
-  const daysLate = overdueDays(project, task)
-  return (
-    <Card className={cn(
-      'group overflow-hidden border-border/60 bg-card p-3 shadow-sm transition-all hover:border-primary/30 hover:shadow-md',
-      overdue && 'border-red-500/30 bg-red-500/[0.055]',
-      dragging && 'border-primary/40',
-    )}>
-      <div className="mb-2 flex items-start gap-2">
-        <button
-          type="button"
-          onClick={onOpen}
-          disabled={!onOpen}
-          className="min-w-0 flex-1 rounded text-left text-sm font-semibold leading-snug text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:text-foreground"
-        >
-          {task.title}
-        </button>
-        {dragHandleProps && (
-          <button
-            type="button"
-            {...dragHandleProps}
-            className="touch-none rounded p-1 text-muted-foreground opacity-60 transition-colors hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
-            aria-label={`Move ${task.title}`}
-          >
-            <GripVertical className="h-4 w-4" />
-          </button>
-        )}
-      </div>
-
-      <div className="mb-3 flex flex-wrap items-center gap-1.5">
-        <Link
-          href={`/projects/${project.id}`}
-          className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground hover:text-primary"
-        >
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: project.color || '#94a3b8' }} />
-          <span className="truncate">{project.name}</span>
-        </Link>
-        <Badge variant="outline" className={cn('text-[10px]', PRIORITY_CLASS[task.priority])}>
-          {PRIORITY_LABEL[task.priority]}
-        </Badge>
-        {task.completedLate && (
-          <Badge variant="outline" className="border-orange-500/25 bg-orange-500/10 text-[10px] text-orange-600 dark:text-orange-300">
-            Completed late
-          </Badge>
-        )}
-      </div>
-
-      <div className="space-y-2 text-xs text-muted-foreground">
-        <div className="flex items-center gap-2">
-          <CalendarDays className={cn('h-3.5 w-3.5 shrink-0', overdue && 'text-red-500')} />
-          <span className={cn(overdue && 'font-semibold text-red-600 dark:text-red-300')} title={displayDueDate(task.dueDate)}>
-            {task.dueDate ? relativeDueDate(task.dueDate) : 'No due date'}
-          </span>
-          {overdue && (
-            <Badge className="ml-auto border border-red-500/20 bg-red-500/10 text-[10px] text-red-600 hover:bg-red-500/10 dark:text-red-300">
-              Overdue · {daysLate}d
-            </Badge>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {task.assignee ? (
-            <>
-              <UserAvatar name={task.assignee.name} size="xs" />
-              <span className="truncate">{task.assignee.name}</span>
-            </>
-          ) : (
-            <>
-              <CircleAlert className="h-3.5 w-3.5" />
-              <span>Unassigned</span>
-            </>
-          )}
-          {task._count.comments > 0 && (
-            <span className="ml-auto inline-flex items-center gap-1">
-              <MessageSquare className="h-3.5 w-3.5" /> {task._count.comments}
-            </span>
-          )}
-          {task.status === 'DONE' && <CheckCircle2 className="ml-auto h-4 w-4 text-emerald-500" aria-label="Done" />}
-        </div>
-      </div>
-    </Card>
-  )
+  return <TaskCard task={task} project={project} overdue={isTaskOverdue(project, task)} done={isDoneTask(project, task)} {...props} />
 }
+

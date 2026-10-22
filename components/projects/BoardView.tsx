@@ -17,26 +17,13 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, arrayMove, horizontalListSortingStrategy, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Calendar, Flag, GripVertical, MessageSquare, Plus, Trash2 } from 'lucide-react'
+import { GripVertical, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { UserAvatar } from '@/components/composed/UserAvatar'
 import { cn } from '@/lib/utils'
-import { calculateTaskVariance, isTaskAssignedTo, PROJECT_TASK_TIME_ZONE } from '@/lib/project-progress'
+import { calculateTaskVariance, isTaskAssignedTo } from '@/lib/project-progress'
 import type { PanelTask, ProjectStatusSection } from './TaskDetailPanel'
+import { TaskCard } from './TaskCard'
 import { sortTasksByDeadline } from './workspace-utils'
-
-const TASK_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  timeZone: PROJECT_TASK_TIME_ZONE,
-  month: 'short',
-  day: 'numeric',
-})
-
-const PRIORITY_DOT: Record<string, string> = {
-  LOW: 'bg-slate-400',
-  MEDIUM: 'bg-blue-400',
-  HIGH: 'bg-orange-400',
-  URGENT: 'bg-red-500',
-}
 
 interface BoardViewProps {
   projectId: string
@@ -326,7 +313,11 @@ export function BoardView({ projectId, tasks, sections, viewerId, canManage, onT
       </SortableContext>
 
       <DragOverlay>
-        {activeTask && <TaskCard task={activeTask} isDragging />}
+        {activeTask && (
+          <div className="w-72 rotate-1 opacity-95 shadow-2xl">
+            <BoardTaskCard task={activeTask} dragging />
+          </div>
+        )}
       </DragOverlay>
     </DndContext>
   )
@@ -472,82 +463,17 @@ function SortableTaskCard({ task, disabled, onClick }: { task: PanelTask; disabl
   }
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={disabled ? 'cursor-default' : undefined}>
-      <TaskCard task={task} isDragging={isDragging} onClick={onClick} />
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={cn(isDragging && 'opacity-25', disabled && 'cursor-default')}>
+      <BoardTaskCard task={task} onOpen={() => { if (!isDragging) onClick() }} />
     </div>
   )
 }
 
-function TaskCard({ task, isDragging, onClick }: { task: PanelTask; isDragging?: boolean; onClick?: () => void }) {
-  const isOverdue = calculateTaskVariance({
+function BoardTaskCard({ task, dragging, onOpen }: { task: PanelTask; dragging?: boolean; onOpen?: () => void }) {
+  const overdue = calculateTaskVariance({
     status: task.status,
     dueDate: task.dueDate,
     section: { isBacklog: Boolean(task.section?.isBacklog) },
   }).isOverdue
-
-  return (
-    <button
-      type="button"
-      onClick={() => { if (!isDragging) onClick?.() }}
-      className={cn(
-        'w-full bg-card border border-border/40 rounded-lg p-3 cursor-pointer hover:border-border/70 transition-all text-left',
-        isOverdue && 'border-red-500/30 bg-red-500/[0.07] hover:border-red-500/50',
-        isDragging && 'opacity-50 shadow-xl scale-105 rotate-2',
-      )}
-    >
-      {task.labelAssignments.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-2">
-          {task.labelAssignments.map((assignment) => (
-            <span
-              key={assignment.label.id}
-              className="px-1.5 py-0.5 rounded text-[10px] font-medium"
-              style={{ backgroundColor: `${assignment.label.color}20`, color: assignment.label.color }}
-            >
-              {assignment.label.name}
-            </span>
-          ))}
-        </div>
-      )}
-
-      <p className={cn(
-        'text-sm font-medium mb-2',
-        task.status === 'DONE' && 'line-through text-muted-foreground'
-      )}>
-        {task.title}
-      </p>
-
-      <div className="flex items-center gap-2 flex-wrap">
-        {task.dueDate && (
-          <span className={cn(
-            'flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded',
-            isOverdue ? 'text-red-400 bg-red-400/10' : 'text-muted-foreground bg-muted/30'
-          )}>
-            <Calendar className="w-3 h-3" />
-            {TASK_DATE_FORMATTER.format(new Date(task.dueDate))}
-          </span>
-        )}
-
-        {task.priority !== 'MEDIUM' && (
-          <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-            <Flag className={cn('w-3 h-3', {
-              'text-slate-400': task.priority === 'LOW',
-              'text-orange-400': task.priority === 'HIGH',
-              'text-red-500': task.priority === 'URGENT',
-            })} />
-            <span className={cn('w-2 h-2 rounded-full', PRIORITY_DOT[task.priority])} />
-          </span>
-        )}
-
-        {task._count.comments > 0 && (
-          <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
-            <MessageSquare className="w-3 h-3" />
-            {task._count.comments}
-          </span>
-        )}
-
-        <div className="flex-1" />
-        {task.assignee && <UserAvatar name={task.assignee.name} size="xs" />}
-      </div>
-    </button>
-  )
+  return <TaskCard task={task} overdue={overdue} done={task.status === 'DONE'} dragging={dragging} onOpen={onOpen} />
 }
