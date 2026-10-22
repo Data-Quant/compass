@@ -15,24 +15,39 @@ import { RoundResultsCard } from './RoundResultsCard'
 
 /** Employees' own unfinished evaluations of the quarter: HR lets them finish on their Evaluations page, and sees who is behind. */
 function LateFormsCard({ view, busy, onSet }: { view: EarlierQuarterView; busy: boolean; onSet: (open: boolean) => Promise<void> }) {
+  // Stopping locks everyone out mid-form, and its button sits where "Let employees finish them" was: it asks first.
+  const [stopping, setStopping] = useState(false)
   const { openedAt, left, people } = view.lateForms
   if (!openedAt && left === 0) return null
   return (
-    <Card>
+    <Card className={openedAt ? 'border-emerald-500/40' : undefined}>
       <CardContent className="space-y-3 p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 max-w-2xl space-y-1">
-            <p className="font-medium text-foreground">Employees’ unfinished evaluations</p>
+            <p className="font-medium text-foreground">
+              {openedAt ? `Employees can finish their ${view.name} evaluations now` : 'Employees’ unfinished evaluations'}
+            </p>
             <p className="text-sm text-muted-foreground">
               {openedAt
-                ? `Open to employees since ${formatKarachiDate(openedAt)}: each person sees what they have left on their Evaluations page. ${left === 0 ? 'Everyone has finished.' : `${left} left across ${people.length} ${people.length === 1 ? 'person' : 'people'}.`} Closing the quarter stops it.`
+                ? `Since ${formatKarachiDate(openedAt)}, each person sees what they have left on their Evaluations page. ${left === 0 ? 'Everyone has finished.' : `${left} left across ${people.length} ${people.length === 1 ? 'person' : 'people'}.`} Leave this on until they are done; closing the quarter ends it.`
                 : `${left} ${left === 1 ? 'evaluation' : 'evaluations'} across ${people.length} ${people.length === 1 ? 'person' : 'people'} were never finished. Let employees finish them on their Evaluations page before you close the quarter. Nobody is emailed.`}
             </p>
           </div>
           {openedAt
-            ? <Button variant="outline" disabled={busy} onClick={() => void onSet(false)}>Stop</Button>
+            ? <Button variant="outline" disabled={busy} onClick={() => setStopping(true)}>Stop letting employees finish</Button>
             : <Button disabled={busy} onClick={() => void onSet(true)}>Let employees finish them</Button>}
         </div>
+        {stopping && (
+          <ConfirmDialog
+            isOpen
+            title={`Stop employees finishing ${view.name}?`}
+            message={`Nobody can open or submit their ${view.name} evaluations until you let them again${left > 0 ? `, and ${left} are still unfinished` : ''}. Anyone filling one in right now loses what they have not submitted.`}
+            confirmText="Stop"
+            variant="warning"
+            onConfirm={() => { setStopping(false); void onSet(false) }}
+            onClose={() => setStopping(false)}
+          />
+        )}
         {people.length > 0 && (
           <details className="text-sm">
             <summary className="cursor-pointer text-muted-foreground">Who still has evaluations left</summary>
