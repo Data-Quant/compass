@@ -79,8 +79,6 @@ import {
   isRowNavigationClick,
   isTaskOverdue,
   plainTextPreview,
-  PRIORITY_CLASS,
-  PRIORITY_LABEL,
   relativeDueDate,
   sectionForColumn,
   sortWorkspaceTaskItems,
@@ -127,7 +125,6 @@ interface WorkspaceTaskTableProps {
   onPatchProject: (projectId: string, request: ProjectPatchRequest) => Promise<boolean>
 }
 
-const PRIORITIES: WorkspacePriority[] = ['HIGH', 'MEDIUM', 'LOW']
 const PROJECT_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f97316', '#eab308', '#22c55e', '#06b6d4']
 const PROJECT_STATUSES: Array<{ value: NonNullable<ProjectPatchRequest['status']>; label: string }> = [
   { value: 'ACTIVE', label: 'Active' },
@@ -677,16 +674,13 @@ function PersonTaskRow({
         </div>
       </TableCell>
       <TableCell>
-        <Select
-          value={task.priority}
-          onValueChange={(value) => void onPatchTask(project.id, task.id, { priority: value as WorkspacePriority }, { priority: value as WorkspacePriority })}
+        <PriorityPill
+          priority={task.priority}
+          editable
           disabled={pending || !canEdit}
-        >
-          <SelectTrigger aria-label={`Priority for ${task.title}`} className={cn('h-8 border px-2 text-xs shadow-none', PRIORITY_CLASS[task.priority])}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>{PRIORITIES.map((priority) => <SelectItem key={priority} value={priority}>{PRIORITY_LABEL[priority]}</SelectItem>)}</SelectContent>
-        </Select>
+          ariaLabel={`Priority for ${task.title}`}
+          onChange={(priority) => void onPatchTask(project.id, task.id, { priority }, { priority })}
+        />
       </TableCell>
       <TableCell>
         <Badge variant="outline" className="max-w-36 gap-1.5 font-normal">
@@ -2015,7 +2009,7 @@ function SortableHead({
         className="group inline-flex items-center gap-1 rounded px-1 py-0.5 text-left transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {label}
-        <Icon className={cn('h-3.5 w-3.5', !active && 'opacity-0 group-hover:opacity-60 group-focus-visible:opacity-60')} />
+        <Icon className={cn('h-3.5 w-3.5', !active && 'opacity-0 group-hover:opacity-60 group-focus-visible:opacity-60 [@media(hover:none)]:opacity-40')} />
       </button>
     </TableHead>
   )
@@ -2292,18 +2286,13 @@ function BacklogGroup({
                       </Link>
                     </TableCell>
                     <TableCell>
-                      <Select
-                        value={task.priority}
-                        onValueChange={(value) => void onPatchTask(project.id, task.id, { priority: value as WorkspacePriority }, { priority: value as WorkspacePriority })}
+                      <PriorityPill
+                        priority={task.priority}
+                        editable
                         disabled={pendingTaskIds.has(task.id) || !canEditTask(project, task, viewerId)}
-                      >
-                        <SelectTrigger aria-label={`Priority for ${task.title}`} className={cn('h-8 border px-2 text-xs shadow-none', PRIORITY_CLASS[task.priority])}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {PRIORITIES.map((priority) => <SelectItem key={priority} value={priority}>{PRIORITY_LABEL[priority]}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                        ariaLabel={`Priority for ${task.title}`}
+                        onChange={(priority) => void onPatchTask(project.id, task.id, { priority }, { priority })}
+                      />
                     </TableCell>
                     <TableCell>
                       <DueDatePicker

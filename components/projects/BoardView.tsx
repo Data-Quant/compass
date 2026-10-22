@@ -349,6 +349,7 @@ function BoardColumn({
 }) {
   const [adding, setAdding] = useState(false)
   const [newTitle, setNewTitle] = useState('')
+  const [returnFocus, setReturnFocus] = useState(false)
   const { setNodeRef, isOver } = useDroppable({ id: section.id })
   const {
     attributes,
@@ -409,8 +410,12 @@ function BoardColumn({
           value={newTitle}
           onChange={(event) => setNewTitle(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === 'Enter') handleAdd()
+            if (event.key === 'Enter') {
+              setReturnFocus(true)
+              handleAdd()
+            }
             if (event.key === 'Escape') {
+              setReturnFocus(true)
               setAdding(false)
               setNewTitle('')
             }
@@ -421,7 +426,13 @@ function BoardColumn({
           className={TASK_NAME_INPUT_CLASS}
         />
       ) : (
-        <AddTaskButton onClick={() => setAdding(true)} />
+        <AddTaskButton
+          autoFocus={returnFocus}
+          onClick={() => {
+            setReturnFocus(false)
+            setAdding(true)
+          }}
+        />
       )}
     >
       <SortableContext items={tasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>

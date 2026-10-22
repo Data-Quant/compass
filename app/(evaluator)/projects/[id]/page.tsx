@@ -605,10 +605,13 @@ function ProjectDetail() {
         <div className="flex items-center gap-4 mt-4 flex-wrap">
           <div className="min-w-[220px] max-w-sm flex-1">
             <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
-              <span className="font-medium text-foreground">
-                {activeTasks.length === 0
-                  ? 'No tasks yet'
-                  : `${completedTasks.length}/${activeTasks.length} · ${progressPercent}%`}
+              <span className="font-medium tabular-nums text-foreground">
+                {activeTasks.length === 0 ? 'No tasks yet' : (
+                  <>
+                    {completedTasks.length} of {activeTasks.length}
+                    <span className="ml-1.5 font-normal text-muted-foreground">{progressPercent}%</span>
+                  </>
+                )}
               </span>
               {overdueTasks.length > 0 && (
                 <span className="inline-flex items-center gap-1 font-medium text-red-500">

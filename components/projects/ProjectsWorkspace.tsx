@@ -895,7 +895,7 @@ export function ProjectsWorkspace() {
                   event.currentTarget.blur()
                 }
               }}
-              placeholder="Search projects, tasks, or notes..."
+              placeholder="Search projects, tasks, or notes…"
               aria-label="Search projects, tasks, or notes"
               role="combobox"
               aria-expanded={searchFocused && matchingProjects.length > 0}

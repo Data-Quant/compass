@@ -1365,7 +1365,7 @@ export function TaskDetailPanel({
               onChange={(e) => setDescription(e.target.value)}
               onBlur={() => canEdit && handleDescBlur()}
               readOnly={!canEdit}
-              placeholder="Add a more detailed description..."
+              placeholder="Add a more detailed description…"
               className={cn(
                 'w-full min-h-[80px] bg-muted/20 rounded-lg p-3 text-sm border border-border/30 outline-none resize-y placeholder:text-muted-foreground/40 focus:border-primary/30 transition-colors',
                 !canEdit && 'cursor-default resize-none',
@@ -1430,7 +1430,7 @@ export function TaskDetailPanel({
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); postComment() }
                   }}
-                  placeholder="Write a comment..."
+                  placeholder="Write a comment…"
                   className="w-full bg-muted/20 rounded-lg p-2.5 text-sm border border-border/30 outline-none resize-none placeholder:text-muted-foreground/40 focus:border-primary/30 transition-colors"
                   rows={2}
                 />

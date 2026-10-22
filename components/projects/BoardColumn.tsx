@@ -112,10 +112,12 @@ export function BoardColumnEmpty() {
   return <div className="py-8 text-center text-xs text-muted-foreground">Drop tasks here</div>
 }
 
-export function AddTaskButton({ onClick }: { onClick: () => void }) {
+// autoFocus: set when a composer closes from the keyboard, so focus returns to this button.
+export function AddTaskButton({ onClick, autoFocus = false }: { onClick: () => void; autoFocus?: boolean }) {
   return (
     <button
       type="button"
+      autoFocus={autoFocus}
       onClick={onClick}
       className="flex h-8 w-full items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >

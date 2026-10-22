@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext,
   DragEndEvent,
@@ -166,6 +166,7 @@ function KanbanColumn({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `kanban:${column.id}` })
   const [composing, setComposing] = useState(false)
+  const [returnFocus, setReturnFocus] = useState(false)
   return (
     <BoardColumnShell
       id={`kanban-${column.id}`}
@@ -182,10 +183,13 @@ function KanbanColumn({
           defaultProjectId={defaultProjectId}
           onProjectChange={onProjectChange}
           onAdd={onAdd}
-          onClose={() => setComposing(false)}
+          onClose={() => {
+            setReturnFocus(true)
+            setComposing(false)
+          }}
         />
       ) : (
-        <AddTaskButton onClick={() => setComposing(true)} />
+        <AddTaskButton autoFocus={returnFocus} onClick={() => setComposing(true)} />
       )}
     >
       {items.length === 0 && <BoardColumnEmpty />}
@@ -227,6 +231,11 @@ function KanbanComposer({
   const [title, setTitle] = useState('')
   const [pickedProjectId, setPickedProjectId] = useState(defaultProjectId)
   const [adding, setAdding] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  // The input is disabled while adding, so focus it once adding has finished (also covers the first open).
+  useEffect(() => {
+    if (!adding) inputRef.current?.focus()
+  }, [adding])
   const selectedId = onProjectChange ? defaultProjectId : pickedProjectId
   const projectId = projects.some((project) => project.id === selectedId) ? selectedId : projects[0]?.id || ''
   const isBacklog = column.id === 'BACKLOG'
@@ -244,14 +253,18 @@ function KanbanComposer({
   }
 
   return (
-    <form onSubmit={submit} className="space-y-1.5 rounded-md border border-border bg-card p-2">
+    <form
+      onSubmit={submit}
+      onKeyDown={(event) => {
+        // Ignore Escape from the project Select's portal; Radix closes the menu itself.
+        if (event.key === 'Escape' && !event.defaultPrevented && event.currentTarget.contains(event.target as Node)) onClose()
+      }}
+      className="space-y-1.5 rounded-md border border-border bg-card p-2"
+    >
       <input
-        autoFocus
+        ref={inputRef}
         value={title}
         onChange={(event) => setTitle(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') onClose()
-        }}
         placeholder={isBacklog ? 'Add a backlog item…' : 'Task name…'}
         aria-label={isBacklog ? 'Backlog task title' : `New task in ${column.label}`}
         className="h-8 w-full rounded-md border border-border bg-background px-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary/50 focus:ring-2 focus:ring-primary/15"
