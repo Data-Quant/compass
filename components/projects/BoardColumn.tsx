@@ -113,11 +113,12 @@ export function BoardColumnEmpty() {
 }
 
 // autoFocus: set when a composer closes from the keyboard, so focus returns to this button.
-export function AddTaskButton({ onClick, autoFocus = false }: { onClick: () => void; autoFocus?: boolean }) {
+export function AddTaskButton({ columnName, onClick, autoFocus = false }: { columnName: string; onClick: () => void; autoFocus?: boolean }) {
   return (
     <button
       type="button"
       autoFocus={autoFocus}
+      aria-label={`Add task to ${columnName}`}
       onClick={onClick}
       className="flex h-8 w-full items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >

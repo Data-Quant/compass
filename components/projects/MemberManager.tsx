@@ -140,7 +140,7 @@ export function MemberManager({
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search users…"
+                placeholder="Search users..."
                 className="w-full pl-8 pr-3 py-2 bg-muted/20 border border-border/30 rounded-lg text-sm outline-none focus:border-primary/30 transition-colors"
               />
             </div>

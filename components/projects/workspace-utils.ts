@@ -43,13 +43,6 @@ export const PRIORITY_LABEL: Record<WorkspacePriority, string> = {
   LOW: 'Low',
 }
 
-export const PRIORITY_CLASS: Record<WorkspacePriority, string> = {
-  URGENT: 'border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-300',
-  HIGH: 'border-red-500/25 bg-red-500/10 text-red-600 dark:text-red-300',
-  MEDIUM: 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
-  LOW: 'border-slate-400/30 bg-slate-500/10 text-slate-600 dark:text-slate-300',
-}
-
 export const PRIORITY_ICON: Record<WorkspacePriority, { icon: LucideIcon; className: string }> = {
   URGENT: { icon: AlertOctagon, className: 'text-red-500' },
   HIGH: { icon: SignalHigh, className: 'text-orange-500' },
@@ -179,22 +172,6 @@ export function calculateOverallProgress(project: WorkspaceProject): WorkspacePr
   return calculateProgress(project, project.tasks)
 }
 
-export function progressBand(percent: number | null) {
-  if (percent === null) {
-    return { fill: 'bg-muted-foreground/30', track: 'bg-muted/60', text: 'text-muted-foreground' }
-  }
-  if (percent <= 33) {
-    return { fill: 'bg-red-500', track: 'bg-red-500/12', text: 'text-red-600 dark:text-red-300' }
-  }
-  if (percent <= 66) {
-    return { fill: 'bg-amber-500', track: 'bg-amber-500/14', text: 'text-amber-700 dark:text-amber-300' }
-  }
-  if (percent < 100) {
-    return { fill: 'bg-blue-500', track: 'bg-blue-500/12', text: 'text-blue-600 dark:text-blue-300' }
-  }
-  return { fill: 'bg-emerald-500', track: 'bg-emerald-500/12', text: 'text-emerald-600 dark:text-emerald-300' }
-}
-
 export function parseTaskDate(value: string | null | undefined) {
   if (!value) return null
   const dayKey = projectTaskCalendarDayKey(value)
@@ -228,11 +205,6 @@ export function isTaskOverdue(project: WorkspaceProject, task: WorkspaceTask) {
   if (isBacklogTask(project, task) || isDoneTask(project, task)) return false
   const days = daysFromToday(task.dueDate)
   return days !== null && days < 0
-}
-
-export function overdueDays(project: WorkspaceProject, task: WorkspaceTask) {
-  if (!isTaskOverdue(project, task)) return 0
-  return Math.abs(daysFromToday(task.dueDate) || 0)
 }
 
 export function relativeDueDate(value: string | null | undefined, now: Date = new Date()) {
@@ -455,4 +427,18 @@ export function filterPeopleByQuery<T extends { name: string; email?: string | n
 // Index of the item to focus next in a list whose first item is the search input.
 export function nextFocusIndex(current: number, count: number, key: 'ArrowDown' | 'ArrowUp'): number {
   return key === 'ArrowDown' ? Math.min(current + 1, count - 1) : Math.max(current - 1, 0)
+}
+
+// Per-project board card: the sortable wrapper is the only tab stop. Enter opens the task,
+// other keys (Space) go to the dnd-kit keyboard drag. Keys from inner controls never start a drag.
+export function sortableCardKeyDown<E extends { key: string; target: unknown; currentTarget: unknown }>(
+  event: E,
+  { isDragging, onOpen, onDragKey }: { isDragging: boolean; onOpen: () => void; onDragKey?: (event: E) => void },
+) {
+  if (event.target !== event.currentTarget) return
+  if (event.key === 'Enter') {
+    if (!isDragging) onOpen()
+    return
+  }
+  onDragKey?.(event)
 }

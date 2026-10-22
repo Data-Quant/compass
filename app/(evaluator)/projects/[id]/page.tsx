@@ -14,8 +14,8 @@ import { TaskDetailPanel, type PanelTask, type ProjectStatusSection } from '@/co
 import type { WorkspaceProject } from '@/components/projects/workspace-types'
 import { MemberManager } from '@/components/projects/MemberManager'
 import {
-  List, LayoutGrid, UserPlus, Settings, ListTodo,
-  ChevronLeft, MoreHorizontal, Pencil, Archive, Trash2, Tag, Plus,
+  List, LayoutGrid, UserPlus, ListTodo,
+  ChevronLeft, MoreHorizontal, Pencil, Archive, Trash2, Tag,
   CheckCircle2, RotateCcw, AlertTriangle, PauseCircle, Lock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -445,7 +445,7 @@ function ProjectDetail() {
                     maxLength={2000}
                     rows={3}
                     aria-label="Project description"
-                    placeholder="Describe the project’s purpose, scope, or outcome…"
+                    placeholder="Describe the project’s purpose, scope, or outcome..."
                     disabled={savingDescription}
                     className="w-full resize-y rounded-lg border border-border bg-card px-3 py-2 text-sm leading-6 text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
                   />
@@ -466,7 +466,7 @@ function ProjectDetail() {
                         disabled={savingDescription}
                         className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
                       >
-                        {savingDescription ? 'Saving…' : 'Save description'}
+                        {savingDescription ? 'Saving...' : 'Save description'}
                       </button>
                     </div>
                   </div>

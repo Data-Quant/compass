@@ -20,17 +20,19 @@ interface TaskCardProps {
   /** DragOverlay copy. */
   dragging?: boolean
   pending?: boolean
+  /** Per-project board: -1 so the sortable wrapper is the card's only tab stop. */
+  titleTabIndex?: number
 }
 
 const DUE_CLASS: Record<DueStateKind, string> = {
-  none: 'text-muted-foreground/70',
+  none: 'text-muted-foreground',
   normal: 'text-muted-foreground',
   soon: 'font-medium text-amber-700 dark:text-amber-400',
   overdue: 'rounded-[4px] bg-red-500/10 px-1.5 py-0.5 font-medium text-red-600 dark:text-red-400',
   done: 'text-muted-foreground',
 }
 
-export function TaskCard({ task, overdue, done, project, onOpen, dragHandleProps, dragging, pending }: TaskCardProps) {
+export function TaskCard({ task, overdue, done, project, onOpen, dragHandleProps, dragging, pending, titleTabIndex }: TaskCardProps) {
   const due = dueState(task.dueDate, { done, overdue })
   const { icon: PriorityIcon, className: priorityTone } = PRIORITY_ICON[task.priority]
   const assistants = task.assistants ?? []
@@ -84,6 +86,7 @@ export function TaskCard({ task, overdue, done, project, onOpen, dragHandleProps
         type="button"
         onClick={onOpen}
         disabled={!onOpen}
+        tabIndex={titleTabIndex}
         className={cn(
           'line-clamp-2 break-words text-left text-sm font-medium leading-5 after:absolute after:inset-0 after:content-[\'\'] focus-visible:outline-none disabled:cursor-default',
           done ? 'text-muted-foreground' : 'text-foreground',
@@ -144,7 +147,7 @@ export function TaskCard({ task, overdue, done, project, onOpen, dragHandleProps
               {comments}
             </span>
           )}
-          {task.completedLate && <span className="text-orange-600 dark:text-orange-400">Completed late</span>}
+          {task.completedLate && <span className="text-orange-700 dark:text-orange-400">Completed late</span>}
           {done && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" aria-label="Done" />}
         </span>
       </div>

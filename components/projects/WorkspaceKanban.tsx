@@ -188,8 +188,8 @@ function KanbanColumn({
             setComposing(false)
           }}
         />
-      ) : (
-        <AddTaskButton autoFocus={returnFocus} onClick={() => setComposing(true)} />
+      ) : projects.length > 0 && (
+        <AddTaskButton columnName={column.label} autoFocus={returnFocus} onClick={() => setComposing(true)} />
       )}
     >
       {items.length === 0 && <BoardColumnEmpty />}
@@ -265,7 +265,7 @@ function KanbanComposer({
         ref={inputRef}
         value={title}
         onChange={(event) => setTitle(event.target.value)}
-        placeholder={isBacklog ? 'Add a backlog item…' : 'Task name…'}
+        placeholder={isBacklog ? 'Add a backlog item...' : 'Task name...'}
         aria-label={isBacklog ? 'Backlog task title' : `New task in ${column.label}`}
         className="h-8 w-full rounded-md border border-border bg-background px-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary/50 focus:ring-2 focus:ring-primary/15"
         disabled={adding || projects.length === 0}

@@ -16,8 +16,8 @@ import {
   isRowNavigationClick,
   isTaskOverdue,
   projectMatchesSearch,
-  progressBand,
   sortTasks,
+  sortableCardKeyDown,
   sortTasksByDeadline,
   sortWorkspaceTaskItems,
   taskMatchesAssignee,
@@ -268,10 +268,6 @@ test('variance excludes backlog and completed tasks, and progress bands meet the
   assert.equal(isTaskOverdue(value, open), true)
   assert.equal(isTaskOverdue(value, idea), false)
   assert.equal(isTaskOverdue(value, complete), false)
-  assert.equal(progressBand(33).fill, 'bg-red-500')
-  assert.equal(progressBand(34).fill, 'bg-amber-500')
-  assert.equal(progressBand(67).fill, 'bg-blue-500')
-  assert.equal(progressBand(100).fill, 'bg-emerald-500')
 })
 
 const fakeTarget = (matches: boolean) => ({ closest: () => (matches ? {} : null) })
@@ -405,4 +401,20 @@ test('targetSectionForNewTask picks the column section, or the parent task secti
   const parent = task({ id: 'parent', title: 'Parent', sectionId: inProgress.id, section: inProgress })
   assert.equal(targetSectionForNewTask(value, 'TODO', parent)?.id, 'doing')
   assert.equal(targetSectionForNewTask(project([], { sections: [backlog, todo, done] }), 'IN_PROGRESS'), null)
+})
+
+test('board card keys: Enter on the card opens, other keys drag, inner controls are left alone', () => {
+  const calls: string[] = []
+  const handlers = {
+    isDragging: false,
+    onOpen: () => calls.push('open'),
+    onDragKey: () => calls.push('drag'),
+  }
+  const card = {}
+  sortableCardKeyDown({ key: 'Enter', target: card, currentTarget: card }, handlers)
+  sortableCardKeyDown({ key: ' ', target: card, currentTarget: card }, handlers)
+  sortableCardKeyDown({ key: 'Enter', target: {}, currentTarget: card }, handlers)
+  sortableCardKeyDown({ key: ' ', target: {}, currentTarget: card }, handlers)
+  sortableCardKeyDown({ key: 'Enter', target: card, currentTarget: card }, { ...handlers, isDragging: true })
+  assert.deepEqual(calls, ['open', 'drag'])
 })

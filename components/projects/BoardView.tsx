@@ -24,7 +24,7 @@ import { calculateTaskVariance, isTaskAssignedTo } from '@/lib/project-progress'
 import type { PanelTask, ProjectStatusSection } from './TaskDetailPanel'
 import { TaskCard } from './TaskCard'
 import { AddTaskButton, BoardColumnEmpty, BoardColumnShell, BoardScroller, TASK_NAME_INPUT_CLASS } from './BoardColumn'
-import { sortTasksByDeadline } from './workspace-utils'
+import { sortableCardKeyDown, sortTasksByDeadline } from './workspace-utils'
 
 interface BoardViewProps {
   projectId: string
@@ -421,12 +421,13 @@ function BoardColumn({
             }
           }}
           onBlur={handleAdd}
-          placeholder="Task name…"
+          placeholder="Task name..."
           aria-label={`New task in ${section.name}`}
           className={TASK_NAME_INPUT_CLASS}
         />
       ) : (
         <AddTaskButton
+          columnName={section.name}
           autoFocus={returnFocus}
           onClick={() => {
             setReturnFocus(false)
@@ -459,17 +460,25 @@ function SortableTaskCard({ task, disabled, onClick }: { task: PanelTask; disabl
   }
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={cn(isDragging && 'opacity-25', disabled && 'cursor-default')}>
-      <BoardTaskCard task={task} onOpen={() => { if (!isDragging) onClick() }} />
+    // Title button is tabIndex -1 so the wrapper is the card's single tab stop (see sortableCardKeyDown).
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      onKeyDown={(event) => sortableCardKeyDown(event, { isDragging, onOpen: onClick, onDragKey: (keyEvent) => listeners?.onKeyDown?.(keyEvent) })}
+      className={cn('rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', isDragging && 'opacity-25', disabled && 'cursor-default')}
+    >
+      <BoardTaskCard task={task} titleTabIndex={-1} onOpen={() => { if (!isDragging) onClick() }} />
     </div>
   )
 }
 
-function BoardTaskCard({ task, dragging, onOpen }: { task: PanelTask; dragging?: boolean; onOpen?: () => void }) {
+function BoardTaskCard({ task, dragging, titleTabIndex, onOpen }: { task: PanelTask; dragging?: boolean; titleTabIndex?: number; onOpen?: () => void }) {
   const overdue = calculateTaskVariance({
     status: task.status,
     dueDate: task.dueDate,
     section: { isBacklog: Boolean(task.section?.isBacklog) },
   }).isOverdue
-  return <TaskCard task={task} overdue={overdue} done={task.status === 'DONE'} dragging={dragging} onOpen={onOpen} />
+  return <TaskCard task={task} overdue={overdue} done={task.status === 'DONE'} dragging={dragging} titleTabIndex={titleTabIndex} onOpen={onOpen} />
 }

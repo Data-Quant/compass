@@ -10,9 +10,9 @@ import {
   ArrowUpDown,
   Check,
   ChevronRight,
+  CornerDownRight,
   FileText,
   ListChecks,
-  GitBranch,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -139,25 +139,34 @@ function canEditTask(project: WorkspaceProject, task: WorkspaceTask, viewerId: s
     || Boolean(task.assistants?.some((assistant) => assistant.user.id === viewerId))
 }
 
-function TaskLabelBadges({ task, className }: { task: WorkspaceTask; className?: string }) {
-  if (task.labelAssignments.length === 0) return null
+// Row pieces shared by the list rows and the "group by person" rows.
+const SELECT_CHECKBOX_CLASS = 'rounded opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 data-[state=checked]:opacity-100 [@media(hover:none)]:opacity-100'
+const COMPLETE_TOGGLE_CLASS = 'h-4 w-4 rounded-full border-[1.5px] border-muted-foreground/50 shadow-none hover:border-emerald-500 data-[state=checked]:border-emerald-500 data-[state=checked]:bg-emerald-500 data-[state=checked]:text-white [&_svg]:h-3 [&_svg]:w-3'
+const EXPAND_TOGGLE_CLASS = 'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+
+function TaskLabelChips({ task }: { task: WorkspaceTask }) {
+  const labels = task.labelAssignments
+  if (labels.length === 0) return null
+  const hiddenLabels = labels.slice(2)
 
   return (
-    <div className={cn('flex min-w-0 flex-wrap gap-1', className)} aria-label={`Labels for ${task.title}`}>
-      {task.labelAssignments.map((assignment) => (
+    <span className="flex shrink-0 items-center gap-1" aria-label={`Labels for ${task.title}`}>
+      {labels.slice(0, 2).map((assignment) => (
         <span
           key={assignment.label.id}
           title={assignment.label.name}
-          className="max-w-32 truncate rounded px-1.5 py-0.5 text-[10px] font-medium leading-none"
-          style={{
-            backgroundColor: `${assignment.label.color}20`,
-            color: assignment.label.color,
-          }}
+          className="max-w-24 truncate rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium leading-none"
+          style={{ backgroundColor: `${assignment.label.color}20`, color: assignment.label.color }}
         >
           {assignment.label.name}
         </span>
       ))}
-    </div>
+      {hiddenLabels.length > 0 && (
+        <span className="text-[11px] tabular-nums text-muted-foreground" title={hiddenLabels.map((assignment) => assignment.label.name).join(', ')}>
+          +{hiddenLabels.length}
+        </span>
+      )}
+    </span>
   )
 }
 
@@ -449,7 +458,7 @@ function PersonTaskGroups({
 
         return (
           <Card key={group.id} className="overflow-hidden border-border/60 shadow-sm" data-assignee-group-id={group.id}>
-            <div className="flex items-center gap-3 border-b border-border/50 bg-muted/20 px-4 py-3">
+            <div className="flex items-center gap-3 border-b border-border/50 bg-muted/20 px-3 py-2">
               <button
                 type="button"
                 onClick={() => toggleGroup(group.id)}
@@ -459,8 +468,8 @@ function PersonTaskGroups({
               >
                 <ChevronRight className={cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform', !collapsed && 'rotate-90')} />
                 <UserAvatar name={groupName} size="sm" />
-                <span className="truncate font-semibold">{groupName}</span>
-                <Badge variant="secondary">{group.items.length}</Badge>
+                <span className="truncate text-sm font-medium">{groupName}</span>
+                <span className="text-xs tabular-nums text-muted-foreground">{group.items.length}</span>
               </button>
               <Checkbox
                 checked={selectableIds.length > 0 && selectedCount === selectableIds.length
@@ -633,41 +642,47 @@ function PersonTaskRow({
       data-person-task-id={task.id}
       data-task-depth={depth}
       data-state={selected ? 'selected' : undefined}
-      className={cn(overdue && 'bg-red-500/[0.07] hover:bg-red-500/[0.11]', pending && 'opacity-65')}
+      className={cn('group/row hover:bg-muted/40 data-[state=selected]:bg-primary/[0.04]', pending && 'opacity-65')}
     >
       <TableCell>
-        <div className="flex min-w-0 items-center gap-2" style={{ paddingLeft: `${depth * 20}px` }}>
-          <Checkbox
-            checked={selected}
-            onCheckedChange={(checked) => onToggleSelected(task.id, checked === true)}
-            aria-label={`Select ${task.title}`}
-            disabled={pending || !canEdit}
-          />
-          <Checkbox
-            checked={done}
-            onCheckedChange={(checked) => void toggleDone(checked === true)}
-            aria-label={`Mark ${task.title} ${done ? 'incomplete' : 'complete'}`}
-            disabled={pending || !canEdit}
-            className="h-5 w-5 rounded-full"
-          />
+        <div className="flex min-w-0 items-center gap-1">
+          <span className="flex w-5 shrink-0 justify-center">
+            <Checkbox
+              checked={selected}
+              onCheckedChange={(checked) => onToggleSelected(task.id, checked === true)}
+              aria-label={`Select ${task.title}`}
+              disabled={pending || !canEdit}
+              className={SELECT_CHECKBOX_CLASS}
+            />
+          </span>
+          {depth > 0 && <span className="shrink-0" style={{ width: `${depth * 20}px` }} aria-hidden="true" />}
+          {depth > 0 && <span className="sr-only">Subtask</span>}
           {hasChildren ? (
             <button
               type="button"
               onClick={onToggleChildren}
               aria-expanded={expanded}
               aria-label={`${expanded ? 'Collapse' : 'Expand'} subtasks for ${task.title}`}
-              className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className={EXPAND_TOGGLE_CLASS}
             >
-              <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', expanded && 'rotate-90')} />
+              <ChevronRight className={cn('h-4 w-4 transition-transform', expanded && 'rotate-90')} />
             </button>
-          ) : <span className="w-[18px] shrink-0" aria-hidden="true" />}
-          {task.parentTaskId && <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Subtask" />}
-          <div className="flex min-w-0 flex-1 flex-col">
-            <InlineTitle project={project} task={task} pending={pending || !canEdit} onPatchTask={onPatchTask} />
-            <TaskLabelBadges task={task} className="px-2 pt-0.5" />
+          ) : <span className="h-6 w-6 shrink-0" aria-hidden="true" />}
+          <Checkbox
+            checked={done}
+            onCheckedChange={(checked) => void toggleDone(checked === true)}
+            aria-label={`Mark ${task.title} ${done ? 'incomplete' : 'complete'}`}
+            disabled={pending || !canEdit}
+            className={COMPLETE_TOGGLE_CLASS}
+          />
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <InlineTitle project={project} task={task} pending={pending || !canEdit} onPatchTask={onPatchTask} fit />
+            <TaskLabelChips task={task} />
             {task.parentTaskId && depth === 0 && (
-              <span className="truncate px-2 text-[10px] text-muted-foreground">
-                Subtask of {task.parentTask?.title || 'another task'}
+              <span className="inline-flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
+                <CornerDownRight className="h-3 w-3 shrink-0" aria-hidden="true" />
+                <span className="sr-only">Subtask of</span>
+                <span className="truncate">{task.parentTask?.title || 'another task'}</span>
               </span>
             )}
           </div>
@@ -1699,8 +1714,6 @@ function WorkspacePopupTaskRow({
   const done = isDoneTask(project, task)
   const overdue = isTaskOverdue(project, task)
   const canEdit = canEditTask(project, task, viewerId)
-  const labels = task.labelAssignments
-  const hiddenLabels = labels.slice(2)
 
   const toggleDone = async (checked: boolean) => {
     const section = sectionForColumn(project, checked ? 'DONE' : 'TODO')
@@ -1736,7 +1749,7 @@ function WorkspacePopupTaskRow({
               onCheckedChange={(checked) => onToggleSelected(task.id, checked === true)}
               aria-label={`Select ${task.title}`}
               disabled={pending || !canEdit}
-              className="rounded opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 data-[state=checked]:opacity-100 [@media(hover:none)]:opacity-100"
+              className={SELECT_CHECKBOX_CLASS}
             />
           </span>
           {depth > 0 && <span className="shrink-0" style={{ width: `${depth * 20}px` }} aria-hidden="true" />}
@@ -1747,7 +1760,7 @@ function WorkspacePopupTaskRow({
               onClick={onToggleChildren}
               aria-expanded={expanded}
               aria-label={`${expanded ? 'Collapse' : 'Expand'} subtasks for ${task.title}`}
-              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className={EXPAND_TOGGLE_CLASS}
             >
               <ChevronRight className={cn('h-4 w-4 transition-transform', expanded && 'rotate-90')} />
             </button>
@@ -1757,29 +1770,11 @@ function WorkspacePopupTaskRow({
             onCheckedChange={(checked) => void toggleDone(checked === true)}
             aria-label={`Mark ${task.title} ${done ? 'incomplete' : 'complete'}`}
             disabled={pending || !canEdit}
-            className="h-4 w-4 rounded-full border-[1.5px] border-muted-foreground/50 shadow-none hover:border-emerald-500 data-[state=checked]:border-emerald-500 data-[state=checked]:bg-emerald-500 data-[state=checked]:text-white [&_svg]:h-3 [&_svg]:w-3"
+            className={COMPLETE_TOGGLE_CLASS}
           />
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <InlineTitle project={project} task={task} pending={pending || !canEdit} onPatchTask={onPatchTask} fit />
-            {labels.length > 0 && (
-              <span className="flex shrink-0 items-center gap-1" aria-label={`Labels for ${task.title}`}>
-                {labels.slice(0, 2).map((assignment) => (
-                  <span
-                    key={assignment.label.id}
-                    title={assignment.label.name}
-                    className="max-w-24 truncate rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium leading-none"
-                    style={{ backgroundColor: `${assignment.label.color}20`, color: assignment.label.color }}
-                  >
-                    {assignment.label.name}
-                  </span>
-                ))}
-                {hiddenLabels.length > 0 && (
-                  <span className="text-[11px] tabular-nums text-muted-foreground" title={hiddenLabels.map((assignment) => assignment.label.name).join(', ')}>
-                    +{hiddenLabels.length}
-                  </span>
-                )}
-              </span>
-            )}
+            <TaskLabelChips task={task} />
           </div>
           {childCount > 0 && (
             <span className="inline-flex shrink-0 items-center gap-1 text-xs tabular-nums text-muted-foreground" title={`${childCount} subtasks`}>
@@ -1788,7 +1783,7 @@ function WorkspacePopupTaskRow({
             </span>
           )}
           {task.completedLate && (
-            <span className="shrink-0 whitespace-nowrap text-[11px] text-orange-600 dark:text-orange-400">Completed late</span>
+            <span className="shrink-0 whitespace-nowrap text-[11px] text-orange-700 dark:text-orange-400">Completed late</span>
           )}
           {onAddSubtask && !expanded && (
             <button
@@ -2042,7 +2037,7 @@ function InlineTitle({
     if (!ok) setValue(task.title)
   }
 
-  return (
+  const input = (
     <input
       value={value}
       onChange={(event) => setValue(event.target.value)}
@@ -2056,16 +2051,29 @@ function InlineTitle({
       }}
       aria-label={`Task title: ${task.title}`}
       disabled={pending}
-      // fit: width follows the text (shrinks to truncate) so trailing labels sit right after the title.
-      style={fit ? { width: `${Math.max(value.length, 8) + 2}ch` } : undefined}
       className={cn(
-        fit ? 'min-w-[8ch] max-w-full' : 'min-w-0 flex-1',
-        'h-8 truncate rounded-md border border-transparent bg-transparent px-2 text-sm outline-none transition-colors hover:bg-muted/60 focus:border-input focus:bg-background disabled:hover:bg-transparent',
+        fit ? 'w-full min-w-0 [grid-area:1/1]' : 'min-w-0 flex-1',
+        INLINE_TITLE_BOX,
+        'truncate rounded-md bg-transparent outline-none transition-colors hover:bg-muted/60 focus:border-input focus:bg-background disabled:hover:bg-transparent',
         isDoneTask(project, task) && 'text-muted-foreground',
       )}
     />
   )
+  if (!fit) return input
+  // fit: a hidden mirror of the text sizes the grid cell, so the input is as wide as its
+  // title (shrinking to truncate) and trailing labels sit right after it.
+  return (
+    <span className="inline-grid min-w-[8ch] max-w-full grid-cols-[minmax(0,auto)]">
+      <span aria-hidden="true" className={cn(INLINE_TITLE_BOX, 'invisible overflow-hidden whitespace-pre [grid-area:1/1]')}>
+        {value || ' '}
+      </span>
+      {input}
+    </span>
+  )
 }
+
+// Shared by the input and its fit mirror so both measure the same.
+const INLINE_TITLE_BOX = 'h-8 border border-transparent px-2 text-sm'
 
 function AssigneeCell({
   project,

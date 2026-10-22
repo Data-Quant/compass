@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 import { dueState, parseTaskDate, toLocalDateValue, type DueStateKind } from './workspace-utils'
 
 const STATE_CLASS: Record<DueStateKind, string> = {
-  none: 'text-muted-foreground/70',
+  none: 'text-muted-foreground',
   normal: 'text-muted-foreground',
   soon: 'font-medium text-amber-700 dark:text-amber-400',
   overdue: '',
