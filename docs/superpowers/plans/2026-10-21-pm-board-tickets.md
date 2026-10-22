@@ -458,6 +458,54 @@ git add lib/project-task-utils.ts "app/(evaluator)/projects/[id]/page.tsx" compo
 git commit -m "feat: every task has a shareable link that opens it directly"
 ```
 
+### Task 7b: Polish shareable links (copy feedback + no-access screen)
+
+Added on 2026-10-22 at the user's request: "it should be professional". Links stay private: only logged-in people with project access can open them.
+
+**Files:**
+- Modify: `components/projects/TaskDetailPanel.tsx`. The Copy link button (search `Copy link to this task`).
+- Modify: `app/(evaluator)/projects/[id]/page.tsx`. `loadProject` and the `if (!project) return <EmptyState …>` branch.
+- Modify: `lib/project-task-utils.ts`. Add a pure helper.
+- Test: `tests/project-task-utils.test.ts`
+
+**Interfaces:**
+- Produces: `export function projectLoadFailure(status: number): 'forbidden' | 'not_found' | 'error'`. It maps 403 to `'forbidden'`, 404 to `'not_found'`, and anything else to `'error'`.
+- **Copy feedback.**
+  - After a successful copy, the button shows a `Check` icon (lucide) instead of `Link2` for 2000 ms, then switches back.
+  - While it shows `Check`, `title` and the visible tooltip read "Link copied". Add `aria-live="polite"` text for screen readers: an `sr-only` span that says "Link copied".
+  - Keep the `toast.success('Link copied')`.
+  - Clear the timer on unmount and when the panel's task changes, so the check never carries over to another task.
+- **No-access screen.**
+  - `loadProject` records `projectLoadFailure(res.status)` when `!res.ok`.
+  - The `!project` branch renders the existing `EmptyState` with, per failure:
+    - `'forbidden'`: icon `Lock`, title "You don't have access to this project", description "Ask a project lead to add you, then open the link again."
+    - `'not_found'`: icon `ListTodo`, title "Project not found", description "It may have been deleted, or the link is incomplete."
+    - `'error'`: icon `ListTodo`, title "Couldn't load this project", description "Check your connection and try again." Add a "Try again" button that re-runs `loadProject`.
+  - All three get an `action` button "Back to Projects" that links to `/projects` (use the existing `Button` + `next/link`, as other pages do).
+  - A missing task inside a project the viewer *can* open keeps the existing toast.
+
+- [ ] **Step 1: Write the failing test:**
+
+```ts
+test('projectLoadFailure names the reason a project could not be opened', () => {
+  assert.equal(projectLoadFailure(403), 'forbidden')
+  assert.equal(projectLoadFailure(404), 'not_found')
+  assert.equal(projectLoadFailure(500), 'error')
+  assert.equal(projectLoadFailure(401), 'error')
+})
+```
+
+- [ ] **Step 2: Run it and check it fails.** Run: `node --import tsx --test tests/project-task-utils.test.ts`. Expected: FAIL, the helper is not exported.
+- [ ] **Step 3: Implement the helper, the copy feedback and the no-access screen as listed above.**
+- [ ] **Step 4: Verify.**
+  - Run `npm test` and `npx tsc --noEmit`.
+  - curl: as employee4@example.com (not a member of "Demo: Client portal relaunch"), `GET /api/projects/<id>` returns 403. That is the status the page maps to the access screen.
+  - UI checks for the human:
+    1. Click Copy link; the icon turns into a check for about 2 s.
+    2. Open a project link as a non-member; you see the "You don't have access" screen with "Back to Projects".
+    3. A made-up project id shows "Project not found".
+- [ ] **Step 5: Commit** with `git commit -m "feat: copy-link confirmation and a clear screen when a project link can't be opened"`, staging only the four files by path.
+
 ### Task 8: Assignees and co-assignees can manage co-assignees (ticket `cmvi7zq3l00073ny13vre55ul`)
 
 **Files:**
