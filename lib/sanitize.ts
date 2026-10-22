@@ -4,11 +4,14 @@
 // always safe to render.
 
 const TAG_PATTERN = /<\/?[a-zA-Z][^>]*>/g
-const TAG_OPENER = /<(?=[a-zA-Z/!?])/g
+// Matches each maximal run of `<` once; a lookahead inside the regex would
+// rescan the run from every position (quadratic on '<<<<...').
+const ANGLE_RUN = /<+/g
+const TAG_START = /[a-zA-Z/!?]/
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g
 
 // Plain text only: strip tags until nothing changes (so `<scr<script>ipt>`
-// cannot reassemble), then drop any leftover `<` that could open a tag
+// cannot reassemble), then drop any leftover run of `<` that could open a tag
 // (followed by a letter, `/`, `!` or `?`). Ordinary text such as "a < b",
 // "->" or "<3" is left exactly as before.
 export function stripHtml(input: string): string {
@@ -18,7 +21,11 @@ export function stripHtml(input: string): string {
     previous = output
     output = output.replace(TAG_PATTERN, '')
   } while (output !== previous)
-  return output.replace(TAG_OPENER, '').replace(CONTROL_CHARS, '')
+  return output
+    .replace(ANGLE_RUN, (run, offset: number, str: string) =>
+      TAG_START.test(str.charAt(offset + run.length)) ? '' : run
+    )
+    .replace(CONTROL_CHARS, '')
 }
 
 // For optional fields: passes null/undefined through untouched.

@@ -24,6 +24,26 @@ test('stripHtml leaves no tag opener from an unclosed tag', () => {
   assert.equal(stripHtml('<!-- x'), '!-- x')
 })
 
+test('stripHtml drops repeated tag openers', () => {
+  for (const input of ['<<script', '<<img src=x onerror=alert(1)//', '<</script']) {
+    assert.doesNotMatch(stripHtml(input), /<[a-zA-Z/!?]/, input)
+  }
+  assert.equal(stripHtml('<<script'), 'script')
+})
+
+test('stripHtml stays linear on long runs of <', () => {
+  const start = performance.now()
+  assert.equal(stripHtml('<'.repeat(100_000) + ' x'), '<'.repeat(100_000) + ' x')
+  assert.equal(stripHtml('<'.repeat(100_000) + 'x'), 'x')
+  assert.ok(performance.now() - start < 500)
+})
+
+test('stripHtml keeps non-tag angle brackets', () => {
+  assert.equal(stripHtml('a < b'), 'a < b')
+  assert.equal(stripHtml('3<5'), '3<5')
+  assert.equal(stripHtml('<50k'), '<50k')
+})
+
 test('stripHtml output is unchanged from the old version for ordinary text', () => {
   for (const input of [
     'Off sick, back Monday (doctor note attached).',
