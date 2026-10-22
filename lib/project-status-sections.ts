@@ -256,3 +256,14 @@ export async function resolveTaskStatusSection(input: {
 }
 
 export { DEFAULT_STATUS_SECTIONS }
+
+export function validateSectionOrder(existingIds: string[], orderedIds: unknown): string | null {
+  if (!Array.isArray(orderedIds) || orderedIds.some((id) => typeof id !== 'string')) {
+    return 'orderedSectionIds must be an array of section IDs'
+  }
+  const unique = new Set(orderedIds)
+  if (unique.size !== orderedIds.length || orderedIds.length !== existingIds.length || existingIds.some((id) => !unique.has(id))) {
+    return 'orderedSectionIds must list every section in this project exactly once'
+  }
+  return null
+}

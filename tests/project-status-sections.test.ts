@@ -6,6 +6,7 @@ import {
   getStatusSectionDefaults,
   selectSectionDeletionTarget,
   selectPreferredStatusSection,
+  validateSectionOrder,
 } from '../lib/project-status-sections'
 
 test('Backlog is the first default project section', () => {
@@ -113,4 +114,16 @@ test('the last remaining section cannot be deleted', () => {
   }
 
   assert.equal(selectSectionDeletionTarget([section], section.id), null)
+})
+
+test('accepts a full reordering of the project sections', () => {
+  assert.equal(validateSectionOrder(['a', 'b', 'c'], ['c', 'a', 'b']), null)
+})
+
+test('rejects missing, extra, duplicate or non-string ids', () => {
+  assert.equal(validateSectionOrder(['a', 'b'], ['a']), 'orderedSectionIds must list every section in this project exactly once')
+  assert.equal(validateSectionOrder(['a', 'b'], ['a', 'b', 'x']), 'orderedSectionIds must list every section in this project exactly once')
+  assert.equal(validateSectionOrder(['a', 'b'], ['a', 'a']), 'orderedSectionIds must list every section in this project exactly once')
+  assert.equal(validateSectionOrder(['a'], 'a'), 'orderedSectionIds must be an array of section IDs')
+  assert.equal(validateSectionOrder(['a'], [1]), 'orderedSectionIds must be an array of section IDs')
 })

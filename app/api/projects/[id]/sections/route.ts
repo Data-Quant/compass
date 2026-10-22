@@ -7,6 +7,7 @@ import {
   getStatusSectionDefaults,
   normalizeStatusName,
   selectSectionDeletionTarget,
+  validateSectionOrder,
 } from '@/lib/project-status-sections'
 import { getProjectAuthorization, projectAuthorizationFailure } from '@/lib/project-access'
 import { syncProjectCompletion } from '@/lib/project-completion'
@@ -148,6 +149,41 @@ export async function PUT(
   } catch (error) {
     console.error('Failed to update section:', error)
     return NextResponse.json({ error: 'Failed to update section' }, { status: 500 })
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const user = await getSession()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { id: projectId } = await params
+    const authorization = await getProjectAuthorization(projectId, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization, 'manage')
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
+
+    const { orderedSectionIds } = await request.json()
+    const existing = await prisma.taskSection.findMany({ where: { projectId }, select: { id: true } })
+    const orderError = validateSectionOrder(existing.map((section) => section.id), orderedSectionIds)
+    if (orderError) return NextResponse.json({ error: orderError }, { status: 400 })
+
+    const ids = orderedSectionIds as string[]
+    await prisma.$transaction(
+      ids.map((id, orderIndex) => prisma.taskSection.update({ where: { id }, data: { orderIndex } }))
+    )
+    const sections = await prisma.taskSection.findMany({
+      where: { projectId },
+      orderBy: { orderIndex: 'asc' },
+    })
+
+    return NextResponse.json({ success: true, sections })
+  } catch (error) {
+    console.error('Failed to reorder sections:', error)
+    return NextResponse.json({ error: 'Failed to reorder sections' }, { status: 500 })
   }
 }
 
