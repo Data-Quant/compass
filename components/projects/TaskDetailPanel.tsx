@@ -663,7 +663,7 @@ export function TaskDetailPanel({
   }
 
   const toggleAssistant = async (memberId: string) => {
-    if (!task || !canEdit || !canManage || memberId === task.assigneeId) return
+    if (!task || !canEdit || memberId === task.assigneeId) return
     const current = (task.assistants || []).map((assistant) => assistant.user.id)
     const next = current.includes(memberId)
       ? current.filter((id) => id !== memberId)
@@ -672,7 +672,7 @@ export function TaskDetailPanel({
   }
 
   const clearAssistants = async () => {
-    if (!task || !canEdit || !canManage || !task.assistants?.length) return
+    if (!task || !canEdit || !task.assistants?.length) return
     updateTask({ assistantIds: [] })
   }
 
@@ -918,7 +918,8 @@ export function TaskDetailPanel({
 
             {/* Co-assignees */}
             <FieldRow icon={<UserRoundCheck className="w-4 h-4" />} label="Co-assignees">
-              {canManage && canEdit ? (
+              {/* canEdit already means assignee, co-assignee or manager: the co-assignee rule */}
+              {canEdit ? (
               <Dropdown
                 trigger={
                   <span className="inline-flex max-w-full items-center gap-2 rounded-md px-2.5 py-1 text-sm hover:bg-muted/30 transition-colors">
@@ -971,7 +972,9 @@ export function TaskDetailPanel({
                     </button>
                   ))}
                   {availableAssistantMembers.length === 0 && (
-                    <p className="px-3 py-2 text-sm text-muted-foreground">No other project members available.</p>
+                    <p className="px-3 py-2 text-sm text-muted-foreground">
+                      No other project members available. Ask a project lead to add people to this project.
+                    </p>
                   )}
                 </div>
               </Dropdown>

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   canEditAssignedProjectTask,
+  canEditTaskCoAssignees,
   resolveProjectCapabilities,
 } from '../lib/project-access'
 
@@ -76,4 +77,19 @@ test('members may edit only their assigned tasks while managers may edit any tas
     assigneeId: null,
     canManage: true,
   }), true)
+})
+
+const coBase = { viewerId: 'me', assigneeId: 'other', assistantIds: [] as string[], canManage: false }
+test('the assignee can manage co-assignees', () => {
+  assert.equal(canEditTaskCoAssignees({ ...coBase, assigneeId: 'me' }), true)
+})
+test('an existing co-assignee can manage co-assignees', () => {
+  assert.equal(canEditTaskCoAssignees({ ...coBase, assistantIds: ['me'] }), true)
+})
+test('a project lead or HR can manage co-assignees', () => {
+  assert.equal(canEditTaskCoAssignees({ ...coBase, canManage: true }), true)
+})
+test('other project members cannot', () => {
+  assert.equal(canEditTaskCoAssignees(coBase), false)
+  assert.equal(canEditTaskCoAssignees({ ...coBase, assigneeId: null }), false)
 })
