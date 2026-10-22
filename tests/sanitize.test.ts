@@ -31,6 +31,35 @@ test('stripHtml drops repeated tag openers', () => {
   assert.equal(stripHtml('<<script'), 'script')
 })
 
+test('stripHtml stays linear on many unclosed tags', () => {
+  const start = performance.now()
+  assert.equal(stripHtml('<a'.repeat(50_000)), 'a'.repeat(50_000))
+  assert.ok(performance.now() - start < 500)
+})
+
+test('stripHtml matches the old output for ordinary HTML-ish input', () => {
+  for (const input of [
+    '<b>x</b>',
+    '<a href="x">y</a>',
+    '<br/>line',
+    '<br />line',
+    '<p class="a b" data-x=1>text</p>',
+    '<a title="1 > 0">y</a>',
+    '<img src="https://x/y.png" alt="">',
+  ]) {
+    assert.equal(stripHtml(input), oldStripHtml(input), input)
+  }
+  // Attribute with `>` inside quotes: both versions end the tag at the first `>`.
+  assert.equal(stripHtml('<a title="1 > 0">y</a>'), ' 0">y')
+})
+
+test('stripHtml tag ends at the next < (documented edge vs old)', () => {
+  // Old: `<a<b>` was one tag -> 'x'. New: `<b>` is the tag, then the leftover
+  // `<` before a letter is dropped -> 'ax'. Only malformed input differs.
+  assert.equal(stripHtml('<a<b>x'), 'ax')
+  assert.equal(oldStripHtml('<a<b>x'), 'x')
+})
+
 test('stripHtml stays linear on long runs of <', () => {
   const start = performance.now()
   assert.equal(stripHtml('<'.repeat(100_000) + ' x'), '<'.repeat(100_000) + ' x')

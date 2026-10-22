@@ -3,7 +3,9 @@
 // does not apply. Strip HTML and control characters at ingest so stored data is
 // always safe to render.
 
-const TAG_PATTERN = /<\/?[a-zA-Z][^>]*>/g
+// `[^<>]*` stops each attempt at the next `<`, so unclosed tags (`<a<a<a...`)
+// scan in linear time instead of rescanning to the end from every `<`.
+const TAG_PATTERN = /<\/?[a-zA-Z][^<>]*>/g
 // Matches each maximal run of `<` once; a lookahead inside the regex would
 // rescan the run from every position (quadratic on '<<<<...').
 const ANGLE_RUN = /<+/g
