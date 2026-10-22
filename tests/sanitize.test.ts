@@ -6,6 +6,88 @@ const OLD_TAG_PATTERN = /<\/?[a-zA-Z][^>]*>/g
 const OLD_CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g
 const oldStripHtml = (input: string) => input.replace(OLD_TAG_PATTERN, '').replace(OLD_CONTROL_CHARS, '')
 
+// Reference: the previous (quadratic) loop implementation, kept here only to
+// prove the single-pass version in lib/sanitize.ts gives identical output.
+function loopStripHtml(input: string): string {
+  const tag = /<\/?[a-zA-Z][^<>]*>/g
+  let output = input
+  let previous: string
+  do {
+    previous = output
+    output = output.replace(tag, '')
+  } while (output !== previous)
+  return output
+    .replace(/<+/g, (run, offset: number, str: string) => (/[a-zA-Z/!?]/.test(str.charAt(offset + run.length)) ? '' : run))
+    .replace(OLD_CONTROL_CHARS, '')
+}
+
+// mulberry32: small seeded PRNG so the property test is reproducible.
+function seededRandom(seed: number) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+const EXPLICIT_CASES = [
+  '<b>hello</b> world',
+  '<scr<script>ipt>alert(1)</script>',
+  '<<script>script>alert(1)<</script>/script>',
+  '<<b>i>x</i>',
+  'hi <img src=x onerror=alert(1)',
+  '</script',
+  '<!-- x',
+  '<<script',
+  '<<img src=x onerror=alert(1)//',
+  '<</script',
+  'a < b',
+  '3<5',
+  '<50k',
+  'Off sick, back Monday (doctor note attached).',
+  'a < b and c > d',
+  'Handover -> Ali, then <-- back',
+  'I <3 this team',
+  'Score 3<5, 10 > 9',
+  '5 << 2 >> 1',
+  'Line one\nLine two\ttabbed',
+  'Ünïcödé — ✓ 日本語',
+  '<b>bold</b> and <i>italic</i>',
+  '<a href="x">y</a>',
+  '<br/>line',
+  '<a title="1 > 0">y</a>',
+  '<a<b>x',
+  'a\u0000b\u0007c\nd\te',
+  '<b\u0000>x</b>',
+  '',
+]
+
+test('single-pass stripHtml equals the loop reference on explicit cases', () => {
+  for (const input of EXPLICIT_CASES) {
+    assert.equal(stripHtml(input), loopStripHtml(input), JSON.stringify(input))
+  }
+})
+
+test('single-pass stripHtml equals the loop reference on 5000 random strings', () => {
+  // Weighted toward the characters the tag grammar cares about.
+  const alphabet = '<<<<<>>>>>///abbsZ  "\'1!?-\u0000\n'
+  const random = seededRandom(20261023)
+  for (let i = 0; i < 5000; i++) {
+    const length = Math.floor(random() * 41)
+    let input = ''
+    for (let j = 0; j < length; j++) input += alphabet[Math.floor(random() * alphabet.length)]
+    assert.equal(stripHtml(input), loopStripHtml(input), JSON.stringify(input))
+  }
+})
+
+test('stripHtml stays linear on deeply nested tags', () => {
+  const n = 50_000
+  const start = performance.now()
+  assert.equal(stripHtml('<'.repeat(n) + 'b>'.repeat(n)), '')
+  assert.ok(performance.now() - start < 500)
+})
+
 test('stripHtml removes simple tags', () => {
   assert.equal(stripHtml('<b>hello</b> world'), 'hello world')
 })

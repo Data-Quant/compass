@@ -3,27 +3,50 @@
 // does not apply. Strip HTML and control characters at ingest so stored data is
 // always safe to render.
 
-// `[^<>]*` stops each attempt at the next `<`, so unclosed tags (`<a<a<a...`)
-// scan in linear time instead of rescanning to the end from every `<`.
-const TAG_PATTERN = /<\/?[a-zA-Z][^<>]*>/g
 // Matches each maximal run of `<` once; a lookahead inside the regex would
 // rescan the run from every position (quadratic on '<<<<...').
 const ANGLE_RUN = /<+/g
 const TAG_START = /[a-zA-Z/!?]/
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g
 
-// Plain text only: strip tags until nothing changes (so `<scr<script>ipt>`
-// cannot reassemble), then drop any leftover run of `<` that could open a tag
-// (followed by a letter, `/`, `!` or `?`). Ordinary text such as "a < b",
-// "->" or "<3" is left exactly as before.
+const isAsciiLetter = (ch: string | undefined) =>
+  ch !== undefined && ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z'))
+
+// Removes every `<`, optional `/`, letter, non-`<>` chars, `>` sequence, including
+// ones that only form after an inner tag is removed (`<scr<script>ipt>`).
+// Single pass with a stack: a tag can only end at `>` and start at the last
+// unmatched `<`, so each char is pushed and popped at most once (linear time).
+// Gives the same result as repeating /<\/?[a-zA-Z][^<>]*>/g until stable.
+function stripTags(input: string): string {
+  const out: string[] = []
+  const opens: number[] = [] // indexes in `out` of `<` still present
+  let lastClose = -1 // index in `out` of the last kept `>`
+  for (const ch of input) {
+    if (ch === '>') {
+      const start = opens.length > 0 ? opens[opens.length - 1] : -1
+      if (start > lastClose) {
+        const nameAt = out[start + 1] === '/' ? start + 2 : start + 1
+        if (isAsciiLetter(out[nameAt])) {
+          out.length = start
+          opens.pop()
+          continue
+        }
+      }
+      lastClose = out.length
+    } else if (ch === '<') {
+      opens.push(out.length)
+    }
+    out.push(ch)
+  }
+  return out.join('')
+}
+
+// Plain text only: strip tags (including ones that reassemble, so
+// `<scr<script>ipt>` leaves nothing), then drop any leftover run of `<` that
+// could open a tag (followed by a letter, `/`, `!` or `?`). Ordinary text such
+// as "a < b", "->" or "<3" is left exactly as before.
 export function stripHtml(input: string): string {
-  let output = input
-  let previous: string
-  do {
-    previous = output
-    output = output.replace(TAG_PATTERN, '')
-  } while (output !== previous)
-  return output
+  return stripTags(input)
     .replace(ANGLE_RUN, (run, offset: number, str: string) =>
       TAG_START.test(str.charAt(offset + run.length)) ? '' : run
     )
