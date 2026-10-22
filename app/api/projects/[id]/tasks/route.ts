@@ -21,6 +21,7 @@ import {
 import { syncProjectCompletion } from '@/lib/project-completion'
 import {
   canEditAssignedProjectTask,
+  canEditTaskCoAssignees,
   getProjectAuthorization,
   projectAuthorizationFailure,
 } from '@/lib/project-access'
@@ -30,6 +31,7 @@ import {
   taskSubtreeContainsBacklog,
 } from '@/lib/project-task-data'
 import { shouldMarkTaskCompletedLate } from '@/lib/project-progress'
+import { computeParentSyncTargets, syncParentTasks } from '@/lib/project-parent-completion'
 
 const MAX_TASK_ORDER_INDEX = 1_000_000_000
 
@@ -361,6 +363,19 @@ export async function POST(
       }
     }
 
+    // Before the project sync, so the project status sees the parent's new status.
+    const syncedParentTasks = await syncParentTasks({
+      parentTaskIds: computeParentSyncTargets(null, task),
+      actorId: user.id,
+      origin: request.nextUrl.origin,
+      visibilityScope: authorization.isParticipant
+        ? null
+        : await prisma.task.findMany({
+            where: { projectId },
+            select: { id: true, section: { select: { isBacklog: true } } },
+          }),
+    })
+
     let projectStatus: ProjectStatus | null = null
     try {
       projectStatus = await syncProjectCompletion(projectId)
@@ -368,7 +383,7 @@ export async function POST(
       console.error('Failed to sync project completion status:', syncError)
     }
 
-    return NextResponse.json({ success: true, task, projectStatus })
+    return NextResponse.json({ success: true, task, projectStatus, syncedParentTasks })
   } catch (error) {
     if (error instanceof ProjectTaskInputError) {
       return NextResponse.json({ error: error.message }, { status: 400 })
@@ -503,8 +518,14 @@ export async function PUT(
     if (normalizedAssigneeId !== undefined && normalizedAssigneeId !== existingTask.assigneeId && !authorization.canManage) {
       return NextResponse.json({ error: 'Only a project lead or HR can reassign tasks' }, { status: 403 })
     }
-    if (assistantIds !== undefined && !authorization.canManage) {
-      return NextResponse.json({ error: 'Only a project lead or HR can change co-assignees' }, { status: 403 })
+    // Same rule as the edit check above today; kept explicit so co-assignee access can diverge without hunting for it.
+    if (assistantIds !== undefined && !canEditTaskCoAssignees({
+      viewerId: user.id,
+      assigneeId: existingTask.assigneeId,
+      assistantIds: existingTask.assistants.map((assistant) => assistant.userId),
+      canManage: authorization.canManage,
+    })) {
+      return NextResponse.json({ error: 'Only the assignee, a co-assignee, a project lead or HR can change co-assignees' }, { status: 403 })
     }
     if (normalizedAssigneeId) await validateProjectMemberIds(projectId, [normalizedAssigneeId])
 
@@ -664,6 +685,13 @@ export async function PUT(
       }
     }
 
+    const syncedParentTasks = await syncParentTasks({
+      parentTaskIds: computeParentSyncTargets(existingTask, task),
+      actorId: user.id,
+      origin: request.nextUrl.origin,
+      visibilityScope: responseVisibilityScope,
+    })
+
     let projectStatus: ProjectStatus | null = null
     try {
       projectStatus = await syncProjectCompletion(projectId)
@@ -674,7 +702,7 @@ export async function PUT(
     const responseTask = responseVisibilityScope
       ? filterTasksForBacklogAccess([task], false, responseVisibilityScope)[0]
       : task
-    return NextResponse.json({ success: true, task: responseTask, projectStatus })
+    return NextResponse.json({ success: true, task: responseTask, projectStatus, syncedParentTasks })
   } catch (error) {
     if (error instanceof ProjectTaskInputError) {
       return NextResponse.json({ error: error.message }, { status: 400 })
@@ -718,6 +746,8 @@ export async function DELETE(
       select: {
         id: true,
         parentTaskId: true,
+        status: true,
+        sectionId: true,
         section: { select: { isBacklog: true } },
       },
     })
@@ -732,6 +762,13 @@ export async function DELETE(
 
     await prisma.task.delete({ where: { id: taskId } })
 
+    const syncedParentTasks = await syncParentTasks({
+      parentTaskIds: computeParentSyncTargets(task, null),
+      actorId: user.id,
+      origin: request.nextUrl.origin,
+      visibilityScope: authorization.isParticipant ? null : projectTasks,
+    })
+
     let projectStatus: ProjectStatus | null = null
     try {
       projectStatus = await syncProjectCompletion(projectId)
@@ -739,7 +776,7 @@ export async function DELETE(
       console.error('Failed to sync project completion status:', syncError)
     }
 
-    return NextResponse.json({ success: true, projectStatus })
+    return NextResponse.json({ success: true, projectStatus, syncedParentTasks })
   } catch (error) {
     console.error('Failed to delete task:', error)
     return NextResponse.json({ error: 'Failed to delete task' }, { status: 500 })

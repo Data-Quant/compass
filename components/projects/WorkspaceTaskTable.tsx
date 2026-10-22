@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   Archive,
   ArrowDown,
@@ -25,10 +26,8 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -40,6 +39,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { PeopleSearchList } from './PeopleSearchList'
 import {
   Table,
   TableBody,
@@ -73,6 +73,7 @@ import {
   displayDueDate,
   groupWorkspaceTaskItemsByAssignee,
   isDoneTask,
+  isRowNavigationClick,
   isTaskOverdue,
   overdueDays,
   plainTextPreview,
@@ -1049,6 +1050,8 @@ function ProjectMatrixRow({
   const [savingName, setSavingName] = useState(false)
   const [savingColor, setSavingColor] = useState(false)
   const [savingStatus, setSavingStatus] = useState(false)
+  const [priorityDraft, setPriorityDraft] = useState(project.priority)
+  const [savingPriority, setSavingPriority] = useState(false)
   const selectableTaskIds = tasks.filter((task) => canEditTask(project, task, viewerId)).map((task) => task.id)
   const selectedCount = selectableTaskIds.filter((id) => selectedIds.has(id)).length
   const hasOverdue = tasks.some((task) => isTaskOverdue(project, task))
@@ -1060,15 +1063,14 @@ function ProjectMatrixRow({
     .map((task) => task.dueDate)
     .filter((dueDate): dueDate is string => Boolean(dueDate))
     .sort()[0] || null
-  const priorityOrder: Record<WorkspacePriority, number> = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 }
-  const highestPriority = tasks.reduce<WorkspacePriority | null>((current, task) => (
-    current === null || priorityOrder[task.priority] < priorityOrder[current] ? task.priority : current
-  ), null)
   const assignedPeople = tasks
     .flatMap(taskAssignees)
     .filter((person, index, people) => people.findIndex((candidate) => candidate.id === person.id) === index)
 
+  const router = useRouter()
+
   useEffect(() => setNameDraft(project.name), [project.name])
+  useEffect(() => setPriorityDraft(project.priority), [project.priority])
   useEffect(() => setColorDraft(project.color), [project.color])
   useEffect(() => setStatusDraft(project.status), [project.status])
 
@@ -1103,8 +1105,23 @@ function ProjectMatrixRow({
     setSavingStatus(false)
   }
 
+  const savePriority = async (priority: WorkspacePriority) => {
+    if (!project.canManage || savingPriority || priority === project.priority) return
+    setPriorityDraft(priority)
+    setSavingPriority(true)
+    const ok = await onPatchProject(project.id, { priority })
+    if (!ok) setPriorityDraft(project.priority)
+    setSavingPriority(false)
+  }
+
   return (
-    <TableRow data-row-kind="project" className="bg-muted/10 hover:bg-muted/30 [&>td]:py-1">
+    <TableRow
+      data-row-kind="project"
+      className="cursor-pointer bg-muted/10 hover:bg-muted/30 [&>td]:py-1"
+      onClick={(event) => {
+        if (isRowNavigationClick(event.target as Element, event.currentTarget)) router.push(`/projects/${project.id}`)
+      }}
+    >
       <TableCell
         className="py-1"
         style={{ borderLeftColor: project.color || 'transparent', borderLeftStyle: 'solid', borderLeftWidth: 3 }}
@@ -1206,7 +1223,9 @@ function ProjectMatrixRow({
               className="h-7 min-w-0 flex-1 border-transparent bg-transparent px-1.5 text-sm font-semibold shadow-none hover:border-border focus:border-border disabled:opacity-70"
             />
           ) : (
-            <span className="min-w-0 flex-1 truncate px-1 font-semibold text-foreground">{project.name}</span>
+            <Link href={`/projects/${project.id}`} className="min-w-0 flex-1 truncate px-1 font-semibold text-foreground hover:underline">
+              {project.name}
+            </Link>
           )}
 
           {project.canManage ? (
@@ -1292,9 +1311,25 @@ function ProjectMatrixRow({
         ) : <span className="text-xs text-muted-foreground">Unassigned</span>}
       </TableCell>
       <TableCell>
-        {highestPriority ? (
-          <Badge variant="outline" className={cn('font-normal', PRIORITY_CLASS[highestPriority])}>{PRIORITY_LABEL[highestPriority]}</Badge>
-        ) : <span className="text-xs text-muted-foreground">—</span>}
+        {project.canManage ? (
+          <Select
+            value={priorityDraft}
+            onValueChange={(priority) => void savePriority(priority as WorkspacePriority)}
+            disabled={savingPriority}
+          >
+            <SelectTrigger
+              aria-label={`Project priority for ${project.name}`}
+              className={cn('h-7 w-[104px] shrink-0 border px-2 text-xs shadow-none', PRIORITY_CLASS[priorityDraft])}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PRIORITIES.map((priority) => <SelectItem key={priority} value={priority}>{PRIORITY_LABEL[priority]}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        ) : (
+          <Badge variant="outline" className={cn('font-normal', PRIORITY_CLASS[project.priority])}>{PRIORITY_LABEL[project.priority]}</Badge>
+        )}
       </TableCell>
     </TableRow>
   )
@@ -1815,8 +1850,8 @@ function TaskAssignees({
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <Popover>
+      <PopoverTrigger asChild>
         <Button
           type="button"
           variant="ghost"
@@ -1826,29 +1861,36 @@ function TaskAssignees({
         >
           {summary}
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-60">
-        <DropdownMenuLabel>Assigned people</DropdownMenuLabel>
-        {projectPeople.map((person) => (
-          <DropdownMenuCheckboxItem
-            key={person.id}
-            checked={assignedIds.has(person.id)}
-            disabled={pending}
-            onSelect={(event) => {
-              event.preventDefault()
-              togglePerson(person.id)
-            }}
-            className="gap-2"
-          >
-            <UserAvatar name={person.name} size="xs" />
-            <span className="min-w-0 flex-1 truncate">{person.name}</span>
-            {task.assigneeId === person.id && (
-              <Badge variant="outline" className="ml-auto px-1.5 text-[9px]">Primary</Badge>
-            )}
-          </DropdownMenuCheckboxItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-60 p-1">
+        <div className="px-2 py-1.5 text-sm font-semibold">Assigned people</div>
+        <PeopleSearchList people={projectPeople}>
+          {(filtered) => (
+            <div className="max-h-60 overflow-y-auto">
+              {filtered.map((person) => (
+                <button
+                  key={person.id}
+                  type="button"
+                  role="checkbox"
+                  data-person-option
+                  aria-checked={assignedIds.has(person.id)}
+                  disabled={pending}
+                  onClick={() => togglePerson(person.id)}
+                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent focus-visible:bg-accent disabled:opacity-50"
+                >
+                  <Check className={cn('h-4 w-4 shrink-0', !assignedIds.has(person.id) && 'opacity-0')} />
+                  <UserAvatar name={person.name} size="xs" />
+                  <span className="min-w-0 flex-1 truncate text-left">{person.name}</span>
+                  {task.assigneeId === person.id && (
+                    <Badge variant="outline" className="ml-auto px-1.5 text-[9px]">Primary</Badge>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </PeopleSearchList>
+      </PopoverContent>
+    </Popover>
   )
 }
 

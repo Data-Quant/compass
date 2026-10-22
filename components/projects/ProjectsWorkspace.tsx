@@ -36,6 +36,7 @@ import { EmptyState } from '@/components/composed/EmptyState'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { TaskDetailPanel } from './TaskDetailPanel'
 import { ProjectCreationModal } from './ProjectCreationModal'
+import { PersonSelect } from './PeopleSearchList'
 import { WorkspaceBulkActions } from './WorkspaceBulkActions'
 import { WorkspaceKanban } from './WorkspaceKanban'
 import { WorkspaceTaskTable } from './WorkspaceTaskTable'
@@ -409,6 +410,17 @@ export function ProjectsWorkspace() {
       commitWorkspace((value) => updateProjectTask(value, projectId, taskId, (task, latestProject) => (
         normalizeTask(latestProject, data.task as Partial<WorkspaceTask>, task)
       ), data.projectStatus))
+      // Auto-moved ancestors, so the parent's card reflects its new status.
+      // Own try/catch: the server already saved, so a merge failure must not roll the child back.
+      try {
+        for (const parent of (data.syncedParentTasks ?? []) as WorkspaceTask[]) {
+          commitWorkspace((value) => updateProjectTask(value, projectId, parent.id, (task, latestProject) => (
+            normalizeTask(latestProject, parent, task)
+          )))
+        }
+      } catch (mergeError) {
+        console.error('Failed to merge synced parent tasks:', mergeError)
+      }
       return true
     } catch (error) {
       commitWorkspace((value) => updateProjectTask(value, projectId, taskId, () => previous))
@@ -713,6 +725,7 @@ export function ProjectsWorkspace() {
             ...(request.description !== undefined ? { description: saved.description !== undefined ? saved.description : request.description } : {}),
             ...(request.color !== undefined ? { color: saved.color !== undefined ? saved.color : request.color } : {}),
             ...(request.status !== undefined ? { status: saved.status !== undefined ? saved.status : request.status } : {}),
+            ...(request.priority !== undefined ? { priority: saved.priority !== undefined ? saved.priority : request.priority } : {}),
           }
           : candidate),
       }))
@@ -1171,16 +1184,14 @@ export function ProjectsWorkspace() {
           </p>
           <div className="space-y-1.5">
             <Label htmlFor="promotion-assignee">Assignee</Label>
-            <Select
+            <PersonSelect
+              id="promotion-assignee"
+              people={promotionPeople}
               value={promotion?.assigneeId || ''}
               onValueChange={(assigneeId) => setPromotion((current) => current ? { ...current, assigneeId } : current)}
+              placeholder="Choose a teammate"
               disabled={promoting || !promotionProject?.canManage}
-            >
-              <SelectTrigger id="promotion-assignee"><SelectValue placeholder="Choose a teammate" /></SelectTrigger>
-              <SelectContent>
-                {promotionPeople.map((person) => <SelectItem key={person.id} value={person.id}>{person.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            />
             {!promotionProject?.canManage && (
               <p className="text-xs text-muted-foreground">Only the project lead or HR can change the assignee.</p>
             )}

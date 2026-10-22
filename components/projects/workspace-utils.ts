@@ -267,6 +267,14 @@ function compareNullableString(
   return direction === 'asc' ? result : -result
 }
 
+export function sortTasksByDeadline<T>(
+  items: T[],
+  getDueDate: (item: T) => string | null = (item) => (item as { dueDate: string | null }).dueDate,
+): T[] {
+  return [...items].sort((left, right) =>
+    compareNullableString(dateInputValue(getDueDate(left)), dateInputValue(getDueDate(right))))
+}
+
 export function sortWorkspaceTaskItems(
   items: WorkspaceTaskItem[],
   key: WorkspaceSortKey,
@@ -358,4 +366,29 @@ export function plainTextPreview(value: string | null | undefined) {
     .replace(/[*_`#<>]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+export const ROW_INTERACTIVE_SELECTOR =
+  'a,button,input,textarea,select,label,[role="checkbox"],[role="combobox"],[role="menuitem"],[data-row-nav-ignore]'
+
+// React events from portaled popovers/menus bubble to the row, so require the DOM target to be inside it.
+export function isRowNavigationClick(
+  target: { closest(selector: string): unknown } | null,
+  row: { contains(node: unknown): boolean },
+): boolean {
+  if (!target || !row.contains(target)) return false
+  return !target.closest(ROW_INTERACTIVE_SELECTOR)
+}
+
+const foldText = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+
+export function filterPeopleByQuery<T extends { name: string; email?: string | null }>(people: T[], query: string): T[] {
+  const needle = foldText(query.trim())
+  if (!needle) return people
+  return people.filter((person) => foldText(person.name).includes(needle) || foldText(person.email || '').includes(needle))
+}
+
+// Index of the item to focus next in a list whose first item is the search input.
+export function nextFocusIndex(current: number, count: number, key: 'ArrowDown' | 'ArrowUp'): number {
+  return key === 'ArrowDown' ? Math.min(current + 1, count - 1) : Math.max(current - 1, 0)
 }

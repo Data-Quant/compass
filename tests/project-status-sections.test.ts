@@ -6,6 +6,8 @@ import {
   getStatusSectionDefaults,
   selectSectionDeletionTarget,
   selectPreferredStatusSection,
+  mergeVisibleSectionOrder,
+  validateSectionOrder,
 } from '../lib/project-status-sections'
 
 test('Backlog is the first default project section', () => {
@@ -113,4 +115,22 @@ test('the last remaining section cannot be deleted', () => {
   }
 
   assert.equal(selectSectionDeletionTarget([section], section.id), null)
+})
+
+test('accepts a full reordering of the project sections', () => {
+  assert.equal(validateSectionOrder(['a', 'b', 'c'], ['c', 'a', 'b']), null)
+})
+
+test('rejects missing, extra, duplicate or non-string ids', () => {
+  assert.equal(validateSectionOrder(['a', 'b'], ['a']), 'orderedSectionIds must list every section in this project exactly once')
+  assert.equal(validateSectionOrder(['a', 'b'], ['a', 'b', 'x']), 'orderedSectionIds must list every section in this project exactly once')
+  assert.equal(validateSectionOrder(['a', 'b'], ['a', 'a']), 'orderedSectionIds must list every section in this project exactly once')
+  assert.equal(validateSectionOrder(['a'], 'a'), 'orderedSectionIds must be an array of section IDs')
+  assert.equal(validateSectionOrder(['a'], [1]), 'orderedSectionIds must be an array of section IDs')
+})
+
+test('hidden sections keep their slots when visible ones are reordered', () => {
+  assert.deepEqual(mergeVisibleSectionOrder(['b', 't', 'i', 'd'], ['b'], ['d', 't', 'i']), ['b', 'd', 't', 'i'])
+  assert.deepEqual(mergeVisibleSectionOrder(['t', 'b', 'i'], ['b'], ['i', 't']), ['i', 'b', 't'])
+  assert.deepEqual(mergeVisibleSectionOrder(['a', 'b'], [], ['b', 'a']), ['b', 'a'])
 })

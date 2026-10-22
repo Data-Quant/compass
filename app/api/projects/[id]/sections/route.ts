@@ -6,10 +6,13 @@ import {
   getTaskStatusForSection,
   getStatusSectionDefaults,
   normalizeStatusName,
+  mergeVisibleSectionOrder,
   selectSectionDeletionTarget,
+  validateSectionOrder,
 } from '@/lib/project-status-sections'
 import { getProjectAuthorization, projectAuthorizationFailure } from '@/lib/project-access'
 import { syncProjectCompletion } from '@/lib/project-completion'
+import { syncParentTasks } from '@/lib/project-parent-completion'
 
 const MAX_SECTION_ORDER_INDEX = 1_000_000_000
 
@@ -38,7 +41,9 @@ export async function GET(
       include: { _count: { select: { tasks: true } } },
     })
 
-    return NextResponse.json({ sections })
+    return NextResponse.json({
+      sections: authorization.isParticipant ? sections : sections.filter((section) => !section.isBacklog),
+    })
   } catch (error) {
     console.error('Failed to fetch sections:', error)
     return NextResponse.json({ error: 'Failed to fetch sections' }, { status: 500 })
@@ -150,6 +155,51 @@ export async function PUT(
   }
 }
 
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const user = await getSession()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { id: projectId } = await params
+    const authorization = await getProjectAuthorization(projectId, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization, 'manage')
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
+
+    const { orderedSectionIds } = await request.json()
+    const current = await prisma.taskSection.findMany({
+      where: { projectId },
+      orderBy: { orderIndex: 'asc' },
+      select: { id: true, isBacklog: true },
+    })
+    // Backlog is hidden from non-participants, so the client never sends its id.
+    const hiddenIds = authorization.isParticipant ? [] : current.filter((section) => section.isBacklog).map((section) => section.id)
+    const visibleIds = current.map((section) => section.id).filter((id) => !hiddenIds.includes(id))
+    const orderError = validateSectionOrder(visibleIds, orderedSectionIds)
+    if (orderError) return NextResponse.json({ error: orderError }, { status: 400 })
+
+    const ids = mergeVisibleSectionOrder(current.map((section) => section.id), hiddenIds, orderedSectionIds)
+    await prisma.$transaction(
+      ids.map((id, orderIndex) => prisma.taskSection.update({ where: { id }, data: { orderIndex } }))
+    )
+    const sections = await prisma.taskSection.findMany({
+      where: { projectId },
+      orderBy: { orderIndex: 'asc' },
+    })
+
+    return NextResponse.json({
+      success: true,
+      sections: authorization.isParticipant ? sections : sections.filter((section) => !section.isBacklog),
+    })
+  } catch (error) {
+    console.error('Failed to reorder sections:', error)
+    return NextResponse.json({ error: 'Failed to reorder sections' }, { status: 500 })
+  }
+}
+
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -185,6 +235,12 @@ export async function DELETE(
       )
     }
 
+    const movedParents = await prisma.task.findMany({
+      where: { sectionId, parentTaskId: { not: null } },
+      select: { parentTaskId: true },
+      distinct: ['parentTaskId'],
+    })
+
     // Move tasks and remove the status atomically so a failed delete
     // cannot leave a partially migrated project.
     const [movedTasks] = await prisma.$transaction([
@@ -199,6 +255,12 @@ export async function DELETE(
       }),
       prisma.taskSection.delete({ where: { id: sectionId } }),
     ])
+    // The moved tasks' status may have changed with their section.
+    await syncParentTasks({
+      parentTaskIds: movedParents.map((task) => task.parentTaskId as string),
+      actorId: user.id,
+      origin: request.nextUrl.origin,
+    })
     try {
       await syncProjectCompletion(projectId)
     } catch (syncError) {

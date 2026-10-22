@@ -10,18 +10,20 @@ import {
   KeyboardSensor,
   PointerSensor,
   closestCorners,
+  type CollisionDetection,
   useDroppable,
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
-import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { SortableContext, arrayMove, horizontalListSortingStrategy, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Calendar, Flag, MessageSquare, Plus, Trash2 } from 'lucide-react'
+import { Calendar, Flag, GripVertical, MessageSquare, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import { cn } from '@/lib/utils'
 import { calculateTaskVariance, isTaskAssignedTo, PROJECT_TASK_TIME_ZONE } from '@/lib/project-progress'
 import type { PanelTask, ProjectStatusSection } from './TaskDetailPanel'
+import { sortTasksByDeadline } from './workspace-utils'
 
 const TASK_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   timeZone: PROJECT_TASK_TIME_ZONE,
@@ -46,9 +48,23 @@ interface BoardViewProps {
   onTasksChange: () => void
 }
 
+const SECTION_PREFIX = 'section:'
+
+// Section drags only collide with other columns; task drags ignore the column sort targets.
+const collisionDetection: CollisionDetection = (args) => {
+  const isSectionDrag = args.active.data.current?.type === 'section'
+  return closestCorners({
+    ...args,
+    droppableContainers: args.droppableContainers.filter(
+      (container) => String(container.id).startsWith(SECTION_PREFIX) === isSectionDrag
+    ),
+  })
+}
+
 export function BoardView({ projectId, tasks, sections, viewerId, canManage, onTaskClick, onTasksChange }: BoardViewProps) {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [localTasks, setLocalTasks] = useState<PanelTask[]>(tasks)
+  const [localSections, setLocalSections] = useState<ProjectStatusSection[]>(sections)
   const [addingStatus, setAddingStatus] = useState(false)
   const [newStatusName, setNewStatusName] = useState('')
   const [deletingSectionId, setDeletingSectionId] = useState<string | null>(null)
@@ -56,6 +72,10 @@ export function BoardView({ projectId, tasks, sections, viewerId, canManage, onT
   useEffect(() => {
     setLocalTasks(tasks)
   }, [tasks])
+
+  useEffect(() => {
+    setLocalSections(sections)
+  }, [sections])
 
   const sectionById = useMemo(
     () => new Map(sections.map((section) => [section.id, section])),
@@ -71,6 +91,7 @@ export function BoardView({ projectId, tasks, sections, viewerId, canManage, onT
   const canEditTask = (task: PanelTask) => canManage || isTaskAssignedTo(task, viewerId)
 
   const handleDragStart = (event: DragStartEvent) => {
+    if (event.active.data.current?.type === 'section') return
     const task = localTasks.find((candidate) => candidate.id === event.active.id)
     if (!task || !canEditTask(task)) return
     setActiveId(task.id)
@@ -78,7 +99,7 @@ export function BoardView({ projectId, tasks, sections, viewerId, canManage, onT
 
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event
-    if (!over) return
+    if (!over || active.data.current?.type === 'section') return
 
     const draggedTask = localTasks.find((task) => task.id === active.id)
     if (!draggedTask || !canEditTask(draggedTask)) return
@@ -106,8 +127,33 @@ export function BoardView({ projectId, tasks, sections, viewerId, canManage, onT
   }
 
   const handleDragEnd = async (event: DragEndEvent) => {
-    const { active } = event
+    const { active, over } = event
     setActiveId(null)
+
+    if (active.data.current?.type === 'section') {
+      if (!canManage || !over || active.id === over.id) return
+      const from = localSections.findIndex((section) => `${SECTION_PREFIX}${section.id}` === active.id)
+      const to = localSections.findIndex((section) => `${SECTION_PREFIX}${section.id}` === over.id)
+      if (from < 0 || to < 0) return
+      const reordered = arrayMove(localSections, from, to)
+      setLocalSections(reordered)
+      try {
+        const res = await fetch(`/api/projects/${projectId}/sections`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderedSectionIds: reordered.map((section) => section.id) }),
+        })
+        const data = await res.json()
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || 'Failed to reorder sections')
+        }
+        onTasksChange()
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to reorder sections')
+        setLocalSections(sections)
+      }
+      return
+    }
 
     const task = localTasks.find((item) => item.id === active.id)
     const original = tasks.find((item) => item.id === active.id)
@@ -228,20 +274,21 @@ export function BoardView({ projectId, tasks, sections, viewerId, canManage, onT
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCorners}
+      collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
+      <SortableContext items={localSections.map((section) => `${SECTION_PREFIX}${section.id}`)} strategy={horizontalListSortingStrategy}>
       <div className="flex gap-4 overflow-x-auto pb-4 min-h-[400px]">
-        {sections.map((section) => (
+        {localSections.map((section) => (
           <BoardColumn
             key={section.id}
             section={section}
-            tasks={localTasks.filter((task) => task.sectionId === section.id)}
+            tasks={sortTasksByDeadline(localTasks.filter((task) => task.sectionId === section.id))}
             viewerId={viewerId}
             canManage={canManage}
-            canDelete={canManage && sections.length > 1}
+            canDelete={canManage && localSections.length > 1}
             deleting={deletingSectionId === section.id}
             onTaskClick={onTaskClick}
             onAddTask={handleAddTask}
@@ -276,6 +323,7 @@ export function BoardView({ projectId, tasks, sections, viewerId, canManage, onT
           )}
         </div>}
       </div>
+      </SortableContext>
 
       <DragOverlay>
         {activeTask && <TaskCard task={activeTask} isDragging />}
@@ -308,6 +356,15 @@ function BoardColumn({
   const [adding, setAdding] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const { setNodeRef, isOver } = useDroppable({ id: section.id })
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setSortableRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: `${SECTION_PREFIX}${section.id}`, data: { type: 'section' }, disabled: !canManage })
 
   const handleAdd = () => {
     if (newTitle.trim()) {
@@ -318,8 +375,24 @@ function BoardColumn({
   }
 
   return (
-    <div className="flex-shrink-0 w-72">
+    <div
+      ref={setSortableRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={cn('flex-shrink-0 w-72', isDragging && 'opacity-60 z-10')}
+    >
       <div className="group flex items-center gap-2 px-2 py-2 mb-2">
+        {canManage && (
+          <button
+            type="button"
+            ref={setActivatorNodeRef}
+            {...attributes}
+            {...listeners}
+            aria-label={`Move ${section.name} section`}
+            className="inline-flex h-7 w-5 cursor-grab items-center justify-center rounded-md text-muted-foreground/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
+          >
+            <GripVertical className="h-3.5 w-3.5" />
+          </button>
+        )}
         <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: section.color }} />
         <span className="text-sm font-semibold">{section.name}</span>
         <span className="text-xs text-muted-foreground ml-auto">{tasks.length}</span>
@@ -345,21 +418,8 @@ function BoardColumn({
         )}
         style={!isOver ? { borderColor: `${section.color}33`, backgroundColor: `${section.color}0d` } : undefined}
       >
-        <SortableContext items={tasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
-          <div className="space-y-2">
-            {tasks.map((task) => (
-              <SortableTaskCard
-                key={task.id}
-                task={task}
-                disabled={!canManage && !isTaskAssignedTo(task, viewerId)}
-                onClick={() => onTaskClick(task)}
-              />
-            ))}
-          </div>
-        </SortableContext>
-
         {adding ? (
-          <div className="mt-2">
+          <div className="mb-2">
             <input
               autoFocus
               value={newTitle}
@@ -379,12 +439,25 @@ function BoardColumn({
         ) : (
           <button
             onClick={() => setAdding(true)}
-            className="mt-2 w-full flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground/50 hover:text-muted-foreground rounded-lg hover:bg-card/50 transition-colors"
+            className="mb-2 w-full flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground/50 hover:text-muted-foreground rounded-lg hover:bg-card/50 transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
             Add task
           </button>
         )}
+
+        <SortableContext items={tasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
+          <div className="space-y-2">
+            {tasks.map((task) => (
+              <SortableTaskCard
+                key={task.id}
+                task={task}
+                disabled={!canManage && !isTaskAssignedTo(task, viewerId)}
+                onClick={() => onTaskClick(task)}
+              />
+            ))}
+          </div>
+        </SortableContext>
       </div>
     </div>
   )

@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { Suspense, useEffect, useRef, useState, useCallback } from 'react'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { UserAvatar } from '@/components/composed/UserAvatar'
@@ -16,9 +16,12 @@ import { MemberManager } from '@/components/projects/MemberManager'
 import {
   List, LayoutGrid, UserPlus, Settings, ListTodo,
   ChevronLeft, MoreHorizontal, Pencil, Archive, Trash2, Tag, Plus,
-  CheckCircle2, RotateCcw, AlertTriangle, PauseCircle,
+  CheckCircle2, RotateCcw, AlertTriangle, PauseCircle, Lock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import Link from 'next/link'
+import { Button } from '@/components/ui/button'
+import { projectLoadFailure, readSharedTaskId } from '@/lib/project-task-utils'
 import { calculateTaskVariance } from '@/lib/project-progress'
 
 /* ─── Types ───────────────────────────────────────────────────────────── */
@@ -32,6 +35,7 @@ interface Project {
   description: string | null
   color: string | null
   status: string
+  priority: WorkspaceProject['priority']
   owner: { id: string; name: string }
   members: Array<{ user: { id: string; name: string }; role: string }>
   sections: ProjectStatusSection[]
@@ -53,13 +57,26 @@ const LABEL_COLORS = [
 
 /* ─── Page ────────────────────────────────────────────────────────────── */
 
+// useSearchParams needs a Suspense boundary or `next build` fails
 export default function ProjectDetailPage() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <ProjectDetail />
+    </Suspense>
+  )
+}
+
+function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const sharedTaskId = readSharedTaskId(searchParams)
+  const openedSharedTaskRef = useRef<string | null>(null)
   const viewer = useLayoutUser()
 
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadFailure, setLoadFailure] = useState<ReturnType<typeof projectLoadFailure> | null>(null)
   const [view, setView] = useState<'list' | 'board'>('list')
   const [selectedTask, setSelectedTask] = useState<PanelTask | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
@@ -74,12 +91,22 @@ export default function ProjectDetailPage() {
   const [newLabelName, setNewLabelName] = useState('')
   const [newLabelColor, setNewLabelColor] = useState(LABEL_COLORS[0])
 
+  // Keep ?task= in the URL so the open task can be shared
+  const setTaskParam = useCallback((taskId: string | null) => {
+    router.replace(taskId ? `/projects/${id}?task=${encodeURIComponent(taskId)}` : `/projects/${id}`, { scroll: false })
+  }, [router, id])
+
+  const closePanel = useCallback(() => {
+    setPanelOpen(false)
+    setSelectedTask(null)
+    setTaskParam(null)
+  }, [setTaskParam])
+
   // Keyboard shortcuts
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === 'Escape' && panelOpen) {
-        setPanelOpen(false)
-        setSelectedTask(null)
+        closePanel()
       }
       // Switch views with number keys (when not in an input)
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
@@ -88,13 +115,15 @@ export default function ProjectDetailPage() {
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [panelOpen])
+  }, [panelOpen, closePanel])
 
   const loadProject = useCallback(async () => {
     try {
       const res = await fetch(`/api/projects/${id}`)
+      if (!res.ok) setLoadFailure(projectLoadFailure(res.status))
       const data = await res.json()
       if (data.project) {
+        setLoadFailure(null)
         setProject(data.project)
         setSelectedTask((current) => {
           if (!current) return current
@@ -103,12 +132,27 @@ export default function ProjectDetailPage() {
       }
     } catch {
       toast.error('Failed to load project')
+      setLoadFailure((current) => current ?? 'error')
     } finally {
       setLoading(false)
     }
   }, [id])
 
   useEffect(() => { loadProject() }, [loadProject])
+
+  // Open the task from a shared link once per ?task= value
+  useEffect(() => {
+    if (!project || !sharedTaskId || openedSharedTaskRef.current === sharedTaskId) return
+    openedSharedTaskRef.current = sharedTaskId
+    const task = project.tasks.find((t) => t.id === sharedTaskId)
+    if (!task) {
+      toast.error('That task no longer exists or you do not have access to it')
+      setTaskParam(null)
+      return
+    }
+    setSelectedTask(task)
+    setPanelOpen(true)
+  }, [project, sharedTaskId, setTaskParam])
 
   useEffect(() => {
     if (!editingDescription) setDescriptionDraft(project?.description || '')
@@ -117,6 +161,7 @@ export default function ProjectDetailPage() {
   const handleTaskClick = (task: PanelTask) => {
     setSelectedTask(task)
     setPanelOpen(true)
+    setTaskParam(task.id)
   }
 
   const handleTaskUpdate = (updatedTask: PanelTask) => {
@@ -124,8 +169,7 @@ export default function ProjectDetailPage() {
   }
 
   const handleTaskDelete = (taskId: string) => {
-    setPanelOpen(false)
-    setSelectedTask(null)
+    closePanel()
   }
 
   const handleOpenTaskById = (taskId: string) => {
@@ -133,6 +177,7 @@ export default function ProjectDetailPage() {
     if (!nextTask) return
     setSelectedTask(nextTask)
     setPanelOpen(true)
+    setTaskParam(nextTask.id)
   }
 
   const handleDeleteProject = async () => {
@@ -263,7 +308,28 @@ export default function ProjectDetailPage() {
   }
 
   if (loading) return <LoadingScreen message="Loading project..." />
-  if (!project) return <EmptyState icon={<ListTodo className="h-12 w-12" />} title="Project not found" />
+  if (!project) {
+    const copy = {
+      forbidden: { icon: <Lock className="h-12 w-12" />, title: "You don't have access to this project", description: 'Ask a project lead to add you, then open the link again.' },
+      not_found: { icon: <ListTodo className="h-12 w-12" />, title: 'Project not found', description: 'It may have been deleted, or the link is incomplete.' },
+      error: { icon: <ListTodo className="h-12 w-12" />, title: "Couldn't load this project", description: 'Check your connection and try again.' },
+    }[loadFailure ?? 'not_found']
+    return (
+      <EmptyState
+        icon={copy.icon}
+        title={copy.title}
+        description={copy.description}
+        action={
+          <div className="flex items-center gap-2">
+            {loadFailure === 'error' && (
+              <Button variant="outline" size="sm" onClick={() => { setLoading(true); loadProject() }}>Try again</Button>
+            )}
+            <Button size="sm" asChild><Link href="/projects">Back to Projects</Link></Button>
+          </div>
+        }
+      />
+    )
+  }
 
   const members = project.members.map((m) => ({ ...m.user, role: m.role }))
   const canManage = project.canManage ?? (
@@ -285,6 +351,7 @@ export default function ProjectDetailPage() {
     description: project.description,
     color: project.color,
     status: project.status,
+    priority: project.priority,
     owner: project.owner,
     members,
     canManage,
@@ -700,7 +767,7 @@ export default function ProjectDetailPage() {
         sections={visibleSections}
         labels={project.labels}
         open={panelOpen}
-        onClose={() => { setPanelOpen(false); setSelectedTask(null) }}
+        onClose={closePanel}
         onTaskUpdate={handleTaskUpdate}
         onTaskDelete={handleTaskDelete}
         onTasksChange={loadProject}

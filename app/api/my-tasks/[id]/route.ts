@@ -10,6 +10,7 @@ import {
 } from '@/lib/project-status-sections'
 import { shouldMarkTaskCompletedLate } from '@/lib/project-progress'
 import { syncProjectCompletion } from '@/lib/project-completion'
+import { computeParentSyncTargets, syncParentTasks } from '@/lib/project-parent-completion'
 import { getProjectAuthorization, projectAuthorizationFailure } from '@/lib/project-access'
 import { isProjectTaskDateRangeValid, isProjectTaskPriority } from '@/lib/project-task-utils'
 
@@ -177,6 +178,19 @@ export async function PATCH(
       }
     }
 
+    // Before the project sync, so the project status sees the parent's new status.
+    const syncedParentTasks = await syncParentTasks({
+      parentTaskIds: computeParentSyncTargets(task, updatedTask),
+      actorId: sessionUser.id,
+      origin: request.nextUrl.origin,
+      visibilityScope: authorization.isParticipant
+        ? null
+        : await prisma.task.findMany({
+            where: { projectId: task.projectId },
+            select: { id: true, section: { select: { isBacklog: true } } },
+          }),
+    })
+
     if (body.status !== undefined || body.dueDate !== undefined || body.startDate !== undefined) {
       try {
         await syncProjectCompletion(task.projectId)
@@ -185,7 +199,7 @@ export async function PATCH(
       }
     }
 
-    return NextResponse.json({ success: true, task: updatedTask })
+    return NextResponse.json({ success: true, task: updatedTask, syncedParentTasks })
   } catch (error) {
     console.error('Failed to update my task:', error)
     return NextResponse.json({ error: 'Failed to update task' }, { status: 500 })

@@ -7,12 +7,16 @@ import type {
 } from '../components/projects/workspace-types'
 import {
   calculateProgress,
+  filterPeopleByQuery,
+  nextFocusIndex,
   calculateOverallProgress,
   groupWorkspaceTaskItemsByAssignee,
+  isRowNavigationClick,
   isTaskOverdue,
   projectMatchesSearch,
   progressBand,
   sortTasks,
+  sortTasksByDeadline,
   sortWorkspaceTaskItems,
   taskMatchesAssignee,
   taskMatchesSearch,
@@ -265,4 +269,78 @@ test('variance excludes backlog and completed tasks, and progress bands meet the
   assert.equal(progressBand(34).fill, 'bg-amber-500')
   assert.equal(progressBand(67).fill, 'bg-blue-500')
   assert.equal(progressBand(100).fill, 'bg-emerald-500')
+})
+
+const fakeTarget = (matches: boolean) => ({ closest: () => (matches ? {} : null) })
+const fakeRow = (contains: boolean) => ({ contains: () => contains })
+
+test('a click on plain row space opens the project', () => {
+  assert.equal(isRowNavigationClick(fakeTarget(false), fakeRow(true)), true)
+})
+test('a click on a control in the row does not navigate', () => {
+  assert.equal(isRowNavigationClick(fakeTarget(true), fakeRow(true)), false)
+})
+test('a click inside portal content does not navigate', () => {
+  assert.equal(isRowNavigationClick(fakeTarget(false), fakeRow(false)), false)
+})
+test('no target does not navigate', () => {
+  assert.equal(isRowNavigationClick(null, fakeRow(true)), false)
+})
+
+const deadlineTask = (id: string, dueDate: string | null) => ({ id, dueDate })
+
+test('earlier deadlines come first and undated tasks go last', () => {
+  const sorted = sortTasksByDeadline([deadlineTask('none', null), deadlineTask('late', '2026-11-20'), deadlineTask('soon', '2026-10-25')])
+  assert.deepEqual(sorted.map((task) => task.id), ['soon', 'late', 'none'])
+})
+
+test('tasks with the same deadline keep their existing order', () => {
+  const sorted = sortTasksByDeadline([deadlineTask('b', '2026-10-25'), deadlineTask('a', '2026-10-25'), deadlineTask('x', null), deadlineTask('y', null)])
+  assert.deepEqual(sorted.map((task) => task.id), ['b', 'a', 'x', 'y'])
+})
+
+test('sorts wrapped items through the accessor', () => {
+  const sorted = sortTasksByDeadline(
+    [{ task: deadlineTask('late', '2026-11-20') }, { task: deadlineTask('soon', '2026-10-25') }],
+    ({ task }) => task.dueDate,
+  )
+  assert.deepEqual(sorted.map(({ task }) => task.id), ['soon', 'late'])
+})
+
+test('sortTasksByDeadline does not mutate the input', () => {
+  const input = [deadlineTask('late', '2026-11-20'), deadlineTask('soon', '2026-10-25')]
+  sortTasksByDeadline(input)
+  assert.deepEqual(input.map((task) => task.id), ['late', 'soon'])
+})
+
+const searchablePeople = [
+  { id: '1', name: 'Fakayha Jamil', email: 'fakayha@plutus21.com' },
+  { id: '2', name: 'Amjad Ali', email: 'amjad@plutus21.com' },
+  { id: '3', name: 'José Núñez', email: null },
+]
+const ids = (query: string) => filterPeopleByQuery(searchablePeople, query).map((p) => p.id)
+
+test('an empty or blank query keeps everyone in order', () => {
+  assert.deepEqual(ids(''), ['1', '2', '3'])
+  assert.deepEqual(ids('   '), ['1', '2', '3'])
+})
+test('matches part of a name, ignoring case', () => {
+  assert.deepEqual(ids('ALI'), ['2'])
+})
+test('matches by email', () => {
+  assert.deepEqual(ids('fakayha@'), ['1'])
+})
+test('ignores accents', () => {
+  assert.deepEqual(ids('jose nunez'), ['3'])
+})
+test('no match returns an empty list', () => {
+  assert.deepEqual(filterPeopleByQuery(searchablePeople, 'zzz'), [])
+})
+
+test('nextFocusIndex moves down and up and stops at the ends', () => {
+  assert.equal(nextFocusIndex(0, 3, 'ArrowDown'), 1)
+  assert.equal(nextFocusIndex(2, 3, 'ArrowDown'), 2)
+  assert.equal(nextFocusIndex(2, 3, 'ArrowUp'), 1)
+  assert.equal(nextFocusIndex(0, 3, 'ArrowUp'), 0)
+  assert.equal(nextFocusIndex(0, 1, 'ArrowDown'), 0)
 })

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { parseProjectPriority } from '@/lib/project-task-utils'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { DEFAULT_STATUS_SECTIONS } from '@/lib/project-status-sections'
@@ -87,7 +88,11 @@ export async function POST(request: NextRequest) {
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { name, description, memberIds, color } = await request.json()
+    const { name, description, memberIds, color, priority } = await request.json()
+    const parsedPriority = parseProjectPriority(priority)
+    if (parsedPriority === null) {
+      return NextResponse.json({ error: 'Invalid project priority' }, { status: 400 })
+    }
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'Project name is required' }, { status: 400 })
@@ -107,6 +112,7 @@ export async function POST(request: NextRequest) {
         name: name.trim(),
         description: description?.trim() || null,
         color: color || null,
+        ...(parsedPriority && { priority: parsedPriority }),
         ownerId: user.id,
         members: {
           create: [

@@ -20,6 +20,12 @@ export function isProjectTaskPriority(value: unknown): value is ProjectTaskPrior
   )
 }
 
+// undefined = absent, null = invalid
+export function parseProjectPriority(value: unknown): ProjectTaskPriority | undefined | null {
+  if (value === undefined) return undefined
+  return isProjectTaskPriority(value) ? value : null
+}
+
 export function shiftProjectTaskDateByCalendarDays(value: Date | string, days: number) {
   const shifted = value instanceof Date ? new Date(value) : new Date(value)
   if (Number.isNaN(shifted.getTime()) || !Number.isInteger(days)) return null
@@ -65,4 +71,19 @@ export function getTaskStatusForSectionName(name: string | null | undefined): Pr
   if (normalized === 'done' || normalized === 'complete' || normalized === 'completed') return 'DONE'
 
   return null
+}
+
+export function buildTaskShareUrl(origin: string, projectId: string, taskId: string) {
+  return `${origin}/projects/${encodeURIComponent(projectId)}?task=${encodeURIComponent(taskId)}`
+}
+
+export function readSharedTaskId(params: { get(name: string): string | null }) {
+  const value = (params.get('task') || '').trim()
+  return value && value.length <= 64 ? value : null
+}
+
+export function projectLoadFailure(status: number): 'forbidden' | 'not_found' | 'error' {
+  if (status === 403) return 'forbidden'
+  if (status === 404) return 'not_found'
+  return 'error'
 }

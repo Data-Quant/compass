@@ -84,6 +84,7 @@ export async function GET() {
         description: project.description,
         color: project.color,
         status: project.status,
+        priority: project.priority,
         ownerId: project.ownerId,
         owner: project.owner,
         members: project.members.map((membership) => ({

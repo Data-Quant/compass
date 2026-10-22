@@ -6,15 +6,18 @@ import {
 } from '@/components/ui/sheet'
 import { Calendar as DatePicker } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { PeopleSearchList } from './PeopleSearchList'
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import {
   X, Trash2, Calendar as CalendarIcon, Flag, Tag, Users, MessageSquare,
   Send, ChevronDown, Check, GitBranch, Plus, UserRoundCheck, Image as ImageIcon,
-  History, Loader2, Bold, Underline, List
+  History, Loader2, Bold, Underline, List, Link2
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { copyTextToClipboard } from '@/lib/copy-text'
+import { buildTaskShareUrl } from '@/lib/project-task-utils'
 
 /* ─── Types ───────────────────────────────────────────────────────────── */
 
@@ -367,6 +370,19 @@ function Dropdown({ trigger, children, className }: {
     return () => document.removeEventListener('mousedown', handle)
   }, [])
 
+  // Window capture runs before the Sheet's own Escape handler, so one Escape closes only this menu.
+  useEffect(() => {
+    if (!open) return
+    function handleKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      e.stopPropagation()
+      setOpen(false)
+    }
+    window.addEventListener('keydown', handleKey, true)
+    return () => window.removeEventListener('keydown', handleKey, true)
+  }, [open])
+
   return (
     <div className="relative" ref={ref}>
       <button type="button" onClick={() => setOpen(!open)} className="w-full">
@@ -417,6 +433,12 @@ export function TaskDetailPanel({
   const commentTextareaRef = useRef<HTMLTextAreaElement>(null)
   const descriptionImageInputRef = useRef<HTMLInputElement>(null)
   const commentImageInputRef = useRef<HTMLInputElement>(null)
+  const [linkCopied, setLinkCopied] = useState(false)
+  const linkCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    setLinkCopied(false)
+    return () => { if (linkCopiedTimerRef.current) clearTimeout(linkCopiedTimerRef.current) }
+  }, [task?.id])
   const activeTaskKeyRef = useRef<string | null>(null)
   const commentsRequestRef = useRef(0)
   const activitiesRequestRef = useRef(0)
@@ -663,7 +685,7 @@ export function TaskDetailPanel({
   }
 
   const toggleAssistant = async (memberId: string) => {
-    if (!task || !canEdit || !canManage || memberId === task.assigneeId) return
+    if (!task || !canEdit || memberId === task.assigneeId) return
     const current = (task.assistants || []).map((assistant) => assistant.user.id)
     const next = current.includes(memberId)
       ? current.filter((id) => id !== memberId)
@@ -672,7 +694,7 @@ export function TaskDetailPanel({
   }
 
   const clearAssistants = async () => {
-    if (!task || !canEdit || !canManage || !task.assistants?.length) return
+    if (!task || !canEdit || !task.assistants?.length) return
     updateTask({ assistantIds: [] })
   }
 
@@ -769,6 +791,27 @@ export function TaskDetailPanel({
             )}
           </div>
           <div className="flex items-center gap-1">
+            <button
+              onClick={async (e) => {
+                if (!task) return
+                try {
+                  const ok = await copyTextToClipboard(buildTaskShareUrl(window.location.origin, projectId, task.id), e.currentTarget)
+                  if (!ok) throw new Error('copy failed')
+                  toast.success('Link copied')
+                  setLinkCopied(true)
+                  if (linkCopiedTimerRef.current) clearTimeout(linkCopiedTimerRef.current)
+                  linkCopiedTimerRef.current = setTimeout(() => setLinkCopied(false), 2000)
+                } catch {
+                  toast.error('Could not copy the link')
+                }
+              }}
+              className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+              title={linkCopied ? 'Link copied' : 'Copy link'}
+              aria-label="Copy link to this task"
+            >
+              {linkCopied ? <Check className="w-4 h-4 text-emerald-500" /> : <Link2 className="w-4 h-4" />}
+              <span className="sr-only" aria-live="polite">{linkCopied ? 'Link copied' : ''}</span>
+            </button>
             {canManage && (
               <button
                 onClick={handleDelete}
@@ -880,27 +923,38 @@ export function TaskDetailPanel({
                     </span>
                   }
                 >
-                  <div className="p-1 max-h-48 overflow-y-auto">
-                    <button
-                      onClick={() => updateTask({ assigneeId: null })}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors text-muted-foreground"
-                    >
-                      Unassigned
-                    </button>
-                    {members.map((m) => (
-                      <button
-                        key={m.id}
-                        onClick={() => updateTask({ assigneeId: m.id })}
-                        className={cn(
-                          'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors',
-                          task.assigneeId === m.id && 'bg-muted/50'
-                        )}
-                      >
-                        <UserAvatar name={m.name} size="xs" />
-                        {m.name}
-                      </button>
-                    ))}
-                  </div>
+                  <PeopleSearchList
+                    people={members}
+                    pinned={
+                      <div className="px-1">
+                        <button
+                          onClick={() => updateTask({ assigneeId: null })}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors text-muted-foreground"
+                        >
+                          Unassigned
+                        </button>
+                      </div>
+                    }
+                  >
+                    {(filtered) => (
+                      <div className="p-1 pt-0 max-h-48 overflow-y-auto">
+                        {filtered.map((m) => (
+                          <button
+                            key={m.id}
+                            data-person-option
+                            onClick={() => updateTask({ assigneeId: m.id })}
+                            className={cn(
+                              'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors',
+                              task.assigneeId === m.id && 'bg-muted/50'
+                            )}
+                          >
+                            <UserAvatar name={m.name} size="xs" />
+                            {m.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </PeopleSearchList>
                 </Dropdown>
               ) : (
                 <span className="inline-flex items-center gap-2 px-2.5 py-1 text-sm">
@@ -918,7 +972,8 @@ export function TaskDetailPanel({
 
             {/* Co-assignees */}
             <FieldRow icon={<UserRoundCheck className="w-4 h-4" />} label="Co-assignees">
-              {canManage && canEdit ? (
+              {/* canEdit already means assignee, co-assignee or manager: the co-assignee rule */}
+              {canEdit ? (
               <Dropdown
                 trigger={
                   <span className="inline-flex max-w-full items-center gap-2 rounded-md px-2.5 py-1 text-sm hover:bg-muted/30 transition-colors">
@@ -947,32 +1002,45 @@ export function TaskDetailPanel({
                 }
                 className="min-w-[220px]"
               >
-                <div className="p-1 max-h-56 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                  {assistants.length > 0 && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); clearAssistants() }}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors text-muted-foreground"
-                    >
-                      Clear co-assignees
-                    </button>
-                  )}
-                  {availableAssistantMembers.map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={(e) => { e.stopPropagation(); toggleAssistant(m.id) }}
-                      className={cn(
-                        'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors',
-                        assistantIds.includes(m.id) && 'bg-muted/50'
-                      )}
-                    >
-                      <UserAvatar name={m.name} size="xs" />
-                      <span className="flex-1 text-left">{m.name}</span>
-                      {assistantIds.includes(m.id) && <Check className="w-3.5 h-3.5 text-primary" />}
-                    </button>
-                  ))}
-                  {availableAssistantMembers.length === 0 && (
-                    <p className="px-3 py-2 text-sm text-muted-foreground">No other project members available.</p>
-                  )}
+                <div onClick={(e) => e.stopPropagation()}>
+                  <PeopleSearchList
+                    people={availableAssistantMembers}
+                    pinned={assistants.length > 0 && (
+                      <div className="px-1">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); clearAssistants() }}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors text-muted-foreground"
+                        >
+                          Clear co-assignees
+                        </button>
+                      </div>
+                    )}
+                  >
+                    {(filtered) => (
+                      <div className="p-1 pt-0 max-h-56 overflow-y-auto">
+                        {filtered.map((m) => (
+                          <button
+                            key={m.id}
+                            data-person-option
+                            onClick={(e) => { e.stopPropagation(); toggleAssistant(m.id) }}
+                            className={cn(
+                              'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors',
+                              assistantIds.includes(m.id) && 'bg-muted/50'
+                            )}
+                          >
+                            <UserAvatar name={m.name} size="xs" />
+                            <span className="flex-1 text-left">{m.name}</span>
+                            {assistantIds.includes(m.id) && <Check className="w-3.5 h-3.5 text-primary" />}
+                          </button>
+                        ))}
+                        {availableAssistantMembers.length === 0 && (
+                          <p className="px-3 py-2 text-sm text-muted-foreground">
+                            No other project members available. Ask a project lead to add people to this project.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </PeopleSearchList>
                 </div>
               </Dropdown>
               ) : (

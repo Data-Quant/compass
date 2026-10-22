@@ -101,7 +101,11 @@ async function render(options: { groupMode?: 'project' | 'assignee'; assigneeFil
   ;(globalThis as typeof globalThis & { React: typeof React }).React = React
   const { WorkspaceTaskTable } = await import('../components/projects/WorkspaceTaskTable')
 
-  return renderToStaticMarkup(React.createElement(WorkspaceTaskTable, {
+  // useRouter needs a mounted app router; the row only calls push on click.
+  const { AppRouterContext } = await import('next/dist/shared/lib/app-router-context.shared-runtime')
+  const router = { push: () => undefined } as never
+
+  return renderToStaticMarkup(React.createElement(AppRouterContext.Provider, { value: router }, React.createElement(WorkspaceTaskTable, {
     projectViews: [view],
     viewerId: 'user-1',
     people: [project.owner, ...project.members],
@@ -133,7 +137,7 @@ async function render(options: { groupMode?: 'project' | 'assignee'; assigneeFil
     onCreateSubtask: async () => true,
     onCreateProject: async () => true,
     onPatchProject: async () => true,
-  }))
+  })))
 }
 
 test('project matrix keeps task rows and the task composer out until its project popover opens', async () => {

@@ -256,3 +256,21 @@ export async function resolveTaskStatusSection(input: {
 }
 
 export { DEFAULT_STATUS_SECTIONS }
+
+export function validateSectionOrder(existingIds: string[], orderedIds: unknown): string | null {
+  if (!Array.isArray(orderedIds) || orderedIds.some((id) => typeof id !== 'string')) {
+    return 'orderedSectionIds must be an array of section IDs'
+  }
+  const unique = new Set(orderedIds)
+  if (unique.size !== orderedIds.length || orderedIds.length !== existingIds.length || existingIds.some((id) => !unique.has(id))) {
+    return 'orderedSectionIds must list every section in this project exactly once'
+  }
+  return null
+}
+
+// Hidden sections keep their current slots; visible ones fill the rest in the given order.
+export function mergeVisibleSectionOrder(currentIds: string[], hiddenIds: string[], orderedVisibleIds: string[]): string[] {
+  const hidden = new Set(hiddenIds)
+  const visible = [...orderedVisibleIds]
+  return currentIds.map((id) => (hidden.has(id) ? id : visible.shift() as string))
+}
