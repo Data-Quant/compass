@@ -689,6 +689,22 @@ async function getGlobalQuestionBank(
   }
 }
 
+/**
+ * The questions a quarter pinned for this relationship (see EvaluationPeriodQuestion), in their pinned order: this
+ * evaluator's own set first, else the quarter's set for everyone; null when the quarter uses today's bank.
+ */
+async function getPeriodQuestionSet(periodId: string, relationshipType: RelationshipType, evaluatorId: string) {
+  const rows = await prisma.evaluationPeriodQuestion.findMany({
+    where: { periodId, relationshipType, OR: [{ evaluatorId }, { evaluatorId: null }] },
+    orderBy: { orderIndex: 'asc' },
+    include: { question: true },
+  })
+  const own = rows.filter((row) => row.evaluatorId === evaluatorId)
+  const chosen = own.length > 0 ? own : rows.filter((row) => row.evaluatorId === null)
+  if (chosen.length === 0) return null
+  return { forEvaluator: own.length > 0, questions: chosen.map((row) => ({ ...row.question, orderIndex: row.orderIndex })) }
+}
+
 export async function getResolvedEvaluationQuestions(params: {
   relationshipType: RelationshipType
   periodId: string
@@ -696,6 +712,7 @@ export async function getResolvedEvaluationQuestions(params: {
   evaluateeId: string
 }) {
   const { relationshipType, periodId, evaluatorId } = params
+  const pinned = await getPeriodQuestionSet(periodId, relationshipType, evaluatorId)
   let leadSource:
     | {
         sourceLeadId: string
@@ -704,13 +721,14 @@ export async function getResolvedEvaluationQuestions(params: {
       }
     | null = null
 
-  if (relationshipType === 'TEAM_LEAD') {
+  // An evaluator's own pinned set is the whole form: a lead's pre-evaluation questions are not added to it.
+  if (relationshipType === 'TEAM_LEAD' && !pinned?.forEvaluator) {
     leadSource = await getLeadQuestionSetForTeamLead(periodId, evaluatorId)
   }
 
-  const { bankRelationshipType, questions: globalQuestions } = await getGlobalQuestionBank(
-    relationshipType
-  )
+  const bank = await getGlobalQuestionBank(relationshipType)
+  const bankRelationshipType = bank.bankRelationshipType
+  const globalQuestions = pinned?.questions ?? bank.questions
 
   const questions = buildRuntimeEvaluationQuestionSet({
     relationshipType,

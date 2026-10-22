@@ -393,6 +393,7 @@ model User {
   evaluationPeriodOverridesCreated EvaluationPeriodAssignmentOverride[] @relation("EvaluationPeriodOverrideCreatedBy")
   evaluationAssignmentSnapshotsAsEvaluator EvaluationPeriodAssignmentSnapshot[] @relation("EvaluationSnapshotEvaluator")
   evaluationAssignmentSnapshotsAsEvaluatee EvaluationPeriodAssignmentSnapshot[] @relation("EvaluationSnapshotEvaluatee")
+  periodQuestionsAsEvaluator EvaluationPeriodQuestion[]
   subscriptionOwnerships SubscriptionOwner[]
   evaluationEdits        EvaluationEdit[]   @relation("EvaluationEditor")
   clientAssignments      ClientAssignment[] @relation("ClientAssignee")
@@ -534,6 +535,25 @@ model EvaluatorMapping {
   @@index([evaluateeId])
 }
 
+/// The questions a quarter runs with, when they differ from today's bank (Q3 2026 ran before the banks gained the
+/// weekly system's questions). Keyed by the evaluator's relationship (TEAM_LEAD = a lead scoring their team member);
+/// with `evaluatorId`, only that evaluator's evaluations (a partner HR fills in). A quarter with none uses the bank.
+model EvaluationPeriodQuestion {
+  id               String           @id @default(cuid())
+  periodId         String
+  relationshipType RelationshipType
+  evaluatorId      String?
+  questionId       String
+  orderIndex       Int
+  createdAt        DateTime         @default(now())
+
+  period    EvaluationPeriod   @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  question  EvaluationQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  evaluator User?              @relation(fields: [evaluatorId], references: [id], onDelete: Cascade)
+
+  @@index([periodId, relationshipType])
+}
+
 model EvaluationQuestion {
   id               String           @id @default(cuid())
   relationshipType RelationshipType
@@ -549,6 +569,7 @@ model EvaluationQuestion {
   updatedAt        DateTime         @updatedAt
 
   evaluations Evaluation[]
+  periodSets  EvaluationPeriodQuestion[]
 
   @@unique([relationshipType, orderIndex])
   @@index([relationshipType, orderIndex])
@@ -577,6 +598,7 @@ model EvaluationPeriod {
   selfEvaluations         SelfEvaluation[]
   assignmentOverrides     EvaluationPeriodAssignmentOverride[]
   assignmentSnapshots      EvaluationPeriodAssignmentSnapshot[]
+  questionSet              EvaluationPeriodQuestion[]
   preEvaluationTriggeredBy User?                    @relation("PreEvaluationTriggeredBy", fields: [preEvaluationTriggeredById], references: [id], onDelete: SetNull)
 
   @@index([isActive])
