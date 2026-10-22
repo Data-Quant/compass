@@ -7,6 +7,7 @@ import {
 import { Calendar as DatePicker } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { PeopleSearchList } from './PeopleSearchList'
+import { toLocalDateValue } from './workspace-utils'
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import {
   X, Trash2, Calendar as CalendarIcon, Flag, Tag, Users, MessageSquare,
@@ -146,13 +147,6 @@ const STATUS_HEX: Record<string, string> = {
   TODO: '#94a3b8',
   IN_PROGRESS: '#60a5fa',
   DONE: '#22c55e',
-}
-
-function toLocalDateValue(date: Date) {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
 }
 
 function parseTaskDate(value: string | null | undefined) {

@@ -10,6 +10,8 @@ import {
   filterPeopleByQuery,
   nextFocusIndex,
   calculateOverallProgress,
+  dueState,
+  formatShortDue,
   groupWorkspaceTaskItemsByAssignee,
   isRowNavigationClick,
   isTaskOverdue,
@@ -343,4 +345,52 @@ test('nextFocusIndex moves down and up and stops at the ends', () => {
   assert.equal(nextFocusIndex(2, 3, 'ArrowUp'), 1)
   assert.equal(nextFocusIndex(0, 3, 'ArrowUp'), 0)
   assert.equal(nextFocusIndex(0, 1, 'ArrowDown'), 0)
+})
+
+// Fixed clock: Oct 22 2026, noon in Karachi (UTC+5).
+const NOW = new Date('2026-10-22T07:00:00Z')
+
+test('formatShortDue shows month and day, adds the year when it differs', () => {
+  assert.equal(formatShortDue('2026-10-24T00:00:00Z', NOW), 'Oct 24')
+  assert.equal(formatShortDue('2027-01-05T00:00:00Z', NOW), 'Jan 5, 2027')
+})
+
+test('dueState: no date', () => {
+  const s = dueState(null, { done: false, overdue: false, now: NOW })
+  assert.equal(s.kind, 'none')
+  assert.equal(s.label, 'No date')
+})
+
+test('dueState: more than 2 days out is normal', () => {
+  const s = dueState('2026-10-25T00:00:00Z', { done: false, overdue: false, now: NOW })
+  assert.equal(s.kind, 'normal')
+  assert.equal(s.label, 'Oct 25')
+  assert.match(s.title, /in 3 days/)
+})
+
+test('dueState: today, tomorrow and 2 days out are soon', () => {
+  const o = { done: false, overdue: false, now: NOW }
+  assert.deepEqual([dueState('2026-10-22T00:00:00Z', o).kind, dueState('2026-10-22T00:00:00Z', o).label], ['soon', 'Today'])
+  assert.equal(dueState('2026-10-23T00:00:00Z', o).label, 'Tomorrow')
+  const two = dueState('2026-10-24T00:00:00Z', o)
+  assert.deepEqual([two.kind, two.label], ['soon', 'Oct 24'])
+})
+
+test('dueState: overdue carries a late label', () => {
+  const s = dueState('2026-10-20T00:00:00Z', { done: false, overdue: true, now: NOW })
+  assert.equal(s.kind, 'overdue')
+  assert.equal(s.label, 'Oct 20')
+  assert.equal(s.lateLabel, '2d late')
+})
+
+test('dueState: done is never overdue or soon', () => {
+  const late = dueState('2026-10-20T00:00:00Z', { done: true, overdue: true, now: NOW })
+  assert.equal(late.kind, 'done')
+  assert.equal(late.lateLabel, undefined)
+  assert.equal(dueState('2026-10-22T00:00:00Z', { done: true, overdue: false, now: NOW }).kind, 'done')
+})
+
+test('dueState: different year appends the year', () => {
+  const s = dueState('2025-12-30T00:00:00Z', { done: true, overdue: false, now: NOW })
+  assert.equal(s.label, 'Dec 30, 2025')
 })

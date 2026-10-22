@@ -1,3 +1,5 @@
+import type { LucideIcon } from 'lucide-react'
+import { AlertOctagon, SignalHigh, SignalLow, SignalMedium } from 'lucide-react'
 import type {
   AssigneeFilter,
   KanbanColumnId,
@@ -46,6 +48,13 @@ export const PRIORITY_CLASS: Record<WorkspacePriority, string> = {
   HIGH: 'border-red-500/25 bg-red-500/10 text-red-600 dark:text-red-300',
   MEDIUM: 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
   LOW: 'border-slate-400/30 bg-slate-500/10 text-slate-600 dark:text-slate-300',
+}
+
+export const PRIORITY_ICON: Record<WorkspacePriority, { icon: LucideIcon; className: string }> = {
+  URGENT: { icon: AlertOctagon, className: 'text-red-500' },
+  HIGH: { icon: SignalHigh, className: 'text-orange-500' },
+  MEDIUM: { icon: SignalMedium, className: 'text-muted-foreground' },
+  LOW: { icon: SignalLow, className: 'text-muted-foreground/70' },
 }
 
 const TASK_STATUS_ORDER: Record<WorkspaceTaskStatus, number> = {
@@ -207,10 +216,10 @@ export function dateInputValue(value: string | null | undefined) {
   return `${year}-${month}-${day}`
 }
 
-export function daysFromToday(value: string | null | undefined) {
+export function daysFromToday(value: string | null | undefined, now: Date = new Date()) {
   if (!value) return null
   const dueDay = projectTaskCalendarDayKey(value)
-  const today = projectTaskCalendarDayKey(new Date())
+  const today = projectTaskCalendarDayKey(now)
   if (dueDay === null || today === null) return null
   return Math.round((dueDay - today) / DAY_MS)
 }
@@ -226,8 +235,8 @@ export function overdueDays(project: WorkspaceProject, task: WorkspaceTask) {
   return Math.abs(daysFromToday(task.dueDate) || 0)
 }
 
-export function relativeDueDate(value: string | null | undefined) {
-  const days = daysFromToday(value)
+export function relativeDueDate(value: string | null | undefined, now: Date = new Date()) {
+  const days = daysFromToday(value, now)
   if (days === null) return 'No due date'
   if (days === 0) return 'Today'
   if (days === 1) return 'Tomorrow'
@@ -240,6 +249,52 @@ export function displayDueDate(value: string | null | undefined) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return 'No due date'
   return PROJECT_TASK_DISPLAY_FORMATTER.format(date)
+}
+
+const SHORT_DUE_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  timeZone: PROJECT_TASK_TIME_ZONE,
+  month: 'short',
+  day: 'numeric',
+})
+
+function calendarYear(value: string | Date) {
+  const key = projectTaskCalendarDayKey(value)
+  return key === null ? null : new Date(key).getUTCFullYear()
+}
+
+// "Oct 24", or "Oct 24, 2027" when the year is not the current one (project time zone).
+export function formatShortDue(value: string, now: Date = new Date()) {
+  const dayKey = projectTaskCalendarDayKey(value)
+  if (dayKey === null) return 'No date'
+  const short = SHORT_DUE_FORMATTER.format(new Date(dayKey))
+  const year = calendarYear(value)
+  return year === calendarYear(now) ? short : `${short}, ${year}`
+}
+
+export type DueStateKind = 'none' | 'normal' | 'soon' | 'overdue' | 'done'
+
+export function dueState(
+  dueDate: string | null,
+  opts: { done: boolean; overdue: boolean; now?: Date }
+): { kind: DueStateKind; label: string; lateLabel?: string; title: string } {
+  const now = opts.now ?? new Date()
+  const days = daysFromToday(dueDate, now)
+  if (!dueDate || days === null) return { kind: 'none', label: 'No date', title: 'No due date' }
+  const title = `${displayDueDate(dueDate)}, ${relativeDueDate(dueDate, now)}`
+  const short = formatShortDue(dueDate, now)
+  if (opts.done) return { kind: 'done', label: short, title }
+  if (opts.overdue) return { kind: 'overdue', label: short, lateLabel: `${Math.abs(days)}d late`, title }
+  if (days >= 0 && days <= 2) {
+    return { kind: 'soon', label: days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : short, title }
+  }
+  return { kind: 'normal', label: short, title }
+}
+
+export function toLocalDateValue(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 export function shiftDate(value: string | null | undefined, days: number) {

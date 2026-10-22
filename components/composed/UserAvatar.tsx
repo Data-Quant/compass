@@ -6,6 +6,7 @@ interface UserAvatarProps {
   name: string
   size?: 'xs' | 'sm' | 'md' | 'lg'
   className?: string
+  title?: string
 }
 
 const sizeClasses = {
@@ -15,7 +16,7 @@ const sizeClasses = {
   lg: 'w-12 h-12 text-base',
 }
 
-export function UserAvatar({ name, size = 'md', className }: UserAvatarProps) {
+export function UserAvatar({ name, size = 'md', className, title }: UserAvatarProps) {
   const initials = name
     .split(' ')
     .map((n) => n[0])
@@ -30,7 +31,7 @@ export function UserAvatar({ name, size = 'md', className }: UserAvatarProps) {
         sizeClasses[size],
         className
       )}
-      title={name}
+      title={title ?? name}
     >
       {initials}
     </div>
