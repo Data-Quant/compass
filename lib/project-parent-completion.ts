@@ -97,17 +97,21 @@ export async function syncParentTaskStatus(input: {
         }),
       },
     })
-    await recordTaskActivity({
-      taskId: parent.id,
-      actorId: input.actorId,
-      kind: 'status',
-      summary:
-        next === 'DONE'
-          ? 'Moved to Done automatically because all subtasks are done'
-          : 'Reopened automatically because a subtask is open again',
-      origin: input.origin,
-      notify: false, // recordTaskActivity emails unless notify is false
-    })
+    try {
+      await recordTaskActivity({
+        taskId: parent.id,
+        actorId: input.actorId,
+        kind: 'status',
+        summary:
+          next === 'DONE'
+            ? 'Moved to Done automatically because all subtasks are done'
+            : 'Reopened automatically because a subtask is open again',
+        origin: input.origin,
+        notify: false, // recordTaskActivity emails unless notify is false
+      })
+    } catch (error) {
+      console.error('Failed to record parent task activity:', error)
+    }
 
     changed.push(parent.id)
     currentId = parent.parentTaskId

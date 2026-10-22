@@ -17,7 +17,7 @@ const daysFromNow = (days: number) => new Date(Date.now() + days * DAY)
 
 function assertLocalDatabase(url: string | undefined) {
   const host = url ? new URL(url).hostname : ''
-  if (!['localhost', '127.0.0.1', '::1'].includes(host)) {
+  if (!['localhost', '127.0.0.1', '::1', '[::1]'].includes(host)) {
     throw new Error(`Refusing to seed demo projects into a non-local database (host "${host || 'unset'}")`)
   }
 }

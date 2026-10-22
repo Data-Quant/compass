@@ -368,6 +368,12 @@ export async function POST(
       parentTaskIds: computeParentSyncTargets(null, task),
       actorId: user.id,
       origin: request.nextUrl.origin,
+      visibilityScope: authorization.isParticipant
+        ? null
+        : await prisma.task.findMany({
+            where: { projectId },
+            select: { id: true, section: { select: { isBacklog: true } } },
+          }),
     })
 
     let projectStatus: ProjectStatus | null = null
@@ -512,6 +518,7 @@ export async function PUT(
     if (normalizedAssigneeId !== undefined && normalizedAssigneeId !== existingTask.assigneeId && !authorization.canManage) {
       return NextResponse.json({ error: 'Only a project lead or HR can reassign tasks' }, { status: 403 })
     }
+    // Same rule as the edit check above today; kept explicit so co-assignee access can diverge without hunting for it.
     if (assistantIds !== undefined && !canEditTaskCoAssignees({
       viewerId: user.id,
       assigneeId: existingTask.assigneeId,

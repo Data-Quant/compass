@@ -41,7 +41,9 @@ export async function GET(
       include: { _count: { select: { tasks: true } } },
     })
 
-    return NextResponse.json({ sections })
+    return NextResponse.json({
+      sections: authorization.isParticipant ? sections : sections.filter((section) => !section.isBacklog),
+    })
   } catch (error) {
     console.error('Failed to fetch sections:', error)
     return NextResponse.json({ error: 'Failed to fetch sections' }, { status: 500 })
@@ -188,7 +190,10 @@ export async function PATCH(
       orderBy: { orderIndex: 'asc' },
     })
 
-    return NextResponse.json({ success: true, sections })
+    return NextResponse.json({
+      success: true,
+      sections: authorization.isParticipant ? sections : sections.filter((section) => !section.isBacklog),
+    })
   } catch (error) {
     console.error('Failed to reorder sections:', error)
     return NextResponse.json({ error: 'Failed to reorder sections' }, { status: 500 })
