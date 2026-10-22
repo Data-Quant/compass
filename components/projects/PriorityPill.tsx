@@ -38,8 +38,8 @@ export function PriorityPill({ priority, editable = false, onChange, disabled, a
     <Select value={priority} onValueChange={(value) => onChange?.(value as WorkspacePriority)} disabled={disabled}>
       <SelectTrigger
         aria-label={ariaLabel ?? 'Priority'}
-        // Chevron (the only direct svg) stays hidden until hover, focus or open.
-        className="h-7 w-auto gap-1.5 border-transparent bg-transparent px-2 text-xs shadow-none hover:bg-muted data-[state=open]:bg-muted [&>svg]:opacity-0 hover:[&>svg]:opacity-50 focus-visible:[&>svg]:opacity-50 data-[state=open]:[&>svg]:opacity-50"
+        // Chevron (the only direct svg) stays hidden until hover (own or row), focus or open.
+        className="h-7 w-auto gap-1.5 border-transparent bg-transparent px-2 text-xs shadow-none hover:bg-muted data-[state=open]:bg-muted [&>svg]:opacity-0 hover:[&>svg]:opacity-50 group-hover/row:[&>svg]:opacity-50 focus-visible:[&>svg]:opacity-50 data-[state=open]:[&>svg]:opacity-50"
       >
         {content}
       </SelectTrigger>

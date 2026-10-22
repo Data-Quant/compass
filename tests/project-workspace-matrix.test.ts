@@ -78,6 +78,7 @@ const project: WorkspaceProject = {
   description: 'Close the remaining diligence work',
   color: '#2563eb',
   status: 'ACTIVE',
+  priority: 'MEDIUM',
   owner: { id: 'owner-1', name: 'Project owner' },
   members: [{ id: 'user-1', name: 'Areebah', role: 'EMPLOYEE' }],
   canManage: true,
@@ -149,7 +150,7 @@ test('project matrix keeps task rows and the task composer out until its project
   assert.equal(html.match(/>Project</g)?.length, 1)
   assert.equal(html.match(/>Tasks</g)?.length, 1)
   assert.equal(html.match(/>Deadline</g)?.length, 1)
-  assert.equal(html.match(/>Assignee</g)?.length, 1)
+  assert.equal(html.match(/>People</g)?.length, 1)
   assert.equal(html.match(/>Priority</g)?.length, 1)
   assert.match(html, /aria-expanded="false"/)
   assert.match(html, /aria-label="Project name for Harbor paperwork"/)

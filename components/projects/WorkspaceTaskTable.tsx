@@ -9,7 +9,6 @@ import {
   ArrowUp,
   ArrowUpDown,
   Check,
-  CheckCircle2,
   ChevronRight,
   FileText,
   GitBranch,
@@ -40,6 +39,7 @@ import {
 } from '@/components/ui/select'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { PeopleSearchList } from './PeopleSearchList'
+import { PriorityPill } from './PriorityPill'
 import {
   Table,
   TableBody,
@@ -70,6 +70,7 @@ import type {
 import {
   assigneeIdForFilter,
   dateInputValue,
+  daysFromToday,
   displayDueDate,
   groupWorkspaceTaskItemsByAssignee,
   isDoneTask,
@@ -79,7 +80,6 @@ import {
   plainTextPreview,
   PRIORITY_CLASS,
   PRIORITY_LABEL,
-  progressBand,
   relativeDueDate,
   sectionForColumn,
   sortWorkspaceTaskItems,
@@ -163,13 +163,6 @@ function TaskLabelBadges({ task, className }: { task: WorkspaceTask; className?:
   )
 }
 
-const STATUS_CLASS: Record<string, string> = {
-  ACTIVE: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-  ON_HOLD: 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300',
-  COMPLETED: 'border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-300',
-  ARCHIVED: 'border-border bg-muted text-muted-foreground',
-}
-
 export function WorkspaceTaskTable({
   projectViews,
   viewerId,
@@ -248,16 +241,20 @@ export function WorkspaceTaskTable({
           onFilterByAssignee={onFilterByAssignee}
         />
       ) : (
-        <Card className="overflow-hidden rounded-lg border-border/60 shadow-none">
+        <Card className="overflow-hidden rounded-xl border-border shadow-none">
           <CardContent className="overflow-x-auto p-0">
-            <Table className="min-w-[980px] table-fixed">
+            {/* 360px for the name plus the fixed columns; below that the table scrolls sideways. */}
+            <Table className="min-w-[1220px] table-fixed">
               <TableHeader>
                 <TableRow>
-                  <SortableHead label="Project" sortKey="project" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-[34%] min-w-[330px]" />
-                  <SortableHead label="Tasks" sortKey="title" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-[12%] min-w-[120px]" />
-                  <SortableHead label="Deadline" sortKey="dueDate" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-[18%] min-w-[170px]" />
-                  <SortableHead label="Assignee" sortKey="assignee" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-[21%] min-w-[190px]" />
-                  <SortableHead label="Priority" sortKey="priority" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-[15%] min-w-[130px]" />
+                  <SortableHead label="Project" sortKey="project" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="min-w-[360px]" />
+                  <TableHead className="h-9 w-[120px] px-2 text-xs font-medium text-muted-foreground">Status</TableHead>
+                  <TableHead className="h-9 w-[160px] px-2 text-xs font-medium text-muted-foreground">{progressScopeLabel} progress</TableHead>
+                  <SortableHead label="Tasks" sortKey="title" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-24" />
+                  <SortableHead label="Deadline" sortKey="dueDate" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-[150px]" />
+                  <SortableHead label="People" sortKey="assignee" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-[170px]" />
+                  <SortableHead label="Priority" sortKey="priority" activeKey={sortKey} direction={sortDirection} onSort={onSort} className="w-[120px]" />
+                  <TableHead className="h-9 w-11 px-2"><span className="sr-only">Actions</span></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -820,9 +817,13 @@ function ProjectColorPicker({
           type="button"
           aria-label={label}
           disabled={disabled}
-          className="h-4 w-4 shrink-0 rounded-full border border-border transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait disabled:opacity-60"
-          style={{ backgroundColor: value || '#94a3b8' }}
-        />
+          className="group flex h-5 w-5 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait disabled:opacity-60"
+        >
+          <span
+            className="h-2.5 w-2.5 rounded-full border border-border transition-transform group-hover:scale-125"
+            style={{ backgroundColor: value || '#94a3b8' }}
+          />
+        </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto p-2">
         <div className="flex items-center gap-1.5">
@@ -895,11 +896,11 @@ function InlineProjectRow({
   if (!editing) {
     return (
       <TableRow data-row-kind="new-project" className="border-dashed hover:bg-muted/30">
-        <TableCell colSpan={5} className="p-0">
+        <TableCell colSpan={8} className="p-0">
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            className="flex h-10 w-full items-center gap-2 px-3 text-left text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           >
             <Plus className="h-3.5 w-3.5" />
             <span>New project</span>
@@ -939,7 +940,7 @@ function InlineProjectRow({
           />
         </div>
       </TableCell>
-      <TableCell>
+      <TableCell colSpan={3}>
         <Input
           value={description}
           onChange={(event) => setDescription(event.target.value)}
@@ -985,7 +986,7 @@ function InlineProjectRow({
           </PopoverContent>
         </Popover>
       </TableCell>
-      <TableCell>
+      <TableCell colSpan={2}>
         <div className="flex items-center gap-1">
           <Button type="button" size="sm" className="h-7 px-2 text-xs" onClick={() => void submit()} disabled={creating || !name.trim()}>
             {creating ? 'Creating...' : 'Create'}
@@ -1055,10 +1056,7 @@ function ProjectMatrixRow({
   const selectableTaskIds = tasks.filter((task) => canEditTask(project, task, viewerId)).map((task) => task.id)
   const selectedCount = selectableTaskIds.filter((id) => selectedIds.has(id)).length
   const hasOverdue = tasks.some((task) => isTaskOverdue(project, task))
-  const band = progressBand(progress.percent)
-  const progressText = progress.total === 0
-    ? 'No tasks yet'
-    : `${progressScopeLabel}: ${progress.completed}/${progress.total} · ${progress.percent}%`
+  const progressText = progress.total === 0 ? 'No tasks' : `${progress.completed} of ${progress.total}`
   const nearestDeadline = tasks
     .map((task) => task.dueDate)
     .filter((dueDate): dueDate is string => Boolean(dueDate))
@@ -1117,15 +1115,12 @@ function ProjectMatrixRow({
   return (
     <TableRow
       data-row-kind="project"
-      className="cursor-pointer bg-muted/10 hover:bg-muted/30 [&>td]:py-1"
+      className={cn('group/row h-12 cursor-pointer bg-card hover:bg-muted/40 [&>td]:px-2 [&>td]:py-1.5', selectedCount > 0 && 'bg-primary/[0.04]')}
       onClick={(event) => {
         if (isRowNavigationClick(event.target as Element, event.currentTarget)) router.push(`/projects/${project.id}`)
       }}
     >
-      <TableCell
-        className="py-1"
-        style={{ borderLeftColor: project.color || 'transparent', borderLeftStyle: 'solid', borderLeftWidth: 3 }}
-      >
+      <TableCell>
         <div className="flex min-w-0 items-center gap-1.5">
           <Checkbox
             checked={selectableTaskIds.length > 0 && selectedCount === selectableTaskIds.length
@@ -1134,6 +1129,7 @@ function ProjectMatrixRow({
             onCheckedChange={(checked) => onToggleManySelected(selectableTaskIds, checked === true)}
             aria-label={`Select all visible tasks in ${project.name}`}
             disabled={selectableTaskIds.length === 0}
+            className="rounded"
           />
 
           <Popover open={open} onOpenChange={onOpenChange}>
@@ -1142,9 +1138,9 @@ function ProjectMatrixRow({
                 type="button"
                 aria-expanded={open}
                 aria-label={`${open ? 'Close' : 'Open'} tasks for ${project.name}`}
-                className="group flex h-6 w-6 shrink-0 items-center justify-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <ChevronRight className={cn('h-4 w-4 text-muted-foreground transition-transform group-hover:text-foreground', open && 'rotate-90')} />
+                <ChevronRight className={cn('h-4 w-4 transition-transform', open && 'rotate-90')} />
               </button>
             </PopoverTrigger>
 
@@ -1159,7 +1155,7 @@ function ProjectMatrixRow({
                 <div className="min-w-0">
                   <p className="truncate font-semibold">{project.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {tasks.length} active {tasks.length === 1 ? 'task' : 'tasks'} · expand any task to see its subtasks
+                    {tasks.length} active {tasks.length === 1 ? 'task' : 'tasks'}. Expand a task to see its subtasks.
                   </p>
                 </div>
                 <Badge variant="secondary" className="shrink-0">{selectedCount} selected</Badge>
@@ -1196,7 +1192,7 @@ function ProjectMatrixRow({
             />
           ) : (
             <span
-              className="h-3.5 w-3.5 shrink-0 rounded-full border border-border"
+              className="h-2.5 w-2.5 shrink-0 rounded-full border border-border"
               style={{ backgroundColor: project.color || '#94a3b8' }}
               aria-label={`${project.name} color`}
               role="img"
@@ -1204,80 +1200,84 @@ function ProjectMatrixRow({
           )}
 
           {project.canManage ? (
-            <Input
-              value={nameDraft}
-              onChange={(event) => setNameDraft(event.target.value)}
-              onBlur={() => void saveName()}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  event.currentTarget.blur()
-                }
-                if (event.key === 'Escape') {
-                  setNameDraft(project.name)
-                  event.currentTarget.blur()
-                }
-              }}
-              aria-label={`Project name for ${project.name}`}
-              disabled={savingName}
-              className="h-7 min-w-0 flex-1 border-transparent bg-transparent px-1.5 text-sm font-semibold shadow-none hover:border-border focus:border-border disabled:opacity-70"
-            />
+            // The clamped text shows the full name (2 lines); the transparent input on top takes clicks and is the editor.
+            <div className="group/name relative min-w-0 flex-1 rounded-md hover:bg-muted/60" title={project.name}>
+              <span
+                aria-hidden
+                className={cn('line-clamp-2 break-words px-2 py-1.5 text-sm font-medium leading-5 group-focus-within/name:invisible', savingName && 'opacity-70')}
+              >
+                {nameDraft || ' '}
+              </span>
+              <Input
+                value={nameDraft}
+                onChange={(event) => setNameDraft(event.target.value)}
+                onBlur={() => void saveName()}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    event.currentTarget.blur()
+                  }
+                  if (event.key === 'Escape') {
+                    setNameDraft(project.name)
+                    event.currentTarget.blur()
+                  }
+                }}
+                aria-label={`Project name for ${project.name}`}
+                disabled={savingName}
+                className="absolute inset-0 h-full min-w-0 border-transparent bg-transparent px-2 text-sm font-medium opacity-0 shadow-none focus:border-input focus:bg-background focus:opacity-100"
+              />
+            </div>
           ) : (
-            <Link href={`/projects/${project.id}`} className="min-w-0 flex-1 truncate px-1 font-semibold text-foreground hover:underline">
+            <Link
+              href={`/projects/${project.id}`}
+              title={project.name}
+              className="line-clamp-2 min-w-0 flex-1 break-words px-2 text-sm font-medium text-foreground hover:underline"
+            >
               {project.name}
             </Link>
           )}
-
-          {project.canManage ? (
-            <Select
-              value={statusDraft}
-              onValueChange={(status) => void saveStatus(status as NonNullable<ProjectPatchRequest['status']>)}
-              disabled={savingStatus}
-            >
-              <SelectTrigger
-                aria-label={`Project status for ${project.name}`}
-                className={cn('h-7 w-[104px] shrink-0 border px-2 text-[10px] font-medium uppercase shadow-none', STATUS_CLASS[statusDraft])}
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PROJECT_STATUSES.map((status) => (
-                  <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <Badge variant="outline" className={cn('shrink-0 px-1.5 py-0 text-[9px]', STATUS_CLASS[project.status])}>
-              {project.status.replace('_', ' ')}
-            </Badge>
-          )}
-
-          {hasOverdue && (
-            <span
-              className="h-2.5 w-2.5 shrink-0 rounded-full bg-red-500 shadow-[0_0_0_3px_rgba(239,68,68,0.14)]"
-              title="This project has overdue tasks"
-              role="img"
-              aria-label="This project has overdue tasks"
-            />
-          )}
-
-          <ProjectActions project={project} onRenameProject={onRenameProject} onArchiveProject={onArchiveProject} />
         </div>
-
-        <div className="mt-0.5 flex max-w-sm items-center gap-1.5 pl-[4.65rem]">
+      </TableCell>
+      <TableCell>
+        {project.canManage ? (
+          <Select
+            value={statusDraft}
+            onValueChange={(status) => void saveStatus(status as NonNullable<ProjectPatchRequest['status']>)}
+            disabled={savingStatus}
+          >
+            <SelectTrigger
+              aria-label={`Project status for ${project.name}`}
+              className="h-7 w-auto gap-1.5 border-transparent bg-transparent px-2 text-xs font-normal shadow-none hover:bg-muted data-[state=open]:bg-muted [&>svg]:opacity-0 group-hover/row:[&>svg]:opacity-50 focus-visible:[&>svg]:opacity-50"
+            >
+              <ProjectStatusLabel status={statusDraft} />
+            </SelectTrigger>
+            <SelectContent>
+              {PROJECT_STATUSES.map((status) => (
+                <SelectItem key={status.value} value={status.value}><ProjectStatusLabel status={status.value} /></SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <span className="inline-flex h-7 items-center px-2 text-xs"><ProjectStatusLabel status={project.status} /></span>
+        )}
+      </TableCell>
+      <TableCell>
+        <div className="flex items-center gap-2">
           <div
-            className={cn('h-1 min-w-0 flex-1 overflow-hidden rounded-full', band.track)}
+            className="h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-muted"
             role="progressbar"
             aria-label={`${project.name} ${progressScopeLabel.toLocaleLowerCase()} progress`}
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={progress.percent ?? 0}
-            aria-valuetext={progressText}
+            aria-valuetext={`${progressScopeLabel}: ${progressText}`}
           >
-            <div className={cn('h-full rounded-full transition-[width] duration-300', band.fill)} style={{ width: `${progress.percent ?? 0}%` }} />
+            <div
+              className={cn('h-full rounded-full transition-[width] duration-300', progress.percent === 100 ? 'bg-emerald-500' : 'bg-foreground/60')}
+              style={{ width: `${progress.percent ?? 0}%` }}
+            />
           </div>
-          <span className={cn('whitespace-nowrap text-[10px] font-medium', band.text)}>{progressText}</span>
-          {progress.percent === 100 && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" aria-label="Complete" />}
+          <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">{progressText}</span>
         </div>
       </TableCell>
       <TableCell>
@@ -1285,53 +1285,77 @@ function ProjectMatrixRow({
           type="button"
           onClick={() => onOpenChange(true)}
           aria-label={`Open tasks for ${project.name}`}
-          className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded-sm text-xs tabular-nums text-muted-foreground underline-offset-2 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <Badge variant="secondary" className="px-2 py-0 text-[10px] font-normal hover:bg-primary/15">{tasks.length} active</Badge>
+          {tasks.length} active
         </button>
       </TableCell>
       <TableCell>
         {nearestDeadline ? (
-          <div className="text-xs">
-            <p className="font-medium">{displayDueDate(nearestDeadline)}</p>
-            <p className="text-[10px] text-muted-foreground">{relativeDueDate(nearestDeadline)}</p>
+          <div className="flex items-center gap-1.5">
+            {hasOverdue && (
+              <span
+                className="h-2 w-2 shrink-0 rounded-full bg-red-500"
+                title="This project has overdue tasks"
+                role="img"
+                aria-label="This project has overdue tasks"
+              />
+            )}
+            <div className="min-w-0">
+              <p className={cn('text-[13px] tabular-nums', (daysFromToday(nearestDeadline) ?? 0) < 0 && 'text-red-600 dark:text-red-400')}>
+                {displayDueDate(nearestDeadline)}
+              </p>
+              <p className="text-xs text-muted-foreground">{relativeDueDate(nearestDeadline)}</p>
+            </div>
           </div>
         ) : <span className="text-xs text-muted-foreground">No deadline</span>}
       </TableCell>
       <TableCell>
         {assignedPeople.length > 0 ? (
-          <div className="flex items-center gap-2" title={assignedPeople.map((person) => person.name).join(', ')}>
-            <div className="flex -space-x-2">
+          <div className="flex min-w-0 items-center gap-1.5" title={assignedPeople.map((person) => person.name).join(', ')}>
+            <div className="flex -space-x-1.5">
               {assignedPeople.slice(0, 3).map((person) => (
-                <UserAvatar key={person.id} name={person.name} size="xs" className="ring-2 ring-background" />
+                <UserAvatar key={person.id} name={person.name} size="xs" className="h-6 w-6 text-[10px] ring-2 ring-card" />
               ))}
             </div>
-            <span className="truncate text-xs">{assignedPeople.length === 1 ? assignedPeople[0].name : `${assignedPeople.length} people`}</span>
+            {assignedPeople.length > 3 && (
+              <span className="text-[11px] tabular-nums text-muted-foreground">+{assignedPeople.length - 3}</span>
+            )}
+            {assignedPeople.length === 1 && (
+              <span className="truncate text-xs">{assignedPeople[0].name.split(' ')[0]}</span>
+            )}
           </div>
         ) : <span className="text-xs text-muted-foreground">Unassigned</span>}
       </TableCell>
       <TableCell>
-        {project.canManage ? (
-          <Select
-            value={priorityDraft}
-            onValueChange={(priority) => void savePriority(priority as WorkspacePriority)}
-            disabled={savingPriority}
-          >
-            <SelectTrigger
-              aria-label={`Project priority for ${project.name}`}
-              className={cn('h-7 w-[104px] shrink-0 border px-2 text-xs shadow-none', PRIORITY_CLASS[priorityDraft])}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {PRIORITIES.map((priority) => <SelectItem key={priority} value={priority}>{PRIORITY_LABEL[priority]}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        ) : (
-          <Badge variant="outline" className={cn('font-normal', PRIORITY_CLASS[project.priority])}>{PRIORITY_LABEL[project.priority]}</Badge>
-        )}
+        <PriorityPill
+          priority={project.canManage ? priorityDraft : project.priority}
+          editable={project.canManage}
+          disabled={savingPriority}
+          onChange={(priority) => void savePriority(priority)}
+          ariaLabel={`Project priority for ${project.name}`}
+        />
+      </TableCell>
+      <TableCell className="text-right">
+        <ProjectActions project={project} onRenameProject={onRenameProject} onArchiveProject={onArchiveProject} />
       </TableCell>
     </TableRow>
+  )
+}
+
+const STATUS_DOT: Record<string, string> = {
+  ACTIVE: 'bg-emerald-500',
+  ON_HOLD: 'bg-amber-500',
+  COMPLETED: 'bg-sky-500',
+  ARCHIVED: 'bg-slate-400',
+}
+
+function ProjectStatusLabel({ status }: { status: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span aria-hidden className={cn('h-2 w-2 shrink-0 rounded-full', STATUS_DOT[status] || 'bg-slate-400')} />
+      {PROJECT_STATUSES.find((option) => option.value === status)?.label || status}
+    </span>
   )
 }
 
@@ -1347,7 +1371,12 @@ function ProjectActions({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label={`Project actions for ${project.name}`}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0 opacity-0 focus-visible:opacity-100 group-hover/row:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100"
+          aria-label={`Project actions for ${project.name}`}
+        >
           <MoreHorizontal className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
@@ -1912,14 +1941,14 @@ function SortableHead({
   const active = activeKey === sortKey
   const Icon = active ? (direction === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown
   return (
-    <TableHead className={cn('h-8 px-2 text-xs', className)} aria-sort={active ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
+    <TableHead className={cn('h-9 px-2 text-xs font-medium text-muted-foreground', className)} aria-sort={active ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
       <button
         type="button"
         onClick={() => onSort(sortKey)}
-        className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-left transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="group inline-flex items-center gap-1 rounded px-1 py-0.5 text-left transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {label}
-        <Icon className={cn('h-3.5 w-3.5', !active && 'opacity-45')} />
+        <Icon className={cn('h-3.5 w-3.5', !active && 'opacity-0 group-hover:opacity-60 group-focus-visible:opacity-60')} />
       </button>
     </TableHead>
   )
@@ -2084,8 +2113,8 @@ function BacklogGroup({
           className="flex items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ChevronRight className={cn('h-4 w-4 text-muted-foreground transition-transform', !collapsed && 'rotate-90')} />
-          <span className="font-semibold">Backlog</span>
-          <Badge variant="secondary">{items.length}</Badge>
+          <span className="text-sm font-medium">Backlog</span>
+          <span className="text-xs tabular-nums text-muted-foreground">{items.length}</span>
           <span className="hidden text-xs text-muted-foreground sm:inline">Future work, excluded from progress</span>
         </button>
 
