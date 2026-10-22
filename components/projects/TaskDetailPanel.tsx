@@ -6,6 +6,7 @@ import {
 } from '@/components/ui/sheet'
 import { Calendar as DatePicker } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { PeopleSearchList } from './PeopleSearchList'
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import {
   X, Trash2, Calendar as CalendarIcon, Flag, Tag, Users, MessageSquare,
@@ -364,8 +365,15 @@ function Dropdown({ trigger, children, className }: {
     function handle(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
     }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false)
+    }
     document.addEventListener('mousedown', handle)
-    return () => document.removeEventListener('mousedown', handle)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handle)
+      document.removeEventListener('keydown', handleKey)
+    }
   }, [])
 
   return (
@@ -897,27 +905,37 @@ export function TaskDetailPanel({
                     </span>
                   }
                 >
-                  <div className="p-1 max-h-48 overflow-y-auto">
-                    <button
-                      onClick={() => updateTask({ assigneeId: null })}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors text-muted-foreground"
-                    >
-                      Unassigned
-                    </button>
-                    {members.map((m) => (
-                      <button
-                        key={m.id}
-                        onClick={() => updateTask({ assigneeId: m.id })}
-                        className={cn(
-                          'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors',
-                          task.assigneeId === m.id && 'bg-muted/50'
-                        )}
-                      >
-                        <UserAvatar name={m.name} size="xs" />
-                        {m.name}
-                      </button>
-                    ))}
-                  </div>
+                  <PeopleSearchList
+                    people={members}
+                    pinned={
+                      <div className="px-1">
+                        <button
+                          onClick={() => updateTask({ assigneeId: null })}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors text-muted-foreground"
+                        >
+                          Unassigned
+                        </button>
+                      </div>
+                    }
+                  >
+                    {(filtered) => (
+                      <div className="p-1 pt-0 max-h-48 overflow-y-auto">
+                        {filtered.map((m) => (
+                          <button
+                            key={m.id}
+                            onClick={() => updateTask({ assigneeId: m.id })}
+                            className={cn(
+                              'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors',
+                              task.assigneeId === m.id && 'bg-muted/50'
+                            )}
+                          >
+                            <UserAvatar name={m.name} size="xs" />
+                            {m.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </PeopleSearchList>
                 </Dropdown>
               ) : (
                 <span className="inline-flex items-center gap-2 px-2.5 py-1 text-sm">
@@ -965,34 +983,44 @@ export function TaskDetailPanel({
                 }
                 className="min-w-[220px]"
               >
-                <div className="p-1 max-h-56 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                  {assistants.length > 0 && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); clearAssistants() }}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors text-muted-foreground"
-                    >
-                      Clear co-assignees
-                    </button>
-                  )}
-                  {availableAssistantMembers.map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={(e) => { e.stopPropagation(); toggleAssistant(m.id) }}
-                      className={cn(
-                        'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors',
-                        assistantIds.includes(m.id) && 'bg-muted/50'
-                      )}
-                    >
-                      <UserAvatar name={m.name} size="xs" />
-                      <span className="flex-1 text-left">{m.name}</span>
-                      {assistantIds.includes(m.id) && <Check className="w-3.5 h-3.5 text-primary" />}
-                    </button>
-                  ))}
-                  {availableAssistantMembers.length === 0 && (
-                    <p className="px-3 py-2 text-sm text-muted-foreground">
-                      No other project members available. Ask a project lead to add people to this project.
-                    </p>
-                  )}
+                <div onClick={(e) => e.stopPropagation()}>
+                  <PeopleSearchList
+                    people={availableAssistantMembers}
+                    pinned={assistants.length > 0 && (
+                      <div className="px-1">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); clearAssistants() }}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors text-muted-foreground"
+                        >
+                          Clear co-assignees
+                        </button>
+                      </div>
+                    )}
+                  >
+                    {(filtered) => (
+                      <div className="p-1 pt-0 max-h-56 overflow-y-auto">
+                        {filtered.map((m) => (
+                          <button
+                            key={m.id}
+                            onClick={(e) => { e.stopPropagation(); toggleAssistant(m.id) }}
+                            className={cn(
+                              'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors',
+                              assistantIds.includes(m.id) && 'bg-muted/50'
+                            )}
+                          >
+                            <UserAvatar name={m.name} size="xs" />
+                            <span className="flex-1 text-left">{m.name}</span>
+                            {assistantIds.includes(m.id) && <Check className="w-3.5 h-3.5 text-primary" />}
+                          </button>
+                        ))}
+                        {availableAssistantMembers.length === 0 && (
+                          <p className="px-3 py-2 text-sm text-muted-foreground">
+                            No other project members available. Ask a project lead to add people to this project.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </PeopleSearchList>
                 </div>
               </Dropdown>
               ) : (

@@ -26,10 +26,8 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -41,6 +39,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { PeopleSearchList } from './PeopleSearchList'
 import {
   Table,
   TableBody,
@@ -1851,8 +1850,8 @@ function TaskAssignees({
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <Popover>
+      <PopoverTrigger asChild>
         <Button
           type="button"
           variant="ghost"
@@ -1862,29 +1861,35 @@ function TaskAssignees({
         >
           {summary}
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-60">
-        <DropdownMenuLabel>Assigned people</DropdownMenuLabel>
-        {projectPeople.map((person) => (
-          <DropdownMenuCheckboxItem
-            key={person.id}
-            checked={assignedIds.has(person.id)}
-            disabled={pending}
-            onSelect={(event) => {
-              event.preventDefault()
-              togglePerson(person.id)
-            }}
-            className="gap-2"
-          >
-            <UserAvatar name={person.name} size="xs" />
-            <span className="min-w-0 flex-1 truncate">{person.name}</span>
-            {task.assigneeId === person.id && (
-              <Badge variant="outline" className="ml-auto px-1.5 text-[9px]">Primary</Badge>
-            )}
-          </DropdownMenuCheckboxItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-60 p-1">
+        <div className="px-2 py-1.5 text-sm font-semibold">Assigned people</div>
+        <PeopleSearchList people={projectPeople}>
+          {(filtered) => (
+            <div className="max-h-60 overflow-y-auto">
+              {filtered.map((person) => (
+                <button
+                  key={person.id}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={assignedIds.has(person.id)}
+                  disabled={pending}
+                  onClick={() => togglePerson(person.id)}
+                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent focus-visible:bg-accent disabled:opacity-50"
+                >
+                  <Check className={cn('h-4 w-4 shrink-0', !assignedIds.has(person.id) && 'opacity-0')} />
+                  <UserAvatar name={person.name} size="xs" />
+                  <span className="min-w-0 flex-1 truncate text-left">{person.name}</span>
+                  {task.assigneeId === person.id && (
+                    <Badge variant="outline" className="ml-auto px-1.5 text-[9px]">Primary</Badge>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </PeopleSearchList>
+      </PopoverContent>
+    </Popover>
   )
 }
 

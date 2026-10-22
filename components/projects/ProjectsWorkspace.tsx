@@ -36,6 +36,7 @@ import { EmptyState } from '@/components/composed/EmptyState'
 import { LoadingScreen } from '@/components/composed/LoadingScreen'
 import { TaskDetailPanel } from './TaskDetailPanel'
 import { ProjectCreationModal } from './ProjectCreationModal'
+import { PersonSelect } from './PeopleSearchList'
 import { WorkspaceBulkActions } from './WorkspaceBulkActions'
 import { WorkspaceKanban } from './WorkspaceKanban'
 import { WorkspaceTaskTable } from './WorkspaceTaskTable'
@@ -1183,16 +1184,14 @@ export function ProjectsWorkspace() {
           </p>
           <div className="space-y-1.5">
             <Label htmlFor="promotion-assignee">Assignee</Label>
-            <Select
+            <PersonSelect
+              id="promotion-assignee"
+              people={promotionPeople}
               value={promotion?.assigneeId || ''}
               onValueChange={(assigneeId) => setPromotion((current) => current ? { ...current, assigneeId } : current)}
+              placeholder="Choose a teammate"
               disabled={promoting || !promotionProject?.canManage}
-            >
-              <SelectTrigger id="promotion-assignee"><SelectValue placeholder="Choose a teammate" /></SelectTrigger>
-              <SelectContent>
-                {promotionPeople.map((person) => <SelectItem key={person.id} value={person.id}>{person.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            />
             {!promotionProject?.canManage && (
               <p className="text-xs text-muted-foreground">Only the project lead or HR can change the assignee.</p>
             )}

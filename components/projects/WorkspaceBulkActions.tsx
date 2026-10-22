@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { PersonSelect } from './PeopleSearchList'
 import type {
   WorkspaceBulkAction,
   WorkspacePerson,
@@ -91,13 +92,16 @@ export function WorkspaceBulkActions({ selections, applying, onApply, onClear }:
         )}
 
         {action === 'ASSIGNEE' && (
-          <Select value={assigneeId} onValueChange={setAssigneeId} disabled={applying || !canReassign}>
-            <SelectTrigger aria-label="New assignee" className="sm:w-52"><SelectValue placeholder="Choose teammate" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__UNASSIGNED__">Unassigned</SelectItem>
-              {commonAssignees.map((person) => <SelectItem key={person.id} value={person.id}>{person.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <PersonSelect
+            people={commonAssignees}
+            value={assigneeId}
+            onValueChange={setAssigneeId}
+            unassignedValue="__UNASSIGNED__"
+            placeholder="Choose teammate"
+            ariaLabel="New assignee"
+            disabled={applying || !canReassign}
+            className="sm:w-52"
+          />
         )}
 
         {action === 'SHIFT_DUE_DATE' && (

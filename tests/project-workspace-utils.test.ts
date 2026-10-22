@@ -7,6 +7,7 @@ import type {
 } from '../components/projects/workspace-types'
 import {
   calculateProgress,
+  filterPeopleByQuery,
   calculateOverallProgress,
   groupWorkspaceTaskItemsByAssignee,
   isRowNavigationClick,
@@ -309,4 +310,28 @@ test('sortTasksByDeadline does not mutate the input', () => {
   const input = [deadlineTask('late', '2026-11-20'), deadlineTask('soon', '2026-10-25')]
   sortTasksByDeadline(input)
   assert.deepEqual(input.map((task) => task.id), ['late', 'soon'])
+})
+
+const searchablePeople = [
+  { id: '1', name: 'Fakayha Jamil', email: 'fakayha@plutus21.com' },
+  { id: '2', name: 'Amjad Ali', email: 'amjad@plutus21.com' },
+  { id: '3', name: 'José Núñez', email: null },
+]
+const ids = (query: string) => filterPeopleByQuery(searchablePeople, query).map((p) => p.id)
+
+test('an empty or blank query keeps everyone in order', () => {
+  assert.deepEqual(ids(''), ['1', '2', '3'])
+  assert.deepEqual(ids('   '), ['1', '2', '3'])
+})
+test('matches part of a name, ignoring case', () => {
+  assert.deepEqual(ids('ALI'), ['2'])
+})
+test('matches by email', () => {
+  assert.deepEqual(ids('fakayha@'), ['1'])
+})
+test('ignores accents', () => {
+  assert.deepEqual(ids('jose nunez'), ['3'])
+})
+test('no match returns an empty list', () => {
+  assert.deepEqual(filterPeopleByQuery(searchablePeople, 'zzz'), [])
 })

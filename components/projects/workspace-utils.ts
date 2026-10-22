@@ -379,3 +379,11 @@ export function isRowNavigationClick(
   if (!target || !row.contains(target)) return false
   return !target.closest(ROW_INTERACTIVE_SELECTOR)
 }
+
+const foldText = (value: string) => value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+
+export function filterPeopleByQuery<T extends { name: string; email?: string | null }>(people: T[], query: string): T[] {
+  const needle = foldText(query.trim())
+  if (!needle) return people
+  return people.filter((person) => foldText(person.name).includes(needle) || foldText(person.email || '').includes(needle))
+}
