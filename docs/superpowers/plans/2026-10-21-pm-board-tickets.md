@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship the Compass tickets assigned to Amjad in the "Compass PM tool - testing" project: auto-complete parent tasks, drag sections, click a row to open its project, sort columns by deadline, put "Add task" at the top of each column, project priority, shareable task links, and co-assignee editing.
+**Goal:** Ship the Compass tickets assigned to Amjad in the "Compass PM tool - testing" project: auto-complete parent tasks, drag sections, click a row to open its project, sort columns by deadline, put "Add task" at the top of each column, project priority, shareable task links, co-assignee editing, and people search in assignee pickers.
 
 **Architecture:** Pure decision functions live in `lib/` or `components/projects/workspace-utils.ts` and are unit-tested with `node:test`. API routes stay thin: they call these functions and keep side effects (activity, mail) in their own try/catch blocks, as the existing routes do. The UI changes reuse the existing dnd-kit setup in `BoardView.tsx` and `WorkspaceKanban.tsx`. The plan adds no new dependencies.
 
@@ -20,6 +20,7 @@
 | Arrange tasks in order of deadline | `cmv595i3c0001ql06aw8kiw1h` | Both boards |
 | Shareable link for tickets | `cmvi7zpf900013ny19m2et72b` | Task 7 |
 | Assignees can't add co-assignees | `cmvi7zq3l00073ny13vre55ul` | Assignee and existing co-assignees can manage them. Task 8 |
+| Search bar in assignee dropdown | `cmvj9ip2y0001hmcgbj0a9nqi` | All task views, assignee and co-assignee pickers. Task 9 |
 | Add task option at the top | `cmv59699u000bql0629y08pth` | Both boards: the per-project board needs the change; the cross-project board already has it at the top of Backlog |
 
 ## Global Constraints
@@ -508,6 +509,78 @@ Expected: FAIL, `canEditTaskCoAssignees` is not exported.
 ```bash
 git add lib/project-access.ts app/api/projects/[id]/tasks/route.ts components/projects/TaskDetailPanel.tsx tests/project-access.test.ts
 git commit -m "fix: a task's assignee and co-assignees can manage its co-assignees"
+```
+
+### Task 9: Search bar in assignee dropdowns (ticket `cmvj9ip2y0001hmcgbj0a9nqi`)
+
+The ticket asks for a search bar in the dropdown that opens when picking assignees for any task, in every view of a task (table, card, panel). Co-assignee pickers count too, because they are the same kind of person picker.
+
+**Files:**
+- Modify: `components/projects/workspace-utils.ts`. Add a pure filter.
+- Modify every person picker for a task's assignee or co-assignees. Find them by searching for `Unassigned`, `assignee` and `members.map` in:
+  - `components/projects/TaskDetailPanel.tsx`: the assignee field and the co-assignee `Dropdown` (Task 8 widened who sees it).
+  - `components/projects/WorkspaceTaskTable.tsx`: `AssigneeCell` (`:1933`), plus any other assignee `Select`/menu in that file.
+  - `components/projects/WorkspaceBulkActions.tsx`: the bulk "assign" picker.
+  - `components/projects/WorkspaceKanban.tsx`: only if it has its own assignee picker.
+- Test: `tests/project-workspace-utils.test.ts`
+
+**Interfaces:**
+- Produces: `export function filterPeopleByQuery<T extends { name: string; email?: string | null }>(people: T[], query: string): T[]`.
+  - It trims the query. An empty query returns `people` unchanged.
+  - Otherwise it keeps people whose `name` or `email` contains the query, case-insensitively and ignoring accents (`normalize('NFD')`, strip combining marks). Input order is kept.
+- UI rule for every picker:
+  - A text input at the top of the dropdown, `placeholder="Search people"`, `aria-label="Search people"`. It is focused when the dropdown opens and cleared when it closes.
+  - The list shows `filterPeopleByQuery(options, query)`. Options like "Unassigned" or "Clear co-assignees" stay visible and are not filtered.
+  - When nothing matches, show "No people match" in the same muted style as "No other project members available.".
+  - Typing in the input must not close the dropdown or trigger the menu's typeahead: stop key events from propagating, as `TaskDetailPanel.tsx`'s co-assignee list already does with `stopPropagation`.
+  - Where a picker is a Radix `Select`, which cannot hold an input, replace it with the `Popover` + button list pattern already used in `WorkspaceTaskTable.tsx`, keeping the same trigger look.
+
+- [ ] **Step 1: Write the failing tests:**
+
+```ts
+const people = [
+  { id: '1', name: 'Fakayha Jamil', email: 'fakayha@plutus21.com' },
+  { id: '2', name: 'Amjad Ali', email: 'amjad@plutus21.com' },
+  { id: '3', name: 'José Núñez', email: null },
+]
+test('an empty or blank query keeps everyone in order', () => {
+  assert.deepEqual(filterPeopleByQuery(people, '').map((p) => p.id), ['1', '2', '3'])
+  assert.deepEqual(filterPeopleByQuery(people, '   ').map((p) => p.id), ['1', '2', '3'])
+})
+test('matches part of a name, ignoring case', () => {
+  assert.deepEqual(filterPeopleByQuery(people, 'ALI').map((p) => p.id), ['2'])
+})
+test('matches by email', () => {
+  assert.deepEqual(filterPeopleByQuery(people, 'fakayha@').map((p) => p.id), ['1'])
+})
+test('ignores accents', () => {
+  assert.deepEqual(filterPeopleByQuery(people, 'jose nunez').map((p) => p.id), ['3'])
+})
+test('no match returns an empty list', () => {
+  assert.deepEqual(filterPeopleByQuery(people, 'zzz'), [])
+})
+```
+
+- [ ] **Step 2: Run them and check they fail**
+
+Run: `node --import tsx --test tests/project-workspace-utils.test.ts`
+Expected: FAIL, `filterPeopleByQuery` is not exported.
+
+- [ ] **Step 3: Implement the filter, then add the search input to every picker listed above.** In the report, list each picker you changed (file:line) and any you found but left alone, with the reason.
+
+- [ ] **Step 4: Verify**
+  - Run `npm test` and `npx tsc --noEmit`. Expected: clean.
+  - UI checks for the human:
+    1. In the table, card and panel views, open an assignee picker and type part of a name; the list narrows and "No people match" shows when it's empty.
+    2. Pick a person; it saves as before.
+    3. The bulk assign picker and the co-assignee picker behave the same way.
+    4. Keyboard: the input has focus on open, and Escape closes the picker.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add components/projects/workspace-utils.ts components/projects/TaskDetailPanel.tsx components/projects/WorkspaceTaskTable.tsx components/projects/WorkspaceBulkActions.tsx tests/project-workspace-utils.test.ts
+git commit -m "feat: search people in every assignee picker"
 ```
 
 ### Finishing
