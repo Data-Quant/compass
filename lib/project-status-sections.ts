@@ -267,3 +267,10 @@ export function validateSectionOrder(existingIds: string[], orderedIds: unknown)
   }
   return null
 }
+
+// Hidden sections keep their current slots; visible ones fill the rest in the given order.
+export function mergeVisibleSectionOrder(currentIds: string[], hiddenIds: string[], orderedVisibleIds: string[]): string[] {
+  const hidden = new Set(hiddenIds)
+  const visible = [...orderedVisibleIds]
+  return currentIds.map((id) => (hidden.has(id) ? id : visible.shift() as string))
+}

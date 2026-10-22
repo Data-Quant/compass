@@ -6,6 +6,7 @@ import {
   getTaskStatusForSection,
   getStatusSectionDefaults,
   normalizeStatusName,
+  mergeVisibleSectionOrder,
   selectSectionDeletionTarget,
   validateSectionOrder,
 } from '@/lib/project-status-sections'
@@ -167,11 +168,18 @@ export async function PATCH(
     }
 
     const { orderedSectionIds } = await request.json()
-    const existing = await prisma.taskSection.findMany({ where: { projectId }, select: { id: true } })
-    const orderError = validateSectionOrder(existing.map((section) => section.id), orderedSectionIds)
+    const current = await prisma.taskSection.findMany({
+      where: { projectId },
+      orderBy: { orderIndex: 'asc' },
+      select: { id: true, isBacklog: true },
+    })
+    // Backlog is hidden from non-participants, so the client never sends its id.
+    const hiddenIds = authorization.isParticipant ? [] : current.filter((section) => section.isBacklog).map((section) => section.id)
+    const visibleIds = current.map((section) => section.id).filter((id) => !hiddenIds.includes(id))
+    const orderError = validateSectionOrder(visibleIds, orderedSectionIds)
     if (orderError) return NextResponse.json({ error: orderError }, { status: 400 })
 
-    const ids = orderedSectionIds as string[]
+    const ids = mergeVisibleSectionOrder(current.map((section) => section.id), hiddenIds, orderedSectionIds)
     await prisma.$transaction(
       ids.map((id, orderIndex) => prisma.taskSection.update({ where: { id }, data: { orderIndex } }))
     )
