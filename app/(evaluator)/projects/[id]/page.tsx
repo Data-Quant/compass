@@ -77,7 +77,16 @@ function ProjectDetail() {
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadFailure, setLoadFailure] = useState<ReturnType<typeof projectLoadFailure> | null>(null)
-  const [view, setView] = useState<'list' | 'board'>('list')
+  // Board on a first visit; after that, whichever view the person last picked.
+  const [view, setViewState] = useState<'list' | 'board'>('board')
+  const setView = useCallback((next: 'list' | 'board') => {
+    setViewState(next)
+    window.localStorage.setItem('compass-project-view', next)
+  }, [])
+  useEffect(() => {
+    const savedView = window.localStorage.getItem('compass-project-view')
+    if (savedView === 'list' || savedView === 'board') setViewState(savedView)
+  }, [])
   const [selectedTask, setSelectedTask] = useState<PanelTask | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
   const [memberModalOpen, setMemberModalOpen] = useState(false)
@@ -115,7 +124,7 @@ function ProjectDetail() {
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [panelOpen, closePanel])
+  }, [panelOpen, closePanel, setView])
 
   const loadProject = useCallback(async () => {
     try {
