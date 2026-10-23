@@ -202,6 +202,7 @@ export function BoardView({ projectId, tasks, sections, viewerId, canManage, onT
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Failed to create task')
       }
+      if (data.task) onTaskClick(data.task)
       onTasksChange()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to create task')

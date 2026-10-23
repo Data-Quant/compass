@@ -475,6 +475,7 @@ export function ProjectsWorkspace() {
           tasks: [normalizeTask(candidate, data.task as Partial<WorkspaceTask>), ...candidate.tasks],
         }),
       }))
+      if (typeof (data.task as { id?: unknown })?.id === 'string') setSelectedTaskKey({ projectId: project.id, taskId: (data.task as { id: string }).id })
       toast.success('Added to backlog')
       return true
     } catch (error) {
@@ -531,6 +532,8 @@ export function ProjectsWorkspace() {
           tasks: [normalizeTask(candidate, data.task as Partial<WorkspaceTask>), ...candidate.tasks],
         }),
       }))
+      const createdId = (data.task as { id?: unknown })?.id
+      if (!parentTaskId && typeof createdId === 'string') setSelectedTaskKey({ projectId: project.id, taskId: createdId })
       return true
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to add the task')

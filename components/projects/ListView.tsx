@@ -95,6 +95,7 @@ export function ListView({ project, viewerId, onTaskClick, onTasksChange }: List
       if (!response.ok || data.success !== true) {
         throw new Error(responseError(data, parentTaskId ? 'Failed to create the subtask' : 'Failed to create the task'))
       }
+      if (!parentTaskId && data.task) onTaskClick(data.task as PanelTask)
       await onTasksChange()
       return true
     } catch (error) {
