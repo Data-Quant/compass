@@ -8,6 +8,12 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      # Radix packages share internals (dismissable layer, focus scope, portal).
+      # Bumping one alone duplicates them and breaks popovers inside dialogs.
+      radix-ui:
+        patterns:
+          - "@radix-ui/*"
   - package-ecosystem: "npm"
     directory: "/server"
     schedule:

@@ -10,6 +10,7 @@ import {
   KeyboardSensor,
   PointerSensor,
   closestCorners,
+  pointerWithin,
   type CollisionDetection,
   useDroppable,
   useSensor,
@@ -41,12 +42,16 @@ const SECTION_PREFIX = 'section:'
 // Section drags only collide with other columns; task drags ignore the column sort targets.
 const collisionDetection: CollisionDetection = (args) => {
   const isSectionDrag = args.active.data.current?.type === 'section'
-  return closestCorners({
+  const scoped = {
     ...args,
     droppableContainers: args.droppableContainers.filter(
       (container) => String(container.id).startsWith(SECTION_PREFIX) === isSectionDrag
     ),
-  })
+  }
+  // Whatever is under the pointer wins. closestCorners alone sends a card dropped
+  // on an empty column to a neighbouring column whose cards' corners are nearer.
+  const underPointer = pointerWithin(scoped)
+  return underPointer.length > 0 ? underPointer : closestCorners(scoped)
 }
 
 export function BoardView({ projectId, tasks, sections, viewerId, canManage, onTaskClick, onTasksChange }: BoardViewProps) {
