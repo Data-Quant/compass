@@ -3,11 +3,11 @@
 import { Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { AnalyticsRange } from '@/lib/project-analytics'
 import type { ProjectAnalytics } from './types'
-import { AXIS_TICK, GRID_STROKE, plural } from './chart-theme'
+import { AXIS_TICK, CHART_MARGIN, COMPLETED, GRID_STROKE, Y_AXIS_WIDTH, formatDecimal, plural } from './chart-theme'
 import { ChartCard, ChartEmpty, SrTable, TipCard } from './ChartCard'
 import { bucketTitle } from './BurnUpChart'
 
-const BAR = 'hsl(var(--primary))'
+const BAR = COMPLETED
 const AVERAGE = 'hsl(var(--muted-foreground))'
 
 export function ThroughputChart({ throughput, range }: { throughput: ProjectAnalytics['throughput']; range: AnalyticsRange }) {
@@ -20,10 +20,10 @@ export function ThroughputChart({ throughput, range }: { throughput: ProjectAnal
     <ChartCard
       id="throughput"
       title={`Completed per ${unit}`}
-      description="Subtasks count; a parent that auto-completes does not."
+      description="Each finished task or subtask counts once. Parent tasks that close on their own are skipped."
       aside={
         <div className="text-right">
-          <div className="text-xl font-semibold text-foreground">{throughput.average.toFixed(1)}</div>
+          <div className="text-xl font-semibold text-foreground">{formatDecimal(throughput.average)}</div>
           <div className="text-[11px] text-muted-foreground">average per {unit}</div>
         </div>
       }
@@ -38,7 +38,7 @@ export function ThroughputChart({ throughput, range }: { throughput: ProjectAnal
         <>
           <div className="h-[200px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={series} margin={{ top: 8, right: 8, bottom: 0, left: -12 }} barCategoryGap={2}>
+              <BarChart data={series} margin={CHART_MARGIN} barCategoryGap={2}>
                 <CartesianGrid vertical={false} stroke={GRID_STROKE} />
                 <XAxis
                   dataKey="label"
@@ -48,7 +48,7 @@ export function ThroughputChart({ throughput, range }: { throughput: ProjectAnal
                   tickLine={false}
                   axisLine={{ stroke: GRID_STROKE }}
                 />
-                <YAxis allowDecimals={false} tick={AXIS_TICK} tickLine={false} axisLine={false} width={40} />
+                <YAxis allowDecimals={false} tick={AXIS_TICK} tickLine={false} axisLine={false} width={Y_AXIS_WIDTH} />
                 <Tooltip
                   cursor={{ fill: 'hsl(var(--muted))', opacity: 0.6 }}
                   isAnimationActive={false}
@@ -76,7 +76,7 @@ export function ThroughputChart({ throughput, range }: { throughput: ProjectAnal
             Dashed line is the average
           </p>
           <SrTable
-            caption={`Completed per ${unit}, ${plural(total, 'task')} in total, average ${throughput.average.toFixed(1)}`}
+            caption={`Completed per ${unit}, ${plural(total, 'task')} in total, average ${formatDecimal(throughput.average)}`}
             headers={['Period', 'Completed', 'Created']}
             rows={series.map((point) => [bucketTitle(range.bucket, point.label), point.completed, point.created])}
           />

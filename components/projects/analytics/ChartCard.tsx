@@ -21,7 +21,7 @@ export function ChartCard({ id, title, description, aside, children, className }
     <Card role="region" aria-labelledby={`${id}-title`} className={cn('min-w-0 p-5', className)}>
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
         <div className="min-w-0 max-w-2xl">
-          <h2 id={`${id}-title`} className="text-[15px] font-semibold text-foreground">{title}</h2>
+          <h2 id={`${id}-title`} className="text-base font-semibold text-foreground">{title}</h2>
           {description && <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>}
         </div>
         {aside}

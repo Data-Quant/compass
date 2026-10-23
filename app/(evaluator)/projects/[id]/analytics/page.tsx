@@ -15,6 +15,7 @@ import { PeopleSection } from '@/components/projects/analytics/PeopleSection'
 import { RangeControl, type RangeSelection } from '@/components/projects/analytics/RangeControl'
 import { VIZ_VARS } from '@/components/projects/analytics/chart-theme'
 import type { AnalyticsResponse, Participant } from '@/components/projects/analytics/types'
+import { useDocumentTitle } from '@/components/projects/analytics/useDocumentTitle'
 import { cn } from '@/lib/utils'
 
 type Section = 'overview' | 'people'
@@ -80,6 +81,8 @@ function ProjectAnalytics() {
       })
     return () => { cancelled = true }
   }, [id, attempt])
+
+  useDocumentTitle(meta ? `Analytics · ${meta.name}` : null)
 
   const personParam = searchParams.get('person')
   const selectedPerson = meta?.participants.find((person) => person.id === personParam) ?? meta?.participants[0] ?? null

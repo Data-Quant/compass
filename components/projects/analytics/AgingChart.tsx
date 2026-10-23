@@ -1,7 +1,7 @@
 'use client'
 
 import type { ProjectAnalytics } from './types'
-import { plural } from './chart-theme'
+import { BAR_ROW, plural } from './chart-theme'
 import { ChartCard, ChartEmpty, MarkTip, SrTable } from './ChartCard'
 
 const LABELS: Record<string, string> = {
@@ -29,11 +29,7 @@ export function AgingChart({ aging }: { aging: ProjectAnalytics['aging'] }) {
               return (
                 <li key={bucket.label}>
                   <MarkTip title={`${label} late`} rows={[{ label: 'Open tasks', value: bucket.count, color, kind: 'rect' }]}>
-                    <div
-                      tabIndex={0}
-                      aria-label={`${label} late: ${plural(bucket.count, 'task')}`}
-                      className="grid grid-cols-[96px_1fr_28px] items-center gap-3 rounded-md px-1 py-1.5 text-[13px] transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
+                    <div aria-label={`${label} late: ${plural(bucket.count, 'task')}`} className={`${BAR_ROW} grid-cols-[96px_1fr_28px]`}>
                       <span className="text-muted-foreground">{label}</span>
                       <span className="flex h-3.5 rounded bg-[var(--viz-track)]">
                         {bucket.count > 0 && (

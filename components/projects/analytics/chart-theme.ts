@@ -14,25 +14,43 @@ export const SURFACE = 'hsl(var(--card))'
 export const CATEGORICAL = ['#6366f1', '#0d9488', '#d97706', '#db2777', '#0284c7', '#65a30d'] as const
 export const NEUTRAL = 'var(--viz-neutral)'
 export const categoricalColor = (index: number) => CATEGORICAL[index] ?? NEUTRAL
+/** Indigo means Completed. No other status, priority or due bucket uses it. */
+export const COMPLETED = 'hsl(var(--primary))'
+export const COMPLETED_FIXED = CATEGORICAL[0]
+
+// Recharts geometry shared by every cartesian chart.
+export const CHART_MARGIN = { top: 8, right: 8, bottom: 0, left: -12 }
+export const Y_AXIS_WIDTH = 40
+export const STROKE_WIDTH = 2
+export const ACTIVE_DOT = { r: 4, stroke: SURFACE, strokeWidth: STROKE_WIDTH }
+/** Share of the plotted span the burn-up projects forward. */
+export const PROJECTION_SHARE = 0.2
+
+const ONE_DECIMAL = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 1 })
+export const formatDecimal = (value: number) => ONE_DECIMAL.format(value)
+
+/** Text-and-bar row used by the horizontal bar lists. */
+export const BAR_ROW = 'grid items-center gap-x-3 gap-y-1.5 rounded-md px-1 py-1.5 text-sm transition-colors hover:bg-muted/50'
 
 /**
  * Mode-specific steps live in CSS variables on the analytics root, so marks
  * written against var(--viz-*) switch with the theme.
- * - priority: ordinal indigo ramp, more urgent = further from the surface.
+ * - priority: ordinal orange ramp, more urgent = further from the surface.
  * - aging: ordinal rose ramp, later = further from the surface.
- * - heat: sequential indigo, level 0 recedes into the surface.
- * - open work: rose / amber / indigo (validated as a set), plus neutral for no date.
+ * - heat: sequential indigo (completed work); level 0 is the empty day, kept just off the card.
+ * - open work: rose / amber / sky (validated as a set), plus neutral for no date.
+ * Ramps 1-4, priority and open work pass validate_palette.js against #ffffff and #121212.
  */
 export const VIZ_VARS = [
-  '[--viz-neutral:#a3a3a3] dark:[--viz-neutral:#737373]',
+  '[--viz-neutral:#a3a3a3] dark:[--viz-neutral:#52525b]',
   '[--viz-track:hsl(var(--muted))]',
-  '[--viz-priority-0:#312e81] [--viz-priority-1:#4338ca] [--viz-priority-2:#6366f1] [--viz-priority-3:#818cf8]',
-  'dark:[--viz-priority-0:#c7d2fe] dark:[--viz-priority-1:#818cf8] dark:[--viz-priority-2:#6366f1] dark:[--viz-priority-3:#4f46e5]',
+  '[--viz-priority-0:#7c2d12] [--viz-priority-1:#c2410c] [--viz-priority-2:#ea580c] [--viz-priority-3:#fb923c]',
+  'dark:[--viz-priority-0:#fed7aa] dark:[--viz-priority-1:#fb923c] dark:[--viz-priority-2:#ea580c] dark:[--viz-priority-3:#9a3412]',
   '[--viz-age-0:#fb7185] [--viz-age-1:#f43f5e] [--viz-age-2:#be123c] [--viz-age-3:#881337] [--viz-age-4:#4c0519]',
   'dark:[--viz-age-0:#9f1239] dark:[--viz-age-1:#e11d48] dark:[--viz-age-2:#fb7185] dark:[--viz-age-3:#fda4af] dark:[--viz-age-4:#ffe4e6]',
-  '[--viz-heat-0:#ececf1] [--viz-heat-1:#c7d2fe] [--viz-heat-2:#a5b4fc] [--viz-heat-3:#6366f1] [--viz-heat-4:#3730a3]',
-  'dark:[--viz-heat-0:#1f1f23] dark:[--viz-heat-1:#312e81] dark:[--viz-heat-2:#4338ca] dark:[--viz-heat-3:#6366f1] dark:[--viz-heat-4:#a5b4fc]',
-  '[--viz-overdue:#e11d48] [--viz-soon:#d97706] [--viz-later:#6366f1]',
+  '[--viz-heat-0:#ececf1] [--viz-heat-1:#818cf8] [--viz-heat-2:#6366f1] [--viz-heat-3:#4338ca] [--viz-heat-4:#312e81]',
+  'dark:[--viz-heat-0:#26262b] dark:[--viz-heat-1:#4338ca] dark:[--viz-heat-2:#6366f1] dark:[--viz-heat-3:#818cf8] dark:[--viz-heat-4:#c7d2fe]',
+  '[--viz-overdue:#e11d48] [--viz-soon:#d97706] [--viz-later:#0284c7]',
 ].join(' ')
 
 export const PRIORITY_COLOR: Record<string, string> = {

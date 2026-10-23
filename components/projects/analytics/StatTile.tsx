@@ -4,6 +4,9 @@ import { Info } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
+/** Shown when a tile has too little data for a number. */
+export const EMPTY_VALUE = '–'
+
 export interface StatTileProps {
   label: string
   value: string
@@ -33,7 +36,9 @@ export function StatTile({ label, value, unit, sub, definition }: StatTileProps)
         </Tooltip>
       </div>
       <div className="flex flex-wrap items-baseline gap-x-2">
-        <span className="text-[28px] font-semibold leading-tight tracking-tight text-foreground">{value}</span>
+        <span className="text-3xl font-semibold leading-tight tracking-tight text-foreground">
+          {value === EMPTY_VALUE ? <><span aria-hidden="true">{value}</span><span className="sr-only">Not enough data</span></> : value}
+        </span>
         {unit && <span className="text-xs text-muted-foreground">{unit}</span>}
       </div>
       <span className="text-xs text-muted-foreground">{sub}</span>

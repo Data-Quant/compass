@@ -2,7 +2,7 @@
 
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import type { ProjectAnalytics } from './types'
-import { OPEN_WORK } from './chart-theme'
+import { BAR_ROW, OPEN_WORK } from './chart-theme'
 import { ChartCard, ChartEmpty, Legend, MarkTip, SrTable } from './ChartCard'
 
 export function WorkloadChart({ workload }: { workload: ProjectAnalytics['workload'] }) {
@@ -30,13 +30,12 @@ export function WorkloadChart({ workload }: { workload: ProjectAnalytics['worklo
                   rows={OPEN_WORK.map((part) => ({ label: part.label, value: row[part.key], color: part.color, kind: 'rect' as const }))}
                 >
                   <div
-                    tabIndex={0}
                     aria-label={`${row.name}: ${row.total} open. ${describe(row)}`}
-                    className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 rounded-md px-1 py-1.5 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:grid-cols-[180px_1fr_64px]"
+                    className={`${BAR_ROW} grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[180px_1fr_64px]`}
                   >
                     <span className="flex min-w-0 items-center gap-2">
                       <UserAvatar name={row.name} size="xs" title="" />
-                      <span className="truncate text-[13px] text-foreground">{row.name}</span>
+                      <span className="truncate text-foreground">{row.name}</span>
                     </span>
                     <span className="col-span-2 row-start-2 flex h-4 gap-0.5 sm:col-span-1 sm:col-start-2 sm:row-start-1">
                       {OPEN_WORK.filter((part) => row[part.key] > 0).map((part) => (
@@ -47,7 +46,7 @@ export function WorkloadChart({ workload }: { workload: ProjectAnalytics['worklo
                         />
                       ))}
                     </span>
-                    <span className="text-right text-[13px] tabular-nums text-muted-foreground sm:col-start-3 sm:row-start-1">{row.total} open</span>
+                    <span className="text-right tabular-nums text-muted-foreground sm:col-start-3 sm:row-start-1">{row.total} open</span>
                   </div>
                 </MarkTip>
               </li>

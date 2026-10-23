@@ -11,10 +11,11 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { WorkspaceSkeleton } from '@/components/projects/analytics/AnalyticsSkeleton'
 import { ProjectHealthTable } from '@/components/projects/analytics/ProjectHealthTable'
 import { RangeControl, type RangeSelection } from '@/components/projects/analytics/RangeControl'
-import { StatTileGrid, type StatTileProps } from '@/components/projects/analytics/StatTile'
+import { EMPTY_VALUE, StatTileGrid, type StatTileProps } from '@/components/projects/analytics/StatTile'
 import { WorkspaceThroughputChart } from '@/components/projects/analytics/WorkspaceThroughputChart'
 import { WorkspaceWorkloadChart } from '@/components/projects/analytics/WorkspaceWorkloadChart'
 import { VIZ_VARS, plural } from '@/components/projects/analytics/chart-theme'
+import { useDocumentTitle } from '@/components/projects/analytics/useDocumentTitle'
 import { assignProjectColors } from '@/components/projects/analytics/workspace-colors'
 import type { WorkspaceAnalytics, WorkspaceAnalyticsResponse } from '@/components/projects/analytics/types'
 import { cn } from '@/lib/utils'
@@ -47,7 +48,7 @@ function workspaceTiles({ tiles }: WorkspaceAnalytics): StatTileProps[] {
         sub: 'Tasks without a due date are left out',
         definition: ON_TIME_DEFINITION,
       }
-      : { label: 'On time', value: '–', sub: 'Needs 5 completed tasks with due dates', definition: ON_TIME_DEFINITION },
+      : { label: 'On time', value: EMPTY_VALUE, sub: 'Needs 5 completed tasks with due dates', definition: ON_TIME_DEFINITION },
     {
       label: 'Overdue now',
       value: String(tiles.overdue),
@@ -71,7 +72,7 @@ function Shell({ children }: { children: ReactNode }) {
   return (
     <div className={cn('mx-auto max-w-[1600px] p-4 sm:p-6 lg:p-8', VIZ_VARS)}>
       <header className="mb-6 flex flex-col gap-1.5">
-        <nav aria-label="Breadcrumb" className="text-[13px] text-muted-foreground">
+        <nav aria-label="Breadcrumb" className="text-sm text-muted-foreground">
           <ol className="flex flex-wrap items-center gap-1.5">
             <li><Link href="/projects" className="transition-colors hover:text-foreground">Projects</Link></li>
             <li aria-hidden="true">/</li>
@@ -87,7 +88,7 @@ function Shell({ children }: { children: ReactNode }) {
             </Link>
           </Button>
         </div>
-        <p className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground">
+        <p className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
           <Lock aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
           Projects you lead. HR sees all of them.
         </p>
@@ -104,6 +105,7 @@ function WorkspaceAnalyticsView() {
   const [failure, setFailure] = useState<Failure | null>(null)
   const [loading, setLoading] = useState(true)
   const [attempt, setAttempt] = useState(0)
+  useDocumentTitle('Projects analytics')
 
   const query = useMemo(() => {
     const params = new URLSearchParams()

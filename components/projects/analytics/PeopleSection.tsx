@@ -1,13 +1,13 @@
 'use client'
 
 import Link from 'next/link'
-import { CheckCircle2, Clock, Lock } from 'lucide-react'
+import { CheckCircle2, Clock } from 'lucide-react'
 import { UserAvatar } from '@/components/composed/UserAvatar'
 import { cn } from '@/lib/utils'
 import type { Participant, PersonAnalytics } from './types'
-import { NEUTRAL, categoricalColor, formatDay, plural } from './chart-theme'
+import { BAR_ROW, NEUTRAL, categoricalColor, formatDay, plural } from './chart-theme'
 import { ChartCard, ChartEmpty, MarkTip, SrTable } from './ChartCard'
-import { StatTileGrid, type StatTileProps } from './StatTile'
+import { EMPTY_VALUE, StatTileGrid, type StatTileProps } from './StatTile'
 import { ContributionHeatmap } from './ContributionHeatmap'
 
 const RECENT_LIMIT = 8
@@ -24,7 +24,7 @@ function personTiles(person: PersonAnalytics): StatTileProps[] {
         sub: `${person.onTime.onTime} of ${person.onTime.dated} with a due date`,
         definition: onTimeDefinition,
       }
-      : { label: 'On time', value: '–', sub: 'Needs 5 completed tasks with due dates', definition: onTimeDefinition },
+      : { label: 'On time', value: EMPTY_VALUE, sub: 'Needs 5 completed tasks with due dates', definition: onTimeDefinition },
     {
       label: 'Open now',
       value: String(person.openNow.owned + person.openNow.helping),
@@ -46,7 +46,7 @@ export function PersonPicker({ people, selectedId, onSelect }: { people: Partici
             aria-pressed={selected}
             onClick={() => onSelect(person.id)}
             className={cn(
-              'inline-flex items-center gap-2 rounded-full border py-1 pl-1 pr-3 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              'inline-flex items-center gap-2 rounded-full border py-1 pl-1 pr-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               selected
                 ? 'border-primary bg-primary/10 font-medium text-foreground'
                 : 'border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground',
@@ -82,11 +82,7 @@ function ByProjectChart({ byProject }: { byProject: PersonAnalytics['byProject']
             {colored.map((row) => (
               <li key={row.projectId ?? 'other'}>
                 <MarkTip title={row.name} rows={[{ label: 'Completed', value: row.count, color: row.color, kind: 'rect' }]}>
-                  <div
-                    tabIndex={0}
-                    aria-label={`${row.name}: ${plural(row.count, 'task')}`}
-                    className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_32px] items-center gap-3 rounded-md px-1 py-1.5 text-[13px] transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
+                  <div aria-label={`${row.name}: ${plural(row.count, 'task')}`} className={`${BAR_ROW} grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_32px]`}>
                     <span className="flex min-w-0 items-center gap-2">
                       <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-[2px]" style={{ background: row.color }} />
                       <span className="truncate text-foreground">{row.name}</span>
@@ -116,7 +112,7 @@ function RecentList({ recent }: { recent: PersonAnalytics['recent'] }) {
       ) : (
         <ul className="-mt-1 flex flex-col">
           {items.map((task) => (
-            <li key={task.id} className="flex items-center gap-2.5 border-b border-border py-2 text-[13px] last:border-0 sm:gap-3">
+            <li key={task.id} className="flex items-center gap-2.5 border-b border-border py-2 text-sm last:border-0 sm:gap-3">
               <Link
                 href={`/projects/${task.projectId}?task=${encodeURIComponent(task.id)}`}
                 title={task.projectName ? `${task.title} · ${task.projectName}` : task.title}
@@ -158,13 +154,7 @@ export function PeopleSection({ people, selected, person, onSelect }: PeopleSect
   const firstName = selected.name.split(' ')[0] || selected.name
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <PersonPicker people={people} selectedId={selected.id} onSelect={onSelect} />
-        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Lock aria-hidden="true" className="h-3.5 w-3.5" />
-          Visible to this project&apos;s leads and HR
-        </span>
-      </div>
+      <PersonPicker people={people} selectedId={selected.id} onSelect={onSelect} />
       <StatTileGrid tiles={personTiles(person)} />
       <ContributionHeatmap heatmap={person.heatmap} firstName={firstName} />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

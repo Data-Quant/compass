@@ -9,6 +9,10 @@ import { ChartCard, MarkTip } from './ChartCard'
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const MONTH = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', month: 'short' })
 const LEVELS = [0, 1, 2, 3, 4]
+const CELL_MIN = 8
+const CELL_MAX = 16
+// -mr/pr match the 3px gap so the opaque label also covers the gap beside it.
+const LABEL_COLUMN = 'sticky left-0 z-10 -mr-[3px] bg-card pr-[7px]'
 
 type Cell = PersonAnalytics['heatmap'][number]
 
@@ -64,23 +68,27 @@ export function ContributionHeatmap({ heatmap, firstName }: { heatmap: Cell[]; f
       )}
     >
       <div ref={scrollRef} className="overflow-x-auto pb-1">
-        <div className="inline-flex flex-col gap-1">
-          <div aria-hidden="true" className="flex gap-[3px] text-[11px] text-muted-foreground">
-            <span className="sticky left-0 z-10 w-[29px] shrink-0 bg-card shadow-[3px_0_0_hsl(var(--card))]" />
-            {months.map((month, week) => (
-              <span key={week} className="w-3 shrink-0 overflow-visible whitespace-nowrap">{month}</span>
-            ))}
-          </div>
-          <div role="grid" aria-label={`${title}, last 12 months`} className="flex flex-col gap-[3px]" onMouseLeave={() => setReadout(null)}>
+        {/* Columns grow to fill the card, capped so cells stay small squares; past the cap the grid centres. */}
+        <div
+          className="grid justify-center gap-[3px]"
+          style={{ gridTemplateColumns: `auto repeat(${weeks}, minmax(${CELL_MIN}px, ${CELL_MAX}px))` }}
+          onMouseLeave={() => setReadout(null)}
+        >
+          {/* The label column is opaque and reaches over the gap, so cells scrolling under it never peek out. */}
+          <span aria-hidden="true" className={LABEL_COLUMN} />
+          {months.map((month, week) => (
+            <span key={week} aria-hidden="true" className="overflow-visible whitespace-nowrap text-[11px] leading-4 text-muted-foreground">{month}</span>
+          ))}
+          <div role="grid" aria-label={`${title}, last 12 months`} className="contents">
             {DAYS.map((day, dayIndex) => (
-              <div role="row" key={day} className="flex items-center gap-[3px]">
-                <span role="rowheader" aria-label={day} className="sticky left-0 z-10 w-[29px] shrink-0 bg-card shadow-[3px_0_0_hsl(var(--card))] text-[10px] leading-3 text-muted-foreground">
+              <div role="row" key={day} className="contents">
+                <span role="rowheader" aria-label={day} className={cn(LABEL_COLUMN, 'flex items-center text-[10px] leading-none text-muted-foreground')}>
                   <span aria-hidden="true">{dayIndex % 2 === 0 && dayIndex < 6 ? day : ''}</span>
                 </span>
                 {Array.from({ length: weeks }, (_, week) => {
                   const index = week * 7 + dayIndex
                   const cell = heatmap[index]
-                  if (!cell) return <span key={week} role="gridcell" aria-hidden="true" className="h-3 w-3 shrink-0" />
+                  if (!cell) return <span key={week} role="gridcell" aria-hidden="true" />
                   return (
                     <MarkTip key={week} title={formatLongDay(cell.date)} rows={[{ label: 'Owned', value: cell.owned }, { label: 'Helped', value: cell.helped }]}>
                       <div
@@ -92,7 +100,7 @@ export function ContributionHeatmap({ heatmap, firstName }: { heatmap: Cell[]; f
                         onFocus={() => { setFocusIndex(index); setReadout(cell) }}
                         onMouseEnter={() => setReadout(cell)}
                         className={cn(
-                          'h-3 w-3 shrink-0 rounded-[3px] border border-[rgba(127,127,127,0.14)] outline-none',
+                          'aspect-square w-full rounded-[3px] border border-border/40 outline-none',
                           'hover:ring-1 hover:ring-foreground/60 focus-visible:ring-2 focus-visible:ring-ring',
                         )}
                         style={{ background: `var(--viz-heat-${cell.level})` }}
@@ -112,7 +120,7 @@ export function ContributionHeatmap({ heatmap, firstName }: { heatmap: Cell[]; f
         <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
           Fewer
           {LEVELS.map((level) => (
-            <span key={level} aria-hidden="true" className="h-3 w-3 rounded-[3px] border border-[rgba(127,127,127,0.14)]" style={{ background: `var(--viz-heat-${level})` }} />
+            <span key={level} aria-hidden="true" className="h-3 w-3 rounded-[3px] border border-border/40" style={{ background: `var(--viz-heat-${level})` }} />
           ))}
           More
         </span>

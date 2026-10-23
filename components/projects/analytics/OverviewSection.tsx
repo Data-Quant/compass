@@ -2,8 +2,8 @@
 
 import type { AnalyticsRange } from '@/lib/project-analytics'
 import type { DoneSectionIds, Participant, ProjectAnalytics } from './types'
-import { CATEGORICAL, NEUTRAL, PRIORITY_COLOR, PRIORITY_LABEL, categoricalColor, plural } from './chart-theme'
-import { StatTileGrid, type StatTileProps } from './StatTile'
+import { CATEGORICAL, COMPLETED_FIXED, NEUTRAL, PRIORITY_COLOR, PRIORITY_LABEL, categoricalColor, plural } from './chart-theme'
+import { EMPTY_VALUE, StatTileGrid, type StatTileProps } from './StatTile'
 import { BurnUpChart } from './BurnUpChart'
 import { ThroughputChart } from './ThroughputChart'
 import { AgingChart } from './AgingChart'
@@ -50,7 +50,7 @@ function overviewTiles(analytics: ProjectAnalytics, range: AnalyticsRange): Stat
       }
       : {
         label: 'On time',
-        value: '–',
+        value: EMPTY_VALUE,
         sub: 'Needs 5 completed tasks with due dates',
         definition: 'Completed on or before the due date, out of completed tasks that had a due date.',
       },
@@ -80,14 +80,14 @@ interface OverviewSectionProps {
 }
 
 export function OverviewSection({ analytics, range, participants, doneSections }: OverviewSectionProps) {
-  // Not-started columns read neutral, done reads teal, the rest take the remaining slots in order.
-  const openSlots = [NEUTRAL, CATEGORICAL[0], CATEGORICAL[2], CATEGORICAL[3], CATEGORICAL[4], CATEGORICAL[5]]
+  // Not-started columns read neutral, done reads indigo (Completed), the rest take the other slots in order.
+  const openSlots = [NEUTRAL, ...CATEGORICAL.slice(1)]
   let openIndex = 0
   const status = fold(analytics.status.map((section) => ({
     key: section.sectionId,
     label: section.name,
     count: section.count,
-    color: doneSections.has(section.sectionId) ? CATEGORICAL[1] : openSlots[openIndex++] ?? NEUTRAL,
+    color: doneSections.has(section.sectionId) ? COMPLETED_FIXED : openSlots[openIndex++] ?? NEUTRAL,
   })), 'Other columns')
 
   const priority = analytics.priority.map((entry) => ({

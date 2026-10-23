@@ -12,6 +12,7 @@ import { formatDay } from './chart-theme'
 export type RangeSelection = { range: Exclude<AnalyticsRangeKey, 'custom'> } | { from: string; to: string }
 
 const PRESETS = ['30d', '90d', '6m', '12m'] as const
+const PRESET_LABEL = { '30d': 'Last 30 days', '90d': 'Last 90 days', '6m': 'Last 6 months', '12m': 'Last 12 months' } as const
 // Matches the API limit (lib/project-analytics MAX_RANGE_DAYS) so the picker can't build a rejected range.
 const MAX_SPAN_DAYS = 730
 const KARACHI_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' })
@@ -54,6 +55,7 @@ function DateField({ label, value, disabled, onPick }: {
             onPick(toLocalDateValue(date))
             setOpen(false)
           }}
+          weekStartsOn={1}
           autoFocus
         />
       </PopoverContent>
@@ -68,7 +70,7 @@ export function RangeControl({ range, onChange }: { range: AnalyticsRange; onCha
   const isCustom = range.key === 'custom'
 
   const segment = (pressed: boolean) => cn(
-    'rounded-md px-2.5 py-1 text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+    'h-8 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
     pressed ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
   )
 
@@ -92,7 +94,7 @@ export function RangeControl({ range, onChange }: { range: AnalyticsRange; onCha
       )}
       <div role="group" aria-label="Date range" className="flex w-fit items-center gap-0.5 rounded-lg bg-muted/50 p-1">
         {PRESETS.map((key) => (
-          <button key={key} type="button" aria-pressed={range.key === key} onClick={() => onChange({ range: key })} className={segment(range.key === key)}>
+          <button key={key} type="button" aria-label={PRESET_LABEL[key]} aria-pressed={range.key === key} onClick={() => onChange({ range: key })} className={segment(range.key === key)}>
             {key}
           </button>
         ))}

@@ -53,10 +53,9 @@ function Sparkline({ values, color, weeks }: { values: number[]; color: string; 
       ]}
     >
       <span
-        tabIndex={0}
         role="img"
         aria-label={`Completed per week, last 12 weeks, oldest first: ${values.join(', ')}. ${total} in total.`}
-        className="inline-flex rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="inline-flex rounded"
       >
         <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true" className="overflow-visible">
           <path d={path} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
@@ -79,11 +78,11 @@ export function ProjectHealthTable({ rows, weeks, colorOf }: {
   return (
     <Card role="region" aria-labelledby="health-title" className="min-w-0 overflow-hidden">
       <div className="px-5 pb-3 pt-5">
-        <h2 id="health-title" className="text-[15px] font-semibold text-foreground">Project health</h2>
+        <h2 id="health-title" className="text-base font-semibold text-foreground">Project health</h2>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">Select a column header to sort. Select a project to open its analytics page.</p>
       </div>
       <div tabIndex={0} role="group" aria-label="Project health table, scrolls sideways" className="relative overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
-        <table className="w-full min-w-[860px] border-collapse text-[13px]">
+        <table className="w-full min-w-[860px] border-collapse text-sm">
           <caption className="sr-only">Project health, sorted by {COLUMNS.find((column) => column.key === sort.key)?.label.toLowerCase()}, {sort.dir === 1 ? 'ascending' : 'descending'}</caption>
           <thead>
             <tr className="border-y border-border bg-muted/40 text-left text-xs text-muted-foreground">

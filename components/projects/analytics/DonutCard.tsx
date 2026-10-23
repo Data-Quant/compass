@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { Cell, Pie, PieChart, Tooltip } from 'recharts'
-import { cn } from '@/lib/utils'
 import { SURFACE } from './chart-theme'
 import { ChartCard, ChartEmpty, LegendKey, SrTable, TipCard } from './ChartCard'
 
@@ -25,7 +24,7 @@ export function DonutCard({ id, title, description, centerLabel, segments, empty
   const drawn = segments.filter((segment) => segment.count > 0)
 
   return (
-    <ChartCard id={id} title={title} description={description}>
+    <ChartCard id={id} title={title} description={<span className="line-clamp-2 min-h-10">{description}</span>}>
       {total === 0 ? (
         <ChartEmpty className="h-[160px]" title={empty.title} description={empty.description} />
       ) : (
@@ -61,7 +60,7 @@ export function DonutCard({ id, title, description, centerLabel, segments, empty
               />
             </PieChart>
             <div aria-hidden="true" className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-[26px] font-semibold leading-none text-foreground">{total}</span>
+              <span className="text-2xl font-semibold leading-none text-foreground">{total}</span>
               <span className="mt-1 text-[11px] text-muted-foreground">{centerLabel}</span>
             </div>
           </div>
@@ -69,24 +68,15 @@ export function DonutCard({ id, title, description, centerLabel, segments, empty
             {segments.map((segment) => (
               <li
                 key={segment.key}
-                tabIndex={0}
-                aria-label={`${segment.label}: ${segment.count} of ${total}`}
                 onMouseEnter={() => setActive(segment.key)}
-                onFocus={() => setActive(segment.key)}
-                onBlur={() => setActive(null)}
-                className={cn(
-                  'flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                  active === segment.key && 'bg-muted',
-                )}
+                className={`grid grid-cols-[minmax(0,1fr)_4ch_4ch] items-center gap-3 rounded-lg px-2 py-1.5 text-sm transition-colors ${active === segment.key ? 'bg-muted' : ''}`}
               >
                 <span className="inline-flex min-w-0 items-center gap-2">
                   <LegendKey color={segment.color} />
                   <span className="truncate text-foreground">{segment.label}</span>
                 </span>
-                <span className="shrink-0 tabular-nums">
-                  <span className="font-semibold text-foreground">{segment.count}</span>{' '}
-                  <span className="text-muted-foreground">{pct(segment.count, total)}</span>
-                </span>
+                <span className="text-right font-semibold tabular-nums text-foreground">{segment.count}</span>
+                <span className="text-right tabular-nums text-muted-foreground">{pct(segment.count, total)}</span>
               </li>
             ))}
           </ul>

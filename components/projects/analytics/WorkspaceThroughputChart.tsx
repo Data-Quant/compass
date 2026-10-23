@@ -3,7 +3,7 @@
 import { Bar, BarChart, CartesianGrid, Rectangle, ResponsiveContainer, Tooltip, XAxis, YAxis, type BarShapeProps } from 'recharts'
 import type { AnalyticsRange } from '@/lib/project-analytics'
 import type { WorkspaceAnalytics } from './types'
-import { AXIS_TICK, GRID_STROKE, SURFACE, plural } from './chart-theme'
+import { AXIS_TICK, CHART_MARGIN, GRID_STROKE, SURFACE, Y_AXIS_WIDTH, plural } from './chart-theme'
 import { ChartCard, ChartEmpty, Legend, SrTable, TipCard } from './ChartCard'
 import { bucketTitle } from './BurnUpChart'
 
@@ -46,7 +46,7 @@ export function WorkspaceThroughputChart({ analytics, range, series, keyOf }: {
         <>
           <div className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -12 }} barCategoryGap={2}>
+              <BarChart data={data} margin={CHART_MARGIN} barCategoryGap={2}>
                 <CartesianGrid vertical={false} stroke={GRID_STROKE} />
                 <XAxis
                   dataKey="label"
@@ -56,7 +56,7 @@ export function WorkspaceThroughputChart({ analytics, range, series, keyOf }: {
                   tickLine={false}
                   axisLine={{ stroke: GRID_STROKE }}
                 />
-                <YAxis allowDecimals={false} tick={AXIS_TICK} tickLine={false} axisLine={false} width={40} />
+                <YAxis allowDecimals={false} tick={AXIS_TICK} tickLine={false} axisLine={false} width={Y_AXIS_WIDTH} />
                 <Tooltip
                   cursor={{ fill: 'hsl(var(--muted))', opacity: 0.6 }}
                   isAnimationActive={false}
