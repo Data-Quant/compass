@@ -2,6 +2,7 @@ import {
   calculateProjectProgress,
   calculateTaskVariance,
   isBacklogTask,
+  isTaskAssignedTo,
   projectTaskCalendarDayKey,
 } from './project-progress'
 
@@ -24,14 +25,14 @@ export type AnalyticsSection = {
   id: string
   name: string
   isBacklog: boolean
-  isDone: boolean
+  isDone?: boolean
   orderIndex: number
 }
 
 export type AnalyticsTask = {
   id: string
   projectId: string
-  parentTaskId: string | null
+  parentTaskId?: string | null
   title?: string
   status: string
   priority: string
@@ -136,9 +137,11 @@ export function resolveAnalyticsRange(
   } else {
     key = (params.range ?? '90d') as AnalyticsRangeKey
     const date = new Date(today)
-    const monthsBack = (months: number) => (
-      Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - months, date.getUTCDate()) + DAY_MS
-    )
+    // Clamp the day so 31 Mar minus 6 months lands on 30 Sep, not 1 Oct (which overflowed).
+    const monthsBack = (months: number) => {
+      const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - months + 1, 0)).getUTCDate()
+      return Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - months, Math.min(date.getUTCDate(), lastDay)) + DAY_MS
+    }
     if (key === '30d') from = today - 29 * DAY_MS
     else if (key === '90d') from = today - 89 * DAY_MS
     else if (key === '6m') from = monthsBack(6)
@@ -179,9 +182,21 @@ function splitOpen(tasks: AnalyticsTask[], now: Date): OpenSplit {
   return split
 }
 
-function isWorkingOn(task: AnalyticsTask, userId: string) {
-  return task.assigneeId === userId || task.assistants.some((assistant) => assistant.userId === userId)
+// Sorted day keys, so a range count is two binary searches instead of a scan.
+const sortedDays = (days: Array<number | null>) => (
+  days.filter((day): day is number => day !== null).sort((a, b) => a - b)
+)
+function upperBound(sorted: number[], value: number) {
+  let lo = 0
+  let hi = sorted.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (sorted[mid] <= value) lo = mid + 1
+    else hi = mid
+  }
+  return lo
 }
+const countIn = (sorted: number[], from: number, to: number) => upperBound(sorted, to) - upperBound(sorted, from - 1)
 
 function completedIn(tasks: AnalyticsTask[], from: number, to: number) {
   return tasks.filter((task) => isCredited(task) && inSpan(doneDay(task), from, to))
@@ -210,32 +225,29 @@ export function buildProjectAnalytics(
     .filter((variance) => variance.isOverdue)
 
   // Burn-up matches the progress tile, so it counts every active task, parents included.
-  const createdDays = active.map((task) => dayOf(task.createdAt))
-  const doneDays = active.map(doneDay)
-  const atOrBefore = (days: Array<number | null>, end: number) => days.filter((day) => day !== null && day <= end).length
+  const createdDays = sortedDays(active.map((task) => dayOf(task.createdAt)))
+  const doneDays = sortedDays(active.map(doneDay))
   const burnUp = buckets.map((bucket) => ({
     start: bucket.start,
     end: bucket.end,
     label: bucket.label,
-    scope: atOrBefore(createdDays, bucket.to),
-    done: atOrBefore(doneDays, bucket.to),
+    scope: upperBound(createdDays, bucket.to),
+    done: upperBound(doneDays, bucket.to),
   }))
-  const pace = buckets.slice(-4)
-  const paceDays = (to - pace[0].from) / DAY_MS + 1
-  const paceDone = doneDays.filter((day) => inSpan(day, pace[0].from, to)).length
+  // Pace is the mean weekly throughput over the 28 days ending at range.to, whatever the bucket size.
+  const completedDays = sortedDays(active.filter(isCredited).map(doneDay))
+  const paceDone = countIn(completedDays, to - 27 * DAY_MS, to)
   const last = burnUp[burnUp.length - 1]
   const remaining = last.scope - last.done
-  const weeksLeft = paceDone === 0
-    ? null
-    : Math.round((remaining / (paceDone / paceDays) / 7) * 10) / 10
+  const weeksLeft = paceDone === 0 ? null : Math.round((remaining / (paceDone / 4)) * 10) / 10
 
-  const credited = active.filter((task) => task.childCount === 0)
+  // Created counts every active task (research section 4); completed stays leaf-only.
   const throughput = buckets.map((bucket) => ({
     start: bucket.start,
     end: bucket.end,
     label: bucket.label,
-    completed: completed.filter((task) => inSpan(doneDay(task), bucket.from, bucket.to)).length,
-    created: credited.filter((task) => inSpan(dayOf(task.createdAt), bucket.from, bucket.to)).length,
+    completed: countIn(completedDays, bucket.from, bucket.to),
+    created: countIn(createdDays, bucket.from, bucket.to),
   }))
 
   const contribution = new Map<string, number>()
@@ -284,7 +296,7 @@ export function buildProjectAnalytics(
       .sort(byName),
     workload: members
       .map((member) => {
-        const mine = open.filter((task) => isWorkingOn(task, member.id))
+        const mine = open.filter((task) => isTaskAssignedTo(task, member.id))
         return { userId: member.id, name: member.name, total: mine.length, ...splitOpen(mine, now) }
       })
       .filter((row) => row.total > 0)
@@ -308,10 +320,15 @@ export function buildPersonAnalytics(tasks: AnalyticsTask[], userId: string, now
   })
   const inWindow = credits.filter((credit) => inSpan(credit.day, start, today))
 
+  const perDay = new Map<number, { owned: number; helped: number }>()
+  for (const credit of inWindow) {
+    const entry = perDay.get(credit.day) ?? { owned: 0, helped: 0 }
+    if (credit.role === 'owner') entry.owned += 1
+    else entry.helped += 1
+    perDay.set(credit.day, entry)
+  }
   const heatmap = buildBuckets(start, today, 'day').map((bucket) => {
-    const day = Date.parse(bucket.start)
-    const owned = inWindow.filter((credit) => credit.day === day && credit.role === 'owner').length
-    const helped = inWindow.filter((credit) => credit.day === day && credit.role === 'helper').length
+    const { owned, helped } = perDay.get(Date.parse(bucket.start)) ?? { owned: 0, helped: 0 }
     return { date: bucket.start, owned, helped, value: owned + 0.5 * helped }
   })
   // Levels use the person's own quartiles, so shading never compares people.
@@ -319,7 +336,7 @@ export function buildPersonAnalytics(tasks: AnalyticsTask[], userId: string, now
   const quartile = (p: number) => values[Math.floor((values.length - 1) * p)]
   const cuts = [quartile(0.25), quartile(0.5), quartile(0.75)]
 
-  const open = tasks.filter((task) => isOpen(task) && isWorkingOn(task, userId))
+  const open = tasks.filter((task) => isOpen(task) && isTaskAssignedTo(task, userId))
   const byProject = new Map<string, number>()
   for (const credit of inWindow) {
     byProject.set(credit.task.projectId, (byProject.get(credit.task.projectId) ?? 0) + 1)
@@ -362,13 +379,14 @@ export function buildWorkspaceAnalytics(
   const { from, to } = rangeKeys(range)
   const weeks = buildBuckets(mondayOf(today) - 11 * 7 * DAY_MS, today, 'week')
   const weekKeys = bucketKeys(weeks)
+  const bucketRanges = bucketKeys(range.buckets)
   const all = projects.flatMap((project) => project.tasks)
   const open = all.filter(isOpen)
   const overdue = open.filter((task) => calculateTaskVariance(task, now).isOverdue)
 
   const rows = projects
     .map((project) => {
-      const credited = project.tasks.filter(isCredited)
+      const doneDays = sortedDays(project.tasks.filter(isCredited).map(doneDay))
       return {
         projectId: project.id,
         name: project.name,
@@ -377,10 +395,10 @@ export function buildWorkspaceAnalytics(
         open: project.tasks.filter(isOpen).length,
         overdue: overdue.filter((task) => task.projectId === project.id).length,
         completed: completedIn(project.tasks, from, to).length,
-        // Weekly completions, aligned with `weeks`; the stacked chart reads these too.
-        sparkline: weekKeys.map((week) => (
-          credited.filter((task) => inSpan(doneDay(task), week.from, week.to)).length
-        )),
+        // Always the last 12 weeks, aligned with `weeks`.
+        sparkline: weekKeys.map((week) => countIn(doneDays, week.from, week.to)),
+        // Completions per `buckets` entry (follows the selected range); feeds the stacked chart.
+        series: bucketRanges.map((bucket) => countIn(doneDays, bucket.from, bucket.to)),
       }
     })
     .sort(byName)
@@ -397,9 +415,10 @@ export function buildWorkspaceAnalytics(
     },
     projects: rows,
     weeks,
+    buckets: range.buckets,
     workload: members
       .map((member) => {
-        const mine = open.filter((task) => isWorkingOn(task, member.id))
+        const mine = open.filter((task) => isTaskAssignedTo(task, member.id))
         return {
           userId: member.id,
           name: member.name,

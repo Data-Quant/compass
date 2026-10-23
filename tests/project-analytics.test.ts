@@ -203,18 +203,49 @@ test('project analytics tiles, aging, donuts and workload', () => {
   assert.equal(result.throughput.average, Math.round((2 / 30) * 10) / 10)
 })
 
-test('burn-up projects weeks left from the last 4 buckets', () => {
-  const r = range({ range: '30d' })
+test('burn-up projects weeks left from the last 28 days, whatever the bucket size', () => {
   const tasks = [
     task({ completedAt: new Date('2026-10-22T06:00:00Z') }),
     task({ completedAt: new Date('2026-10-23T06:00:00Z') }),
+    task({ completedAt: new Date('2026-09-26T06:00:00Z') }), // day 28 back: inside
+    task({ completedAt: new Date('2026-09-25T06:00:00Z') }), // day 29 back: outside
     ...Array.from({ length: 4 }, () => task()),
   ]
-  const result = project(tasks, r)
-  assert.deepEqual(result.burnUp.series.at(-1), { start: '2026-10-23', end: '2026-10-23', label: '23 Oct', scope: 6, done: 2 })
-  // 2 done in 4 days = 0.5/day, 4 left = 8 days = 1.1 weeks.
-  assert.equal(result.burnUp.weeksLeft, 1.1)
-  assert.equal(project([task()], r).burnUp.weeksLeft, null)
+  for (const params of [{ range: '30d' }, { range: '12m' }]) {
+    const result = project(tasks, range(params))
+    // 3 done in 28 days = 0.75/week, 4 left = 5.3 weeks.
+    assert.equal(result.burnUp.weeksLeft, 5.3, params.range)
+  }
+  assert.deepEqual(project(tasks, range({ range: '30d' })).burnUp.series.at(-1), {
+    start: '2026-10-23', end: '2026-10-23', label: '23 Oct', scope: 8, done: 4,
+  })
+  assert.equal(project([task()], range({ range: '30d' })).burnUp.weeksLeft, null)
+})
+
+test('6m from the 31st clamps to the last day of the target month', () => {
+  const r = resolveAnalyticsRange({ range: '6m' }, new Date('2026-03-31T07:00:00Z'))
+  assert.ok(!('error' in r))
+  assert.equal(r.from, '2025-10-01')
+  assert.equal(r.bucket, 'week')
+})
+
+test('a 45-day custom range groups by day, 46 by week', () => {
+  const day45 = range({ from: '2026-09-09', to: '2026-10-23' })
+  assert.equal(day45.bucket, 'day')
+  assert.equal(day45.buckets.length, 45)
+  assert.equal(range({ from: '2026-09-08', to: '2026-10-23' }).bucket, 'week')
+})
+
+test('created counts every active task, completed only leaves', () => {
+  const at = new Date('2026-10-23T06:00:00Z')
+  const result = project([
+    task({ createdAt: at, childCount: 2 }),
+    task({ createdAt: at, completedAt: at }),
+    task({ createdAt: at, section: BACKLOG }),
+  ])
+  assert.deepEqual(result.throughput.series.at(-1), {
+    start: '2026-10-23', end: '2026-10-23', label: '23 Oct', completed: 1, created: 2,
+  })
 })
 
 test('sorting is by name, never by count', () => {
@@ -268,7 +299,9 @@ test('workspace analytics per project, weeks and workload', () => {
   assert.deepEqual(result.projects[0], {
     projectId: 'p1', name: 'Alpha', status: 'ACTIVE', progress: 50, open: 1, overdue: 0, completed: 1,
     sparkline: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+    series: new Array(range().buckets.length).fill(0).map((_, i, all) => (i === all.length - 1 ? 1 : 0)),
   })
+  assert.equal(result.buckets.length, range().buckets.length)
   assert.equal(result.weeks.length, 12)
   assert.equal(result.weeks[0].start, '2026-08-03')
   assert.deepEqual(result.tiles, { activeProjects: 1, onHoldProjects: 1, completed: 1, onTime: null, overdue: 1, projectsWithOverdue: 1 })
