@@ -16,7 +16,7 @@ import { MemberManager } from '@/components/projects/MemberManager'
 import {
   List, LayoutGrid, UserPlus, ListTodo,
   ChevronLeft, MoreHorizontal, Pencil, Archive, Trash2, Tag,
-  CheckCircle2, RotateCcw, AlertTriangle, PauseCircle, Lock,
+  CheckCircle2, RotateCcw, AlertTriangle, PauseCircle, Lock, ChartColumn,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
@@ -500,6 +500,14 @@ function ProjectDetail() {
           </div>
 
           <div className="flex items-center gap-2">
+            {canManage && (
+              <Button variant="outline" size="sm" className="px-2 sm:px-3" asChild>
+                <Link href={`/projects/${id}/analytics`} title="Visible to this project's leads and HR only">
+                  <ChartColumn aria-hidden="true" />
+                  <span className="sr-only sm:not-sr-only">Analytics</span>
+                </Link>
+              </Button>
+            )}
             {/* Members */}
             <button
               onClick={() => canManage && setMemberModalOpen(true)}
