@@ -70,7 +70,7 @@ export default function WorkspaceAnalyticsPage() {
 
 function Shell({ children }: { children: ReactNode }) {
   return (
-    <div className={cn('mx-auto max-w-[1600px] p-4 sm:p-6 lg:p-8', VIZ_VARS)}>
+    <div className={cn('relative mx-auto max-w-[1600px] p-4 sm:p-6 lg:p-8', VIZ_VARS)}>
       <header className="mb-6 flex flex-col gap-1.5">
         <nav aria-label="Breadcrumb" className="text-sm text-muted-foreground">
           <ol className="flex flex-wrap items-center gap-1.5">

@@ -138,7 +138,7 @@ function ProjectAnalytics() {
 
   return (
     <TooltipProvider delayDuration={150} skipDelayDuration={300}>
-      <div className={cn('mx-auto max-w-[1600px] p-4 sm:p-6 lg:p-8', VIZ_VARS)}>
+      <div className={cn('relative mx-auto max-w-[1600px] p-4 sm:p-6 lg:p-8', VIZ_VARS)}>
         <AnalyticsHeader projectId={id} name={data.project.name} color={data.project.color} />
 
         <Tabs value={section} onValueChange={(value) => updateParams({ section: value === 'people' ? 'people' : null })}>
