@@ -72,7 +72,7 @@
     "nodemailer": "10.1.1",
     "papaparse": "^5.5.3",
     "pdfkit": "^0.17.2",
-    "phaser": "^3.90.0",
+    "phaser": "^4.2.1",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-day-picker": "^9.13.2",
