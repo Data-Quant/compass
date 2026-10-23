@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import type { ProjectStatus } from '@prisma/client'
+import type { Prisma, ProjectStatus } from '@prisma/client'
 import { getSession } from '@/lib/auth'
+import { assertSameOrigin, SameOriginError } from '@/lib/security/same-origin'
 import { prisma } from '@/lib/db'
 import {
   sendChildTaskCompletedNotification,
@@ -206,12 +207,22 @@ async function validateProjectSprintId(projectId: string, value: unknown) {
   return sprint.id
 }
 
+// Row-locks the sprint (blocks a concurrent completion) and rejects it if already completed.
+async function lockOpenSprint(tx: Prisma.TransactionClient, projectId: string, sprintId: string) {
+  const locked = await tx.sprint.updateMany({
+    where: { id: sprintId, projectId, completedAt: null },
+    data: { updatedAt: new Date() },
+  })
+  if (locked.count !== 1) throw new ProjectTaskInputError('Tasks cannot be added to a completed sprint')
+}
+
 // POST - Create a new task
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    assertSameOrigin(request.headers, request.url)
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -315,7 +326,9 @@ export async function POST(
       orderBy: { orderIndex: 'desc' },
     })
 
-    const task = await prisma.task.create({
+    const task = await prisma.$transaction(async (tx) => {
+      if (cleanSprintId) await lockOpenSprint(tx, projectId, cleanSprintId)
+      return tx.task.create({
       data: {
         projectId,
         sectionId: section.id,
@@ -343,6 +356,7 @@ export async function POST(
         }),
       },
       include: PROJECT_TASK_INCLUDE,
+    })
     })
 
     try {
@@ -423,6 +437,7 @@ export async function POST(
 
     return NextResponse.json({ success: true, task, projectStatus, syncedParentTasks })
   } catch (error) {
+    if (error instanceof SameOriginError) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     if (error instanceof ProjectTaskInputError) {
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
@@ -437,6 +452,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    assertSameOrigin(request.headers, request.url)
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -665,10 +681,9 @@ export async function PUT(
           select: { id: true, section: { select: { isBacklog: true } } },
         })
 
-    const task = await prisma.task.update({
-      where: { id: taskId },
-      data: updateData,
-      include: PROJECT_TASK_INCLUDE,
+    const task = await prisma.$transaction(async (tx) => {
+      if (cleanSprintId) await lockOpenSprint(tx, projectId, cleanSprintId)
+      return tx.task.update({ where: { id: taskId }, data: updateData, include: PROJECT_TASK_INCLUDE })
     })
 
     const activities = buildTaskUpdateActivities({
@@ -748,6 +763,7 @@ export async function PUT(
       : task
     return NextResponse.json({ success: true, task: responseTask, projectStatus, syncedParentTasks })
   } catch (error) {
+    if (error instanceof SameOriginError) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     if (error instanceof ProjectTaskInputError) {
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
@@ -762,6 +778,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    assertSameOrigin(request.headers, request.url)
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

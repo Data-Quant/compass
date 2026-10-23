@@ -4,12 +4,14 @@ import { prisma } from '@/lib/db'
 import { sendProjectInvitationNotification } from '@/lib/project-task-notifications'
 import { getProjectAuthorization, parseMemberRoleInput, projectAuthorizationFailure } from '@/lib/project-access'
 import { verifyCsrfToken } from '@/lib/csrf'
+import { assertSameOrigin, SameOriginError } from '@/lib/security/same-origin'
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    assertSameOrigin(request.headers, request.url)
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const { id: projectId } = await params
@@ -42,6 +44,7 @@ export async function POST(
 
     return NextResponse.json({ success: true, member })
   } catch (error: any) {
+    if (error instanceof SameOriginError) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     if (error?.code === 'P2002') {
       return NextResponse.json({ error: 'User is already a member' }, { status: 409 })
     }
@@ -55,6 +58,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    assertSameOrigin(request.headers, request.url)
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const { id: projectId } = await params
@@ -96,6 +100,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    if (error instanceof SameOriginError) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     console.error('Failed to remove member:', error)
     return NextResponse.json({ error: 'Failed to remove member' }, { status: 500 })
   }

@@ -66,6 +66,9 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { sprint, failure } = await authorizeSprintWrite(request, params)
     if (failure) return failure
+    if (sprint.completedAt) {
+      return NextResponse.json({ error: 'A completed sprint is kept as history and cannot be deleted' }, { status: 409 })
+    }
     await prisma.sprint.delete({ where: { id: sprint.id } })
     return NextResponse.json({ success: true })
   } catch (error) {

@@ -77,6 +77,13 @@ export async function POST(
       })
       if (completed.count !== 1) throw new SprintCompletionError('Sprint is already completed', 409)
 
+      // Tasks added to the sprint mid-transaction go to No sprint rather than being stranded in a completed one.
+      const leftover = await tx.task.updateMany({
+        where: { projectId, sprintId, status: { not: 'DONE' }, OR: [{ sectionId: null }, { section: { isBacklog: false } }] },
+        data: { sprintId: null },
+      })
+      if (leftover.count > 0) console.warn(`Sprint ${sprintId} completion cleared ${leftover.count} late-added unfinished task(s)`)
+
       const activities = [...moves].flatMap(([target, taskIds]) => taskIds.map((taskId) => ({
         taskId,
         actorId: user.id,

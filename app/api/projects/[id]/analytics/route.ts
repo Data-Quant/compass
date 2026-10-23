@@ -10,9 +10,7 @@ import {
 import { buildPersonAnalytics, buildProjectAnalytics, resolveAnalyticsRange } from '@/lib/project-analytics'
 import {
   ANALYTICS_TASK_SELECT,
-  maskInaccessibleTasks,
   NOT_BACKLOG_TASK_WHERE,
-  OTHER_PROJECT_ID,
   projectParticipants,
   toAnalyticsTask,
 } from '@/lib/project-analytics-data'
@@ -89,43 +87,34 @@ export async function GET(
 }
 
 async function loadPersonAnalytics(viewer: { id: string; role: string | null }, userId: string, now: Date) {
-  const [tasks, accessibleProjects] = await Promise.all([
-    prisma.task.findMany({
-      where: {
-        AND: [
-          NOT_BACKLOG_TASK_WHERE,
-          { OR: [{ assigneeId: userId }, { assistants: { some: { userId } } }] },
-          // Heatmap window (53 weeks) plus everything still open.
-          { OR: [{ completedAt: { gte: new Date(now.getTime() - 53 * 7 * 86_400_000) } }, { status: { not: 'DONE' } }] },
-        ],
-      },
-      select: { ...ANALYTICS_TASK_SELECT, title: true },
-    }),
-    prisma.project.findMany({
-      where: accessibleProjectsWhere(viewer),
-      select: { id: true, name: true, color: true },
-    }),
-  ])
-
+  // Only projects the viewer can open are counted; nothing from other projects leaks.
+  const accessibleProjects = await prisma.project.findMany({
+    where: accessibleProjectsWhere(viewer),
+    select: { id: true, name: true, color: true },
+  })
   const accessible = new Map(accessibleProjects.map((project) => [project.id, project]))
-  const analytics = buildPersonAnalytics(
-    maskInaccessibleTasks(tasks.map(toAnalyticsTask), new Set(accessible.keys())),
-    userId,
-    now,
-  )
+  const tasks = await prisma.task.findMany({
+    where: {
+      AND: [
+        { projectId: { in: [...accessible.keys()] } },
+        NOT_BACKLOG_TASK_WHERE,
+        { OR: [{ assigneeId: userId }, { assistants: { some: { userId } } }] },
+        // Heatmap window (53 weeks) plus everything still open.
+        { OR: [{ completedAt: { gte: new Date(now.getTime() - 53 * 7 * 86_400_000) } }, { status: { not: 'DONE' } }] },
+      ],
+    },
+    select: { ...ANALYTICS_TASK_SELECT, title: true },
+  })
+
+  const analytics = buildPersonAnalytics(tasks.map(toAnalyticsTask), userId, now)
 
   return {
     userId,
     ...analytics,
-    byProject: analytics.byProject.map((entry) => {
+    byProject: analytics.byProject.flatMap((entry) => {
       const project = accessible.get(entry.projectId)
-      return project
-        ? { projectId: project.id, name: project.name, color: project.color, count: entry.count }
-        : { projectId: null, name: 'Other', color: null, count: entry.count }
+      return project ? [{ projectId: project.id, name: project.name, color: project.color, count: entry.count }] : []
     }),
-    // Recent items show titles, so only tasks from projects the viewer can open are listed.
-    recent: analytics.recent
-      .filter((task) => task.projectId !== OTHER_PROJECT_ID)
-      .map((task) => ({ ...task, projectName: accessible.get(task.projectId)?.name ?? '' })),
+    recent: analytics.recent.map((task) => ({ ...task, projectName: accessible.get(task.projectId)?.name ?? '' })),
   }
 }
