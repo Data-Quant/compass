@@ -100,6 +100,26 @@ test('validateSprintCompletionPlan requires one valid action per unfinished task
   fail([{ taskId: T1, action: 'move', targetSprintId: 'sprint000000000000000099' }, { taskId: T2, action: 'keep' }])
   fail([{ taskId: T1, action: 'keep' }, { taskId: T2, action: 'keep' }, { taskId: 'task00000000000000000003', action: 'keep' }])
   fail('nope')
-  fail(Array.from({ length: 501 }, () => ({ taskId: T1, action: 'keep' })))
+  const overCap = validateSprintCompletionPlan({ ...base, actions: Array.from({ length: 2001 }, () => ({ taskId: T1, action: 'keep' })) })
+  assert.deepEqual(overCap, { ok: false, error: 'At most 2000 actions are allowed' })
   assert.equal(validateSprintCompletionPlan({ ...base, unfinishedTaskIds: [], actions: [] }).ok, true)
+})
+
+test('sprint display helpers count calendar days inclusively', async () => {
+  const { addSprintDays, sprintSpanDays, sprintDaysLeft, formatSprintRange, defaultCompletionTargetId } = await import('../lib/project-sprints')
+  assert.equal(addSprintDays('2026-10-19', 13), '2026-11-01')
+  assert.equal(sprintSpanDays('2026-10-19', '2026-11-01'), 14)
+  assert.equal(sprintDaysLeft('2026-11-01', new Date('2026-10-23T06:00:00Z')), 9)
+  assert.equal(sprintDaysLeft('2026-10-23', new Date('2026-10-23T06:00:00Z')), 0)
+  assert.equal(formatSprintRange({ startDate: '2026-10-05', endDate: '2026-10-18' }), 'Oct 5 – Oct 18')
+
+  const now = new Date('2026-10-23T06:00:00Z')
+  const sprints = [
+    { id: 'past', startDate: '2026-10-05', endDate: '2026-10-18', completedAt: null },
+    { id: 'next', startDate: '2026-11-02', endDate: '2026-11-15', completedAt: null },
+    { id: 'cur', startDate: '2026-10-19', endDate: '2026-11-01', completedAt: null },
+  ]
+  assert.equal(defaultCompletionTargetId(sprints, 'past', now), 'cur')
+  assert.equal(defaultCompletionTargetId(sprints.filter((s) => s.id !== 'cur'), 'past', now), 'next')
+  assert.equal(defaultCompletionTargetId([sprints[0]], 'past', now), null)
 })

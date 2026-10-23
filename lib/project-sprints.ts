@@ -5,7 +5,7 @@ const DAY_MS = 24 * 60 * 60 * 1000
 export const SPRINT_NAME_MAX_LENGTH = 80
 export const SPRINT_MAX_DAYS = 56
 export const SPRINT_PRESET_LENGTHS = [7, 14, 21, 28] as const
-export const SPRINT_MAX_COMPLETION_ACTIONS = 500
+export const SPRINT_MAX_COMPLETION_ACTIONS = 2000
 export const SPRINT_COMPLETION_ACTIONS = ['move', 'none', 'keep'] as const
 
 export type SprintStatus = 'current' | 'upcoming' | 'past' | 'completed'
@@ -147,4 +147,44 @@ export function validateSprintCompletionPlan(input: {
 
   if (seen.size !== expected.size) return { ok: false, error: 'Every unfinished task needs an action' }
   return { ok: true, value: clean }
+}
+
+/* Client display helpers. Sprint dates travel as YYYY-MM-DD strings. */
+
+const SPRINT_DAY_FORMAT = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+
+/** Today's calendar day in the project timezone, as YYYY-MM-DD. */
+export function todaySprintDate(now = new Date()) {
+  return new Date(projectTaskCalendarDayKey(now) ?? sprintDateKey(now)).toISOString().slice(0, 10)
+}
+
+export function addSprintDays(value: Date | string, days: number) {
+  return new Date(sprintDateKey(value) + days * DAY_MS).toISOString().slice(0, 10)
+}
+
+/** Inclusive length in days: Oct 19 to Nov 1 is 14 days. */
+export function sprintSpanDays(startDate: Date | string, endDate: Date | string) {
+  return Math.round((sprintDateKey(endDate) - sprintDateKey(startDate)) / DAY_MS) + 1
+}
+
+/** Whole days from today to the last day: 0 on the last day itself. */
+export function sprintDaysLeft(endDate: Date | string, now = new Date()) {
+  return Math.round((sprintDateKey(endDate) - sprintDateKey(todaySprintDate(now))) / DAY_MS)
+}
+
+export function formatSprintDay(value: Date | string) {
+  return SPRINT_DAY_FORMAT.format(new Date(sprintDateKey(value)))
+}
+
+export function formatSprintRange(sprint: SprintDates) {
+  return `${formatSprintDay(sprint.startDate)} – ${formatSprintDay(sprint.endDate)}`
+}
+
+/** Where unfinished work goes by default when a sprint is completed: the current sprint, else the next upcoming one. */
+export function defaultCompletionTargetId<T extends SprintDates & { id: string }>(sprints: T[], sprintId: string, now = new Date()) {
+  const open = sprints
+    .filter((sprint) => sprint.id !== sprintId && !sprint.completedAt)
+    .sort((a, b) => sprintDateKey(a.startDate) - sprintDateKey(b.startDate))
+  return (open.find((sprint) => getSprintStatus(sprint, now) === 'current')
+    || open.find((sprint) => getSprintStatus(sprint, now) === 'upcoming'))?.id || null
 }

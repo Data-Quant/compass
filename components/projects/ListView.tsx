@@ -13,6 +13,8 @@ import type {
 interface ListViewProps {
   project: WorkspaceProject
   viewerId: string
+  /** Sprint new tasks go into (managers only); null leaves them without one. */
+  newTaskSprintId?: string | null
   onTaskClick: (task: PanelTask) => void
   onTasksChange: () => Promise<void> | void
 }
@@ -29,7 +31,7 @@ function responseError(data: Record<string, unknown>, fallback: string) {
   return typeof data.error === 'string' && data.error ? data.error : fallback
 }
 
-export function ListView({ project, viewerId, onTaskClick, onTasksChange }: ListViewProps) {
+export function ListView({ project, viewerId, newTaskSprintId = null, onTaskClick, onTasksChange }: ListViewProps) {
   const [selectedIds, setSelectedIds] = useState(new Set<string>())
   const [pendingTaskIds, setPendingTaskIds] = useState(new Set<string>())
   const [creatingTask, setCreatingTask] = useState(false)
@@ -89,6 +91,7 @@ export function ListView({ project, viewerId, onTaskClick, onTasksChange }: List
           priority: 'MEDIUM',
           ...(parentTaskId ? { parentTaskId } : {}),
           ...(!project.canManage ? { assigneeId: viewerId } : {}),
+          ...(project.canManage && newTaskSprintId ? { sprintId: newTaskSprintId } : {}),
         }),
       })
       const data = await responseJson(response)
