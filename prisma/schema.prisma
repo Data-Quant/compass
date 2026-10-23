@@ -1772,7 +1772,7 @@ model ProjectMember {
   id        String   @id @default(cuid())
   projectId String
   userId    String
-  role      String   @default("MEMBER") // OWNER or MEMBER
+  role      String   @default("MEMBER") // OWNER, LEAD or MEMBER
   createdAt DateTime @default(now())
 
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)

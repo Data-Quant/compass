@@ -5,11 +5,13 @@ import { UserAvatar } from '@/components/composed/UserAvatar'
 import { Search, UserPlus, Crown, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 interface MemberManagerProps {
   projectId: string
   members: { id: string; name: string; role: string }[]
   ownerId: string
+  canManage?: boolean
   open: boolean
   onClose: () => void
   onMembersChange: () => void
@@ -21,7 +23,7 @@ interface AllUser {
 }
 
 export function MemberManager({
-  projectId, members, ownerId, open, onClose, onMembersChange,
+  projectId, members, ownerId, canManage = true, open, onClose, onMembersChange,
 }: MemberManagerProps) {
   const [allUsers, setAllUsers] = useState<AllUser[]>([])
   const [search, setSearch] = useState('')
@@ -93,6 +95,26 @@ export function MemberManager({
     }
   }
 
+  const changeRole = async (userId: string, role: 'MEMBER' | 'LEAD') => {
+    try {
+      const csrf = await fetch('/api/auth/csrf', { cache: 'no-store' }).then((r) => r.json())
+      const res = await fetch(`/api/projects/${projectId}/members`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrf.token },
+        body: JSON.stringify({ userId, role }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        onMembersChange()
+        toast.success(role === 'LEAD' ? 'Member is now a lead' : 'Member is now a regular member')
+      } else {
+        toast.error(data.error || 'Failed to update role')
+      }
+    } catch {
+      toast.error('Failed to update role')
+    }
+  }
+
   const memberIds = members.map((m) => m.id)
   const filteredNonMembers = allUsers
     .filter((u) => !memberIds.includes(u.id))
@@ -112,16 +134,36 @@ export function MemberManager({
                   <UserAvatar name={m.name} size="sm" />
                   <span className="text-sm flex-1">{m.name}</span>
                   {m.id === ownerId || m.role === 'OWNER' ? (
-                    <span title="Owner"><Crown className="w-4 h-4 text-amber-400" /></span>
+                    <>
+                      <span className="text-xs text-muted-foreground">Owner</span>
+                      <span title="Owner"><Crown className="w-4 h-4 text-amber-400" /></span>
+                    </>
                   ) : (
-                    <button
-                      onClick={() => removeMember(m.id)}
-                      aria-label={`Remove ${m.name} from project`}
-                      className="p-1 rounded hover:bg-red-400/10 text-muted-foreground hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      title="Remove member"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    <>
+                      {canManage ? (
+                        <Select value={m.role === 'LEAD' ? 'LEAD' : 'MEMBER'} onValueChange={(v) => changeRole(m.id, v as 'MEMBER' | 'LEAD')}>
+                          <SelectTrigger aria-label={`Role for ${m.name}`} className="h-7 w-[90px] px-2 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="MEMBER">Member</SelectItem>
+                            <SelectItem value="LEAD">Lead</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : m.role === 'LEAD' ? (
+                        <span className="rounded bg-muted/40 px-1.5 py-0.5 text-xs text-muted-foreground">Lead</span>
+                      ) : null}
+                      {canManage && (
+                        <button
+                          onClick={() => removeMember(m.id)}
+                          aria-label={`Remove ${m.name} from project`}
+                          className="p-1 rounded hover:bg-red-400/10 text-muted-foreground hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          title="Remove member"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               ))}

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { sendProjectInvitationNotification } from '@/lib/project-task-notifications'
-import { getProjectAuthorization, projectAuthorizationFailure } from '@/lib/project-access'
+import { getProjectAuthorization, parseMemberRoleInput, projectAuthorizationFailure } from '@/lib/project-access'
+import { verifyCsrfToken } from '@/lib/csrf'
 
 export async function POST(
   request: NextRequest,
@@ -97,5 +98,46 @@ export async function DELETE(
   } catch (error) {
     console.error('Failed to remove member:', error)
     return NextResponse.json({ error: 'Failed to remove member' }, { status: 500 })
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const user = await getSession()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (!verifyCsrfToken(request)) {
+      return NextResponse.json({ error: 'Invalid CSRF token' }, { status: 403 })
+    }
+    const { id: projectId } = await params
+
+    const input = parseMemberRoleInput(await request.json().catch(() => null))
+    if (!input) return NextResponse.json({ error: 'userId and role (MEMBER or LEAD) required' }, { status: 400 })
+
+    const authorization = await getProjectAuthorization(projectId, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization, 'manage')
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
+
+    const membership = await prisma.projectMember.findUnique({
+      where: { projectId_userId: { projectId, userId: input.userId } },
+    })
+    if (!membership) return NextResponse.json({ error: 'Member not found' }, { status: 404 })
+    if (input.userId === authorization.ownerId || membership.role.trim().toUpperCase() === 'OWNER') {
+      return NextResponse.json({ error: 'Cannot change the project owner' }, { status: 403 })
+    }
+
+    await prisma.projectMember.update({
+      where: { projectId_userId: { projectId, userId: input.userId } },
+      data: { role: input.role },
+    })
+
+    return NextResponse.json({ success: true, role: input.role })
+  } catch (error) {
+    console.error('Failed to update member role:', error)
+    return NextResponse.json({ error: 'Failed to update member role' }, { status: 500 })
   }
 }

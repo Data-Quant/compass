@@ -5,6 +5,7 @@ import {
   canEditTaskCoAssignees,
   filterManageableProjects,
   isProjectRecordId,
+  parseMemberRoleInput,
   resolveProjectCapabilities,
 } from '../lib/project-access'
 
@@ -116,4 +117,14 @@ test('project record ids must look like cuids', () => {
   for (const value of ['', 'short', 'has space in it 1234567', "x' OR 1=1 --aaaaaaaaaaaa", 'a'.repeat(41), null, 42]) {
     assert.equal(isProjectRecordId(value), false)
   }
+})
+
+test('parseMemberRoleInput accepts MEMBER and LEAD only', () => {
+  assert.deepEqual(parseMemberRoleInput({ userId: 'u1', role: 'LEAD' }), { userId: 'u1', role: 'LEAD' })
+  assert.deepEqual(parseMemberRoleInput({ userId: 'u1', role: 'MEMBER' }), { userId: 'u1', role: 'MEMBER' })
+  assert.equal(parseMemberRoleInput({ userId: 'u1', role: 'OWNER' }), null)
+  assert.equal(parseMemberRoleInput({ userId: 'u1', role: 'lead' }), null)
+  assert.equal(parseMemberRoleInput({ userId: '', role: 'LEAD' }), null)
+  assert.equal(parseMemberRoleInput({ role: 'LEAD' }), null)
+  assert.equal(parseMemberRoleInput(null), null)
 })

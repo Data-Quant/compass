@@ -136,3 +136,15 @@ export function filterManageableProjects<T extends { ownerId: string; members: P
     members: project.members,
   }).canManage)
 }
+
+// Roles a manager may assign; OWNER is set only when the project is created.
+export const ASSIGNABLE_MEMBER_ROLES = ['MEMBER', 'LEAD'] as const
+export type AssignableMemberRole = (typeof ASSIGNABLE_MEMBER_ROLES)[number]
+
+export function parseMemberRoleInput(body: unknown): { userId: string; role: AssignableMemberRole } | null {
+  if (!body || typeof body !== 'object') return null
+  const { userId, role } = body as Record<string, unknown>
+  if (typeof userId !== 'string' || !userId.trim()) return null
+  if (!ASSIGNABLE_MEMBER_ROLES.includes(role as AssignableMemberRole)) return null
+  return { userId, role: role as AssignableMemberRole }
+}
