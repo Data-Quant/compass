@@ -30,6 +30,11 @@ export async function GET(
         members: { include: { user: { select: { id: true, name: true } } } },
         sections: { orderBy: { orderIndex: 'asc' } },
         labels: { orderBy: { name: 'asc' } },
+        // Board filters tasks by sprintId client-side; full counts come from /sprints.
+        sprints: {
+          orderBy: [{ startDate: 'asc' }, { createdAt: 'asc' }],
+          select: { id: true, name: true, startDate: true, endDate: true, completedAt: true },
+        },
         tasks: {
           include: PROJECT_TASK_INCLUDE,
           orderBy: [{ orderIndex: 'asc' }, { createdAt: 'desc' }],

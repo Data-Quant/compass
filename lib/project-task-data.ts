@@ -61,6 +61,7 @@ export const PROJECT_TASK_INCLUDE = {
     orderBy: { createdAt: 'asc' },
   },
   labelAssignments: { include: { label: true } },
+  sprint: { select: { id: true, name: true } },
   _count: { select: { comments: true } },
 } satisfies Prisma.TaskInclude
 
