@@ -61,7 +61,7 @@ export async function GET(
           sections: { select: { id: true, name: true, isBacklog: true, isDone: true, orderIndex: true } },
         },
       }),
-      prisma.task.findMany({ where: { projectId: id }, select: ANALYTICS_TASK_SELECT }),
+      prisma.task.findMany({ where: { AND: [{ projectId: id }, NOT_BACKLOG_TASK_WHERE] }, select: ANALYTICS_TASK_SELECT }),
     ])
     if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
 
@@ -95,6 +95,8 @@ async function loadPersonAnalytics(viewer: { id: string; role: string | null }, 
         AND: [
           NOT_BACKLOG_TASK_WHERE,
           { OR: [{ assigneeId: userId }, { assistants: { some: { userId } } }] },
+          // Heatmap window (53 weeks) plus everything still open.
+          { OR: [{ completedAt: { gte: new Date(now.getTime() - 53 * 7 * 86_400_000) } }, { status: { not: 'DONE' } }] },
         ],
       },
       select: { ...ANALYTICS_TASK_SELECT, title: true },

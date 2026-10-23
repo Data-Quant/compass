@@ -3,7 +3,7 @@ import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { accessibleProjectsWhere, filterManageableProjects } from '@/lib/project-access'
 import { buildWorkspaceAnalytics, resolveAnalyticsRange } from '@/lib/project-analytics'
-import { ANALYTICS_TASK_SELECT, projectParticipants, toAnalyticsTask } from '@/lib/project-analytics-data'
+import { ANALYTICS_TASK_SELECT, NOT_BACKLOG_TASK_WHERE, projectParticipants, toAnalyticsTask } from '@/lib/project-analytics-data'
 
 // GET - Workspace analytics across the projects the viewer manages
 export async function GET(request: NextRequest) {
@@ -20,25 +20,27 @@ export async function GET(request: NextRequest) {
     }, now)
     if ('error' in range) return NextResponse.json({ error: range.error }, { status: 400 })
 
-    const candidates = await prisma.project.findMany({
-      where: accessibleProjectsWhere(user),
-      select: { id: true, ownerId: true, members: { select: { userId: true, role: true } } },
-    })
-    const managedIds = filterManageableProjects(user, candidates).map((project) => project.id)
-    if (managedIds.length === 0) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-
-    const projects = await prisma.project.findMany({
-      where: { id: { in: managedIds } },
-      select: {
-        id: true,
-        name: true,
-        color: true,
-        status: true,
-        owner: { select: { id: true, name: true } },
-        members: { select: { user: { select: { id: true, name: true } } } },
-        tasks: { select: ANALYTICS_TASK_SELECT },
-      },
-    })
+    const select = {
+      id: true,
+      name: true,
+      color: true,
+      status: true,
+      owner: { select: { id: true, name: true } },
+      members: { select: { user: { select: { id: true, name: true } } } },
+      tasks: { where: NOT_BACKLOG_TASK_WHERE, select: ANALYTICS_TASK_SELECT },
+    }
+    let projects
+    if (user.role === 'HR') {
+      projects = await prisma.project.findMany({ where: accessibleProjectsWhere(user), select })
+    } else {
+      const candidates = await prisma.project.findMany({
+        where: accessibleProjectsWhere(user),
+        select: { id: true, ownerId: true, members: { select: { userId: true, role: true } } },
+      })
+      const managedIds = filterManageableProjects(user, candidates).map((project) => project.id)
+      projects = await prisma.project.findMany({ where: { id: { in: managedIds } }, select })
+    }
+    if (projects.length === 0) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const members = new Map(projects.flatMap(projectParticipants).map((member) => [member.id, member]))
     const response = NextResponse.json({

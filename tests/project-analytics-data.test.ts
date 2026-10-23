@@ -32,6 +32,12 @@ test('tasks outside the viewer projects lose title and project id', () => {
   assert.equal(masked[1].title, undefined)
   assert.equal(masked[1].projectId, OTHER_PROJECT_ID)
   assert.equal(JSON.stringify(masked[1]).includes('hidden'), false)
+  const secret = { ...task('c', 'hidden'), parentTaskId: 'p', section: { id: 'sec-1', name: 'Secret section', isBacklog: false, isDone: true, orderIndex: 2 } }
+  const [m] = maskInaccessibleTasks([secret], new Set())
+  assert.equal(m.id, '')
+  assert.equal(m.parentTaskId, '')
+  assert.deepEqual(m.section, { id: '', name: '', isBacklog: false, isDone: true, orderIndex: 2 })
+  assert.equal(/Secret|sec-1/.test(JSON.stringify(m)), false)
 })
 
 test('participants include the owner once and every member', () => {

@@ -21,18 +21,25 @@ export const NOT_BACKLOG_TASK_WHERE = {
   OR: [{ sectionId: null }, { section: { isBacklog: false } }],
 } satisfies Prisma.TaskWhereInput
 
-export const OTHER_PROJECT_ID = 'other'
+export const OTHER_PROJECT_ID = '__other__'
 
 export function toAnalyticsTask<T extends { _count: { childTasks: number } }>({ _count, ...task }: T) {
   return { ...task, childCount: _count.childTasks }
 }
 
-// Tasks from projects the viewer cannot open keep their counts but lose title and project.
+// Tasks from projects the viewer cannot open keep their counts but lose title, ids, section names and project.
 export function maskInaccessibleTasks(tasks: AnalyticsTask[], accessibleProjectIds: Set<string>): AnalyticsTask[] {
   return tasks.map((task) => (
     accessibleProjectIds.has(task.projectId)
       ? task
-      : { ...task, title: undefined, projectId: OTHER_PROJECT_ID }
+      : {
+          ...task,
+          id: '',
+          title: undefined,
+          projectId: OTHER_PROJECT_ID,
+          parentTaskId: task.parentTaskId ? '' : null,
+          section: task.section && { ...task.section, id: '', name: '' },
+        }
   ))
 }
 
