@@ -1,4 +1,4 @@
-import type { AnalyticsRange, buildPersonAnalytics, buildProjectAnalytics } from '@/lib/project-analytics'
+import type { AnalyticsRange, buildPersonAnalytics, buildProjectAnalytics, buildWorkspaceAnalytics } from '@/lib/project-analytics'
 
 export type ProjectAnalytics = ReturnType<typeof buildProjectAnalytics>
 type PersonCore = ReturnType<typeof buildPersonAnalytics>
@@ -19,3 +19,12 @@ export type AnalyticsResponse = {
 
 export type Participant = { id: string; name: string }
 export type DoneSectionIds = Set<string>
+
+export type WorkspaceAnalytics = ReturnType<typeof buildWorkspaceAnalytics>
+
+// Shape of GET /api/projects/analytics.
+export type WorkspaceAnalyticsResponse = {
+  range: AnalyticsRange
+  projects: Array<{ id: string; name: string; color: string | null }>
+  analytics: WorkspaceAnalytics
+}

@@ -73,3 +73,16 @@ export function PageSkeleton({ section }: { section: 'overview' | 'people' }) {
     </div>
   )
 }
+
+export function WorkspaceSkeleton() {
+  return (
+    <div aria-busy="true" aria-label="Loading analytics" className="flex flex-col gap-4">
+      <TileSkeletons />
+      <CardSkeleton height="h-[220px]" />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <CardSkeleton height="h-[220px]" />
+        <CardSkeleton height="h-[220px]" />
+      </div>
+    </div>
+  )
+}

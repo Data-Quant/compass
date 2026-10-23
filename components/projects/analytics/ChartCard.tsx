@@ -104,16 +104,19 @@ export function MarkTip({ children, title, rows }: { children: ReactNode; title:
 /** The text alternative every chart carries: a table for screen readers. */
 export function SrTable({ caption, headers, rows }: { caption: string; headers: string[]; rows: Array<Array<string | number>> }) {
   return (
-    <table className="sr-only">
-      <caption>{caption}</caption>
-      <thead>
-        <tr>{headers.map((header) => <th key={header} scope="col">{header}</th>)}</tr>
-      </thead>
-      <tbody>
-        {rows.map((row, index) => (
-          <tr key={index}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>
-        ))}
-      </tbody>
-    </table>
+    // sr-only on a wrapper: a table ignores width: 1px and would widen the page.
+    <div className="sr-only">
+      <table>
+        <caption>{caption}</caption>
+        <thead>
+          <tr>{headers.map((header) => <th key={header} scope="col">{header}</th>)}</tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={index}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }

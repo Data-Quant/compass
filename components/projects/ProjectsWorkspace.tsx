@@ -1,8 +1,10 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
+  ChartColumn,
   Columns3,
   FolderKanban,
   LayoutList,
@@ -869,13 +871,21 @@ export function ProjectsWorkspace() {
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-3 p-3 sm:p-4 lg:p-5">
-      <header className="flex flex-col gap-2 xl:flex-row xl:items-end xl:justify-between">
+      <header className="flex items-start justify-between gap-3 xl:items-end">
         <div>
           <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground">Projects & tasks</h1>
           <p className="mt-0.5 max-w-2xl text-xs text-muted-foreground">
             Plan by project, work from one task list, and keep every deadline visible.
           </p>
         </div>
+        {(workspace.viewer.role === 'HR' || workspace.projects.some((project) => project.canManage)) && (
+          <Button variant="outline" size="sm" className="shrink-0 px-2 sm:px-3" asChild>
+            <Link href="/projects/analytics" title="Visible to project leads and HR only">
+              <ChartColumn aria-hidden="true" />
+              <span className="sr-only sm:not-sr-only">Analytics</span>
+            </Link>
+          </Button>
+        )}
       </header>
 
       <section className="rounded-lg border border-border/60 bg-card/60 p-2 shadow-sm backdrop-blur-sm">
