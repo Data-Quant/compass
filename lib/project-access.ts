@@ -120,3 +120,19 @@ export function projectAuthorizationFailure(
   }
   return null
 }
+
+// Prisma ids are cuids; the bounded pattern rejects anything else before it reaches a query.
+export function isProjectRecordId(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-z0-9]{20,40}$/i.test(value)
+}
+
+export function filterManageableProjects<T extends { ownerId: string; members: ProjectMembershipForAccess[] }>(
+  viewer: ProjectViewer,
+  projects: T[],
+) {
+  return projects.filter((project) => resolveProjectCapabilities({
+    viewer,
+    ownerId: project.ownerId,
+    members: project.members,
+  }).canManage)
+}
