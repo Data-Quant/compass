@@ -33,6 +33,8 @@ interface BoardViewProps {
   sections: ProjectStatusSection[]
   viewerId: string
   canManage: boolean
+  /** Sprint new tasks go into (managers only); null leaves them without one. */
+  newTaskSprintId?: string | null
   onTaskClick: (task: PanelTask) => void
   onTasksChange: () => void
 }
@@ -54,7 +56,7 @@ const collisionDetection: CollisionDetection = (args) => {
   return underPointer.length > 0 ? underPointer : closestCorners(scoped)
 }
 
-export function BoardView({ projectId, tasks, sections, viewerId, canManage, onTaskClick, onTasksChange }: BoardViewProps) {
+export function BoardView({ projectId, tasks, sections, viewerId, canManage, newTaskSprintId = null, onTaskClick, onTasksChange }: BoardViewProps) {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [localTasks, setLocalTasks] = useState<PanelTask[]>(tasks)
   const [localSections, setLocalSections] = useState<ProjectStatusSection[]>(sections)
@@ -196,6 +198,7 @@ export function BoardView({ projectId, tasks, sections, viewerId, canManage, onT
           title,
           sectionId,
           ...(!canManage ? { assigneeId: viewerId } : {}),
+          ...(canManage && newTaskSprintId ? { sprintId: newTaskSprintId } : {}),
         }),
       })
       const data = await res.json()

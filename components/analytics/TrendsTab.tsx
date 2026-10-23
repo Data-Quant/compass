@@ -14,14 +14,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { ArrowDownRight, ArrowUpRight, Sparkles } from 'lucide-react'
 import type { DepartmentTrend, Mover, TrendsResult } from '@/lib/analytics/trends'
 import type { NameResolver } from '@/components/analytics/types'
+import { AXIS_TICK, TOOLTIP_STYLE } from '@/components/projects/analytics/chart-theme'
 
-const AXIS_TICK = { fill: 'hsl(var(--muted-foreground))', fontSize: 12 }
-const TOOLTIP_STYLE = {
-  backgroundColor: 'hsl(var(--card))',
-  border: '1px solid hsl(var(--border))',
-  borderRadius: '8px',
-  color: 'hsl(var(--foreground))',
-}
 
 interface TrendsTabProps {
   trends: TrendsResult

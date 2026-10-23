@@ -2,13 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { sendProjectInvitationNotification } from '@/lib/project-task-notifications'
-import { getProjectAuthorization, projectAuthorizationFailure } from '@/lib/project-access'
+import { getProjectAuthorization, parseMemberRoleInput, projectAuthorizationFailure } from '@/lib/project-access'
+import { verifyCsrfToken } from '@/lib/csrf'
+import { assertSameOrigin, SameOriginError } from '@/lib/security/same-origin'
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    assertSameOrigin(request.headers, request.url)
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const { id: projectId } = await params
@@ -41,6 +44,7 @@ export async function POST(
 
     return NextResponse.json({ success: true, member })
   } catch (error: any) {
+    if (error instanceof SameOriginError) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     if (error?.code === 'P2002') {
       return NextResponse.json({ error: 'User is already a member' }, { status: 409 })
     }
@@ -54,6 +58,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    assertSameOrigin(request.headers, request.url)
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const { id: projectId } = await params
@@ -95,7 +100,49 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    if (error instanceof SameOriginError) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     console.error('Failed to remove member:', error)
     return NextResponse.json({ error: 'Failed to remove member' }, { status: 500 })
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const user = await getSession()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (!verifyCsrfToken(request)) {
+      return NextResponse.json({ error: 'Invalid CSRF token' }, { status: 403 })
+    }
+    const { id: projectId } = await params
+
+    const input = parseMemberRoleInput(await request.json().catch(() => null))
+    if (!input) return NextResponse.json({ error: 'userId and role (MEMBER or LEAD) required' }, { status: 400 })
+
+    const authorization = await getProjectAuthorization(projectId, user)
+    const authorizationFailure = projectAuthorizationFailure(authorization, 'manage')
+    if (authorizationFailure) {
+      return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
+    }
+
+    const membership = await prisma.projectMember.findUnique({
+      where: { projectId_userId: { projectId, userId: input.userId } },
+    })
+    if (!membership) return NextResponse.json({ error: 'Member not found' }, { status: 404 })
+    if (input.userId === authorization.ownerId || membership.role.trim().toUpperCase() === 'OWNER') {
+      return NextResponse.json({ error: 'Cannot change the project owner' }, { status: 403 })
+    }
+
+    await prisma.projectMember.update({
+      where: { projectId_userId: { projectId, userId: input.userId } },
+      data: { role: input.role },
+    })
+
+    return NextResponse.json({ success: true, role: input.role })
+  } catch (error) {
+    console.error('Failed to update member role:', error)
+    return NextResponse.json({ error: 'Failed to update member role' }, { status: 500 })
   }
 }

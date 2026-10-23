@@ -12,7 +12,7 @@ import { UserAvatar } from '@/components/composed/UserAvatar'
 import {
   X, Trash2, Calendar as CalendarIcon, Flag, Tag, Users, MessageSquare,
   Send, ChevronDown, Check, GitBranch, Plus, UserRoundCheck, Image as ImageIcon,
-  History, Loader2, Bold, Underline, List, Link2
+  History, Loader2, Bold, Underline, List, Link2, CalendarRange
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils'
 import { copyTextToClipboard } from '@/lib/copy-text'
 import { buildTaskShareUrl } from '@/lib/project-task-utils'
 import { imageUrlFromMarkdown, safeLinkHref } from '@/lib/safe-url'
+import { formatSprintRange, getSprintStatus } from '@/lib/project-sprints'
 
 /* ─── Types ───────────────────────────────────────────────────────────── */
 
@@ -113,7 +114,17 @@ export interface PanelTask {
   childTasks?: ChildTaskSummary[]
   assistants?: TaskAssistant[]
   labelAssignments: LabelAssignment[]
+  sprintId?: string | null
+  sprint?: { id: string; name: string } | null
   _count: { comments: number }
+}
+
+interface PanelSprint {
+  id: string
+  name: string
+  startDate: string
+  endDate: string
+  completedAt: string | null
 }
 
 interface TaskDetailPanelProps {
@@ -122,6 +133,7 @@ interface TaskDetailPanelProps {
   members: { id: string; name: string; role: string }[]
   sections: ProjectStatusSection[]
   labels: Label[]
+  sprints?: PanelSprint[]
   open: boolean
   onClose: () => void
   onTaskUpdate: (task: any) => void
@@ -390,7 +402,7 @@ function Dropdown({ trigger, children, className }: {
 
   return (
     <div className="relative" ref={ref}>
-      <button type="button" onClick={() => setOpen(!open)} className="w-full">
+      <button type="button" onClick={() => setOpen(!open)} aria-haspopup="true" aria-expanded={open} className="w-full">
         {trigger}
       </button>
       <AnimatePresence>
@@ -417,7 +429,7 @@ function Dropdown({ trigger, children, className }: {
 /* ─── Main Component ──────────────────────────────────────────────────── */
 
 export function TaskDetailPanel({
-  task, projectId, members, sections, labels,
+  task, projectId, members, sections, labels, sprints = [],
   open, onClose, onTaskUpdate, onTaskDelete, onTasksChange, onOpenTask,
   canManage = true, canEdit = true, canComment = true,
 }: TaskDetailPanelProps) {
@@ -1115,6 +1127,58 @@ export function TaskDetailPanel({
                 </span>
               )}
             </FieldRow>
+
+            {/* Sprint: managers plan tasks into open sprints; everyone else reads it */}
+            {(sprints.length > 0 || task.sprint) && (
+              <FieldRow icon={<CalendarRange className="w-4 h-4" />} label="Sprint">
+                {canManage && canEdit ? (
+                  <Dropdown
+                    className="min-w-[240px]"
+                    trigger={
+                      <span className={cn(
+                        'inline-flex max-w-full items-center gap-1.5 rounded-md px-2.5 py-1 text-sm transition-colors hover:bg-muted/30',
+                        !task.sprint && 'text-muted-foreground'
+                      )}>
+                        <span className="truncate">{task.sprint?.name || 'No sprint'}</span>
+                        <ChevronDown className="w-3 h-3 shrink-0 opacity-60" />
+                      </span>
+                    }
+                  >
+                    <div className="max-h-56 overflow-y-auto p-1">
+                      {sprints.filter((sprint) => !sprint.completedAt).map((sprint) => (
+                        <button
+                          key={sprint.id}
+                          onClick={() => { if (task.sprint?.id !== sprint.id) void updateTask({ sprintId: sprint.id }) }}
+                          className={cn(
+                            'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors',
+                            task.sprint?.id === sprint.id && 'bg-muted/50'
+                          )}
+                        >
+                          <span className="flex-1 truncate text-left">
+                            {sprint.name}
+                            {getSprintStatus(sprint) === 'current' && <span className="text-muted-foreground"> (current)</span>}
+                          </span>
+                          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{formatSprintRange(sprint)}</span>
+                        </button>
+                      ))}
+                      <button
+                        onClick={() => { if (task.sprint) void updateTask({ sprintId: null }) }}
+                        className={cn(
+                          'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-muted/50 transition-colors',
+                          !task.sprint && 'bg-muted/50'
+                        )}
+                      >
+                        No sprint
+                      </button>
+                    </div>
+                  </Dropdown>
+                ) : (
+                  <span className={cn('inline-flex items-center px-2.5 py-1 text-sm', !task.sprint && 'text-muted-foreground')}>
+                    {task.sprint?.name || 'No sprint'}
+                  </span>
+                )}
+              </FieldRow>
+            )}
 
             {/* Priority */}
             <FieldRow icon={<Flag className="w-4 h-4" />} label="Priority">

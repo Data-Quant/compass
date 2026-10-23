@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import type { ProjectStatus } from '@prisma/client'
+import type { Prisma, ProjectStatus } from '@prisma/client'
 import { getSession } from '@/lib/auth'
+import { assertSameOrigin, SameOriginError } from '@/lib/security/same-origin'
 import { prisma } from '@/lib/db'
 import {
   sendChildTaskCompletedNotification,
@@ -23,6 +24,7 @@ import {
   canEditAssignedProjectTask,
   canEditTaskCoAssignees,
   getProjectAuthorization,
+  isProjectRecordId,
   projectAuthorizationFailure,
 } from '@/lib/project-access'
 import {
@@ -88,6 +90,8 @@ function buildTaskUpdateActivities(input: {
     sectionId: string | null
     section: { name: string } | null
     assignee: { name: string } | null
+    sprintId: string | null
+    sprint: { name: string } | null
   }
   after: {
     title: string
@@ -100,6 +104,8 @@ function buildTaskUpdateActivities(input: {
     sectionId: string | null
     section: { name: string } | null
     assignee: { name: string } | null
+    sprintId: string | null
+    sprint: { name: string } | null
   }
 }) {
   const { actorName, before, after } = input
@@ -123,6 +129,15 @@ function buildTaskUpdateActivities(input: {
       summary: after.assignee
         ? `${actorName} assigned the task to ${after.assignee.name}`
         : `${actorName} unassigned the task`,
+    })
+  }
+
+  if (before.sprintId !== after.sprintId) {
+    activities.push({
+      kind: 'sprint',
+      summary: after.sprint
+        ? `${actorName} moved the task to ${after.sprint.name}`
+        : `${actorName} removed the task from ${before.sprint?.name || 'its sprint'}`,
     })
   }
 
@@ -178,12 +193,36 @@ async function validateProjectLabelIds(projectId: string, value: unknown) {
   return labelIds
 }
 
+// Undefined leaves the sprint alone; otherwise null or an open sprint of this project.
+async function validateProjectSprintId(projectId: string, value: unknown) {
+  if (value === undefined) return undefined
+  if (value === null || value === '') return null
+  if (!isProjectRecordId(value)) throw new ProjectTaskInputError('Invalid sprintId')
+  const sprint = await prisma.sprint.findFirst({
+    where: { id: value, projectId },
+    select: { id: true, completedAt: true },
+  })
+  if (!sprint) throw new ProjectTaskInputError('Sprint must belong to this project')
+  if (sprint.completedAt) throw new ProjectTaskInputError('Tasks cannot be added to a completed sprint')
+  return sprint.id
+}
+
+// Row-locks the sprint (blocks a concurrent completion) and rejects it if already completed.
+async function lockOpenSprint(tx: Prisma.TransactionClient, projectId: string, sprintId: string) {
+  const locked = await tx.sprint.updateMany({
+    where: { id: sprintId, projectId, completedAt: null },
+    data: { updatedAt: new Date() },
+  })
+  if (locked.count !== 1) throw new ProjectTaskInputError('Tasks cannot be added to a completed sprint')
+}
+
 // POST - Create a new task
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    assertSameOrigin(request.headers, request.url)
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -193,7 +232,7 @@ export async function POST(
     if (authorizationFailure) {
       return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
     }
-    const { title, description, status, assigneeId, priority, startDate, dueDate, sectionId, parentTaskId, labelIds, assistantIds } = await request.json()
+    const { title, description, status, assigneeId, priority, startDate, dueDate, sectionId, parentTaskId, labelIds, assistantIds, sprintId } = await request.json()
 
     if (!title?.trim()) {
       return NextResponse.json({ error: 'Task title is required' }, { status: 400 })
@@ -222,6 +261,10 @@ export async function POST(
       return NextResponse.json({ error: 'startDate cannot be after dueDate' }, { status: 400 })
     }
     const cleanLabelIds = await validateProjectLabelIds(projectId, labelIds)
+    if (sprintId !== undefined && sprintId !== null && sprintId !== '' && !authorization.canManage) {
+      return NextResponse.json({ error: 'Only a project lead or HR can plan tasks into sprints' }, { status: 403 })
+    }
+    const cleanSprintId = await validateProjectSprintId(projectId, sprintId)
 
     await ensureProjectStatusSections(projectId)
     const section = await resolveTaskStatusSection({
@@ -283,11 +326,14 @@ export async function POST(
       orderBy: { orderIndex: 'desc' },
     })
 
-    const task = await prisma.task.create({
+    const task = await prisma.$transaction(async (tx) => {
+      if (cleanSprintId) await lockOpenSprint(tx, projectId, cleanSprintId)
+      return tx.task.create({
       data: {
         projectId,
         sectionId: section.id,
         parentTaskId: parentTaskId || null,
+        sprintId: cleanSprintId ?? null,
         title: title.trim(),
         description: description?.trim() || null,
         status: taskStatus,
@@ -311,6 +357,7 @@ export async function POST(
       },
       include: PROJECT_TASK_INCLUDE,
     })
+    })
 
     try {
       await recordTaskActivity({
@@ -320,6 +367,15 @@ export async function POST(
         kind: 'created',
         notify: false,
       })
+      if (task.sprint) {
+        await recordTaskActivity({
+          taskId: task.id,
+          actorId: user.id,
+          summary: `${displayName(user)} moved the task to ${task.sprint.name}`,
+          kind: 'sprint',
+          notify: false,
+        })
+      }
     } catch (activityError) {
       // The task is already committed. Activity history is supplementary and
       // must not turn a successful create into a retryable 500 response.
@@ -381,6 +437,7 @@ export async function POST(
 
     return NextResponse.json({ success: true, task, projectStatus, syncedParentTasks })
   } catch (error) {
+    if (error instanceof SameOriginError) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     if (error instanceof ProjectTaskInputError) {
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
@@ -395,6 +452,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    assertSameOrigin(request.headers, request.url)
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -404,7 +462,7 @@ export async function PUT(
     if (authorizationFailure) {
       return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
     }
-    const { taskId, title, description, status, priority, assigneeId, startDate, dueDate, sectionId, parentTaskId, labelIds, assistantIds, orderIndex } = await request.json()
+    const { taskId, title, description, status, priority, assigneeId, startDate, dueDate, sectionId, parentTaskId, labelIds, assistantIds, orderIndex, sprintId } = await request.json()
 
     if (!taskId) {
       return NextResponse.json({ error: 'taskId is required' }, { status: 400 })
@@ -426,8 +484,10 @@ export async function PUT(
         completedLate: true,
         sectionId: true,
         parentTaskId: true,
+        sprintId: true,
         section: { select: { name: true, isBacklog: true } },
         assignee: { select: { name: true } },
+        sprint: { select: { name: true } },
         assistants: { select: { userId: true } },
       },
     })
@@ -525,6 +585,13 @@ export async function PUT(
     }
     if (normalizedAssigneeId) await validateProjectMemberIds(projectId, [normalizedAssigneeId])
 
+    // Resending the current sprint is a no-op, so members can save other fields.
+    const sprintChanged = sprintId !== undefined && (sprintId || null) !== existingTask.sprintId
+    if (sprintChanged && !authorization.canManage) {
+      return NextResponse.json({ error: 'Only a project lead or HR can change a task sprint' }, { status: 403 })
+    }
+    const cleanSprintId = sprintChanged ? await validateProjectSprintId(projectId, sprintId) : undefined
+
     const parsedStartDate = parseTaskDate(startDate, 'startDate')
     const parsedDueDate = parseTaskDate(dueDate, 'dueDate')
     const effectiveStartDate = parsedStartDate === undefined ? existingTask.startDate : parsedStartDate
@@ -580,6 +647,7 @@ export async function PUT(
     if (parsedDueDate !== undefined) updateData.dueDate = parsedDueDate
     if (parentTaskId !== undefined) updateData.parentTaskId = parentTaskId || null
     if (orderIndex !== undefined) updateData.orderIndex = orderIndex
+    if (cleanSprintId !== undefined) updateData.sprintId = cleanSprintId
 
     // Replace relation sets inside the task update so a validation or write
     // failure cannot leave labels/assistants partially changed.
@@ -613,10 +681,9 @@ export async function PUT(
           select: { id: true, section: { select: { isBacklog: true } } },
         })
 
-    const task = await prisma.task.update({
-      where: { id: taskId },
-      data: updateData,
-      include: PROJECT_TASK_INCLUDE,
+    const task = await prisma.$transaction(async (tx) => {
+      if (cleanSprintId) await lockOpenSprint(tx, projectId, cleanSprintId)
+      return tx.task.update({ where: { id: taskId }, data: updateData, include: PROJECT_TASK_INCLUDE })
     })
 
     const activities = buildTaskUpdateActivities({
@@ -696,6 +763,7 @@ export async function PUT(
       : task
     return NextResponse.json({ success: true, task: responseTask, projectStatus, syncedParentTasks })
   } catch (error) {
+    if (error instanceof SameOriginError) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     if (error instanceof ProjectTaskInputError) {
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
@@ -710,6 +778,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    assertSameOrigin(request.headers, request.url)
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
