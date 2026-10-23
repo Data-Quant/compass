@@ -22,7 +22,7 @@ export function WorkloadChart({ workload }: { workload: ProjectAnalytics['worklo
         <ChartEmpty title="No open work assigned" description="Open tasks with an assignee or co-assignee show here." />
       ) : (
         <>
-          <ul className="flex flex-col gap-1">
+          <ul tabIndex={0} aria-label="People, scrollable" className="-mx-1 flex max-h-[344px] flex-col gap-1 overflow-y-auto px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             {workload.map((row) => (
               <li key={row.userId}>
                 <MarkTip

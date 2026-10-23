@@ -81,10 +81,10 @@ export function ProjectHealthTable({ rows, weeks, colorOf }: {
         <h2 id="health-title" className="text-base font-semibold text-foreground">Project health</h2>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">Select a column header to sort. Select a project to open its analytics page.</p>
       </div>
-      <div tabIndex={0} role="group" aria-label="Project health table, scrolls sideways" className="relative overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+      <div tabIndex={0} role="group" aria-label="Project health table, scrollable" className="relative max-h-[460px] overflow-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
         <table className="w-full min-w-[860px] border-collapse text-sm">
           <caption className="sr-only">Project health, sorted by {COLUMNS.find((column) => column.key === sort.key)?.label.toLowerCase()}, {sort.dir === 1 ? 'ascending' : 'descending'}</caption>
-          <thead>
+          <thead className="sticky top-0 z-10 bg-card">
             <tr className="border-y border-border bg-muted/40 text-left text-xs text-muted-foreground">
               {COLUMNS.map((column) => {
                 const active = sort.key === column.key
