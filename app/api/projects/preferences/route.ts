@@ -15,7 +15,7 @@ export async function PUT(request: NextRequest) {
     const parsed = preferenceSchema.safeParse(await request.json())
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Invalid project preference payload', details: parsed.error.errors },
+        { error: 'Invalid project preference payload', details: parsed.error.issues },
         { status: 400 }
       )
     }

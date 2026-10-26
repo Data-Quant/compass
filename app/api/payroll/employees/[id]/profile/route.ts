@@ -95,7 +95,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
 
     const parsed = updateSchema.safeParse(await request.json())
     if (!parsed.success) {
-      return NextResponse.json({ error: 'Invalid payload', details: parsed.error.errors }, { status: 400 })
+      return NextResponse.json({ error: 'Invalid payload', details: parsed.error.issues }, { status: 400 })
     }
     const data = parsed.data
 

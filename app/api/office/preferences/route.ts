@@ -7,10 +7,10 @@ import { stripHtml } from '@/lib/sanitize'
 
 const preferencesSchema = z.object({
   preferredStatusText: z.string().trim().max(80).nullable().optional(),
-  audioSettings: z.record(z.unknown()).nullable().optional(),
-  panelLayout: z.record(z.unknown()).nullable().optional(),
+  audioSettings: z.record(z.string(), z.unknown()).nullable().optional(),
+  panelLayout: z.record(z.string(), z.unknown()).nullable().optional(),
   dismissedHints: z.array(z.string().max(80)).nullable().optional(),
-  selectedDecor: z.record(z.unknown()).nullable().optional(),
+  selectedDecor: z.record(z.string(), z.unknown()).nullable().optional(),
 }).strict()
 
 type ParsedPreferences = z.infer<typeof preferencesSchema>
@@ -76,7 +76,7 @@ export async function PATCH(request: NextRequest) {
     const body = (await request.json()) as Record<string, unknown>
     const parsed = preferencesSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: 'Invalid preferences', details: parsed.error.errors }, { status: 400 })
+      return NextResponse.json({ error: 'Invalid preferences', details: parsed.error.issues }, { status: 400 })
     }
 
     const preference = await prisma.$transaction(

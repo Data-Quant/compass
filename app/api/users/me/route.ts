@@ -49,7 +49,7 @@ export async function PUT(request: NextRequest) {
     const parsed = profileUpdateSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Invalid profile payload', details: parsed.error.errors },
+        { error: 'Invalid profile payload', details: parsed.error.issues },
         { status: 400 }
       )
     }

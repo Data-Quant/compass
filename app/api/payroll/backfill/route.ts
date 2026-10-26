@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     })
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Invalid backfill request payload', details: parsed.error.errors },
+        { error: 'Invalid backfill request payload', details: parsed.error.issues },
         { status: 400 }
       )
     }

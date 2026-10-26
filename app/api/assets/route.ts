@@ -221,7 +221,7 @@ export async function POST(request: NextRequest) {
     const parsed = createAssetSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Invalid request payload', details: parsed.error.errors },
+        { error: 'Invalid request payload', details: parsed.error.issues },
         { status: 400 }
       )
     }

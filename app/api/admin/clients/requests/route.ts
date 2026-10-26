@@ -54,7 +54,7 @@ export async function PATCH(request: NextRequest) {
 
     const parsed = resolveSchema.safeParse(await request.json())
     if (!parsed.success) {
-      return NextResponse.json({ error: 'Invalid payload', details: parsed.error.errors }, { status: 400 })
+      return NextResponse.json({ error: 'Invalid payload', details: parsed.error.issues }, { status: 400 })
     }
 
     const updated = await prisma.clientRosterRequest.update({

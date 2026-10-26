@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
 
     const parsed = upsertSchema.safeParse(await request.json())
     if (!parsed.success) {
-      return NextResponse.json({ error: 'Invalid payload', details: parsed.error.errors }, { status: 400 })
+      return NextResponse.json({ error: 'Invalid payload', details: parsed.error.issues }, { status: 400 })
     }
 
     const { clientId, userId, role } = parsed.data

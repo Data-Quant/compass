@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
       holidayId: searchParams.get('holidayId') ?? undefined,
     })
     if (!parsed.success) {
-      return NextResponse.json({ error: 'Invalid query', details: parsed.error.errors }, { status: 400 })
+      return NextResponse.json({ error: 'Invalid query', details: parsed.error.issues }, { status: 400 })
     }
 
     // Midday UTC so the reference date cannot slip into an adjacent month.

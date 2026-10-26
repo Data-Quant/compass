@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     const parsed = bulkLabelSchema.safeParse(await request.json())
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Select between 1 and 300 assets', details: parsed.error.errors },
+        { error: 'Select between 1 and 300 assets', details: parsed.error.issues },
         { status: 400 }
       )
     }

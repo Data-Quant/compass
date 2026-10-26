@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Invalid query params', details: parsed.error.errors },
+        { error: 'Invalid query params', details: parsed.error.issues },
         { status: 400 }
       )
     }
@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
     const parsed = reminderBodySchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Invalid payload', details: parsed.error.errors },
+        { error: 'Invalid payload', details: parsed.error.issues },
         { status: 400 }
       )
     }

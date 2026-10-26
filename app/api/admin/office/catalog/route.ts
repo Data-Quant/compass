@@ -22,7 +22,7 @@ export async function PATCH(request: NextRequest) {
 
   const parsed = schema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) {
-    return NextResponse.json({ error: 'Invalid catalog item', details: parsed.error.errors }, { status: 400 })
+    return NextResponse.json({ error: 'Invalid catalog item', details: parsed.error.issues }, { status: 400 })
   }
 
   const metadata = {

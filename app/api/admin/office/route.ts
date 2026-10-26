@@ -77,7 +77,7 @@ export async function PATCH(request: NextRequest) {
     if (body.kind === 'assignment') {
       const parsed = assignmentSchema.safeParse(body)
       if (!parsed.success) {
-        return NextResponse.json({ error: 'Invalid assignment', details: parsed.error.errors }, { status: 400 })
+        return NextResponse.json({ error: 'Invalid assignment', details: parsed.error.issues }, { status: 400 })
       }
 
       const updates: Array<Promise<unknown>> = []
@@ -113,7 +113,7 @@ export async function PATCH(request: NextRequest) {
     if (body.kind === 'room') {
       const parsed = roomSchema.safeParse(body)
       if (!parsed.success) {
-        return NextResponse.json({ error: 'Invalid room metadata', details: parsed.error.errors }, { status: 400 })
+        return NextResponse.json({ error: 'Invalid room metadata', details: parsed.error.issues }, { status: 400 })
       }
       const { roomId, ...data } = parsed.data
       const room = await prisma.officeRoomMetadata.upsert({

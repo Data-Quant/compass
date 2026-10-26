@@ -35,7 +35,7 @@ export async function PATCH(request: NextRequest) {
     const parsed = bulkSchema.safeParse(await request.json())
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Invalid bulk task payload', details: parsed.error.errors },
+        { error: 'Invalid bulk task payload', details: parsed.error.issues },
         { status: 400 }
       )
     }

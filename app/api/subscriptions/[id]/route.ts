@@ -38,7 +38,7 @@ export async function PUT(
     const parsed = subscriptionMutationSchema.safeParse(await request.json())
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Invalid request payload', details: parsed.error.errors },
+        { error: 'Invalid request payload', details: parsed.error.issues },
         { status: 400 }
       )
     }
@@ -126,7 +126,7 @@ export async function PATCH(
     const parsed = subscriptionStatusMutationSchema.safeParse(await request.json())
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Invalid status payload', details: parsed.error.errors },
+        { error: 'Invalid status payload', details: parsed.error.issues },
         { status: 400 }
       )
     }

@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
 
     const parsed = createSchema.safeParse(await request.json())
     if (!parsed.success) {
-      return NextResponse.json({ error: 'Invalid payload', details: parsed.error.errors }, { status: 400 })
+      return NextResponse.json({ error: 'Invalid payload', details: parsed.error.issues }, { status: 400 })
     }
 
     const startDate = parseDate(parsed.data.startDate)
@@ -93,7 +93,7 @@ export async function PATCH(request: NextRequest) {
 
     const parsed = patchSchema.safeParse(await request.json())
     if (!parsed.success) {
-      return NextResponse.json({ error: 'Invalid payload', details: parsed.error.errors }, { status: 400 })
+      return NextResponse.json({ error: 'Invalid payload', details: parsed.error.issues }, { status: 400 })
     }
 
     const startDateParsed = parsed.data.startDate ? parseDate(parsed.data.startDate) : undefined

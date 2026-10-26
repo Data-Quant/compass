@@ -175,7 +175,7 @@ export async function POST(request: NextRequest) {
     const parsed = wfhRequestCreateSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Invalid WFH request payload', details: parsed.error.errors },
+        { error: 'Invalid WFH request payload', details: parsed.error.issues },
         { status: 400 }
       )
     }
@@ -304,7 +304,7 @@ export async function PUT(request: NextRequest) {
     const parsed = wfhRequestUpdateSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Invalid WFH update payload', details: parsed.error.errors },
+        { error: 'Invalid WFH update payload', details: parsed.error.issues },
         { status: 400 }
       )
     }

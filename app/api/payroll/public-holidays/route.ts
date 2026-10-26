@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
 
     const parsed = createSchema.safeParse(await request.json())
     if (!parsed.success) {
-      return NextResponse.json({ error: 'Invalid payload', details: parsed.error.errors }, { status: 400 })
+      return NextResponse.json({ error: 'Invalid payload', details: parsed.error.issues }, { status: 400 })
     }
 
     const holidayDate = parseDate(parsed.data.holidayDate)
@@ -152,7 +152,7 @@ export async function PATCH(request: NextRequest) {
 
     const parsed = updateSchema.safeParse(await request.json())
     if (!parsed.success) {
-      return NextResponse.json({ error: 'Invalid payload', details: parsed.error.errors }, { status: 400 })
+      return NextResponse.json({ error: 'Invalid payload', details: parsed.error.issues }, { status: 400 })
     }
 
     const holiday = await prisma.payrollPublicHoliday.update({
