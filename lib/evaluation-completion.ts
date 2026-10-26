@@ -113,10 +113,15 @@ function getPositiveWeightEntries(weights: Record<string, number>) {
   }))
 }
 
+/**
+ * `departedEvaluatorIds`: people who have left. They can never submit, so a slot of theirs with nothing submitted is
+ * not owed (what they did submit still counts); a relationship whose every slot is waived that way is complete.
+ */
 export function calculateWeightedEvaluationCompletion(params: {
   assignments: AssignmentLike[]
   submittedSlots: SubmittedSlotLike[]
   weights: Record<string, number>
+  departedEvaluatorIds?: ReadonlySet<string>
 }) {
   const requiredSlotsByType = new Map<
     RelationshipType,
@@ -166,15 +171,20 @@ export function calculateWeightedEvaluationCompletion(params: {
   const totalWeight = weightEntries.reduce((sum, entry) => sum + entry.weight, 0)
   const breakdown: WeightedCompletionBreakdown[] = []
 
+  const departed = params.departedEvaluatorIds ?? new Set<string>()
   for (const { relationshipType, weight } of weightEntries) {
-    const requiredSlots = requiredSlotsByType.get(relationshipType) || new Map()
     const submittedSlotKeys = submittedSlotKeysByType.get(relationshipType) || new Set()
+    const assignedSlots = [...(requiredSlotsByType.get(relationshipType) || new Map<string, WeightedCompletionPendingSlot>()).entries()]
+    const requiredSlots = new Map(
+      assignedSlots.filter(([slotKey, slot]) => submittedSlotKeys.has(slotKey) || !departed.has(slot.evaluatorId))
+    )
+    const waivedCount = assignedSlots.length - requiredSlots.size
     const completedSlots = [...requiredSlots.keys()].filter((slotKey) =>
       submittedSlotKeys.has(slotKey)
     )
     const requiredCount = requiredSlots.size
     const completionRatio =
-      requiredCount > 0 ? completedSlots.length / requiredCount : 0
+      requiredCount > 0 ? completedSlots.length / requiredCount : waivedCount > 0 ? 1 : 0
     const pendingSlots = [...requiredSlots.entries()]
       .filter(([slotKey]) => !submittedSlotKeys.has(slotKey))
       .map(([, slot]) => slot)

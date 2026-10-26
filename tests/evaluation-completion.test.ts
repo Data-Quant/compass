@@ -138,3 +138,39 @@ test('weighted completion applies partial category progress by profile weight', 
     },
   ])
 })
+
+test('someone who has left and never submitted is not waited on; what a leaver did submit still counts', () => {
+  const submitted = (evaluatorId: string, relationshipType: 'DIRECT_REPORT' | 'PEER') => ({ evaluatorId, evaluateeId: 'ammar', relationshipType, submittedAt: new Date('2026-09-20T08:00:00.000Z') })
+  const assignments = [
+    { evaluatorId: 'direct-a', evaluateeId: 'ammar', relationshipType: 'DIRECT_REPORT' as const },
+    { evaluatorId: 'direct-left', evaluateeId: 'ammar', relationshipType: 'DIRECT_REPORT' as const },
+    { evaluatorId: 'peer-left', evaluateeId: 'ammar', relationshipType: 'PEER' as const },
+  ]
+  const weights = { DIRECT_REPORT: 0.5, PEER: 0.5 }
+
+  // Without knowing who left: the leaver's missing slot holds completion down (the 97% case).
+  assert.equal(calculateWeightedEvaluationCompletion({ assignments, submittedSlots: [submitted('direct-a', 'DIRECT_REPORT'), submitted('peer-left', 'PEER')], weights }).completionPercentage, 75)
+
+  const completion = calculateWeightedEvaluationCompletion({
+    assignments,
+    submittedSlots: [submitted('direct-a', 'DIRECT_REPORT'), submitted('peer-left', 'PEER')],
+    weights,
+    departedEvaluatorIds: new Set(['direct-left', 'peer-left']),
+  })
+  assert.equal(completion.completionPercentage, 100)
+  assert.deepEqual(completion.pendingSlots, [])
+  assert.equal(completion.breakdown.find((b) => b.relationshipType === 'PEER')?.completedSlots, 1, 'a leaver’s submitted evaluation still counts')
+})
+
+test('a relationship whose only evaluators have all left without submitting counts as complete', () => {
+  const completion = calculateWeightedEvaluationCompletion({
+    assignments: [
+      { evaluatorId: 'direct-a', evaluateeId: 'ammar', relationshipType: 'DIRECT_REPORT' },
+      { evaluatorId: 'peer-left', evaluateeId: 'ammar', relationshipType: 'PEER' },
+    ],
+    submittedSlots: [{ evaluatorId: 'direct-a', evaluateeId: 'ammar', relationshipType: 'DIRECT_REPORT', submittedAt: new Date('2026-09-20T08:00:00.000Z') }],
+    weights: { DIRECT_REPORT: 0.5, PEER: 0.5 },
+    departedEvaluatorIds: new Set(['peer-left']),
+  })
+  assert.equal(completion.completionPercentage, 100)
+})
