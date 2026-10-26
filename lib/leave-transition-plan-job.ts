@@ -39,6 +39,7 @@ type Candidate = {
   startDate: Date
   endDate: Date
   isHalfDay: boolean
+  employee: { department: string | null } | null
 }
 
 export type TransitionPlanJobResult = {
@@ -139,11 +140,18 @@ export async function runTransitionPlanReminders(
       transitionPlanSubmittedAt: null,
       startDate: { gte: today, lte: cutoff },
     },
-    select: { id: true, leaveType: true, startDate: true, endDate: true, isHalfDay: true },
+    select: {
+      id: true,
+      leaveType: true,
+      startDate: true,
+      endDate: true,
+      isHalfDay: true,
+      employee: { select: { department: true } },
+    },
     orderBy: { startDate: 'asc' },
   })
 
-  // Half-days and single sick days need no plan, so they are never reminded,
+  // Half-days, single sick days and 3E staff need no plan, so they are never reminded,
   // escalated or cancelled. The rule lives in transitionPlanRequired, shared with
   // the UI, so what the badge says and what the cron chases cannot disagree.
   const candidates = allUnsubmitted.filter((c) =>
@@ -152,6 +160,7 @@ export async function runTransitionPlanReminders(
       isHalfDay: c.isHalfDay,
       startDate: new Date(c.startDate),
       endDate: new Date(c.endDate),
+      department: c.employee?.department,
     })
   )
 

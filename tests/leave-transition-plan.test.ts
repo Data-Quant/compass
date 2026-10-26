@@ -285,3 +285,22 @@ test('a one-day sick leave spanning a weekend is still one working day', () => {
   // Fri..Sat -> Sat is not a working day, so this is one sick day, not two.
   assert.equal(transitionPlanRequired(leave('SICK', false, '2026-07-10', '2026-07-11')), false)
 })
+
+// ── 3E is exempt ───────────────────────────────────────────────────────────────
+//
+// 3E staff do not file transition plans, so none of their leaves need one: no
+// reminders, no "plan missing" badge, and -- the point -- no auto-cancellation.
+
+test('a 3E employee never needs a plan, even for a long leave', () => {
+  // Mon-Fri = 5 working days, which would otherwise be on the cancellation ladder.
+  const long = leave('ANNUAL', false, '2026-07-13', '2026-07-17')
+  assert.equal(transitionPlanRequired({ ...long, department: '3E' }), false)
+  assert.equal(transitionPlanRequired({ ...long, department: ' 3e ' }), false)
+})
+
+test('other departments still need a plan', () => {
+  const long = leave('ANNUAL', false, '2026-07-13', '2026-07-17')
+  assert.equal(transitionPlanRequired({ ...long, department: 'Engineering' }), true)
+  assert.equal(transitionPlanRequired({ ...long, department: null }), true)
+  assert.equal(transitionPlanRequired(long), true)
+})

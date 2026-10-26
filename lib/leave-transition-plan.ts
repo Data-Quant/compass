@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { calculateLeaveDuration } from '@/lib/leave-utils'
+import { isThreeEDepartment } from '@/lib/company-branding'
 
 export interface TransitionTask {
   taskDetails: string
@@ -100,6 +101,9 @@ export function classifyTransitionReminder(input: {
  * someone who is ill for a handover note helps nobody. A planned single day of casual
  * or annual leave keeps the reminder, since it was booked ahead.
  *
+ * 3E staff do not file transition plans at all, so none of their leaves need one --
+ * which also keeps them off the cancellation ladder.
+ *
  * This is the one rule behind the cron ladder, the "plan missing" badge, the reminder
  * banner and the request list, so an exempt leave is exempt everywhere at once.
  */
@@ -108,7 +112,10 @@ export function transitionPlanRequired(leave: {
   isHalfDay: boolean
   startDate: Date
   endDate: Date
+  /** The applicant's department. */
+  department?: string | null
 }): boolean {
+  if (isThreeEDepartment(leave.department)) return false
   if (leave.isHalfDay) return false
   if (leave.leaveType === 'SICK') {
     return calculateLeaveDuration(leave.startDate, leave.endDate, false) > 1

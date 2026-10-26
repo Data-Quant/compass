@@ -943,6 +943,7 @@ export default function HRLeavePage() {
                                 isHalfDay: request.isHalfDay,
                                 startDate: new Date(request.startDate),
                                 endDate: new Date(request.endDate),
+                                department: request.employee.department,
                               })
                               if (relevant && planRequired && !request.transitionPlanSubmittedAt) {
                                 return (

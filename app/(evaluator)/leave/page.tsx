@@ -457,13 +457,20 @@ export default function LeavePage() {
     )
   }, [calendarEvents, departmentFilter])
 
-  /** The shared rule: half-days and single sick days need no handover plan. */
-  const planRequiredFor = (request: Pick<LeaveRequest, 'leaveType' | 'isHalfDay' | 'startDate' | 'endDate'>) =>
+  /**
+   * The shared rule: half-days, single sick days and 3E staff need no handover plan.
+   * A lead's approval rows carry the applicant; the user's own rows are their own.
+   */
+  const planRequiredFor = (
+    request: Pick<LeaveRequest, 'leaveType' | 'isHalfDay' | 'startDate' | 'endDate'> &
+      Partial<Pick<ApprovalRequest, 'employee'>>
+  ) =>
     transitionPlanRequired({
       leaveType: request.leaveType,
       isHalfDay: request.isHalfDay,
       startDate: new Date(request.startDate),
       endDate: new Date(request.endDate),
+      department: request.employee ? request.employee.department : user?.department,
     })
 
   const transitionPlanReminderRequests = useMemo(() => {
