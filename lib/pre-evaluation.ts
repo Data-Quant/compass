@@ -705,6 +705,25 @@ async function getPeriodQuestionSet(periodId: string, relationshipType: Relation
   return { forEvaluator: own.length > 0, questions: chosen.map((row) => ({ ...row.question, orderIndex: row.orderIndex })) }
 }
 
+/** Every question a quarter pinned, by `${relationshipType}:${evaluatorId}` ('*' for the quarter's set for everyone). */
+export type PinnedQuestionIds = ReadonlyMap<string, ReadonlySet<string>>
+
+export async function getPeriodPinnedQuestionIds(periodId: string): Promise<PinnedQuestionIds> {
+  const rows = await prisma.evaluationPeriodQuestion.findMany({ where: { periodId }, select: { relationshipType: true, evaluatorId: true, questionId: true } })
+  const pinned = new Map<string, Set<string>>()
+  for (const row of rows) {
+    const key = `${row.relationshipType}:${row.evaluatorId ?? '*'}`
+    pinned.set(key, (pinned.get(key) ?? new Set<string>()).add(row.questionId))
+  }
+  return pinned
+}
+
+/** Whether the quarter asked this evaluator this question for this relationship (their own set, else everyone's). */
+export function isPinnedQuestion(pinned: PinnedQuestionIds, relationshipType: RelationshipType, evaluatorId: string, questionId: string): boolean {
+  const own = pinned.get(`${relationshipType}:${evaluatorId}`)
+  return own ? own.has(questionId) : pinned.get(`${relationshipType}:*`)?.has(questionId) ?? false
+}
+
 export async function getResolvedEvaluationQuestions(params: {
   relationshipType: RelationshipType
   periodId: string
