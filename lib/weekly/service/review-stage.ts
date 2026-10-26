@@ -19,6 +19,13 @@ export async function reviewStageView(actor: WeeklyActor, periodId: string): Pro
 /** Opens the review stage (it marks the period, as pre-evaluation did) and emails everyone their lists. */
 export async function openReviewStage(actor: WeeklyActor, periodId: string, now: Date, send: WeeklySendMail, appUrl: string): Promise<{ listEmails: number }> {
   assertHr(actor)
+  // The list changes approved in a review stage update the shared mappings, which a running round reads: one quarter
+  // at a time, so the next quarter's changes never land in the current one. Closing it saves its mappings first.
+  const running = await prisma.weeklyCycle.findFirst({ where: { status: 'RUNNING', periodId: { not: periodId } }, select: { periodId: true } })
+  if (running) {
+    const name = (await prisma.evaluationPeriod.findUnique({ where: { id: running.periodId }, select: { name: true } }))?.name ?? 'Another quarter'
+    throw new WeeklyError(`${name} is still running. Close its round first, so this quarter's list changes do not change ${name}'s mappings.`, 409)
+  }
   try {
     await triggerPreEvaluationForPeriod(periodId, 'MANUAL', actor.id)
   } catch (error) {
