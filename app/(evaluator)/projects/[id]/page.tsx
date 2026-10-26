@@ -532,14 +532,12 @@ function ProjectDetail() {
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            {canManage && (
-              <Button variant="outline" size="sm" className="px-2 sm:px-3" asChild>
-                <Link href={`/projects/${id}/analytics`} title="Visible to this project's leads and HR only">
-                  <ChartColumn aria-hidden="true" />
-                  <span className="sr-only sm:not-sr-only">Analytics</span>
-                </Link>
-              </Button>
-            )}
+            <Button variant="outline" size="sm" className="px-2 sm:px-3" asChild>
+              <Link href={`/projects/${id}/analytics`}>
+                <ChartColumn aria-hidden="true" />
+                <span className="sr-only sm:not-sr-only">Analytics</span>
+              </Link>
+            </Button>
             {/* Members */}
             <button
               onClick={() => canManage && setMemberModalOpen(true)}

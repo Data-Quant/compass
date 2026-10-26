@@ -30,7 +30,7 @@ export function AnalyticsHeader({ projectId, name, color }: { projectId: string;
       </div>
       <p className={`inline-flex items-center gap-1.5 text-sm text-muted-foreground ${color ? 'sm:ml-6' : ''}`}>
         <Lock aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-        Analytics · Only this project&apos;s leads and HR can open this page
+        Analytics · Visible to this project&apos;s members and HR
       </p>
     </header>
   )

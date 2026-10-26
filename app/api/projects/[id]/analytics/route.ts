@@ -28,7 +28,7 @@ export async function GET(
     if (!isProjectRecordId(id)) return NextResponse.json({ error: 'Invalid project id' }, { status: 400 })
 
     const authorization = await getProjectAuthorization(id, user)
-    const authorizationFailure = projectAuthorizationFailure(authorization, 'manage')
+    const authorizationFailure = projectAuthorizationFailure(authorization, 'access')
     if (authorizationFailure) {
       return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
     }

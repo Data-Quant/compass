@@ -195,7 +195,7 @@ function ProjectAnalytics() {
 
 function FailureState({ failure, projectId, onRetry }: { failure: Failure; projectId: string; onRetry: () => void }) {
   const copy = {
-    forbidden: { icon: <Lock className="h-10 w-10" />, title: 'Only leads and HR can see analytics', description: "Analytics for this project is open to the project's leads and HR. Ask a lead if you need these numbers." },
+    forbidden: { icon: <Lock className="h-10 w-10" />, title: 'Analytics is for project members', description: "You can see analytics for projects you're part of. Ask the project owner to add you if you need these numbers." },
     not_found: { icon: <ListTodo className="h-10 w-10" />, title: 'Project not found', description: 'It may have been deleted, or the link is incomplete.' },
     bad_range: { icon: <CalendarX2 className="h-10 w-10" />, title: "That date range can't be shown", description: 'Pick dates up to today, at most two years apart.' },
     error: { icon: <TriangleAlert className="h-10 w-10" />, title: "Couldn't load analytics", description: 'Check your connection and try again.' },

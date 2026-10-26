@@ -90,7 +90,7 @@ function Shell({ children }: { children: ReactNode }) {
         </div>
         <p className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
           <Lock aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-          Projects you lead. HR sees all of them.
+          Projects you're part of. HR sees all of them.
         </p>
       </header>
       {children}
@@ -216,7 +216,7 @@ function WorkspaceAnalyticsView() {
 
 function FailureState({ failure, onRetry }: { failure: Failure; onRetry: () => void }) {
   const copy = {
-    forbidden: { icon: <Lock className="h-10 w-10" />, title: 'Only project leads and HR can see analytics', description: "You don't lead any projects yet. Ask a project owner to make you a lead if you need these numbers." },
+    forbidden: { icon: <Lock className="h-10 w-10" />, title: 'No projects yet', description: "Analytics appears here once you're part of a project." },
     bad_range: { icon: <CalendarX2 className="h-10 w-10" />, title: "That date range can't be shown", description: 'Pick dates up to today, at most two years apart.' },
     error: { icon: <TriangleAlert className="h-10 w-10" />, title: "Couldn't load analytics", description: 'Check your connection and try again.' },
   }[failure]
