@@ -8,7 +8,6 @@ import {
   calculateLeaveDuration,
   canCancelLeave,
   isValidLeaveDateRange,
-  leaveRequiresLeadApproval,
 } from '@/lib/leave-utils'
 import { restoreCancelledLeaveBalance } from '@/lib/leave-balance'
 import { stripHtml } from '@/lib/sanitize'
@@ -400,17 +399,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Cover people cannot include the employee' }, { status: 400 })
     }
 
-    // Full-day leave requires lead approval when an upstream TEAM_LEAD exists.
-    // For half-day leave, casual still needs lead approval while sick remains HR-only.
-    // Senior members without upstream TEAM_LEAD relationships remain HR-only.
-    const superiorLeadCount = await prisma.evaluatorMapping.count({
-      where: {
-        evaluateeId: targetEmployeeId,
-        relationshipType: 'TEAM_LEAD',
-      },
-    })
-    const requiresLeadApproval = leaveRequiresLeadApproval(leaveType, isHalfDay, superiorLeadCount)
-
     // Ensure employee exists when HR enters leave on behalf.
     if (isOnBehalfRequest || requestedCoverIds.length > 0) {
       const idsToCheck = [targetEmployeeId, ...requestedCoverIds] as string[]
@@ -483,43 +471,10 @@ export async function POST(request: NextRequest) {
 
     // Create the leave request
     const leaveRequest = await prisma.$transaction(async (tx) => {
-      // HR on-behalf entries:
-      // - if lead approval is required => mark HR-approved and wait for lead
-      // - otherwise => fully approve immediately
+      // HR on-behalf entries (sick days reported to HR, bereavement and the like) are
+      // final: they are approved immediately, never routed to the team lead, so the
+      // calendar invite -- sent only for APPROVED leave -- goes out straight away.
       if (isOnBehalfRequest && isHR) {
-        if (requiresLeadApproval) {
-          return tx.leaveRequest.create({
-            data: {
-              employeeId: targetEmployeeId,
-              leaveType,
-              isHalfDay,
-              halfDaySession: isHalfDay ? (halfDaySession ?? null) : null,
-              requestTimezone: normalizedRequestTimezone,
-              unavailableStartTime: isHalfDay ? (unavailableStartTime ?? null) : null,
-              unavailableEndTime: isHalfDay ? (unavailableEndTime ?? null) : null,
-              startDate: start,
-              endDate: end,
-              reason,
-              transitionPlan: safeTransitionPlan || 'Entered by HR on behalf of employee',
-              coverPersonId: primaryCoverPersonId,
-              coverPersonIds: normalizedCoverIds.length > 0 ? normalizedCoverIds : Prisma.JsonNull,
-              ...(validNotifyIds.length > 0 && { additionalNotifyIds: validNotifyIds }),
-              status: 'HR_APPROVED',
-              hrApprovedBy: user.id,
-              hrApprovedAt: new Date(),
-              hrComment: 'Entered by HR on behalf of employee',
-            },
-            include: {
-              employee: {
-                select: { id: true, name: true, department: true, email: true },
-              },
-              coverPerson: {
-                select: { id: true, name: true },
-              },
-            },
-          })
-        }
-
         const usedField = `${leaveType.toLowerCase()}Used` as 'casualUsed' | 'sickUsed' | 'annualUsed'
 
         await tx.leaveBalance.update({
@@ -596,8 +551,8 @@ export async function POST(request: NextRequest) {
     })
     const [requestWithCoverPeople] = await attachCoverPeople([leaveRequest])
     
-    // Send approval request notifications unless this entry is already fully approved.
-    if (!(isOnBehalfRequest && isHR && !requiresLeadApproval)) {
+    // Send approval request notifications unless HR entered it, which is already approved.
+    if (!isOnBehalfRequest) {
       try {
         await sendLeaveRequestNotification(leaveRequest.id)
       } catch (e) {
