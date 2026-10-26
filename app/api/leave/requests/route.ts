@@ -364,7 +364,7 @@ export async function POST(request: NextRequest) {
     const parsed = leaveRequestCreateSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Invalid leave request payload', details: parsed.error.errors },
+        { error: 'Invalid leave request payload', details: parsed.error.issues },
         { status: 400 }
       )
     }
@@ -631,7 +631,7 @@ export async function PUT(request: NextRequest) {
     const parsed = leaveRequestUpdateSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Invalid leave request payload', details: parsed.error.errors },
+        { error: 'Invalid leave request payload', details: parsed.error.issues },
         { status: 400 }
       )
     }

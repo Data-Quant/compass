@@ -64,7 +64,7 @@ export async function PATCH(request: NextRequest) {
     const parsed = preferenceSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Invalid notification preference payload', details: parsed.error.errors },
+        { error: 'Invalid notification preference payload', details: parsed.error.issues },
         { status: 400 }
       )
     }

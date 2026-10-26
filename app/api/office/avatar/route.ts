@@ -57,7 +57,7 @@ export async function PATCH(request: NextRequest) {
 
     const parsed = avatarV2Schema.safeParse(await request.json())
     if (!parsed.success) {
-      return NextResponse.json({ error: 'Invalid avatar', details: parsed.error.errors }, { status: 400 })
+      return NextResponse.json({ error: 'Invalid avatar', details: parsed.error.issues }, { status: 400 })
     }
 
     const updatedUser = await prisma.user.update({

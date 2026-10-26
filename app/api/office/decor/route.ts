@@ -31,7 +31,7 @@ export async function PATCH(request: NextRequest) {
 
     const parsed = decorSchema.safeParse(await request.json())
     if (!parsed.success) {
-      return NextResponse.json({ error: 'Invalid decor', details: parsed.error.errors }, { status: 400 })
+      return NextResponse.json({ error: 'Invalid decor', details: parsed.error.issues }, { status: 400 })
     }
 
     const decorJson = parsed.data

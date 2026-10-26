@@ -146,7 +146,7 @@ export const draftSchema = z
         z
           .object({
             id: idSchema,
-            answers: z.record(z.union([z.boolean(), z.string().max(1000)])).optional(),
+            answers: z.record(z.string(), z.union([z.boolean(), z.string().max(1000)])).optional(),
             declarationConfirmed: z.boolean().optional(),
             naRequested: z.boolean().optional(),
             naJustification: z.string().trim().max(1000).nullable().optional(),
@@ -159,7 +159,7 @@ export const draftSchema = z
 export type DraftInput = z.infer<typeof draftSchema>
 
 export const submitSchema = z
-  .object({ confirmed: z.literal(true, { errorMap: () => ({ message: 'Confirm the attestation to submit' }) }) })
+  .object({ confirmed: z.literal(true, { error: 'Confirm the attestation to submit' }) })
   .strict()
 
 export const employeeSubtaskSchema = z.discriminatedUnion('action', [
@@ -177,7 +177,7 @@ export const evidenceTokenPayloadSchema = z
     contentType: z.string().min(1).max(100),
     size: z.number().int().positive(),
     prohibitedAcknowledged: z.literal(true, {
-      errorMap: () => ({ message: 'Confirm the file contains no codes, QR codes, secrets or passwords' }),
+      error: 'Confirm the file contains no codes, QR codes, secrets or passwords',
     }),
   })
   .strict()

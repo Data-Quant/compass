@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
     const parsed = leaveBalanceUpdateSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Invalid leave balance update payload', details: parsed.error.errors },
+        { error: 'Invalid leave balance update payload', details: parsed.error.issues },
         { status: 400 }
       )
     }
