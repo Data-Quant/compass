@@ -24,6 +24,7 @@ import {
   filterPooledRelationshipEvaluations,
 } from '@/lib/evaluation-completion'
 import { applyAuthoritativeDeptPoolEvaluations } from '@/lib/dept-evaluation-pool'
+import { departedUserIds } from '@/lib/departed-evaluators'
 import {
   buildAssignmentLookup,
   resolveEvaluationRelationshipTypeForRow,
@@ -858,6 +859,8 @@ export async function generateVerificationCsv(periodId: string): Promise<string>
       prisma.weightProfile.findMany(),
       prisma.weightage.findMany(),
     ])
+  // People who have left can no longer submit, so completion does not wait on them.
+  const departed = await departedUserIds()
 
   // Index maps
   const mappingsByEmployee = new Map<string, typeof allMappings>()
@@ -1120,6 +1123,7 @@ export async function generateVerificationCsv(periodId: string): Promise<string>
       })),
       submittedSlots,
       weights,
+      departedEvaluatorIds: departed,
     })
     const evaluatorNamesById = new Map<string, string>()
     for (const m of employeeMappings) {

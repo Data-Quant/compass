@@ -12,6 +12,7 @@ import {
   filterPooledRelationshipEvaluations,
 } from '@/lib/evaluation-completion'
 import { applyAuthoritativeDeptPoolEvaluations } from '@/lib/dept-evaluation-pool'
+import { departedUserIds } from '@/lib/departed-evaluators'
 import {
   buildAssignmentLookup,
   resolveEvaluationRelationshipTypeForRow,
@@ -75,6 +76,8 @@ export async function GET(request: NextRequest) {
         // 6. ALL custom weightages
         prisma.weightage.findMany(),
       ])
+    // People who have left can no longer submit, so completion does not wait on them.
+    const departed = await departedUserIds()
 
     // ── Build lookup structures in-memory ──
 
@@ -272,6 +275,7 @@ export async function GET(request: NextRequest) {
         })),
         submittedSlots,
         weights: dynamicWeights,
+        departedEvaluatorIds: departed,
       })
 
       return {
