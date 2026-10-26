@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
-import { getResolvedEvaluationAssignments, type ResolvedEvaluationAssignment } from '@/lib/evaluation-assignments'
+import { getResolvedEvaluationAssignments, snapshotEvaluationPeriodAssignments, type ResolvedEvaluationAssignment } from '@/lib/evaluation-assignments'
 import type { AggregationCounts } from '../aggregation'
 import { categoryKey, closeBlockers, dropCandidates, hasBlockers, type CloseBlockers } from '../close-rules'
 import { isWeeklyRelationshipType, perspectiveOf, type Perspective } from '../perspectives'
@@ -134,6 +134,9 @@ export async function closeCycle(
         drops.push({ evaluateeId: drop.evaluateeId, perspective: drop.perspective, overrides: assignments.length })
       }
       const result = await aggregateCycle(tx, cycle, { runById: actor.id, now, drops })
+      // The round's mappings are saved as it ran (its mid-quarter changes and drops included); from now on the
+      // quarter reads these, so later mapping changes cannot rewrite it. Reopening reads the live ones again.
+      await snapshotEvaluationPeriodAssignments(cycle.periodId, tx)
       await tx.weeklyCycle.update({ where: { id: cycleId }, data: { status: 'CLOSED', closedAt: now } })
       await recordAudit(tx, { cycleId, actorId: actor.id, actorRole: 'HR', action: 'CYCLE_CLOSE', objectType: 'WeeklyCycle', objectId: cycleId, after: { counts: result.counts, drops } })
       return { ...result, drops }

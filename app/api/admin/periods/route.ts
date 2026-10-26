@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { isAdminRole } from '@/lib/permissions'
 import { prisma } from '@/lib/db'
-import { snapshotEvaluationPeriodAssignments } from '@/lib/evaluation-assignments'
+import { snapshotOnLock } from '@/lib/evaluation-assignments'
 
 function toDateOnly(value: string | Date) {
   const date = value instanceof Date ? new Date(value) : new Date(value)
@@ -178,7 +178,8 @@ export async function PUT(request: NextRequest) {
       }
 
       if (shouldSnapshotAssignments) {
-        await snapshotEvaluationPeriodAssignments(id, tx)
+        // A quarter whose weekly round closed keeps the mappings saved at the close.
+        await snapshotOnLock(id, tx)
       }
 
       return tx.evaluationPeriod.update({

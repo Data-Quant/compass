@@ -50,10 +50,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { MappingsTable } from '@/components/org-chart/MappingsTable'
+import { QuarterMappingsHistory } from '@/components/org-chart/QuarterMappingsHistory'
 
 type ViewMode = 'focused' | 'overview' | 'hierarchy'
-/** The page shows the mapping graph, or the same mappings as an editable table with the spreadsheet import. */
-type Display = 'graph' | 'table'
+/**
+ * The page shows the mapping graph, the same mappings as an editable table with the spreadsheet import, or a past
+ * quarter's mappings (read-only, for auditing).
+ */
+type Display = 'graph' | 'table' | 'history'
 type OrgChartApiResponse = { users: OrgChartUser[]; mappings: OrgChartMapping[]; meta: OrgChartMeta }
 type OrgChartNodeData = { label: string; subtitle: string; color: string; department: string | null; userId?: string }
 type MappingFormState = { evaluatorId: string; evaluateeId: string; relationshipType: RelationshipType }
@@ -239,15 +243,16 @@ export default function OrgChartPage() {
   }, [])
 
   useEffect(() => { void loadData() }, [loadData])
-  // ?view=table opens the table, so other pages can link straight to it.
+  // ?view=table or ?view=history opens that view, so other pages can link straight to it.
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('view') === 'table') setDisplay('table')
+    const requested = new URLSearchParams(window.location.search).get('view')
+    if (requested === 'table' || requested === 'history') setDisplay(requested)
   }, [])
 
   function changeDisplay(next: Display) {
     setDisplay(next)
     const url = new URL(window.location.href)
-    if (next === 'table') url.searchParams.set('view', 'table')
+    if (next !== 'graph') url.searchParams.set('view', next)
     else url.searchParams.delete('view')
     window.history.replaceState(null, '', url)
   }
@@ -577,7 +582,9 @@ export default function OrgChartPage() {
           <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
             {display === 'graph'
               ? 'Evaluator mappings as they actually exist. Focus on one person, inspect the full company graph, or switch to the Team Lead hierarchy lens for reporting-only structure.'
-              : 'Every evaluator mapping in one list. Search, filter, add, edit or delete mappings, or import them from the mappings workbook.'}
+              : display === 'table'
+                ? 'Every evaluator mapping in one list. Search, filter, add, edit or delete mappings, or import them from the mappings workbook.'
+                : 'The mappings each quarter used, for auditing. Read-only: change today’s mappings on the Graph or Table.'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -585,6 +592,7 @@ export default function OrgChartPage() {
             <TabsList>
               <TabsTrigger value="graph">Graph</TabsTrigger>
               <TabsTrigger value="table">Table</TabsTrigger>
+              <TabsTrigger value="history">History</TabsTrigger>
             </TabsList>
           </Tabs>
           {display === 'graph' && (
@@ -613,7 +621,9 @@ export default function OrgChartPage() {
         ))}
       </div>
 
-      {display === 'table' ? (
+      {display === 'history' ? (
+        <QuarterMappingsHistory />
+      ) : display === 'table' ? (
         <MappingsTable onChanged={() => void loadData(true)} />
       ) : (
       <>

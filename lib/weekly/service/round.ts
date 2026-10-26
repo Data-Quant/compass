@@ -1,7 +1,7 @@
 // The Evaluation round page (UX spec, section 4): one round = one evaluation period and its weekly cycle. HR moves it
 // Draft → Review → Open → Closed → Released; this service derives the stage, says what is next, and makes the moves.
 import { prisma } from '@/lib/db'
-import { getResolvedEvaluationAssignments, snapshotEvaluationPeriodAssignments } from '@/lib/evaluation-assignments'
+import { getResolvedEvaluationAssignments, snapshotEvaluationPeriodAssignments, snapshotOnLock } from '@/lib/evaluation-assignments'
 import { cycleWeeks, effectiveWeek, parseCalendarDate, startOfKarachiDay, weekStartsAt } from '../calendar'
 import { evaluateeExclusion, isOutsideRedesign } from '../eligibility'
 import { renderRequestExpiredEmail } from '../emails'
@@ -326,7 +326,8 @@ export async function setRoundLock(actor: WeeklyActor, periodId: string, locked:
     throw new WeeklyError(active ? `This round cannot be unlocked while ${active.name} is active` : 'Make this quarter active before unlocking it', 409)
   }
   await prisma.$transaction(async (tx) => {
-    if (locked) await snapshotEvaluationPeriodAssignments(periodId, tx)
+    // A closed round already saved its mappings; locking keeps those rather than taking today's.
+    if (locked) await snapshotOnLock(periodId, tx)
     await tx.evaluationPeriod.update({ where: { id: periodId }, data: { isLocked: locked } })
   }, { timeout: 60_000 })
   await recordAudit(prisma, { cycleId: cycle.id, actorId: actor.id, actorRole: 'HR', action: locked ? 'ROUND_LOCK' : 'ROUND_UNLOCK', objectType: 'EvaluationPeriod', objectId: periodId })
