@@ -14,6 +14,28 @@ type SyncUser = {
   department: string | null
 }
 
+type MappingTriple = { evaluatorId: string; evaluateeId: string; relationshipType: string }
+const isAutomaticType = (relationshipType: string) => relationshipType === 'HR' || relationshipType === 'DEPT'
+
+/** HR deleted an automatic mapping (HR or Hamiz's department one): remember it, so the sync does not add it back. */
+export async function recordAutomaticMappingDeletion(db: DbClient, mapping: MappingTriple, actorId: string | null) {
+  if (!isAutomaticType(mapping.relationshipType)) return
+  const key = { evaluatorId: mapping.evaluatorId, evaluateeId: mapping.evaluateeId, relationshipType: mapping.relationshipType as 'HR' | 'DEPT' }
+  await db.evaluatorMappingExclusion.upsert({
+    where: { evaluatorId_evaluateeId_relationshipType: key },
+    create: { ...key, createdById: actorId },
+    update: { createdById: actorId },
+  })
+}
+
+/** HR added an automatic mapping back by hand: it is automatic again. */
+export async function clearAutomaticMappingDeletion(db: DbClient, mapping: MappingTriple) {
+  if (!isAutomaticType(mapping.relationshipType)) return
+  await db.evaluatorMappingExclusion.deleteMany({
+    where: { evaluatorId: mapping.evaluatorId, evaluateeId: mapping.evaluateeId, relationshipType: mapping.relationshipType as 'HR' | 'DEPT' },
+  })
+}
+
 export async function syncConstantEvaluatorMappingsForUsers(
   db: DbClient,
   evaluateeIds: string[]
@@ -165,10 +187,19 @@ export async function syncConstantEvaluatorMappingsForUsers(
       (mapping) => `${mapping.evaluatorId}:${mapping.evaluateeId}:${mapping.relationshipType}`
     )
   )
+  // Automatic mappings HR deleted on purpose stay deleted.
+  const excludedKeys = new Set(
+    (
+      await db.evaluatorMappingExclusion.findMany({
+        where: { evaluateeId: { in: activeEvaluateeIds } },
+        select: { evaluatorId: true, evaluateeId: true, relationshipType: true },
+      })
+    ).map((exclusion) => `${exclusion.evaluatorId}:${exclusion.evaluateeId}:${exclusion.relationshipType}`)
+  )
 
   const missingRows = rows.filter((row) => {
     const key = `${row.evaluatorId}:${row.evaluateeId}:${row.relationshipType}`
-    return !existingKeys.has(key)
+    return !existingKeys.has(key) && !excludedKeys.has(key)
   })
 
   const createdConstantMappings =
