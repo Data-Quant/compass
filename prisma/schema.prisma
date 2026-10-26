@@ -395,6 +395,8 @@ model User {
   evaluationAssignmentSnapshotsAsEvaluator EvaluationPeriodAssignmentSnapshot[] @relation("EvaluationSnapshotEvaluator")
   evaluationAssignmentSnapshotsAsEvaluatee EvaluationPeriodAssignmentSnapshot[] @relation("EvaluationSnapshotEvaluatee")
   periodQuestionsAsEvaluator EvaluationPeriodQuestion[]
+  mappingExclusionsAsEvaluator EvaluatorMappingExclusion[] @relation("MappingExclusionEvaluator")
+  mappingExclusionsAsEvaluatee EvaluatorMappingExclusion[] @relation("MappingExclusionEvaluatee")
   subscriptionOwnerships SubscriptionOwner[]
   evaluationEdits        EvaluationEdit[]   @relation("EvaluationEditor")
   clientAssignments      ClientAssignment[] @relation("ClientAssignee")
@@ -519,6 +521,23 @@ model SubscriptionOwner {
 
   @@id([subscriptionId, userId])
   @@index([userId])
+}
+
+/// An automatic mapping (HR, or Hamiz's department evaluation) HR deleted on purpose: the automation leaves it out
+/// for that person until HR adds the mapping back.
+model EvaluatorMappingExclusion {
+  id               String           @id @default(cuid())
+  evaluatorId      String
+  evaluateeId      String
+  relationshipType RelationshipType
+  createdById      String?
+  createdAt        DateTime         @default(now())
+
+  evaluator User @relation("MappingExclusionEvaluator", fields: [evaluatorId], references: [id], onDelete: Cascade)
+  evaluatee User @relation("MappingExclusionEvaluatee", fields: [evaluateeId], references: [id], onDelete: Cascade)
+
+  @@unique([evaluatorId, evaluateeId, relationshipType])
+  @@index([evaluateeId])
 }
 
 model EvaluatorMapping {

@@ -12,7 +12,7 @@ import {
 } from '@/lib/evaluation-mappings'
 import { getCollapsedAdminMappings } from '@/lib/evaluation-assignments'
 import { getMappingConstraint } from '@/lib/evaluation-profile-rules'
-import { syncConstantEvaluatorMappingsForUsers } from '@/lib/evaluation-constants'
+import { clearAutomaticMappingDeletion, recordAutomaticMappingDeletion, syncConstantEvaluatorMappingsForUsers } from '@/lib/evaluation-constants'
 
 // GET - List all evaluator mappings
 export async function GET(request: NextRequest) {
@@ -110,6 +110,8 @@ export async function POST(request: NextRequest) {
           skipManagementMirror: constraint.skipManagementMirror,
         }
       )
+      // Adding back an automatic mapping HR had deleted makes it automatic again.
+      await clearAutomaticMappingDeletion(tx, { evaluatorId, evaluateeId, relationshipType })
       await syncConstantEvaluatorMappingsForUsers(tx, [evaluatorId, evaluateeId])
     })
 
@@ -158,6 +160,8 @@ export async function DELETE(request: NextRequest) {
       const mapping = await deleteLogicalEvaluatorMappingById(tx, id)
 
       if (mapping) {
+        // An automatic mapping (HR, or Hamiz's department one) deleted on purpose stays deleted.
+        await recordAutomaticMappingDeletion(tx, mapping, user.id)
         const affectedEvaluateeIds = [
           ...new Set(
             getPhysicalMappingsForLogicalRelationship({
