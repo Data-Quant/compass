@@ -881,9 +881,9 @@ export function ProjectsWorkspace() {
             Plan by project, work from one task list, and keep every deadline visible.
           </p>
         </div>
-        {(workspace.viewer.role === 'HR' || workspace.projects.some((project) => project.canManage)) && (
+        {(workspace.viewer.role === 'HR' || workspace.projects.length > 0) && (
           <Button variant="outline" size="sm" className="shrink-0 px-2 sm:px-3" asChild>
-            <Link href="/projects/analytics" title="Visible to project leads and HR only">
+            <Link href="/projects/analytics">
               <ChartColumn aria-hidden="true" />
               <span className="sr-only sm:not-sr-only">Analytics</span>
             </Link>
