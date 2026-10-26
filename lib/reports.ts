@@ -13,6 +13,9 @@ import { calculateRedistributedWeights } from '@/lib/config'
 import {
   getEvaluationQuestionMeta,
   getDefaultQuestionBankRelationshipType,
+  getPeriodPinnedQuestionIds,
+  isPinnedQuestion,
+  type PinnedQuestionIds,
 } from '@/lib/pre-evaluation'
 import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import {
@@ -69,15 +72,23 @@ function assertReportEligibility(employee: {
  *
  * - Lead-authored questions are only valid for TEAM_LEAD evaluators.
  * - Regular questions must match the expected bank type for the evaluator's
- *   current relationship (DIRECT_REPORT → TEAM_LEAD bank, etc).
+ *   current relationship (DIRECT_REPORT → TEAM_LEAD bank, etc), unless the
+ *   quarter pinned that question for them (e.g. Daniyal's C-Level questions
+ *   as a lead in Q3 2026, see EvaluationPeriodQuestion).
  */
 function isEvaluationInCurrentBank(
   evaluation: {
+    evaluatorId: string
+    questionId?: string | null
     leadQuestionId?: string | null
     question?: { relationshipType: RelationshipType } | null
   },
-  evaluatorRelationshipType: RelationshipType
+  evaluatorRelationshipType: RelationshipType,
+  pinned: PinnedQuestionIds
 ): boolean {
+  if (evaluation.questionId && isPinnedQuestion(pinned, evaluatorRelationshipType, evaluation.evaluatorId, evaluation.questionId)) {
+    return true
+  }
   if (evaluation.leadQuestionId) {
     return evaluatorRelationshipType === 'TEAM_LEAD'
   }
@@ -154,6 +165,7 @@ export async function generateDetailedReport(
     evaluateeId: employeeId,
     includeUsers: true,
   })
+  const pinned = await getPeriodPinnedQuestionIds(periodId)
   const deptEvaluatorIds = [...new Set(
     mappings
       .filter((mapping) => mapping.relationshipType === 'DEPT')
@@ -232,7 +244,7 @@ export async function generateDetailedReport(
     const effectiveEvaluatorEvaluations = filterPooledRelationshipEvaluations(
       relationshipType,
       evaluatorEvaluations
-    ).filter((evaluation) => isEvaluationInCurrentBank(evaluation, relationshipType))
+    ).filter((evaluation) => isEvaluationInCurrentBank(evaluation, relationshipType, pinned))
     if (effectiveEvaluatorEvaluations.length === 0) {
       continue
     }
@@ -838,6 +850,7 @@ export async function generateVerificationCsv(periodId: string): Promise<string>
     throw new Error('Period not found')
   }
 
+  const pinned = await getPeriodPinnedQuestionIds(period.id)
   const [employees, allEvaluations, allMappings, allWeightProfiles, allCustomWeightages] =
     await Promise.all([
       // Role filter removed so HR/OA/SECURITY/EXECUTION users who legitimately
@@ -982,7 +995,7 @@ export async function generateVerificationCsv(periodId: string): Promise<string>
     for (const ev of employeeEvals) {
       const type = resolveEvaluationRelationshipTypeForRow({ evaluation: ev, assignmentLookup })
       if (!type) continue
-      if (!isEvaluationInCurrentBank(ev, type)) continue
+      if (!isEvaluationInCurrentBank(ev, type, pinned)) continue
       submittedSlots.push({
         evaluatorId: ev.evaluatorId,
         evaluateeId: ev.evaluateeId,

@@ -2,7 +2,8 @@ import test, { after, afterEach, before, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { prisma } from '../lib/db'
 import { getResolvedEvaluationQuestions } from '../lib/pre-evaluation'
-import { formTables } from '../lib/weekly/service/form-tables'
+import { generateDetailedReport, generateVerificationCsv } from '../lib/reports'
+import { formTables, saveTableRow } from '../lib/weekly/service/form-tables'
 import { lateFormDetail, setLateForms } from '../lib/weekly/service/late-forms'
 import { F, seedFormFixtures } from './helpers/weekly-form-fixtures'
 import { HR_ACTOR, startedCycle } from './helpers/weekly-fixtures'
@@ -67,4 +68,19 @@ test('one evaluator’s own set (a partner HR fills in) overrides the quarter’
   assert.deepEqual(deptTable.questions.map((q) => q.text), cLevel.map((q) => q.questionText), 'the partner’s department table asks the C-Level questions')
   assert.deepEqual(await texts(earlierId, 'DEPT', W.lead.id, W.ana.id), dept.map((q) => q.questionText), 'anyone else keeps the bank')
   assert.deepEqual(await texts(runningPeriodId, 'DEPT', F.chief.id, W.ana.id), dept.map((q) => q.questionText), 'and the weekly round is untouched')
+})
+
+test('a partner?s answers on their own pinned questions appear in the person?s report and the verification CSV', WEEKLY_DB_TEST, async () => {
+  // As Daniyal in Q3 2026: a partner who is only Ana's lead, scored by HR on the C-Level questions.
+  process.env.WEEKLY_HR_FILLED_PARTNERS = `${F.chief.name},${W.lead.name}`
+  const cLevel = (await bank('C_LEVEL')).filter((q) => q.questionType === 'RATING')
+  await prisma.evaluationPeriodQuestion.createMany({ data: cLevel.map((q, i) => ({ periodId: earlierId, relationshipType: 'TEAM_LEAD' as const, evaluatorId: W.lead.id, questionId: q.id, orderIndex: i + 1 })) })
+  await saveTableRow(HR_ACTOR, { kind: 'PARTNER', evaluatorId: W.lead.id, relationshipType: 'TEAM_LEAD', evaluateeId: W.ana.id, ratings: cLevel.map((q) => ({ questionId: q.id, ratingValue: 3 })), submit: true, periodId: earlierId }, NOW)
+
+  const report = await generateDetailedReport(W.ana.id, earlierId)
+  const section = report.detailedSections.find((s) => s.evaluatorName === W.lead.name)
+  assert.ok(section, 'the partner?s section is in the report')
+  assert.deepEqual(section.categories.map((c) => c.questionText).sort(), cLevel.map((q) => q.questionText).sort())
+  const csv = await generateVerificationCsv(earlierId)
+  assert.match(csv.split('\n').find((line) => line.startsWith(W.ana.name)) ?? '', new RegExp(`${W.lead.name}: 3\\.00`))
 })
