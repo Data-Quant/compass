@@ -17,6 +17,8 @@ export type AssignmentSource =
   | 'PRE_EVALUATION_PEER'
   | 'PRE_EVALUATION_CROSS_DEPARTMENT'
   | 'PERIOD_OVERRIDE'
+  /** Saved for a quarter rebuilt from its own answers (who evaluated whom, and as what), e.g. Q3 2026. */
+  | 'QUARTER_ANSWERS'
 
 export type PeriodAssignmentOverrideAction = 'ADD' | 'REMOVE'
 
@@ -193,8 +195,9 @@ export function resolveEvaluationAssignments(params: {
  * locked, or once its weekly round has closed (closing saves them), so later mapping changes cannot rewrite it.
  */
 export async function usesSavedAssignments(periodId: string, db: DbClient = prisma): Promise<boolean> {
-  const period = await db.evaluationPeriod.findUnique({ where: { id: periodId }, select: { isLocked: true } })
-  if (period?.isLocked) return true
+  const period = await db.evaluationPeriod.findUnique({ where: { id: periodId }, select: { isLocked: true, assignmentsFixedAt: true } })
+  // Locked, or its mappings were fixed (rebuilt to what it ran with, as Q3 2026 was): only that quarter is affected.
+  if (period?.isLocked || period?.assignmentsFixedAt) return true
   const cycle = await db.weeklyCycle.findUnique({ where: { periodId }, select: { status: true } })
   return cycle?.status === 'CLOSED'
 }
@@ -453,7 +456,9 @@ export async function snapshotEvaluationPeriodAssignments(
  */
 export async function snapshotOnLock(periodId: string, db: DbClient = prisma) {
   const cycle = await db.weeklyCycle.findUnique({ where: { periodId }, select: { status: true } })
-  if (cycle?.status === 'CLOSED' && (await db.evaluationPeriodAssignmentSnapshot.count({ where: { periodId } })) > 0) {
+  const fixed = (await db.evaluationPeriod.findUnique({ where: { id: periodId }, select: { assignmentsFixedAt: true } }))?.assignmentsFixedAt
+  // A closed round's mappings, or a quarter's fixed ones, are what it ran with: locking keeps them.
+  if ((cycle?.status === 'CLOSED' || fixed) && (await db.evaluationPeriodAssignmentSnapshot.count({ where: { periodId } })) > 0) {
     return { count: 0, kept: true }
   }
   return { ...(await snapshotEvaluationPeriodAssignments(periodId, db)), kept: false }

@@ -17,6 +17,7 @@ const SOURCE_LABELS: Record<QuarterMappingRow['source'], string> = {
   PRE_EVALUATION_PEER: 'Peer chosen for the quarter',
   PRE_EVALUATION_CROSS_DEPARTMENT: 'Cross-department chosen for the quarter',
   PERIOD_OVERRIDE: 'Changed for this quarter',
+  QUARTER_ANSWERS: 'From the quarter’s own answers',
 }
 
 const formatDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
