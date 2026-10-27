@@ -404,9 +404,10 @@ export function formatReportAsHTML(
   const getSectionTitle = (type: RelationshipType): string => {
     const labels: Record<RelationshipType, string> = {
       C_LEVEL: 'CEO/Leadership Evaluation',
-      TEAM_LEAD: 'Evaluation as a Team Lead',
-      DIRECT_REPORT: 'Evaluation as a Reporting Team Member',
-      PEER: 'Evaluation as a Peer',
+      // Who evaluated the person: their lead, a member of their team, a peer.
+      TEAM_LEAD: 'Evaluation by a Team Lead',
+      DIRECT_REPORT: 'Evaluation by a Reporting Team Member',
+      PEER: 'Evaluation by a Peer',
       CROSS_DEPARTMENT: 'Cross-Department Evaluation',
       HR: 'HR Evaluation',
       DEPT: 'Department Evaluation',
@@ -635,9 +636,9 @@ export function formatReportAsHTML(
 
   // Map relationship types to display names
   const displayNames: Record<RelationshipType, string> = {
-    TEAM_LEAD: 'Evaluation As Team Lead',
-    DIRECT_REPORT: 'Evaluation As Reporting Team Member',
-    PEER: 'Evaluation As Peer',
+    TEAM_LEAD: 'Evaluation By Team Lead',
+    DIRECT_REPORT: 'Evaluation By Reporting Team Member',
+    PEER: 'Evaluation By Peer',
     CROSS_DEPARTMENT: 'Cross-Department Evaluation',
     HR: 'HR Evaluation',
     C_LEVEL: 'CEO Evaluation',
