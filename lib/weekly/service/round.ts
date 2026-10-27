@@ -310,7 +310,8 @@ export async function setRoundLock(actor: WeeklyActor, periodId: string, locked:
     await prisma.$transaction(async (tx) => {
       // Waits for any late form an employee is saving (they hold the row FOR SHARE), so none lands after the close.
       await tx.$queryRaw`SELECT id FROM "EvaluationPeriod" WHERE id = ${periodId} FOR UPDATE`
-      if (locked) await snapshotEvaluationPeriodAssignments(periodId, tx)
+      // Closing keeps mappings that were fixed to what the quarter ran with (Q3 2026); otherwise it saves today's.
+      if (locked) await snapshotOnLock(periodId, tx)
       // Closing also ends employees' late forms for good: reopening to correct something does not bring them back.
       await tx.evaluationPeriod.update({ where: { id: periodId }, data: locked ? { isLocked: true, lateFormsOpenedAt: null } : { isLocked: false } })
     }, { timeout: 60_000 })
