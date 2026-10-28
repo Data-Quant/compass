@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getSession } from '@/lib/auth'
+import { assertSameOrigin, SameOriginError } from '@/lib/security/same-origin'
 import { prisma } from '@/lib/db'
 import { canEditAssignedProjectTask, resolveProjectCapabilities } from '@/lib/project-access'
 import { syncProjectCompletion } from '@/lib/project-completion'
@@ -29,6 +30,7 @@ function uniqueTaskIds(taskIds: string[]) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    assertSameOrigin(request.headers, request.url)
     const user = await getSession()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -111,13 +113,6 @@ export async function PATCH(request: NextRequest) {
     let shiftDays: number | undefined
 
     if (parsed.data.action === 'ASSIGNEE') {
-      if (tasks.some((task) => !capabilitiesByProject.get(task.projectId)?.canManage)) {
-        return NextResponse.json(
-          { error: 'Only a project lead or HR can bulk reassign tasks' },
-          { status: 403 }
-        )
-      }
-
       const rawAssignee = parsed.data.assigneeId !== undefined ? parsed.data.assigneeId : parsed.data.value
       if (rawAssignee === null || rawAssignee === '') {
         assigneeId = null
@@ -288,6 +283,7 @@ export async function PATCH(request: NextRequest) {
       tasks: responseTasks,
     })
   } catch (error) {
+    if (error instanceof SameOriginError) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     console.error('Failed to bulk update project tasks:', error)
     return NextResponse.json({ error: 'Failed to bulk update project tasks' }, { status: 500 })
   }
