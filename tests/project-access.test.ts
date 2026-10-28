@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   canEditAssignedProjectTask,
-  canEditTaskCoAssignees,
+  isAssignmentOnlyTaskUpdate,
   filterManageableProjects,
   isProjectRecordId,
   parseMemberRoleInput,
@@ -82,19 +82,12 @@ test('members may edit only their assigned tasks while managers may edit any tas
   }), true)
 })
 
-const coBase = { viewerId: 'me', assigneeId: 'other', assistantIds: [] as string[], canManage: false }
-test('the assignee can manage co-assignees', () => {
-  assert.equal(canEditTaskCoAssignees({ ...coBase, assigneeId: 'me' }), true)
-})
-test('an existing co-assignee can manage co-assignees', () => {
-  assert.equal(canEditTaskCoAssignees({ ...coBase, assistantIds: ['me'] }), true)
-})
-test('a project lead or HR can manage co-assignees', () => {
-  assert.equal(canEditTaskCoAssignees({ ...coBase, canManage: true }), true)
-})
-test('other project members cannot', () => {
-  assert.equal(canEditTaskCoAssignees(coBase), false)
-  assert.equal(canEditTaskCoAssignees({ ...coBase, assigneeId: null }), false)
+test('a PUT with only the assignee or co-assignees counts as an assignment change', () => {
+  assert.equal(isAssignmentOnlyTaskUpdate({ taskId: 't', assigneeId: 'u' }), true)
+  assert.equal(isAssignmentOnlyTaskUpdate({ taskId: 't', assistantIds: ['u'] }), true)
+  assert.equal(isAssignmentOnlyTaskUpdate({ taskId: 't', assigneeId: 'u', title: 'x' }), false)
+  assert.equal(isAssignmentOnlyTaskUpdate(null), false)
+  assert.equal(isAssignmentOnlyTaskUpdate(['assigneeId']), false)
 })
 
 test('only HR, owners and OWNER or LEAD members count as managing a project', () => {

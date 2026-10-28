@@ -54,13 +54,12 @@ export function canEditAssignedProjectTask(input: {
     || Boolean(input.assistantIds?.includes(input.viewerId))
 }
 
-export function canEditTaskCoAssignees(input: {
-  viewerId: string
-  assigneeId: string | null
-  assistantIds: string[]
-  canManage: boolean
-}) {
-  return canEditAssignedProjectTask(input)
+const ASSIGNMENT_UPDATE_KEYS = new Set(['taskId', 'assigneeId', 'assistantIds'])
+
+// A PUT that only changes the assignee or co-assignees, which any project member may do.
+export function isAssignmentOnlyTaskUpdate(body: unknown) {
+  return typeof body === 'object' && body !== null && !Array.isArray(body)
+    && Object.keys(body).every((key) => ASSIGNMENT_UPDATE_KEYS.has(key))
 }
 
 export function accessibleProjectsWhere(viewer: ProjectViewer): Prisma.ProjectWhereInput {

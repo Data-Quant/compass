@@ -518,7 +518,9 @@ export function TaskDetailPanel({
   }
 
   const updateTask = useCallback(async (updates: Record<string, any>) => {
-    if (!task || !canEdit) return
+    // Anyone who can open the task may change its assignee or co-assignees.
+    const assignmentOnly = Object.keys(updates).every((key) => key === 'assigneeId' || key === 'assistantIds')
+    if (!task || (!canEdit && !assignmentOnly)) return
     setSaving(true)
     try {
       const res = await fetch(`/api/projects/${projectId}/tasks`, {
@@ -702,7 +704,7 @@ export function TaskDetailPanel({
   }
 
   const toggleAssistant = async (memberId: string) => {
-    if (!task || !canEdit || memberId === task.assigneeId) return
+    if (!task || memberId === task.assigneeId) return
     const current = (task.assistants || []).map((assistant) => assistant.user.id)
     const next = current.includes(memberId)
       ? current.filter((id) => id !== memberId)
@@ -711,7 +713,7 @@ export function TaskDetailPanel({
   }
 
   const clearAssistants = async () => {
-    if (!task || !canEdit || !task.assistants?.length) return
+    if (!task || !task.assistants?.length) return
     updateTask({ assistantIds: [] })
   }
 
@@ -924,7 +926,6 @@ export function TaskDetailPanel({
 
             {/* Assignee */}
             <FieldRow icon={<Users className="w-4 h-4" />} label="Assignee">
-              {canManage && canEdit ? (
                 <Dropdown
                   trigger={
                     <span className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md text-sm hover:bg-muted/30 transition-colors">
@@ -973,24 +974,10 @@ export function TaskDetailPanel({
                     )}
                   </PeopleSearchList>
                 </Dropdown>
-              ) : (
-                <span className="inline-flex items-center gap-2 px-2.5 py-1 text-sm">
-                  {task.assignee ? (
-                    <>
-                      <UserAvatar name={task.assignee.name} size="xs" />
-                      {task.assignee.name}
-                    </>
-                  ) : (
-                    <span className="text-muted-foreground">Unassigned</span>
-                  )}
-                </span>
-              )}
             </FieldRow>
 
             {/* Co-assignees */}
             <FieldRow icon={<UserRoundCheck className="w-4 h-4" />} label="Co-assignees">
-              {/* canEdit already means assignee, co-assignee or manager: the co-assignee rule */}
-              {canEdit ? (
               <Dropdown
                 trigger={
                   <span className="inline-flex max-w-full items-center gap-2 rounded-md px-2.5 py-1 text-sm hover:bg-muted/30 transition-colors">
@@ -1060,20 +1047,6 @@ export function TaskDetailPanel({
                   </PeopleSearchList>
                 </div>
               </Dropdown>
-              ) : (
-                <span className="inline-flex max-w-full items-center gap-2 px-2.5 py-1 text-sm">
-                  {assistants.length > 0 ? (
-                    <>
-                      <span className="flex -space-x-1.5">
-                        {assistants.slice(0, 3).map((assistant) => (
-                          <UserAvatar key={assistant.user.id} name={assistant.user.name} size="xs" className="ring-2 ring-background" />
-                        ))}
-                      </span>
-                      <span className="truncate">{assistants.map((assistant) => assistant.user.name).join(', ')}</span>
-                    </>
-                  ) : <span className="text-muted-foreground">No co-assignees</span>}
-                </span>
-              )}
             </FieldRow>
 
             {/* Due Date */}

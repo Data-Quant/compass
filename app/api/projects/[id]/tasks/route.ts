@@ -22,7 +22,7 @@ import {
 import { syncProjectCompletion } from '@/lib/project-completion'
 import {
   canEditAssignedProjectTask,
-  canEditTaskCoAssignees,
+  isAssignmentOnlyTaskUpdate,
   getProjectAuthorization,
   isProjectRecordId,
   projectAuthorizationFailure,
@@ -243,9 +243,6 @@ export async function POST(
     // the ability to create genuinely unassigned backlog items.
     const normalizedAssigneeId = requestedAssigneeId || (!authorization.canManage ? user.id : null)
 
-    if (normalizedAssigneeId && !authorization.canManage && normalizedAssigneeId !== user.id) {
-      return NextResponse.json({ error: 'Only a project lead or HR can assign tasks to someone else' }, { status: 403 })
-    }
     if (normalizedAssigneeId) await validateProjectMemberIds(projectId, [normalizedAssigneeId])
 
     if (status !== undefined && !isProjectTaskStatus(status)) {
@@ -295,9 +292,6 @@ export async function POST(
     const cleanAssistantIds = assistantIds === undefined ? undefined : uniqueStringArray(assistantIds)
     if (assistantIds !== undefined && !cleanAssistantIds) {
       return NextResponse.json({ error: 'assistantIds must be an array of user IDs' }, { status: 400 })
-    }
-    if (assistantIds !== undefined && !authorization.canManage) {
-      return NextResponse.json({ error: 'Only a project lead or HR can assign co-assignees' }, { status: 403 })
     }
 
     const validAssistantIds = cleanAssistantIds
@@ -462,7 +456,8 @@ export async function PUT(
     if (authorizationFailure) {
       return NextResponse.json({ error: authorizationFailure.error }, { status: authorizationFailure.status })
     }
-    const { taskId, title, description, status, priority, assigneeId, startDate, dueDate, sectionId, parentTaskId, labelIds, assistantIds, orderIndex, sprintId } = await request.json()
+    const body = await request.json()
+    const { taskId, title, description, status, priority, assigneeId, startDate, dueDate, sectionId, parentTaskId, labelIds, assistantIds, orderIndex, sprintId } = body
 
     if (!taskId) {
       return NextResponse.json({ error: 'taskId is required' }, { status: 400 })
@@ -496,7 +491,8 @@ export async function PUT(
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })
     }
 
-    if (!canEditAssignedProjectTask({
+    // Anyone on the project may change who a task is assigned to; the activity log records it.
+    if (!isAssignmentOnlyTaskUpdate(body) && !canEditAssignedProjectTask({
       viewerId: user.id,
       assigneeId: existingTask.assigneeId,
       assistantIds: existingTask.assistants.map((assistant) => assistant.userId),
@@ -571,18 +567,6 @@ export async function PUT(
     const normalizedAssigneeId = assigneeId === undefined
       ? undefined
       : (typeof assigneeId === 'string' && assigneeId.trim() ? assigneeId.trim() : null)
-    if (normalizedAssigneeId !== undefined && normalizedAssigneeId !== existingTask.assigneeId && !authorization.canManage) {
-      return NextResponse.json({ error: 'Only a project lead or HR can reassign tasks' }, { status: 403 })
-    }
-    // Same rule as the edit check above today; kept explicit so co-assignee access can diverge without hunting for it.
-    if (assistantIds !== undefined && !canEditTaskCoAssignees({
-      viewerId: user.id,
-      assigneeId: existingTask.assigneeId,
-      assistantIds: existingTask.assistants.map((assistant) => assistant.userId),
-      canManage: authorization.canManage,
-    })) {
-      return NextResponse.json({ error: 'Only the assignee, a co-assignee, a project lead or HR can change co-assignees' }, { status: 403 })
-    }
     if (normalizedAssigneeId) await validateProjectMemberIds(projectId, [normalizedAssigneeId])
 
     // Resending the current sprint is a no-op, so members can save other fields.
@@ -691,6 +675,18 @@ export async function PUT(
       before: existingTask,
       after: task,
     })
+    const nextAssistants = (task.assistants || []) as Array<{ userId: string; user?: { name: string } | null }>
+    const assistantsChanged = nextAssistants.length !== existingTask.assistants.length
+      || nextAssistants.some((assistant) => !existingAssistantIds.includes(assistant.userId))
+    if (assistantsChanged) {
+      const names = nextAssistants.map((assistant) => assistant.user?.name).filter(Boolean).join(', ')
+      activities.push({
+        kind: 'assistants',
+        summary: names
+          ? `${displayName(user)} set the co-assignees to ${names}`
+          : `${displayName(user)} removed all co-assignees`,
+      })
+    }
 
     for (const activity of activities) {
       try {
