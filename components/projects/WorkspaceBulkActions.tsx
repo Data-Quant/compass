@@ -37,7 +37,7 @@ export function WorkspaceBulkActions({ selections, applying, onApply, onClear }:
   const [assigneeId, setAssigneeId] = useState('')
   const [days, setDays] = useState('1')
 
-  const canReassign = selections.length > 0 && selections.every(({ project }) => project.canManage)
+  const canReassign = selections.length > 0
   const commonAssignees = useMemo(() => getCommonAssignees(selections), [selections])
   const undatedCount = selections.filter(({ task }) => !task.dueDate).length
 
