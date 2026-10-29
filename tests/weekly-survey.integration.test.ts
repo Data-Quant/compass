@@ -56,6 +56,14 @@ test('one question a week across the round’s 13 weeks, with the eNPS repeated 
   assert.deepEqual(bank.map((q) => q.dueWeek), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])
 })
 
+test('C-suite partners get no pulse questions and cannot answer them', WEEKLY_DB_TEST, async () => {
+  await loadDefaultSurvey(HR_ACTOR, periodId)
+  const brad = { ...ben, name: 'Brad Herman' }
+  assert.deepEqual((await mySurvey(brad, at(3))).questions, [])
+  const [question] = (await mySurvey(ben, at(1))).questions
+  await assert.rejects(submitSurvey(brad, { answers: [{ questionId: question.id, value: 9 }] }, at(1)), isStatus(409))
+})
+
 test('a shorter round drops the eNPS repeat first, then asks more than one a week', () => {
   assert.deepEqual(surveyDueWeeks(12, 13), { weeks: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], repeatWeek: 13 })
   assert.deepEqual(surveyDueWeeks(12, 12), { weeks: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], repeatWeek: null })

@@ -7,7 +7,7 @@ import { getResolvedEvaluationAssignments } from '@/lib/evaluation-assignments'
 import { cycleWeeks, effectiveWeek, karachiCalendarDate, weekStartsAt } from '../calendar'
 import { isOutsideRedesign } from '../eligibility'
 import { renderSelfReviewReplyEmail, renderSelfReviewSubmittedEmail } from '../emails'
-import { isHrFilledPartner } from '../partners'
+import { isCSuitePartner, isHrFilledPartner } from '../partners'
 import type { PersonRef } from '../view-types'
 import { addWorkingDays } from '../working-days'
 import { recordAudit } from './audit'
@@ -94,7 +94,7 @@ async function questions(periodId: string) {
 }
 
 function takesPart(person: { name: string; department: string | null } | undefined): boolean {
-  return Boolean(person) && !isOutsideRedesign(person as { department: string | null }) && !isHrFilledPartner(person?.name)
+  return Boolean(person) && !isOutsideRedesign(person as { department: string | null }) && !isHrFilledPartner(person?.name) && !isCSuitePartner(person?.name)
 }
 
 /** The month whose question is open in this week: the newest one released, which replaces any earlier unanswered one. */

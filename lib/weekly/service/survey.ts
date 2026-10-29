@@ -5,6 +5,7 @@
 import type { SurveyQuestionKind } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { cycleWeeks, effectiveWeek, questionWeekCount } from '../calendar'
+import { isCSuitePartner } from '../partners'
 import type { MySurveyResponse, SurveyQuestionView, SurveyResultsResponse } from '../view-types'
 import { recordAudit } from './audit'
 import { assertHr, loadPeople, type WeeklyActor } from './context'
@@ -76,6 +77,8 @@ async function surveyWeek(now: Date) {
 export async function mySurvey(actor: WeeklyActor, now: Date): Promise<MySurveyResponse> {
   const at = await surveyWeek(now)
   if (!at) return { periodName: null, week: null, questions: [], notice: CONFIDENTIALITY_NOTICE }
+  // C-suite partners are not asked (and so cannot answer: submitSurvey only takes questions listed here).
+  if (isCSuitePartner(actor.name)) return { periodName: at.cycle.period.name, week: at.week, questions: [], notice: CONFIDENTIALITY_NOTICE }
   const bank = await activeBank(at.cycle.periodId)
   const answered = new Set((await prisma.surveyCompletion.findMany({ where: { periodId: at.cycle.periodId, userId: actor.id }, select: { questionId: true } })).map((c) => c.questionId))
   const due = bank.filter((q) => q.dueWeek <= at.week && !answered.has(q.id)).sort((a, b) => a.dueWeek - b.dueWeek || a.orderIndex - b.orderIndex)
