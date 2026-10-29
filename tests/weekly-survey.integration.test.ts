@@ -99,6 +99,9 @@ test('anonymous is chosen per answer and stored without a name; HR sees counts, 
   const happyResult = results.questions.find((q) => q.id === happy.id)!
   assert.deepEqual(happyResult.comments.map((c) => [c.text, c.name, c.department]), [['Workload', null, null]], 'fewer than five from Product answered: no department')
   assert.deepEqual(happyResult.counts, { '1': 1, '2': 0, '3': 0, '4': 0, '5': 1 })
+  // HR sees who answered what when it was not anonymous; the anonymous answer is not listed by name.
+  assert.deepEqual(npsResult.named, [{ name: W.ana.name, value: 10, choice: null, text: 'Great team' }, { name: W.ben.name, value: 3, choice: null, text: null }].sort((a, b) => a.name.localeCompare(b.name)))
+  assert.deepEqual(happyResult.named, [{ name: W.ben.name, value: 5, choice: null, text: null }])
 })
 
 test('nothing stored can tie an anonymous answer to its author: no answer times, random ids, completions by week only', WEEKLY_DB_TEST, async () => {

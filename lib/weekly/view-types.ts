@@ -321,6 +321,8 @@ export interface SurveyQuestionResult {
   average: number | null
   /** name is null for anonymous answers. */
   comments: Array<{ text: string; choice: string | null; name: string | null; department: string | null }>
+  /** Every answer given with a name: who answered, what (the 0 to 10 or 1 to 5 value, or the option), and any note. */
+  named: Array<{ name: string; value: number | null; choice: string | null; text: string | null }>
 }
 export interface SurveyResultsResponse { questions: SurveyQuestionResult[] }
 

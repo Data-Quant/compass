@@ -223,6 +223,9 @@ export async function surveyResults(actor: WeeklyActor, periodId: string): Promi
         text: r.text, choice: r.choice, name: r.userId ? people.get(r.userId)?.name ?? 'Unknown' : null,
         department: !r.userId && r.department && shownDepartment(r.questionId, r.weekIndex, r.department) ? r.department : null,
       }] : [])),
+      named: mine
+        .flatMap((r) => (r.userId ? [{ name: people.get(r.userId)?.name ?? 'Unknown', value: r.value, choice: r.choice, text: r.text }] : []))
+        .sort((a, b) => a.name.localeCompare(b.name)),
     }
   })
   return { questions }

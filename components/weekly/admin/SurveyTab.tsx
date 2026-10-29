@@ -15,9 +15,18 @@ import { CyclePicker, NoRound, useCycles } from './PeopleTab'
 const KIND_LABELS: Record<SurveyKindValue, string> = { NPS: '0 to 10', AGREE: 'Agree scale', CHOICE: 'Multiple choice', TEXT: 'Written answer' }
 const AGREE = ['Strongly disagree', 'Disagree', 'Neutral', 'Agree', 'Strongly agree']
 
+/** What a named person answered, as HR reads it: "9 of 10", "Agree", or the option chosen. */
+function answerText(kind: SurveyKindValue, a: SurveyQuestionResult['named'][number]): string | null {
+  if (kind === 'NPS' && a.value !== null) return `${a.value} of 10`
+  if (kind === 'AGREE' && a.value !== null) return AGREE[a.value - 1] ?? String(a.value)
+  return a.choice
+}
+
 function ResultCard({ q, position }: { q: SurveyQuestionResult; position: number }) {
   const max = Math.max(1, ...Object.values(q.counts))
   const label = (key: string) => (q.kind === 'AGREE' ? AGREE[Number(key) - 1] : key)
+  // Named written answers are in the named list; this one keeps only the anonymous ones.
+  const anonymousComments = q.comments.filter((c) => c.name === null)
   return (
     <Card>
       <CardContent className="space-y-3 p-4">
@@ -40,14 +49,27 @@ function ResultCard({ q, position }: { q: SurveyQuestionResult; position: number
             ))}
           </ul>
         )}
-        {q.comments.length > 0 && (
+        {q.named.length > 0 && (
           <details className="text-sm">
-            <summary className="cursor-pointer text-primary">{q.comments.length} written {q.comments.length === 1 ? 'answer' : 'answers'}</summary>
+            <summary className="cursor-pointer text-primary">{q.named.length} named {q.named.length === 1 ? 'answer' : 'answers'}</summary>
+            <ul className="mt-2 divide-y rounded-md border">
+              {q.named.map((a, i) => (
+                <li key={i} className="space-y-0.5 p-2">
+                  <p><span className="font-medium">{a.name}</span>{answerText(q.kind, a) && <span className="text-muted-foreground"> · {answerText(q.kind, a)}</span>}</p>
+                  {a.text && <p className="whitespace-pre-wrap">{a.text}</p>}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+        {anonymousComments.length > 0 && (
+          <details className="text-sm">
+            <summary className="cursor-pointer text-primary">{anonymousComments.length} anonymous written {anonymousComments.length === 1 ? 'answer' : 'answers'}</summary>
             <ul className="mt-2 space-y-2">
-              {q.comments.map((c, i) => (
+              {anonymousComments.map((c, i) => (
                 <li key={i} className="rounded-md border p-2">
                   <p className="whitespace-pre-wrap">{c.text}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{c.name ?? (c.department ? `Anonymous · ${c.department}` : 'Anonymous')}{c.choice ? ` · ${c.choice}` : ''}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{c.department ? `Anonymous · ${c.department}` : 'Anonymous'}{c.choice ? ` · ${c.choice}` : ''}</p>
                 </li>
               ))}
             </ul>
@@ -98,7 +120,7 @@ export function SurveyTab() {
   return (
     <div className="space-y-4">
       <CyclePicker cycles={cycles} cycleId={cycleId} onChange={setCycleId} />
-      <p className="text-sm text-muted-foreground">Everyone gets one question a week; the last week repeats the eNPS question. Answers are confidential to HR and never part of a score. Anonymous ones carry no name, and show a department only when at least five from it answered that week.</p>
+      <p className="text-sm text-muted-foreground">Everyone gets one question a week; the last week repeats the eNPS question. Answers are confidential to HR and never part of a score. Named answers show who answered what. Anonymous ones carry no name, and show a department only when at least five from it answered that week.</p>
       {bank && bank.length === 0 && (
         <Button onClick={() => void act({ action: 'load-default', periodId }, 'The standard 12 questions are loaded')}>Load the standard 12 questions</Button>
       )}
