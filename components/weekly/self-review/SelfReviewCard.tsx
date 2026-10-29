@@ -73,7 +73,7 @@ export function SelfReviewCard() {
             <div className="space-y-1">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Self-evaluation · goes to {to}</p>
               <h2 className="text-lg font-semibold">{current.monthName}: {current.title}</h2>
-              <p className="text-sm text-muted-foreground">Not anonymous and never scored. Only {to} read it; your peers and team never see it.</p>
+              <p className="text-sm text-muted-foreground">Not anonymous and never scored. Only {to} read it; your peers never see it.</p>
             </div>
             {current.parts.map((part, i) => (
               <div key={i} className="space-y-1.5">
