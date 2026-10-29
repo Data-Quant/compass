@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db'
 export type ProjectViewer = {
   id: string
   role: string | null | undefined
+  position?: string | null
 }
 
 export type ProjectMembershipForAccess = {
@@ -22,13 +23,18 @@ export type ProjectAuthorization = {
 
 const MANAGER_MEMBERSHIP_ROLES = new Set(['OWNER', 'LEAD'])
 
+// HR and partners (any title containing "partner"; only HR can set titles) see and manage every project.
+export function hasAllProjectsAccess(viewer: ProjectViewer) {
+  return viewer.role === 'HR' || Boolean(viewer.position?.toLowerCase().includes('partner'))
+}
+
 export function resolveProjectCapabilities(input: {
   viewer: ProjectViewer
   ownerId: string
   members: ProjectMembershipForAccess[]
 }) {
   const membership = input.members.find((member) => member.userId === input.viewer.id) || null
-  const isHr = input.viewer.role === 'HR'
+  const isHr = hasAllProjectsAccess(input.viewer)
   const isOwner = input.ownerId === input.viewer.id
   const isParticipant = isOwner || Boolean(membership)
   const isMembershipManager = Boolean(
@@ -63,7 +69,7 @@ export function isAssignmentOnlyTaskUpdate(body: unknown) {
 }
 
 export function accessibleProjectsWhere(viewer: ProjectViewer): Prisma.ProjectWhereInput {
-  if (viewer.role === 'HR') return {}
+  if (hasAllProjectsAccess(viewer)) return {}
 
   return {
     OR: [

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   canEditAssignedProjectTask,
+  hasAllProjectsAccess,
   isAssignmentOnlyTaskUpdate,
   filterManageableProjects,
   isProjectRecordId,
@@ -120,4 +121,24 @@ test('parseMemberRoleInput accepts MEMBER and LEAD only', () => {
   assert.equal(parseMemberRoleInput({ userId: '', role: 'LEAD' }), null)
   assert.equal(parseMemberRoleInput({ role: 'LEAD' }), null)
   assert.equal(parseMemberRoleInput(null), null)
+})
+
+test('HR and partner titles get every project, other titles do not', () => {
+  assert.equal(hasAllProjectsAccess({ id: 'u', role: 'HR' }), true)
+  assert.equal(hasAllProjectsAccess({ id: 'u', role: 'EMPLOYEE', position: 'Junior Partner' }), true)
+  assert.equal(hasAllProjectsAccess({ id: 'u', role: 'EXECUTION', position: 'Managing Partner' }), true)
+  assert.equal(hasAllProjectsAccess({ id: 'u', role: 'EMPLOYEE', position: 'Principal' }), false)
+  assert.equal(hasAllProjectsAccess({ id: 'u', role: 'EMPLOYEE', position: null }), false)
+  assert.equal(hasAllProjectsAccess({ id: 'u', role: 'EMPLOYEE' }), false)
+})
+
+test('a partner can open and manage a project they are not on', () => {
+  const capabilities = resolveProjectCapabilities({
+    viewer: { id: 'p', role: 'EMPLOYEE', position: 'Partner' },
+    ownerId: 'o',
+    members: [],
+  })
+  assert.equal(capabilities.canAccess, true)
+  assert.equal(capabilities.canManage, true)
+  assert.equal(capabilities.isParticipant, false)
 })

@@ -6,6 +6,7 @@ import {
   getProjectAuthorization,
   isProjectRecordId,
   projectAuthorizationFailure,
+  type ProjectViewer,
 } from '@/lib/project-access'
 import { buildPersonAnalytics, buildProjectAnalytics, resolveAnalyticsRange } from '@/lib/project-analytics'
 import {
@@ -86,7 +87,7 @@ export async function GET(
   }
 }
 
-async function loadPersonAnalytics(viewer: { id: string; role: string | null }, userId: string, now: Date) {
+async function loadPersonAnalytics(viewer: ProjectViewer, userId: string, now: Date) {
   // Only projects the viewer can open are counted; nothing from other projects leaks.
   const accessibleProjects = await prisma.project.findMany({
     where: accessibleProjectsWhere(viewer),
