@@ -15,3 +15,12 @@ export function isHrFilledPartner(name: string | null | undefined): boolean {
   const wanted = normalize(name)
   return hrFilledPartnerNames().some((partner) => normalize(partner) === wanted)
 }
+
+// C-suite partners get no monthly self-evaluation and no pulse survey; everything else about them is unchanged.
+export const C_SUITE_PARTNERS = ['Hamiz Awan', 'Daniyal Awan', 'Brad Herman', 'Maryam Khalil', 'Richard Reizes']
+
+export function isCSuitePartner(name: string | null | undefined): boolean {
+  if (!name) return false
+  const wanted = normalize(name)
+  return C_SUITE_PARTNERS.some((partner) => normalize(partner) === wanted)
+}

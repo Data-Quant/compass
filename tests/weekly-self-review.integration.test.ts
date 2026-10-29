@@ -113,6 +113,12 @@ test('HR-filled partners get no self-evaluation question', WEEKLY_DB_TEST, async
   }
 })
 
+test('C-suite partners get no self-evaluation question and are not listed as missing', WEEKLY_DB_TEST, async () => {
+  await prisma.user.update({ where: { id: W.ben.id }, data: { name: 'Maryam Khalil' } })
+  assert.equal((await mySelfReview(weeklyActor({ ...W.ben, name: 'Maryam Khalil' }), at(4))).current, null)
+  assert.ok(!(await adminSelfReviews(HR_ACTOR, periodId, {}, at(4))).missing.some((p) => p.id === W.ben.id))
+})
+
 test('with no lead, HR is emailed the self-evaluation', WEEKLY_DB_TEST, async () => {
   const mail = mailbox()
   await submitSelfReview(weeklyActor(W.cara), { month: 1, answers: FULL, wantsDiscussion: false }, at(4), mail.send, APP)
